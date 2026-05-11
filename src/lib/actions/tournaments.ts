@@ -280,8 +280,8 @@ export async function importPairsCsvAction(
 
   // Existing pairs to prevent duplicates
   const allTeamIds = [...teamIdSet];
-  const { data: existingPairs } = await sb.from("pairs").select("name, team_id").in("team_id", allTeamIds);
-  const existingPairSet = new Set(existingPairs?.map((p) => `${p.team_id}:${p.name}`) ?? []);
+  const { data: existingPairs } = await sb.from("pairs").select("display_pair_name, team_id").in("team_id", allTeamIds);
+  const existingPairSet = new Set(existingPairs?.map((p) => `${p.team_id}:${p.display_pair_name}`) ?? []);
 
   // Group by pair_name
   const groups = new Map<string, { teamId: string; pairName: string; playerIds: string[] }>();
