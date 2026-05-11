@@ -105,6 +105,37 @@ export function generateRosterCsv(teams: (Team & { players: TeamPlayer[] })[], p
   return [headers, ...lines].join("\n");
 }
 
+// ── Templates ─────────────────────────────────────────────────────────────────
+
+export function generatePlayerImportTemplate(): string {
+  return [
+    "team,color,id_player,display_name,role",
+    "ทีมแดง,#ef4444,R1-1a,ชื่อ นามสกุล,captain",
+    "ทีมแดง,#ef4444,R1-1b,ชื่อ นามสกุล 2,member",
+    "ทีมแดง,#ef4444,R1-2a,ชื่อ นามสกุล 3,member",
+    "ทีมแดง,#ef4444,R1-2b,ชื่อ นามสกุล 4,member",
+    "ทีมเขียว,#22c55e,G1-1a,ชื่อ นามสกุล 5,member",
+    "ทีมเขียว,#22c55e,G1-1b,ชื่อ นามสกุล 6,member",
+  ].join("\n");
+}
+
+// Pre-filled pair template from existing players (csv_id already set)
+export function generatePairImportTemplate(
+  teams: (Team & { players: TeamPlayer[] })[],
+): string {
+  const lines = ["id_player,pair_name"];
+  for (const t of teams) {
+    const sorted = [...t.players].sort((a, b) =>
+      a.role === "captain" ? -1 : b.role === "captain" ? 1 : 0
+    );
+    for (const p of sorted) {
+      lines.push(row(p.csv_id ?? p.id.slice(0, 8), ""));
+    }
+    if (t.players.length) lines.push(""); // blank line between teams
+  }
+  return lines.join("\n");
+}
+
 // ── Download helper ───────────────────────────────────────────────────────────
 
 export function downloadCsv(csv: string, filename: string) {
