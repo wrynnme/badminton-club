@@ -149,7 +149,8 @@ src/
 │   ├── tournament/
 │   │   ├── competitor.ts               # Competitor abstraction (Team | Pair)
 │   │   ├── scheduling.ts               # Balanced round-robin pair scheduling
-│   │   └── scoring.ts                  # computeStandings, leaguePoints, gameWinner
+│   │   ├── scoring.ts                  # computeStandings, leaguePoints, gameWinner
+│   │   └── bracket.ts                  # buildBracket, roundLabel, nextPowerOf2
 │   └── types.ts
 └── supabase/schema.sql                 # DB schema
 ```
@@ -172,16 +173,16 @@ src/
 
 ### Tournament System
 
-**โหมดกีฬาสี** (Phase 0–2 เสร็จแล้ว)
+**โหมดกีฬาสี** (Phase 0–3 เสร็จแล้ว)
 
 - ✅ Phase 0 — Coming Soon page สำหรับ competition mode
 - ✅ Phase 1 — CRUD tournaments + teams + members (captain/member roles)
 - ✅ Phase 2 — Group stage (team mode) + Pair stage (pair mode): gen matches + score entry + standings
-- [ ] Phase 3 — Knockout: bracket gen + seeding (random / by-group-score)
-- [ ] Phase 4 — Lower bracket + drop-from-upper option
-- [ ] Phase 5 — Bracket visualization
-- [ ] Phase 6 — Realtime updates + public share link
-- [ ] Phase 7 — LINE notification + export PDF/CSV
+- ✅ Phase 3 — Knockout: single-elimination bracket, BYE auto-advance, winner auto-advance, tournament status control
+- [ ] Phase 4 — Lower bracket (double-elim) + Pair mode knockout
+- [ ] Phase 5 — Bracket visualization (visual tree diagram)
+- [ ] Phase 6 — Realtime updates + public share link (`/t/[token]`)
+- [ ] Phase 7 — LINE notification (Messaging API) + export CSV/PDF
 
 **โหมดแข่งขัน** (Coming Soon)
 
@@ -193,8 +194,8 @@ src/
 **Formats:**
 
 - `group_only` — แบ่งกลุ่ม เจอกันหมดในสาย
-- `group_knockout` — แบ่งกลุ่ม → top N เข้า knockout (upper/lower bracket)
-- `knockout_only` — single elimination
+- `group_knockout` — แบ่งกลุ่ม → top N เข้า knockout (กำหนด advance_count ต่อกลุ่ม)
+- `knockout_only` — single elimination (seed จากทีมทั้งหมด)
 
 **Scoring:**
 
@@ -207,10 +208,19 @@ src/
 - แต่ละคนเล่นได้ 1 คู่ (enforced ด้วย `UNIQUE(player_id)` ใน `pair_players`)
 - Balanced round-robin: rotate sideB ทุก round เพื่อลดการเจอซ้ำ
 
-**Knockout pairing:**
+**Knockout bracket (Phase 3):**
 
-- Upper: 1st-A vs 2nd-B, 1st-B vs 2nd-C ...
-- Lower (optional): 3rd-A vs 4th-B, 3rd-B vs 4th-C ...
-- Drop from upper → lower: default off
+- Standard single-elim: seed 1 เจอ seed 2 ได้เฉพาะรอบชิง
+- Pad to power of 2 ด้วย BYE (auto-complete ทันที)
+- Winner auto-advance ไปรอบถัดไปเมื่อกรอกผล
+- Reset ถูก block ถ้ารอบถัดไปจบแล้ว
+- Champion banner แสดงเมื่อ final match จบ
+
+**Phase 4 planned — Double-elimination:**
+
+- Upper bracket → loser → Lower bracket
+- Grand final: single match (no bracket reset)
+- `allow_drop_to_lower`: upper losers drop ลง lower (default off)
+- Lower bracket pre-seeded จาก 3rd/4th place ต่อกลุ่ม (ถ้า drop=off)
 
 **Seeding:** random draw หรือ by group score

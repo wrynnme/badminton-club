@@ -56,40 +56,91 @@
 - `group-stage.tsx` — gen groups (configurable count), gen matches, `GroupCard` per group with `StandingsTable` + `MatchRow`
 - `pair-stage.tsx` — `PairManager` grid (per team) + generate pair matches + dual standings (team aggregate + per-pair)
 - `pair-manager.tsx` — toggle-select 2 players to create pair; delete pairs
-- `knockout-stage.tsx` — gen bracket (advance_count per group), round-by-round match list, BYE auto-advance, champion banner
-- `match-row.tsx` — shows competitor names + game score (e.g. "2:0") + point totals; reset (↺) or "กรอกผล"
+- `knockout-stage.tsx` — gen bracket (advance_count per group or all teams for knockout_only), round-by-round match list, BYE auto-advance, champion banner
+- `tournament-status-control.tsx` — owner changes tournament status (draft → registering → ongoing → completed)
+- `match-row.tsx` — shows competitor names + game score (e.g. "2:0") + point totals; "TBD" for unassigned bracket slots; reset (↺) or "กรอกผล"
 - `score-form.tsx` — games array UI (add/remove rows of score A : score B)
 - `standings-table.tsx` — P/W/D/L/+−/Pts; Trophy icon for leader; shows pair subtitle (player names)
 
 ### Pages
+
 - `/tournaments` — list
-- `/tournaments/new` — create form (mode, format, match_unit, team_count …)
-- `/tournaments/[id]` — detail + TeamManager + GroupStage or PairStage
+- `/tournaments/new` — create form (mode, format, match_unit, advance_count, team_count …)
+- `/tournaments/[id]` — detail + TeamManager + GroupStage or PairStage + KnockoutStage
 
 ### Scoring rules
+
 - Win = 3 league pts, Draw = 1 pt, Loss = 0 pts
 - Match winner determined by games won (e.g. 2:0 or 2:1 out of best-of-3)
 - Tie-break: point diff → points for
 
 ### Pair scheduling
+
 - `UNIQUE(player_id)` enforces 1 person → 1 pair
 - Balanced round-robin rotates sideB so no player plays consecutive matches repeatedly
 - `generatePairMatchesAction` deletes existing pair matches before regenerating
 
 ### Knockout bracket logic (Phase 3 done)
-- Collect top `advance_count` from each group (sort by pts → diff → pf)
+
+- `group_knockout`: collect top `advance_count` from each group (sort by pts → diff → pf)
+- `knockout_only`: seed all tournament teams directly (no groups needed)
 - Seeding: random shuffle OR by group score (rank 1 all groups first, rank 2 all groups next…)
 - Pad to power of 2 with BYE — BYE matches auto-complete and advance winner
-- Standard bracket: seed 1 can only meet seed 2 in the final (recursive bracketSlots)
+- Standard bracket: seed 1 can only meet seed 2 in the final (recursive `bracketSlots`)
 - `next_match_id` + `next_match_slot` on each match — winner auto-filled on score entry
 - Reset blocked if next match already completed
 - Champion banner shown when final match is completed
-- Lower bracket → Phase 4
+- Pair mode + knockout = Phase 4
+
+### Phase 4 plan (not yet implemented)
+
+DB additions:
+
+```sql
+ALTER TABLE matches
+  ADD COLUMN loser_next_match_id uuid REFERENCES matches(id) ON DELETE SET NULL,
+  ADD COLUMN loser_next_match_slot text CHECK (loser_next_match_slot IN ('a','b')),
+  ADD COLUMN bracket text CHECK (bracket IN ('upper','lower','grand_final')) DEFAULT 'upper';
+```
+
+Architecture:
+
+- `buildDoubleBracket()` in `bracket.ts` — upper + lower + grand final with `loser_next_match_id` links
+- `allow_drop_to_lower=true`: upper losers routed to lower via `loser_next_match_id`
+- `allow_drop_to_lower=false` + `has_lower_bracket=true`: lower seeded from 3rd/4th per group
+- Grand final: single match (no bracket reset)
+- Pair mode KO: seed pairs from pair standings; `winner_id` = `pair_id`
+- `knockout-stage.tsx`: render three sections by `bracket` column — "สายบน", "สายล่าง", "รอบชิง"
+
+### Phase 5 plan — Bracket Visualization
+
+- New route `/tournaments/[id]/bracket` — server component, full-width, no auth
+- `bracket-visual.ts`: `buildVisualBracket(matches)` — 2D array by round
+- `bracket-view.tsx`: flex columns + SVG absolute-positioned connector lines; horizontal scroll on mobile
+- Upper bracket visual + lower bracket as list (Phase 5 scope)
+
+### Phase 6 plan — Realtime + Share Link
+
+- `share_token text UNIQUE` on tournaments
+- `/t/[token]` — public read-only share page (server component, service role)
+- `TournamentLiveWrapper` client component: Supabase Realtime `.on('postgres_changes')` → `router.refresh()` on match UPDATE
+- `generateShareTokenAction` / `revokeShareTokenAction` in `tournaments.ts`
+- `share-controls.tsx` — owner-only copy-to-clipboard + revoke button
+
+### Phase 7 plan — LINE + Export
+
+- New env: `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN`
+- `src/lib/line/messaging.ts`: `sendLineMessage(to, text)` — fire-and-forget (non-blocking)
+- `src/lib/export/csv.ts` + `src/lib/export/pdf.ts` (jspdf + jspdf-autotable + Thai font)
+- `export-buttons.tsx` — client-side blob download; owner-only
+- `recordMatchScoreAction`: send LINE notification when match completes (non-blocking)
 
 ## MCP servers
+
 - **supabase**: apply migrations, run SQL, list tables — use `apply_migration` for all DDL
 - **shadcn**: browse and add components
 
 ## Agent skills
+
 Run once per machine: `npx skills add supabase/agent-skills`
 `.agents/` is gitignored.
