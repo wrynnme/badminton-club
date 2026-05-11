@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Anuphan, Geist_Mono } from "next/font/google";
-import { ThemeProvider } from "next-themes";
 import { Toaster } from "@/components/ui/sonner";
 import { SiteHeader } from "@/components/site-header";
 import "./globals.css";
@@ -33,13 +32,11 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background">
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <SiteHeader />
-          <main className="mx-auto w-full max-w-5xl px-4 py-6 flex-1">
-            {children}
-          </main>
-          <Toaster />
-        </ThemeProvider>
+        <SiteHeader />
+        <main className="mx-auto w-full max-w-5xl px-4 py-6 flex-1">
+          {children}
+        </main>
+        <Toaster />
       </body>
     </html>
   );
