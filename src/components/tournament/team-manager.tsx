@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { createTeamAction, deleteTeamAction, addTeamPlayerAction, removeTeamPlayerAction } from "@/lib/actions/tournaments";
+import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
 import type { TeamWithPlayers } from "@/lib/types";
 
 const teamSchema = z.object({
@@ -222,10 +223,15 @@ export function TeamManager({ tournamentId, teams, isOwner, teamCount }: {
           <h2 className="font-semibold">ทีม</h2>
           <Badge variant="outline">{teams.length}/{teamCount}</Badge>
         </div>
-        {isOwner && remaining > 0 && !adding && (
-          <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-            <Plus className="h-4 w-4 mr-1" />เพิ่มทีม
-          </Button>
+        {isOwner && (
+          <div className="flex items-center gap-2">
+            <CsvImportDialog tournamentId={tournamentId} />
+            {remaining > 0 && !adding && (
+              <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
+                <Plus className="h-4 w-4 mr-1" />เพิ่มทีม
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
