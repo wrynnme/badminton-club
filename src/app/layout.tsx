@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Anuphan, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { SiteHeader } from "@/components/site-header";
@@ -20,15 +21,20 @@ export const metadata: Metadata = {
   description: "หาก๊วนตีแบดง่ายๆ",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const store = await cookies();
+  const theme = store.get("theme")?.value ?? "system";
+  const isDark = theme === "dark";
+  const htmlClass = `${anuphan.variable} ${geistMono.variable} h-full antialiased${isDark ? " dark" : ""}`;
+
   return (
     <html
       lang="th"
-      className={`${anuphan.variable} ${geistMono.variable} h-full antialiased`}
+      className={htmlClass}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background">

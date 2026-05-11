@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { TeamManager } from "@/components/tournament/team-manager";
-import type { Tournament, TeamWithPlayers } from "@/lib/types";
+import { GroupStage } from "@/components/tournament/group-stage";
+import type { Tournament, TeamWithPlayers, GroupWithTeams, Team } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -43,15 +44,18 @@ export default async function TournamentDetailPage({
   if (!tournament) notFound();
   const t = tournament as Tournament;
 
-  const { data: teamsRaw } = await sb
-    .from("teams")
-    .select("*, players:team_players(*)")
-    .eq("tournament_id", id)
-    .order("created_at", { ascending: true });
+  const [teamsRes, groupsRes] = await Promise.all([
+    sb.from("teams").select("*, players:team_players(*)").eq("tournament_id", id).order("created_at", { ascending: true }),
+    sb.from("groups").select("*, group_teams(*, team:teams(*)), matches(*)").eq("tournament_id", id).order("name", { ascending: true }),
+  ]);
 
-  const teams: TeamWithPlayers[] = (teamsRaw ?? []) as TeamWithPlayers[];
+  const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];
+  const groups: GroupWithTeams[] = (groupsRes.data ?? []) as GroupWithTeams[];
+  const flatTeams: Team[] = teams.map(({ players: _p, ...t }) => t as Team);
   const isOwner = session?.profileId === t.owner_id;
   const s = statusLabel[t.status];
+
+  const showGroupStage = t.format === "group_only" || t.format === "group_knockout";
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -118,6 +122,18 @@ export default async function TournamentDetailPage({
         isOwner={isOwner}
         teamCount={t.team_count}
       />
+
+      {showGroupStage && (
+        <>
+          <Separator />
+          <GroupStage
+            tournamentId={t.id}
+            groups={groups}
+            teams={flatTeams}
+            isOwner={isOwner}
+          />
+        </>
+      )}
     </div>
   );
 }

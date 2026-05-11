@@ -4,18 +4,23 @@ import * as z from "zod";
 import { useState, useTransition } from "react";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
-import { Plus, Trash2, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronUp, UserMinus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { createTeamAction, deleteTeamAction } from "@/lib/actions/tournaments";
+import { createTeamAction, deleteTeamAction, addTeamPlayerAction, removeTeamPlayerAction } from "@/lib/actions/tournaments";
 import type { TeamWithPlayers } from "@/lib/types";
 
 const teamSchema = z.object({
   name: z.string().min(1, "ระบุชื่อทีม"),
   color: z.string(),
+});
+
+const memberSchema = z.object({
+  display_name: z.string().min(1, "ระบุชื่อสมาชิก"),
+  role: z.enum(["captain", "member"]),
 });
 
 const COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ec4899", "#14b8a6", "#f97316"];
@@ -71,9 +76,66 @@ function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: (
   );
 }
 
+function AddMemberForm({ teamId, tournamentId, onDone }: { teamId: string; tournamentId: string; onDone: () => void }) {
+  const form = useForm({
+    defaultValues: { display_name: "", role: "member" as "captain" | "member" },
+    validators: { onSubmit: memberSchema },
+    onSubmit: async ({ value }) => {
+      const res = await addTeamPlayerAction({ team_id: teamId, tournament_id: tournamentId, ...value });
+      if (res?.error) toast.error(res.error);
+      else { toast.success("เพิ่มสมาชิกแล้ว"); form.reset(); onDone(); }
+    },
+  });
+
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }} className="pt-2 border-t mt-2 space-y-2">
+      <FieldGroup>
+        <form.Field name="display_name" children={(field) => {
+          const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
+          return (
+            <Field data-invalid={isInvalid}>
+              <FieldLabel htmlFor={field.name}>ชื่อสมาชิก *</FieldLabel>
+              <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)} placeholder="ชื่อ-นามสกุล" autoFocus />
+              {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+            </Field>
+          );
+        }} />
+        <form.Field name="role" children={(field) => (
+          <Field>
+            <FieldLabel>ตำแหน่ง</FieldLabel>
+            <div className="flex gap-2">
+              {([
+                { value: "member", label: "สมาชิก" },
+                { value: "captain", label: "หัวหน้าทีม" },
+              ] as const).map((opt) => (
+                <Button key={opt.value} type="button" size="sm"
+                  variant={field.state.value === opt.value ? "default" : "outline"}
+                  onClick={() => field.handleChange(opt.value)}>
+                  {opt.label}
+                </Button>
+              ))}
+            </div>
+          </Field>
+        )} />
+      </FieldGroup>
+      <div className="flex gap-2">
+        <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
+          {([can, sub]) => (
+            <Button type="submit" size="sm" disabled={!can || sub}>{sub ? "กำลังเพิ่ม..." : "เพิ่ม"}</Button>
+          )}
+        </form.Subscribe>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>ยกเลิก</Button>
+      </div>
+    </form>
+  );
+}
+
 function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tournamentId: string; isOwner: boolean }) {
   const [open, setOpen] = useState(false);
+  const [addingMember, setAddingMember] = useState(false);
   const [, startDel] = useTransition();
+  const [, startRemove] = useTransition();
 
   return (
     <Card>
@@ -85,7 +147,7 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
             <Badge variant="outline" className="text-xs">{team.players.length} คน</Badge>
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setOpen(!open)}>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setOpen(!open); setAddingMember(false); }}>
               {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </Button>
             {isOwner && (
@@ -101,18 +163,42 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
         </div>
       </CardHeader>
       {open && (
-        <CardContent className="pt-0">
+        <CardContent className="pt-0 space-y-2">
           {team.players.length === 0 ? (
             <p className="text-xs text-muted-foreground">ยังไม่มีสมาชิก</p>
           ) : (
             <ul className="space-y-1">
-              {team.players.map((p) => (
+              {[...team.players].sort((a, b) => (a.role === "captain" ? -1 : b.role === "captain" ? 1 : 0)).map((p) => (
                 <li key={p.id} className="flex items-center gap-2 text-sm">
                   {p.role === "captain" && <Badge className="text-xs px-1 py-0">หัวหน้า</Badge>}
-                  <span>{p.display_name}</span>
+                  <span className="flex-1">{p.display_name}</span>
+                  {isOwner && (
+                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"
+                      onClick={() => startRemove(async () => {
+                        const res = await removeTeamPlayerAction(p.id, tournamentId);
+                        if (res?.error) toast.error(res.error);
+                      })}>
+                      <UserMinus className="h-3 w-3" />
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
+          )}
+
+          {isOwner && !addingMember && (
+            <Button size="sm" variant="outline" className="w-full h-7 text-xs"
+              onClick={() => setAddingMember(true)}>
+              <Plus className="h-3 w-3 mr-1" />เพิ่มสมาชิก
+            </Button>
+          )}
+
+          {isOwner && addingMember && (
+            <AddMemberForm
+              teamId={team.id}
+              tournamentId={tournamentId}
+              onDone={() => setAddingMember(false)}
+            />
           )}
         </CardContent>
       )}

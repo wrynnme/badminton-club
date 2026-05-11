@@ -12,6 +12,8 @@ function applyTheme(theme: Theme) {
     (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.classList.toggle("dark", dark);
   localStorage.setItem("theme", theme);
+  const maxAge = 60 * 60 * 24 * 365;
+  document.cookie = `theme=${theme}; path=/; max-age=${maxAge}; SameSite=Lax`;
 }
 
 export function ThemeToggle() {
