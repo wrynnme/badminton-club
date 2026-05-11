@@ -26,33 +26,59 @@
 - `loginRedirect()` in `clubs.ts` uses `referer` header to auto-populate `redirectTo`
 - Player list auto-refreshes via `router.refresh()` every 30s; manual refresh button included
 - `SortablePlayerList` uses `@dnd-kit` with `activationConstraint: { distance: 8 }` for mobile compat
+- Theme stored in `theme` cookie — `layout.tsx` reads it server-side to add `dark` class on `<html>` (no next-themes)
 
-## Tournament System (in progress)
+## Tournament System (Phase 0–2 done)
+
+### Architecture
+- `src/lib/tournament/competitor.ts` — `Competitor` type abstracts over `Team` and `Pair`; `buildCompetitorMap`, `teamToCompetitor`, `pairToCompetitor`
+- `src/lib/tournament/scheduling.ts` — `balancedRoundRobin(sizeA, sizeB)` rotates sideB each round; `generateAllPairMatches(teamPairs)` produces every inter-team pair matchup
+- `src/lib/tournament/scoring.ts` — `computeStandings(matches, unit, ids)` returns `StandingRow[]`; `gameWinner(games)`, `leaguePoints(wins, draws)`; Win=3, Draw=1, Loss=0
 
 ### Schema tables
-- `tournaments` — id, owner_id, name, mode (`sports_day`|`competition`), status (`draft`|`registering`|`ongoing`|`completed`), format (`group_only`|`group_knockout`|`knockout_only`), has_lower_bracket, allow_drop_to_lower (default false), seeding_method (`random`|`by_group_score`), team_count, scoring_rules jsonb
+- `tournaments` — id, owner_id, name, mode (`sports_day`|`competition`), status (`draft`|`registering`|`ongoing`|`completed`), format (`group_only`|`group_knockout`|`knockout_only`), match_unit (`team`|`pair`), has_lower_bracket, allow_drop_to_lower (default false), seeding_method (`random`|`by_group_score`), team_count, scoring_rules jsonb
 - `teams` — id, tournament_id, name, color, seed
 - `team_players` — id, team_id, profile_id?, display_name, role (`captain`|`member`)
 - `groups` — id, tournament_id, name
-- `group_teams` — group_id, team_id, position (อันดับในกลุ่ม)
-- `matches` — id, tournament_id, round_type (`group`|`upper_qf`|`upper_sf`|`upper_final`|`lower_*`|`grand_final`), round_number, team_a_id, team_b_id, team_a_score, team_b_score, winner_id, status (`pending`|`in_progress`|`completed`), court?, scheduled_at?
+- `group_teams` — group_id, team_id, position
+- `pairs` — id, team_id, name (optional)
+- `pair_players` — pair_id, player_id; UNIQUE(player_id) — 1 person = 1 pair
+- `matches` — id, tournament_id, round_type, round_number, team_a_id, team_b_id, pair_a_id, pair_b_id, games jsonb (`[{a,b}]`), winner_id, status (`pending`|`in_progress`|`completed`), court?, scheduled_at?
 
-### Knockout bracket logic
+### Server actions
+- `src/lib/actions/tournaments.ts` — `createTournamentAction` (includes `match_unit`)
+- `src/lib/actions/matches.ts` — `generateGroupsAction`, `generateGroupMatchesAction`, `generatePairMatchesAction`, `recordMatchScoreAction({ matchId, tournamentId, games })`, `resetMatchScoreAction`
+- `src/lib/actions/pairs.ts` — `createPairAction({ teamId, playerIds: [2], name? })`, `deletePairAction`
+
+### Components
+- `team-manager.tsx` — add teams + members; captain always listed first
+- `group-stage.tsx` — gen groups (configurable count), gen matches, `GroupCard` per group with `StandingsTable` + `MatchRow`
+- `pair-stage.tsx` — `PairManager` grid (per team) + generate pair matches + dual standings (team aggregate + per-pair)
+- `pair-manager.tsx` — toggle-select 2 players to create pair; delete pairs
+- `match-row.tsx` — shows competitor names + game score (e.g. "2:0") + point totals; reset (↺) or "กรอกผล"
+- `score-form.tsx` — games array UI (add/remove rows of score A : score B)
+- `standings-table.tsx` — P/W/D/L/+−/Pts; Trophy icon for leader; shows pair subtitle (player names)
+
+### Pages
+- `/tournaments` — list
+- `/tournaments/new` — create form (mode, format, match_unit, team_count …)
+- `/tournaments/[id]` — detail + TeamManager + GroupStage or PairStage
+
+### Scoring rules
+- Win = 3 league pts, Draw = 1 pt, Loss = 0 pts
+- Match winner determined by games won (e.g. 2:0 or 2:1 out of best-of-3)
+- Tie-break: point diff → points for
+
+### Pair scheduling
+- `UNIQUE(player_id)` enforces 1 person → 1 pair
+- Balanced round-robin rotates sideB so no player plays consecutive matches repeatedly
+- `generatePairMatchesAction` deletes existing pair matches before regenerating
+
+### Knockout bracket logic (planned Phase 3)
 - Upper pairing: 1st-groupN vs 2nd-groupN+1 (cross-group)
 - Lower pairing: 3rd-groupN vs 4th-groupN+1
 - Bracket size: pad to power of 2 with BYE
 - Tie-breaker: head-to-head → point diff → coin flip
-
-### Pages
-- `/tournaments` — list
-- `/tournaments/new` — choose mode
-- `/tournaments/[id]` — detail + bracket
-- `/tournaments/[id]/setup` — config
-- `/tournaments/[id]/teams` — manage teams/members
-- `/tournaments/[id]/matches` — score entry
-
-### Server actions (planned)
-`createTournamentAction`, `addTeamAction`, `assignPlayerToTeamAction`, `generateGroupsAction`, `generateMatchesAction`, `seedKnockoutAction`, `recordMatchScoreAction`
 
 ## MCP servers
 - **supabase**: apply migrations, run SQL, list tables — use `apply_migration` for all DDL

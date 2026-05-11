@@ -26,6 +26,7 @@ const TournamentSchema = z.object({
   start_date: z.string().optional(),
   end_date: z.string().optional(),
   format: z.enum(["group_only", "group_knockout", "knockout_only"]),
+  match_unit: z.enum(["team", "pair"]).default("team"),
   has_lower_bracket: z.boolean().default(false),
   allow_drop_to_lower: z.boolean().default(false),
   seeding_method: z.enum(["random", "by_group_score"]).default("random"),

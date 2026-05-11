@@ -38,6 +38,7 @@ export type TournamentStatus = "draft" | "registering" | "ongoing" | "completed"
 export type TournamentFormat = "group_only" | "group_knockout" | "knockout_only";
 export type SeedingMethod = "random" | "by_group_score";
 export type TeamRole = "captain" | "member";
+export type MatchUnit = "team" | "pair";
 
 export type Tournament = {
   id: string;
@@ -49,6 +50,7 @@ export type Tournament = {
   mode: TournamentMode;
   status: TournamentStatus;
   format: TournamentFormat;
+  match_unit: MatchUnit;
   has_lower_bracket: boolean;
   allow_drop_to_lower: boolean;
   seeding_method: SeedingMethod;
@@ -96,6 +98,8 @@ export type GroupTeam = {
   points_against: number;
 };
 
+export type Game = { a: number; b: number };
+
 export type Match = {
   id: string;
   tournament_id: string;
@@ -105,13 +109,29 @@ export type Match = {
   match_number: number;
   team_a_id: string | null;
   team_b_id: string | null;
+  pair_a_id: string | null;
+  pair_b_id: string | null;
   team_a_score: number | null;
   team_b_score: number | null;
+  games: Game[];
   winner_id: string | null;
   status: MatchStatus;
   court: string | null;
   scheduled_at: string | null;
   created_at: string;
+};
+
+export type Pair = {
+  id: string;
+  team_id: string;
+  name: string | null;
+  created_at: string;
+};
+
+export type PairPlayer = { pair_id: string; player_id: string };
+
+export type PairWithPlayers = Pair & {
+  players: (TeamPlayer & { pair_player: PairPlayer })[];
 };
 
 export type GroupWithTeams = Group & {

@@ -8,7 +8,7 @@ import { Field, FieldError, FieldGroup, FieldLabel, FieldDescription } from "@/c
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
 import { createTournamentAction } from "@/lib/actions/tournaments";
-import type { TournamentFormat, SeedingMethod } from "@/lib/types";
+import type { TournamentFormat, SeedingMethod, MatchUnit } from "@/lib/types";
 
 const formSchema = z.object({
   name: z.string().min(2, "ชื่อสั้นไป"),
@@ -16,6 +16,7 @@ const formSchema = z.object({
   start_date: z.string(),
   end_date: z.string(),
   format: z.enum(["group_only", "group_knockout", "knockout_only"]),
+  match_unit: z.enum(["team", "pair"]),
   has_lower_bracket: z.boolean(),
   allow_drop_to_lower: z.boolean(),
   seeding_method: z.enum(["random", "by_group_score"]),
@@ -33,6 +34,7 @@ export function CreateTournamentForm() {
       start_date: "",
       end_date: "",
       format: "group_only" as TournamentFormat,
+      match_unit: "team" as MatchUnit,
       has_lower_bracket: false,
       allow_drop_to_lower: false,
       seeding_method: "random" as SeedingMethod,
@@ -119,6 +121,33 @@ export function CreateTournamentForm() {
                   </Button>
                 ))}
               </div>
+            </Field>
+          )}
+        </form.Field>
+
+        {/* Match unit */}
+        <form.Field name="match_unit">
+          {(field) => (
+            <Field>
+              <FieldLabel>หน่วยการแข่ง *</FieldLabel>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  { value: "team", label: "ทีม vs ทีม", desc: "ทั้งทีมเป็นหน่วยเดียว" },
+                  { value: "pair", label: "คู่ vs คู่", desc: "จับคู่ภายในทีม แข่งข้ามทีม" },
+                ] as const).map((opt) => (
+                  <Button key={opt.value} type="button" size="sm"
+                    variant={field.state.value === opt.value ? "default" : "outline"}
+                    onClick={() => field.handleChange(opt.value)}
+                    title={opt.desc}>
+                    {opt.label}
+                  </Button>
+                ))}
+              </div>
+              <FieldDescription>
+                {field.state.value === "pair"
+                  ? "เจ้าของจัดคู่ภายในทีม → กำหนดการแข่งระหว่างคู่จากต่างทีม"
+                  : "ทีมแข่งเต็มทีมโดยตรง (เหมาะกับกีฬาเป็นทีม)"}
+              </FieldDescription>
             </Field>
           )}
         </form.Field>

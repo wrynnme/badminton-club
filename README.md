@@ -108,6 +108,10 @@ src/
 │   │   ├── page.tsx                   # List clubs
 │   │   ├── new/page.tsx               # Create club
 │   │   └── [id]/page.tsx              # Club detail + join
+│   ├── tournaments/
+│   │   ├── page.tsx                   # Tournament list
+│   │   ├── new/page.tsx               # Create tournament
+│   │   └── [id]/page.tsx              # Tournament detail + stages
 │   └── api/auth/
 │       ├── line/route.ts              # OAuth start
 │       ├── line/callback/route.ts     # OAuth callback
@@ -115,6 +119,7 @@ src/
 │       └── logout/route.ts
 ├── components/
 │   ├── site-header.tsx
+│   ├── theme-toggle.tsx
 │   ├── club/
 │   │   ├── create-form.tsx
 │   │   ├── edit-club-form.tsx
@@ -123,14 +128,30 @@ src/
 │   │   ├── leave-button.tsx
 │   │   ├── set-total-cost-form.tsx
 │   │   └── sortable-player-list.tsx
-│   ├── theme-toggle.tsx
-│   └── ui/                            # shadcn
+│   ├── tournament/
+│   │   ├── create-tournament-form.tsx  # TanStack Form + zod, incl. match_unit
+│   │   ├── team-manager.tsx            # Add/remove teams + members
+│   │   ├── group-stage.tsx             # Gen groups, gen matches, standings
+│   │   ├── pair-stage.tsx              # Pair manager + matches + dual standings
+│   │   ├── pair-manager.tsx            # Create/delete pairs per team
+│   │   ├── match-row.tsx               # Single match row (score + reset)
+│   │   ├── score-form.tsx              # Games array entry (21-15, 21-19 …)
+│   │   └── standings-table.tsx         # P/W/D/L/+−/Pts table
+│   └── ui/                             # shadcn
 ├── lib/
 │   ├── supabase/{client,server}.ts
-│   ├── auth/session.ts                # HMAC-signed cookie
-│   ├── actions/clubs.ts               # Server actions
+│   ├── auth/session.ts                 # HMAC-signed cookie
+│   ├── actions/
+│   │   ├── clubs.ts                    # Club server actions
+│   │   ├── tournaments.ts              # Tournament CRUD
+│   │   ├── matches.ts                  # Generate groups/matches, record scores
+│   │   └── pairs.ts                    # Create/delete pairs
+│   ├── tournament/
+│   │   ├── competitor.ts               # Competitor abstraction (Team | Pair)
+│   │   ├── scheduling.ts               # Balanced round-robin pair scheduling
+│   │   └── scoring.ts                  # computeStandings, leaguePoints, gameWinner
 │   └── types.ts
-└── supabase/schema.sql                # DB schema
+└── supabase/schema.sql                 # DB schema
 ```
 
 ---
@@ -151,11 +172,11 @@ src/
 
 ### Tournament System
 
-**โหมดกีฬาสี** (เริ่มทำ)
+**โหมดกีฬาสี** (Phase 0–2 เสร็จแล้ว)
 
-- [ ] Phase 0 — Coming Soon page สำหรับ competition mode
-- [ ] Phase 1 — CRUD tournaments + teams + members
-- [ ] Phase 2 — Group stage: gen matches + score entry + standings
+- ✅ Phase 0 — Coming Soon page สำหรับ competition mode
+- ✅ Phase 1 — CRUD tournaments + teams + members (captain/member roles)
+- ✅ Phase 2 — Group stage (team mode) + Pair stage (pair mode): gen matches + score entry + standings
 - [ ] Phase 3 — Knockout: bracket gen + seeding (random / by-group-score)
 - [ ] Phase 4 — Lower bracket + drop-from-upper option
 - [ ] Phase 5 — Bracket visualization
@@ -164,14 +185,32 @@ src/
 
 **โหมดแข่งขัน** (Coming Soon)
 
+**match_unit:**
+
+- `team` — ทีม vs ทีม (group stage)
+- `pair` — คู่ vs คู่ (จับคู่ภายในทีมก่อน → round-robin ข้ามทีม)
+
 **Formats:**
+
 - `group_only` — แบ่งกลุ่ม เจอกันหมดในสาย
 - `group_knockout` — แบ่งกลุ่ม → top N เข้า knockout (upper/lower bracket)
 - `knockout_only` — single elimination
 
+**Scoring:**
+
+- League: Win = 3 pts, Draw = 1 pt, Loss = 0 pts
+- Match score: ป้อนเป็น games array (21-15, 21-19 …) — winner คำนวณจาก games ชนะมากกว่า
+- Standings: P / W / D / L / +− / Pts; tie-break = point diff → points for
+
+**Pair scheduling:**
+
+- แต่ละคนเล่นได้ 1 คู่ (enforced ด้วย `UNIQUE(player_id)` ใน `pair_players`)
+- Balanced round-robin: rotate sideB ทุก round เพื่อลดการเจอซ้ำ
+
 **Knockout pairing:**
+
 - Upper: 1st-A vs 2nd-B, 1st-B vs 2nd-C ...
 - Lower (optional): 3rd-A vs 4th-B, 3rd-B vs 4th-C ...
 - Drop from upper → lower: default off
 
-**Seeding:**  random draw หรือ by group score
+**Seeding:** random draw หรือ by group score
