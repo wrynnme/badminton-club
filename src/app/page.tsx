@@ -1,21 +1,24 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { getSession } from "@/lib/auth/session";
+import Link from "next/link";
+import { redirect } from "next/navigation";
 
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ auth_error?: string }>;
+  searchParams: Promise<{ auth_error?: string; redirectTo?: string }>;
 }) {
   const session = await getSession();
   if (session) redirect("/clubs");
 
   const sp = await searchParams;
+  const redirectTo = sp.redirectTo?.startsWith("/") && !sp.redirectTo.startsWith("//")
+    ? sp.redirectTo
+    : undefined;
   const errorMap: Record<string, string> = {
     state: "OAuth state ไม่ตรง ลองใหม่",
     token: "แลก token ไม่สำเร็จ",
@@ -54,7 +57,7 @@ export default async function Home({
             </div>
           )}
 
-          <a href="/api/auth/line">
+          <a href={`/api/auth/line${redirectTo ? `?redirectTo=${encodeURIComponent(redirectTo)}` : ""}`}>
             <Button className="w-full bg-[#06C755] hover:bg-[#05a648] text-white">
               เข้าสู่ระบบด้วย LINE
             </Button>
@@ -67,6 +70,7 @@ export default async function Home({
           </div>
 
           <form action="/api/auth/guest" method="post" className="space-y-2">
+            {redirectTo && <input type="hidden" name="redirectTo" value={redirectTo} />}
             <Label htmlFor="name">เล่นเป็น guest</Label>
             <Input id="name" name="name" placeholder="ชื่อที่ใช้แสดง" required minLength={2} />
             <Button type="submit" variant="secondary" className="w-full">

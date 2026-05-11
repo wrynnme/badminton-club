@@ -2,9 +2,23 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
+
+async function loginRedirect(): Promise<never> {
+  const h = await headers();
+  const referer = h.get("referer");
+  let redirectTo = "/clubs";
+  if (referer) {
+    try {
+      const url = new URL(referer);
+      if (url.pathname !== "/") redirectTo = url.pathname + url.search;
+    } catch {}
+  }
+  redirect(`/?auth_error=login_required&redirectTo=${encodeURIComponent(redirectTo)}`);
+}
 
 const ClubSchema = z.object({
   name: z.string().min(2, "ชื่อก๊วนสั้นไป"),
@@ -18,10 +32,11 @@ const ClubSchema = z.object({
 });
 
 export type CreateClubInput = z.infer<typeof ClubSchema>;
+export type UpdateClubInput = CreateClubInput & { id: string };
 
 export async function createClubAction(input: CreateClubInput) {
   const session = await getSession();
-  if (!session) redirect("/?auth_error=login_required");
+  if (!session) return await loginRedirect();
 
   const parsed = ClubSchema.safeParse(input);
   if (!parsed.success) {
@@ -41,6 +56,27 @@ export async function createClubAction(input: CreateClubInput) {
   redirect(`/clubs/${data.id}`);
 }
 
+export async function updateClubAction(input: UpdateClubInput) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const { id, ...rest } = input;
+  const parsed = ClubSchema.safeParse(rest);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  }
+
+  const sb = await createAdminClient();
+  const { data: club } = await sb.from("clubs").select("owner_id").eq("id", id).single();
+  if (!club || club.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
+
+  const { error } = await sb.from("clubs").update(parsed.data).eq("id", id);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${id}`);
+  return { ok: true };
+}
+
 const JoinSchema = z.object({
   club_id: z.string().uuid(),
   display_name: z.string().min(2, "ชื่อสั้นไป"),
@@ -52,7 +88,7 @@ export type JoinClubInput = z.infer<typeof JoinSchema>;
 
 export async function joinClubAction(input: JoinClubInput) {
   const session = await getSession();
-  if (!session) redirect("/?auth_error=login_required");
+  if (!session) return await loginRedirect();
 
   const parsed = JoinSchema.safeParse(input);
   if (!parsed.success) {
@@ -83,6 +119,7 @@ export async function joinClubAction(input: JoinClubInput) {
     display_name: parsed.data.display_name,
     level: parsed.data.level || null,
     note: parsed.data.note || null,
+    position: (count ?? 0) + 1,
   });
 
   if (error) {
@@ -96,7 +133,7 @@ export async function joinClubAction(input: JoinClubInput) {
 
 export async function setTotalCostAction(input: { club_id: string; total_cost: number }) {
   const session = await getSession();
-  if (!session) redirect("/?auth_error=login_required");
+  if (!session) return await loginRedirect();
 
   if (isNaN(input.total_cost) || input.total_cost < 0)
     return { error: "ค่าก๊วนไม่ถูกต้อง" };
@@ -120,9 +157,42 @@ export async function setTotalCostAction(input: { club_id: string; total_cost: n
   return { ok: true };
 }
 
+export async function reorderPlayersAction(clubId: string, orderedIds: string[]) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  const { data: club } = await sb.from("clubs").select("owner_id").eq("id", clubId).single();
+  if (!club || club.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
+
+  await Promise.all(
+    orderedIds.map((id, i) =>
+      sb.from("club_players").update({ position: i + 1 }).eq("id", id).eq("club_id", clubId)
+    )
+  );
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
+export async function kickPlayerAction(formData: FormData) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const clubId = formData.get("club_id") as string;
+  const playerId = formData.get("player_id") as string;
+
+  const sb = await createAdminClient();
+  const { data: club } = await sb.from("clubs").select("owner_id").eq("id", clubId).single();
+  if (!club || club.owner_id !== session.profileId) return;
+
+  await sb.from("club_players").delete().eq("id", playerId).eq("club_id", clubId);
+  revalidatePath(`/clubs/${clubId}`);
+}
+
 export async function leaveClubAction(formData: FormData) {
   const session = await getSession();
-  if (!session) redirect("/?auth_error=login_required");
+  if (!session) return await loginRedirect();
 
   const clubId = formData.get("club_id") as string;
   const sb = await createAdminClient();

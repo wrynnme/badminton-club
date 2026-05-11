@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { JoinForm } from "@/components/club/join-form";
-import { LeaveButton } from "@/components/club/leave-button";
 import { SetTotalCostForm } from "@/components/club/set-total-cost-form";
+import { EditClubForm } from "@/components/club/edit-club-form";
+import { SortablePlayerList } from "@/components/club/sortable-player-list";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,7 @@ export default async function ClubDetailPage({
     .from("club_players")
     .select("*")
     .eq("club_id", id)
+    .order("position", { ascending: true, nullsFirst: false })
     .order("joined_at", { ascending: true });
 
   const joined = players?.length ?? 0;
@@ -98,7 +100,10 @@ export default async function ClubDetailPage({
       )}
 
       {session?.profileId === club.owner_id && (
-        <SetTotalCostForm clubId={club.id} currentTotal={club.total_cost} />
+        <div className="space-y-3">
+          <EditClubForm club={club} />
+          <SetTotalCostForm clubId={club.id} currentTotal={club.total_cost} />
+        </div>
       )}
 
       <Separator />
@@ -121,23 +126,12 @@ export default async function ClubDetailPage({
 
       <section className="space-y-2">
         <h2 className="font-semibold">รายชื่อผู้เล่น ({joined})</h2>
-        {!players?.length ? (
-          <p className="text-sm text-muted-foreground">ยังไม่มีคนลงชื่อ</p>
-        ) : (
-          <ol className="space-y-1">
-            {players.map((p, i) => (
-              <li key={p.id} className="flex items-center gap-2 text-sm border rounded px-3 py-2">
-                <span className="text-muted-foreground w-6">{i + 1}.</span>
-                <span className="font-medium">{p.display_name}</span>
-                {p.level && <Badge variant="outline">{p.level}</Badge>}
-                {p.note && <span className="text-muted-foreground text-xs">— {p.note}</span>}
-                {session?.profileId === p.profile_id && (
-                  <span className="ml-auto"><LeaveButton clubId={club.id} /></span>
-                )}
-              </li>
-            ))}
-          </ol>
-        )}
+        <SortablePlayerList
+          clubId={club.id}
+          players={players ?? []}
+          sessionProfileId={session?.profileId ?? null}
+          isOwner={session?.profileId === club.owner_id}
+        />
       </section>
     </div>
   );

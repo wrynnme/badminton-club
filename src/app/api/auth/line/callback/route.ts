@@ -10,7 +10,9 @@ export async function GET(req: NextRequest) {
 
   const store = await cookies();
   const savedState = store.get("line_oauth_state")?.value;
+  const redirectTo = store.get("line_redirect_to")?.value ?? "/clubs";
   store.delete("line_oauth_state");
+  store.delete("line_redirect_to");
 
   if (!code || !state || state !== savedState) {
     return NextResponse.redirect(new URL("/?auth_error=state", req.url));
@@ -78,5 +80,5 @@ export async function GET(req: NextRequest) {
     isGuest: false,
   });
 
-  return NextResponse.redirect(new URL("/clubs", req.url));
+  return NextResponse.redirect(new URL(redirectTo, req.url));
 }

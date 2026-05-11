@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { setSession } from "@/lib/auth/session";
 
+function safeRedirectTo(value: string | null): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/clubs";
+  return value;
+}
+
 export async function POST(req: NextRequest) {
   const form = await req.formData();
   const name = (form.get("name") as string | null)?.trim();
+  const redirectTo = safeRedirectTo(form.get("redirectTo") as string | null);
   if (!name || name.length < 2) {
     return NextResponse.redirect(new URL("/?auth_error=name", req.url), 303);
   }
@@ -26,5 +32,5 @@ export async function POST(req: NextRequest) {
     isGuest: true,
   });
 
-  return NextResponse.redirect(new URL("/clubs", req.url), 303);
+  return NextResponse.redirect(new URL(redirectTo, req.url), 303);
 }

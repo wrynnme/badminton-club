@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export async function SiteHeader() {
   const session = await getSession();
@@ -13,6 +14,7 @@ export async function SiteHeader() {
           🏸 ก๊วนแบด
         </Link>
         <nav className="flex items-center gap-3">
+          <ThemeToggle />
           <Link href="/clubs" className="text-sm hover:underline">
             ก๊วนทั้งหมด
           </Link>

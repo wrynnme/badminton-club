@@ -30,6 +30,7 @@ export type ClubPlayer = {
   level: string | null;
   note: string | null;
   joined_at: string;
+  position: number | null;
 };
 
 export type ClubWithPlayers = Club & {

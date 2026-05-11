@@ -1,8 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
 
-export async function GET() {
+function safeRedirectTo(value: string | null): string {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/clubs";
+  return value;
+}
+
+export async function GET(req: NextRequest) {
   const channelId = process.env.LINE_CHANNEL_ID;
   const redirectUri = process.env.LINE_REDIRECT_URI;
   if (!channelId || !redirectUri) {
@@ -12,11 +17,19 @@ export async function GET() {
     );
   }
 
+  const redirectTo = safeRedirectTo(new URL(req.url).searchParams.get("redirectTo"));
   const state = randomBytes(16).toString("hex");
   const nonce = randomBytes(16).toString("hex");
 
   const store = await cookies();
   store.set("line_oauth_state", state, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 600,
+  });
+  store.set("line_redirect_to", redirectTo, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
