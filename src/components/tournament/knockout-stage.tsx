@@ -161,7 +161,7 @@ export function KnockoutStage({
             onClick={() =>
               startGen(async () => {
                 const res = await generateKnockoutAction(tournamentId);
-                if (res?.error) toast.error(res.error);
+                if ("error" in res) toast.error(res.error);
                 else toast.success(`สร้าง bracket ${res.count} แมตช์แล้ว`);
               })
             }

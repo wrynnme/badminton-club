@@ -169,112 +169,146 @@ export async function removeTeamPlayerAction(playerId: string, tournamentId: str
 
 // ============ CSV IMPORT ============
 
-export type CsvRow = {
-  team: string;
-  color: string;
-  display_name: string;
-  role: "captain" | "member";
-  pair_name: string;
-};
-
 const PRESET_COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ec4899", "#14b8a6", "#f97316"];
 
-export async function importTournamentCsvAction(
+async function ensureTeams(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
   tournamentId: string,
-  rows: CsvRow[]
-): Promise<{ ok: true; teams: number; players: number; pairs: number } | { error: string }> {
+  rows: Array<{ team: string; color?: string }>
+) {
+  const { data: existing } = await sb.from("teams").select("id, name").eq("tournament_id", tournamentId);
+  const teamByName = new Map(existing?.map((t) => [t.name, t.id]) ?? []);
+  let colorIdx = teamByName.size;
+
+  for (const r of rows) {
+    if (teamByName.has(r.team)) continue;
+    const color = r.color || PRESET_COLORS[colorIdx % PRESET_COLORS.length];
+    const { data } = await sb.from("teams").insert({ tournament_id: tournamentId, name: r.team, color }).select("id").single();
+    if (data) { teamByName.set(r.team, data.id); colorIdx++; }
+  }
+
+  return teamByName;
+}
+
+// ── Step 1: Import players ────────────────────────────────────────────────────
+
+export type PlayerCsvRow = {
+  team: string;
+  color: string;
+  csv_id: string;        // user-defined stable ID (e.g. "G2-1a")
+  display_name: string;
+  role: "captain" | "member";
+};
+
+export async function importPlayersCsvAction(
+  tournamentId: string,
+  rows: PlayerCsvRow[]
+): Promise<{ ok: true; teams: number; created: number; updated: number } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
   const sb = await createAdminClient();
-  const { data: tournament } = await sb
-    .from("tournaments")
-    .select("owner_id, match_unit")
-    .eq("id", tournamentId)
-    .single();
-  if (!tournament || tournament.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
+  const { data: t } = await sb.from("tournaments").select("owner_id").eq("id", tournamentId).single();
+  if (!t || t.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
   if (!rows.length) return { error: "ไม่มีข้อมูล" };
 
-  // 1. Collect unique teams (preserve order of first occurrence)
-  const uniqueTeamNames: string[] = [];
-  const teamColorMap = new Map<string, string>();
-  for (const r of rows) {
-    if (!uniqueTeamNames.includes(r.team)) {
-      uniqueTeamNames.push(r.team);
-      if (r.color) teamColorMap.set(r.team, r.color);
-    }
-  }
-
-  // 2. Fetch existing teams
-  const { data: existingTeams } = await sb
-    .from("teams").select("id, name").eq("tournament_id", tournamentId);
-  const teamByName = new Map(existingTeams?.map((t) => [t.name, t.id]) ?? []);
-
-  // 3. Create missing teams (auto-assign color if not specified)
-  let colorIdx = teamByName.size;
-  let teamsCreated = 0;
-  for (const name of uniqueTeamNames) {
-    if (!teamByName.has(name)) {
-      const color = teamColorMap.get(name) ?? PRESET_COLORS[colorIdx % PRESET_COLORS.length];
-      const { data } = await sb
-        .from("teams").insert({ tournament_id: tournamentId, name, color }).select("id").single();
-      if (data) { teamByName.set(name, data.id); colorIdx++; teamsCreated++; }
-    }
-  }
+  const prevTeamCount = (await sb.from("teams").select("id", { count: "exact", head: true }).eq("tournament_id", tournamentId)).count ?? 0;
+  const teamByName = await ensureTeams(sb, tournamentId, rows);
+  const teamsCreated = teamByName.size - prevTeamCount;
 
   const allTeamIds = [...teamByName.values()];
+  const { data: existingPlayers } = await sb
+    .from("team_players").select("id, team_id, csv_id").in("team_id", allTeamIds);
+  const existingByCsvId = new Map(
+    existingPlayers?.filter((p) => p.csv_id).map((p) => [`${p.team_id}:${p.csv_id}`, p.id]) ?? []
+  );
 
-  // 4. Insert every row as a new player (no dedup by name — ID is the unique key)
-  // Pairs match by row position in the group, not by name lookup
-  const rowPlayerIds: (string | null)[] = new Array(rows.length).fill(null);
-  let playersCreated = 0;
-
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
+  let created = 0, updated = 0;
+  for (const r of rows) {
     const teamId = teamByName.get(r.team);
     if (!teamId) continue;
-    const { data } = await sb
-      .from("team_players")
-      .insert({ team_id: teamId, display_name: r.display_name, role: r.role })
-      .select("id")
-      .single();
-    if (data) { rowPlayerIds[i] = data.id; playersCreated++; }
-  }
-
-  // 5. Create pairs — group by (team, pair_name) using row-level player IDs
-  let pairsCreated = 0;
-  if (tournament.match_unit === "pair" && rows.some((r) => r.pair_name)) {
-    const { data: existingPairs } = await sb
-      .from("pairs").select("id, name, team_id").in("team_id", allTeamIds);
-    const existingPairSet = new Set(existingPairs?.map((p) => `${p.team_id}:${p.name}`) ?? []);
-
-    const pairGroups = new Map<string, { teamId: string; pairName: string; playerIds: string[] }>();
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i];
-      if (!r.pair_name) continue;
-      const teamId = teamByName.get(r.team);
-      const playerId = rowPlayerIds[i];
-      if (!teamId || !playerId) continue;
-      const key = `${teamId}:${r.pair_name}`;
-      if (!pairGroups.has(key)) pairGroups.set(key, { teamId, pairName: r.pair_name, playerIds: [] });
-      pairGroups.get(key)!.playerIds.push(playerId);
-    }
-
-    for (const [key, g] of pairGroups) {
-      if (g.playerIds.length !== 2 || existingPairSet.has(key)) continue;
-      const { data: pair } = await sb
-        .from("pairs").insert({ team_id: g.teamId, name: g.pairName }).select("id").single();
-      if (!pair) continue;
-      await sb.from("pair_players").insert([
-        { pair_id: pair.id, player_id: g.playerIds[0] },
-        { pair_id: pair.id, player_id: g.playerIds[1] },
-      ]);
-      pairsCreated++;
+    const existingId = existingByCsvId.get(`${teamId}:${r.csv_id}`);
+    if (existingId) {
+      // Upsert: update display_name + role
+      await sb.from("team_players").update({ display_name: r.display_name, role: r.role }).eq("id", existingId);
+      updated++;
+    } else {
+      await sb.from("team_players").insert({ team_id: teamId, csv_id: r.csv_id, display_name: r.display_name, role: r.role });
+      created++;
     }
   }
 
   revalidatePath(`/tournaments/${tournamentId}`);
-  return { ok: true, teams: teamsCreated, players: playersCreated, pairs: pairsCreated };
+  return { ok: true, teams: teamsCreated, created, updated };
+}
+
+// ── Step 2: Import pairs ──────────────────────────────────────────────────────
+
+export type PairCsvRow = {
+  csv_id: string;       // matches csv_id from player import
+  pair_name: string;
+};
+
+export async function importPairsCsvAction(
+  tournamentId: string,
+  rows: PairCsvRow[]
+): Promise<{ ok: true; pairs: number; skipped: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  const { data: t } = await sb.from("tournaments").select("owner_id").eq("id", tournamentId).single();
+  if (!t || t.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
+  if (!rows.length) return { error: "ไม่มีข้อมูล" };
+
+  // Build csv_id → {player_id, team_id} map for this tournament
+  const { data: players } = await sb
+    .from("team_players")
+    .select("id, team_id, csv_id")
+    .not("csv_id", "is", null);
+
+  const { data: teams } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
+  const teamIdSet = new Set(teams?.map((t) => t.id) ?? []);
+
+  const playerByCsvId = new Map<string, { id: string; teamId: string }>();
+  for (const p of players ?? []) {
+    if (p.csv_id && teamIdSet.has(p.team_id)) {
+      playerByCsvId.set(p.csv_id, { id: p.id, teamId: p.team_id });
+    }
+  }
+
+  // Existing pairs to prevent duplicates
+  const allTeamIds = [...teamIdSet];
+  const { data: existingPairs } = await sb.from("pairs").select("name, team_id").in("team_id", allTeamIds);
+  const existingPairSet = new Set(existingPairs?.map((p) => `${p.team_id}:${p.name}`) ?? []);
+
+  // Group by pair_name
+  const groups = new Map<string, { teamId: string; pairName: string; playerIds: string[] }>();
+  let skipped = 0;
+  for (const r of rows) {
+    if (!r.pair_name || !r.csv_id) continue;
+    const player = playerByCsvId.get(r.csv_id);
+    if (!player) { skipped++; continue; }
+    const key = `${player.teamId}:${r.pair_name}`;
+    if (!groups.has(key)) groups.set(key, { teamId: player.teamId, pairName: r.pair_name, playerIds: [] });
+    groups.get(key)!.playerIds.push(player.id);
+  }
+
+  let pairsCreated = 0;
+  for (const [key, g] of groups) {
+    if (g.playerIds.length !== 2) { skipped++; continue; }
+    if (existingPairSet.has(key)) { skipped++; continue; }
+    const { data: pair } = await sb.from("pairs").insert({ team_id: g.teamId, name: g.pairName }).select("id").single();
+    if (!pair) continue;
+    const { error } = await sb.from("pair_players").insert([
+      { pair_id: pair.id, player_id: g.playerIds[0] },
+      { pair_id: pair.id, player_id: g.playerIds[1] },
+    ]);
+    if (!error) pairsCreated++;
+  }
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  return { ok: true, pairs: pairsCreated, skipped };
 }
 
 export async function updateTeamPlayerAction(

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Upload, Download, X } from "lucide-react";
+import { Upload, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -13,133 +13,197 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { importTournamentCsvAction } from "@/lib/actions/tournaments";
-import type { CsvRow } from "@/lib/actions/tournaments";
+import { importPlayersCsvAction, importPairsCsvAction } from "@/lib/actions/tournaments";
+import type { PlayerCsvRow, PairCsvRow } from "@/lib/actions/tournaments";
 
-// ── CSV parsing ──────────────────────────────────────────────────────────────
+// ── CSV parser ───────────────────────────────────────────────────────────────
 
-function parseCsvLine(line: string): string[] {
+function parseLine(line: string): string[] {
   const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
+  let cur = "";
+  let inQ = false;
   for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
-      else inQuotes = !inQuotes;
-    } else if (ch === "," && !inQuotes) {
-      result.push(current.trim()); current = "";
-    } else {
-      current += ch;
-    }
+    const c = line[i];
+    if (c === '"') { if (inQ && line[i + 1] === '"') { cur += '"'; i++; } else inQ = !inQ; }
+    else if (c === "," && !inQ) { result.push(cur.trim()); cur = ""; }
+    else cur += c;
   }
-  result.push(current.trim());
+  result.push(cur.trim());
   return result;
 }
 
-function parseCsv(text: string): { rows: CsvRow[]; error: string | null } {
-  // Strip UTF-8 BOM (Excel)
+function parseFile<T>(
+  text: string,
+  required: string[],
+  mapper: (headers: string[], vals: string[]) => T | null
+): { rows: T[]; error: string | null } {
   const clean = text.replace(/^﻿/, "").trim();
   const lines = clean.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return { rows: [], error: "ไฟล์ต้องมีอย่างน้อย 1 แถวข้อมูล" };
-
-  const headers = parseCsvLine(lines[0]).map((h) => h.toLowerCase().replace(/\s/g, "_"));
-  const requiredCols = ["team", "display_name"];
-  for (const col of requiredCols) {
-    if (!headers.includes(col)) return { rows: [], error: `ไม่พบ column "${col}"` };
+  if (lines.length < 2) return { rows: [], error: "ต้องมีอย่างน้อย 1 แถวข้อมูล" };
+  const headers = parseLine(lines[0]).map((h) => h.toLowerCase().replace(/\s/g, "_"));
+  for (const c of required) {
+    if (!headers.includes(c)) return { rows: [], error: `ไม่พบ column "${c}"` };
   }
-
-  const idx = (col: string) => headers.indexOf(col);
-  const rows: CsvRow[] = [];
-
+  const rows: T[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const vals = parseCsvLine(lines[i]);
-    const team = vals[idx("team")] ?? "";
-    const display_name = vals[idx("display_name")] ?? "";
-    if (!team || !display_name) continue;
-
-    const roleRaw = (vals[idx("role")] ?? "").toLowerCase();
-    rows.push({
-      team,
-      color: idx("color") >= 0 ? vals[idx("color")] ?? "" : "",
-      display_name,
-      role: roleRaw === "captain" ? "captain" : "member",
-      pair_name: idx("pair_name") >= 0 ? vals[idx("pair_name")] ?? "" : "",
-    });
+    const vals = parseLine(lines[i]);
+    const r = mapper(headers, vals);
+    if (r) rows.push(r);
   }
-
-  if (!rows.length) return { rows: [], error: "ไม่มีแถวข้อมูลที่ valid" };
+  if (!rows.length) return { rows: [], error: "ไม่มีแถวที่ valid" };
   return { rows, error: null };
 }
 
-// ── Template download ────────────────────────────────────────────────────────
+function idx(headers: string[], col: string, vals: string[]) {
+  const i = headers.indexOf(col);
+  return i >= 0 ? vals[i] ?? "" : "";
+}
 
-function downloadTemplate() {
-  const csv = [
-    "team,color,display_name,role,pair_name",
-    "ทีมแดง,#ef4444,ชื่อ นามสกุล,captain,คู่ที่ 1",
-    "ทีมแดง,#ef4444,ชื่อ นามสกุล 2,member,คู่ที่ 1",
-    "ทีมแดง,#ef4444,ชื่อ นามสกุล 3,member,คู่ที่ 2",
-    "ทีมแดง,#ef4444,ชื่อ นามสกุล 4,member,คู่ที่ 2",
-    "ทีมเขียว,#22c55e,ชื่อ นามสกุล 5,captain,คู่ A",
-    "ทีมเขียว,#22c55e,ชื่อ นามสกุล 6,member,คู่ A",
-  ].join("\n");
+function parsePlayerCsv(text: string) {
+  return parseFile<PlayerCsvRow>(
+    text,
+    ["team", "id_player", "display_name"],
+    (h, v) => {
+      const team = idx(h, "team", v);
+      const csv_id = idx(h, "id_player", v);
+      const display_name = idx(h, "display_name", v);
+      if (!team || !csv_id || !display_name) return null;
+      const roleRaw = idx(h, "role", v).toLowerCase();
+      return { team, color: idx(h, "color", v), csv_id, display_name, role: roleRaw === "captain" ? "captain" : "member" };
+    }
+  );
+}
+
+function parsePairCsv(text: string) {
+  return parseFile<PairCsvRow>(
+    text,
+    ["id_player", "pair_name"],
+    (h, v) => {
+      const csv_id = idx(h, "id_player", v);
+      const pair_name = idx(h, "pair_name", v);
+      if (!csv_id || !pair_name) return null;
+      return { csv_id, pair_name };
+    }
+  );
+}
+
+// ── Template downloads ────────────────────────────────────────────────────────
+
+function download(csv: string, filename: string) {
   const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
-  a.href = url; a.download = "tournament_template.csv"; a.click();
+  a.href = url; a.download = filename; a.click();
   URL.revokeObjectURL(url);
 }
 
-// ── Summary helpers ──────────────────────────────────────────────────────────
+const PLAYER_TEMPLATE = [
+  "team,color,id_player,display_name,role",
+  "ทีมแดง,#ef4444,R1-1a,ชื่อ นามสกุล,captain",
+  "ทีมแดง,#ef4444,R1-1b,ชื่อ นามสกุล 2,member",
+  "ทีมแดง,#ef4444,R1-2a,ชื่อ นามสกุล 3,member",
+  "ทีมแดง,#ef4444,R1-2b,ชื่อ นามสกุล 4,member",
+  "ทีมเขียว,#22c55e,G1-1a,ชื่อ นามสกุล 5,member",
+  "ทีมเขียว,#22c55e,G1-1b,ชื่อ นามสกุล 6,member",
+].join("\n");
 
-function summarize(rows: CsvRow[]) {
-  const teams = [...new Set(rows.map((r) => r.team))];
-  const pairs = [...new Set(rows.filter((r) => r.pair_name).map((r) => `${r.team}:${r.pair_name}`))];
-  return { teamCount: teams.length, playerCount: rows.length, pairCount: pairs.length };
-}
+const PAIR_TEMPLATE = [
+  "id_player,pair_name",
+  "R1-1a,คู่ที่ 1",
+  "R1-1b,คู่ที่ 1",
+  "R1-2a,คู่ที่ 2",
+  "R1-2b,คู่ที่ 2",
+  "G1-1a,G1-คู่ 1",
+  "G1-1b,G1-คู่ 1",
+].join("\n");
 
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Subcomponent: file picker with preview ────────────────────────────────────
 
-export function CsvImportDialog({ tournamentId }: { tournamentId: string }) {
-  const [open, setOpen] = useState(false);
-  const [rows, setRows] = useState<CsvRow[]>([]);
-  const [parseError, setParseError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
+function FilePicker<T>({
+  accept,
+  onParsed,
+  parseRow,
+  previewCols,
+}: {
+  accept: string;
+  onParsed: (rows: T[]) => void;
+  parseRow: (text: string) => { rows: T[]; error: string | null };
+  previewCols: { key: keyof T; label: string }[];
+}) {
   const fileRef = useRef<HTMLInputElement>(null);
-
-  const reset = () => { setRows([]); setParseError(null); if (fileRef.current) fileRef.current.value = ""; };
+  const [rows, setRows] = useState<T[]>([]);
+  const [error, setError] = useState<string | null>(null);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const text = ev.target?.result as string;
-      const { rows: parsed, error } = parseCsv(text);
-      setParseError(error);
+      const { rows: parsed, error: err } = parseRow(ev.target?.result as string);
+      setError(err);
       setRows(parsed);
+      onParsed(parsed);
     };
     reader.readAsText(file, "utf-8");
   };
 
-  const handleImport = async () => {
-    if (!rows.length) return;
+  return (
+    <div className="space-y-2">
+      <Input ref={fileRef} type="file" accept={accept} className="text-sm" onChange={handleFile} />
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {rows.length > 0 && (
+        <div className="rounded-md border overflow-hidden">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/40">
+              <tr>{previewCols.map((c) => <th key={String(c.key)} className="text-left px-2 py-1.5 font-medium">{c.label}</th>)}</tr>
+            </thead>
+            <tbody className="divide-y">
+              {rows.slice(0, 6).map((r, i) => (
+                <tr key={i}>{previewCols.map((c) => <td key={String(c.key)} className="px-2 py-1 truncate max-w-[100px]">{String(r[c.key] ?? "")}</td>)}</tr>
+              ))}
+              {rows.length > 6 && (
+                <tr><td colSpan={previewCols.length} className="px-2 py-1 text-muted-foreground text-center">+ {rows.length - 6} แถวอีก</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main dialog ───────────────────────────────────────────────────────────────
+
+type Mode = "players" | "pairs";
+
+export function CsvImportDialog({ tournamentId }: { tournamentId: string }) {
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState<Mode>("players");
+  const [playerRows, setPlayerRows] = useState<PlayerCsvRow[]>([]);
+  const [pairRows, setPairRows] = useState<PairCsvRow[]>([]);
+  const [pending, setPending] = useState(false);
+
+  const reset = () => { setPlayerRows([]); setPairRows([]); };
+
+  const handleImportPlayers = async () => {
+    if (!playerRows.length) return;
     setPending(true);
-    const res = await importTournamentCsvAction(tournamentId, rows);
+    const res = await importPlayersCsvAction(tournamentId, playerRows);
     setPending(false);
-    if ("error" in res) {
-      toast.error(res.error);
-    } else {
-      toast.success(
-        `นำเข้าสำเร็จ — ${res.teams} ทีม · ${res.players} คน · ${res.pairs} คู่`
-      );
-      reset();
-      setOpen(false);
-    }
+    if ("error" in res) { toast.error(res.error); return; }
+    toast.success(`ผู้เล่น: สร้าง ${res.created} · อัพเดท ${res.updated} · ทีมใหม่ ${res.teams}`);
+    reset(); setOpen(false);
   };
 
-  const { teamCount, playerCount, pairCount } = rows.length ? summarize(rows) : { teamCount: 0, playerCount: 0, pairCount: 0 };
+  const handleImportPairs = async () => {
+    if (!pairRows.length) return;
+    setPending(true);
+    const res = await importPairsCsvAction(tournamentId, pairRows);
+    setPending(false);
+    if ("error" in res) { toast.error(res.error); return; }
+    toast.success(`สร้าง ${res.pairs} คู่${res.skipped ? ` · ข้าม ${res.skipped}` : ""}`);
+    reset(); setOpen(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
@@ -155,108 +219,92 @@ export function CsvImportDialog({ tournamentId }: { tournamentId: string }) {
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Template download */}
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">ต้องการ template?</span>
-            <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={downloadTemplate}>
-              <Download className="h-3 w-3" />
-              ดาวน์โหลด template
-            </Button>
-          </div>
-
-          {/* Column reference */}
-          <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1">
-            <p className="font-medium text-muted-foreground">Columns (header แถวแรก):</p>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-muted-foreground">
-              <span><code className="text-foreground">team</code> * ชื่อทีม</span>
-              <span><code className="text-foreground">display_name</code> * ชื่อผู้เล่น</span>
-              <span><code className="text-foreground">color</code> สีทีม (#hex)</span>
-              <span><code className="text-foreground">role</code> captain / member</span>
-              <span className="col-span-2"><code className="text-foreground">pair_name</code> ชื่อคู่ (2 คนที่ชื่อคู่เดียวกัน = คู่เดียวกัน)</span>
-            </div>
-          </div>
-
-          {/* Warning */}
-          <p className="text-xs text-amber-600 dark:text-amber-400">
-            ⚠ แต่ละแถวสร้างผู้เล่นใหม่เสมอ — นำเข้าซ้ำจะได้ผู้เล่นซ้ำ
-          </p>
-
-          {/* File input */}
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Input
-                ref={fileRef}
-                type="file"
-                accept=".csv,text/csv"
-                className="text-sm"
-                onChange={handleFile}
-              />
-              {rows.length > 0 && (
-                <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={reset}>
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              )}
-            </div>
-
-            {parseError && (
-              <p className="text-xs text-destructive">{parseError}</p>
-            )}
-          </div>
-
-          {/* Preview */}
-          {rows.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-xs">{teamCount} ทีม</Badge>
-                <Badge variant="secondary" className="text-xs">{playerCount} คน</Badge>
-                {pairCount > 0 && <Badge variant="secondary" className="text-xs">{pairCount} คู่</Badge>}
-              </div>
-
-              <div className="rounded-md border overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/40">
-                    <tr>
-                      <th className="text-left px-2 py-1.5 font-medium">ทีม</th>
-                      <th className="text-left px-2 py-1.5 font-medium">ชื่อ</th>
-                      <th className="text-left px-2 py-1.5 font-medium">Role</th>
-                      <th className="text-left px-2 py-1.5 font-medium">คู่</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {rows.slice(0, 8).map((r, i) => (
-                      <tr key={i}>
-                        <td className="px-2 py-1 truncate max-w-[80px]">
-                          {r.color && (
-                            <span className="inline-block w-2 h-2 rounded-full mr-1 shrink-0 align-middle" style={{ backgroundColor: r.color }} />
-                          )}
-                          {r.team}
-                        </td>
-                        <td className="px-2 py-1 truncate max-w-[100px]">{r.display_name}</td>
-                        <td className="px-2 py-1">
-                          {r.role === "captain" ? (
-                            <Badge className="text-[10px] px-1 py-0">หัวหน้า</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">สมาชิก</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-1 text-muted-foreground truncate max-w-[70px]">{r.pair_name || "—"}</td>
-                      </tr>
-                    ))}
-                    {rows.length > 8 && (
-                      <tr>
-                        <td colSpan={4} className="px-2 py-1 text-muted-foreground text-center">
-                          + {rows.length - 8} แถวอีก
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <Button className="w-full" onClick={handleImport} disabled={pending}>
-                {pending ? "กำลังนำเข้า..." : `นำเข้า ${playerCount} คน`}
+          {/* Mode toggle */}
+          <div className="flex gap-2">
+            {(["players", "pairs"] as Mode[]).map((m) => (
+              <Button key={m} size="sm" variant={mode === m ? "default" : "outline"}
+                className="flex-1" onClick={() => setMode(m)}>
+                {m === "players" ? "1. ผู้เล่น" : "2. จับคู่"}
               </Button>
-            </div>
+            ))}
+          </div>
+
+          {mode === "players" && (
+            <>
+              <div className="flex items-center justify-between">
+                <div className="rounded-md border bg-muted/30 p-2.5 text-xs flex-1 space-y-0.5">
+                  <p className="font-medium text-muted-foreground">Columns:</p>
+                  <p><code className="text-foreground">team</code> · <code className="text-foreground">color</code> · <code className="text-foreground font-bold">id_player</code> * · <code className="text-foreground">display_name</code> * · <code className="text-foreground">role</code></p>
+                  <p className="text-muted-foreground">id_player = ID คงที่ (ใช้ lookup ตอนจับคู่)</p>
+                </div>
+                <Button size="sm" variant="ghost" className="ml-2 h-7 text-xs gap-1 shrink-0" onClick={() => download(PLAYER_TEMPLATE, "players_template.csv")}>
+                  <Download className="h-3 w-3" />Template
+                </Button>
+              </div>
+
+              <FilePicker<PlayerCsvRow>
+                accept=".csv,text/csv"
+                onParsed={setPlayerRows}
+                parseRow={parsePlayerCsv}
+                previewCols={[
+                  { key: "team", label: "ทีม" },
+                  { key: "csv_id", label: "id_player" },
+                  { key: "display_name", label: "ชื่อ" },
+                  { key: "role", label: "Role" },
+                ]}
+              />
+
+              {playerRows.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Badge variant="secondary" className="text-xs">{new Set(playerRows.map((r) => r.team)).size} ทีม</Badge>
+                    <Badge variant="secondary" className="text-xs">{playerRows.length} คน</Badge>
+                  </div>
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    ⚠ id_player ซ้ำ = อัพเดทชื่อ/role, id_player ใหม่ = สร้างผู้เล่นใหม่
+                  </p>
+                  <Button className="w-full" onClick={handleImportPlayers} disabled={pending}>
+                    {pending ? "กำลังนำเข้า..." : `นำเข้า ${playerRows.length} คน`}
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
+
+          {mode === "pairs" && (
+            <>
+              <div className="flex items-center justify-between">
+                <div className="rounded-md border bg-muted/30 p-2.5 text-xs flex-1 space-y-0.5">
+                  <p className="font-medium text-muted-foreground">Columns:</p>
+                  <p><code className="text-foreground font-bold">id_player</code> * · <code className="text-foreground font-bold">pair_name</code> *</p>
+                  <p className="text-muted-foreground">2 แถวที่ pair_name เดียวกัน = 1 คู่ (ต้องอยู่ทีมเดียวกัน)</p>
+                </div>
+                <Button size="sm" variant="ghost" className="ml-2 h-7 text-xs gap-1 shrink-0" onClick={() => download(PAIR_TEMPLATE, "pairs_template.csv")}>
+                  <Download className="h-3 w-3" />Template
+                </Button>
+              </div>
+
+              <FilePicker<PairCsvRow>
+                accept=".csv,text/csv"
+                onParsed={setPairRows}
+                parseRow={parsePairCsv}
+                previewCols={[
+                  { key: "csv_id", label: "id_player" },
+                  { key: "pair_name", label: "pair_name" },
+                ]}
+              />
+
+              {pairRows.length > 0 && (
+                <div className="space-y-2">
+                  <Badge variant="secondary" className="text-xs">
+                    {new Set(pairRows.map((r) => r.pair_name)).size} คู่ ({pairRows.length} แถว)
+                  </Badge>
+                  <Button className="w-full" onClick={handleImportPairs} disabled={pending}>
+                    {pending ? "กำลังนำเข้า..." : `สร้างคู่จาก ${pairRows.length} แถว`}
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </DialogContent>
