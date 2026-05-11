@@ -1,65 +1,80 @@
-import Image from "next/image";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { getSession } from "@/lib/auth/session";
 
-export default function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ auth_error?: string }>;
+}) {
+  const session = await getSession();
+  if (session) redirect("/clubs");
+
+  const sp = await searchParams;
+  const errorMap: Record<string, string> = {
+    state: "OAuth state ไม่ตรง ลองใหม่",
+    token: "แลก token ไม่สำเร็จ",
+    profile: "ดึง profile LINE ไม่ได้",
+    db: "บันทึก profile ไม่ได้",
+    name: "ระบุชื่ออย่างน้อย 2 ตัวอักษร",
+    login_required: "ต้องเข้าสู่ระบบก่อน",
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
+    <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto pt-10">
+      <div className="space-y-4">
+        <h1 className="text-3xl font-bold">🏸 ก๊วนแบด</h1>
+        <p className="text-muted-foreground">
+          สร้างก๊วน. ชวนเพื่อน. ลงชื่อเล่น. จบ.
+        </p>
+        <ul className="text-sm space-y-1 text-muted-foreground list-disc pl-5">
+          <li>สร้างก๊วนของตัวเอง</li>
+          <li>ดูก๊วนคนอื่น แล้วลงชื่อเล่นได้</li>
+          <li>เข้าสู่ระบบด้วย LINE หรือเล่นเป็น guest</li>
+        </ul>
+        <Link href="/clubs">
+          <Button variant="outline">ดูก๊วนทั้งหมด</Button>
+        </Link>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>เข้าสู่ระบบ</CardTitle>
+          <CardDescription>เลือกวิธีที่สะดวก</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {sp.auth_error && (
+            <div className="text-sm text-destructive bg-destructive/10 p-2 rounded">
+              {errorMap[sp.auth_error] ?? sp.auth_error}
+            </div>
+          )}
+
+          <a href="/api/auth/line">
+            <Button className="w-full bg-[#06C755] hover:bg-[#05a648] text-white">
+              เข้าสู่ระบบด้วย LINE
+            </Button>
           </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+
+          <div className="flex items-center gap-2">
+            <Separator className="flex-1" />
+            <span className="text-xs text-muted-foreground">หรือ</span>
+            <Separator className="flex-1" />
+          </div>
+
+          <form action="/api/auth/guest" method="post" className="space-y-2">
+            <Label htmlFor="name">เล่นเป็น guest</Label>
+            <Input id="name" name="name" placeholder="ชื่อที่ใช้แสดง" required minLength={2} />
+            <Button type="submit" variant="secondary" className="w-full">
+              เริ่มแบบ guest
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

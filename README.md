@@ -1,36 +1,115 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🏸 ก๊วนแบด (Badminton Club)
 
-## Getting Started
+ระบบจัดก๊วนตีแบด — สร้างก๊วนของตัวเอง / ลงชื่อเล่นก๊วนคนอื่น
 
-First, run the development server:
+**Stack**: Next.js 16 (App Router) · Tailwind v4 · shadcn/ui · Supabase · LINE Login
+
+---
+
+## ฟีเจอร์ MVP
+
+- ✅ สร้างก๊วน (ชื่อ/สนาม/วัน/เวลา/จำนวนคน/ค่าก๊วน/ลูก/หมายเหตุ)
+- ✅ Browse ก๊วนทั้งหมดที่ยังไม่ผ่าน
+- ✅ ลงชื่อเล่น + ถอนชื่อ (มี capacity check)
+- ✅ Auth: LINE Login + Guest mode
+
+---
+
+## 1. ติดตั้ง
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+แก้ `.env.local`:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE_KEY=...
+
+LINE_CHANNEL_ID=...
+LINE_CHANNEL_SECRET=...
+LINE_REDIRECT_URI=http://localhost:3000/api/auth/line/callback
+
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+SESSION_SECRET=<random 32+ chars — เช่น openssl rand -hex 32>
+```
+
+---
+
+## 2. Setup Supabase
+
+1. สร้าง project: https://app.supabase.com
+2. Settings → API → คัดลอก URL, anon key, service_role key ใส่ `.env.local`
+3. SQL Editor → รันไฟล์ `supabase/schema.sql`
+
+> หมายเหตุ: ตอนนี้ writes ใช้ service role key ผ่าน server actions. RLS เปิด select policy ให้ทุกคนอ่านได้ — เพิ่ม policy ภายหลังเมื่อย้ายไปใช้ Supabase Auth
+
+---
+
+## 3. Setup LINE Login (optional)
+
+ถ้ายังไม่พร้อม ใช้ guest mode ได้เลย — ข้ามขั้นตอนนี้
+
+1. https://developers.line.biz/console/ → สร้าง Provider + Channel (LINE Login)
+2. App settings:
+   - Callback URL: `http://localhost:3000/api/auth/line/callback`
+   - Scopes: `profile`, `openid`
+3. คัดลอก Channel ID + Channel secret ใส่ `.env.local`
+
+---
+
+## 4. Run
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+เปิด http://localhost:3000
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## โครงสร้าง
 
-## Learn More
+```
+src/
+├── app/
+│   ├── page.tsx                       # Login (LINE / Guest)
+│   ├── clubs/
+│   │   ├── page.tsx                   # List clubs
+│   │   ├── new/page.tsx               # Create club
+│   │   └── [id]/page.tsx              # Club detail + join
+│   └── api/auth/
+│       ├── line/route.ts              # OAuth start
+│       ├── line/callback/route.ts     # OAuth callback
+│       ├── guest/route.ts             # Guest signup
+│       └── logout/route.ts
+├── components/
+│   ├── site-header.tsx
+│   ├── club/
+│   │   ├── create-form.tsx
+│   │   ├── join-form.tsx
+│   │   └── leave-button.tsx
+│   └── ui/                            # shadcn
+├── lib/
+│   ├── supabase/{client,server}.ts
+│   ├── auth/session.ts                # HMAC-signed cookie
+│   ├── actions/clubs.ts               # Server actions
+│   └── types.ts
+└── supabase/schema.sql                # DB schema
+```
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Roadmap (Phase 2+)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [ ] Edit/Cancel ก๊วน (เจ้าของเท่านั้น)
+- [ ] Waiting list เมื่อก๊วนเต็ม
+- [ ] Notify ผ่าน LINE (Messaging API)
+- [ ] Recurring ก๊วน (ทุกพุธ/อังคาร)
+- [ ] หารค่าก๊วน + payment status
+- [ ] ระบบ rating / level
+- [ ] Real-time updates (Supabase Realtime)
+- [ ] PWA + push notification
