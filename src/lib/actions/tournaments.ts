@@ -299,12 +299,12 @@ export async function importPairsCsvAction(
   for (const [key, g] of groups) {
     if (g.playerIds.length !== 2) { skipped++; continue; }
     if (existingPairSet.has(key)) { skipped++; continue; }
-    const { data: pair } = await sb.from("pairs").insert({ team_id: g.teamId, name: g.pairName }).select("id").single();
-    if (!pair) continue;
-    const { error } = await sb.from("pair_players").insert([
-      { pair_id: pair.id, player_id: g.playerIds[0] },
-      { pair_id: pair.id, player_id: g.playerIds[1] },
-    ]);
+    const { error } = await sb.from("pairs").insert({
+      team_id: g.teamId,
+      player_id_1: g.playerIds[0],
+      player_id_2: g.playerIds[1],
+      display_pair_name: g.pairName,
+    });
     if (!error) pairsCreated++;
   }
 

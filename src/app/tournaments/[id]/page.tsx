@@ -55,7 +55,7 @@ export default async function TournamentDetailPage({
   const [groupsRes, pairsRes, matchesRes] = await Promise.all([
     sb.from("groups").select("*, group_teams(*, team:teams(*)), matches(*)").eq("tournament_id", id).order("name"),
     teamIdList.length
-      ? sb.from("pairs").select("*, pair_players(*, team_players(*))").in("team_id", teamIdList).order("created_at")
+      ? sb.from("pairs").select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)").in("team_id", teamIdList).order("created_at")
       : Promise.resolve({ data: [] }),
     sb.from("matches").select("*").eq("tournament_id", id).order("match_number"),
   ]);
@@ -64,24 +64,7 @@ export default async function TournamentDetailPage({
   const groups: GroupWithTeams[] = (groupsRes.data ?? []) as GroupWithTeams[];
   const allMatches: Match[] = (matchesRes.data ?? []) as Match[];
 
-  type RawPair = {
-    id: string;
-    team_id: string;
-    name: string | null;
-    created_at: string;
-    pair_players: { pair_id: string; player_id: string; team_players: unknown }[];
-  };
-  const pairs: PairWithPlayers[] = ((pairsRes.data ?? []) as RawPair[])
-    .map((p) => ({
-      id: p.id,
-      team_id: p.team_id,
-      name: p.name,
-      created_at: p.created_at,
-      players: p.pair_players.map((pp) => ({
-        ...(pp.team_players as Record<string, unknown>),
-        pair_player: { pair_id: pp.pair_id, player_id: pp.player_id },
-      })) as PairWithPlayers["players"],
-    }));
+  const pairs: PairWithPlayers[] = (pairsRes.data ?? []) as unknown as PairWithPlayers[];
 
   const flatTeams: Team[] = teams.map(({ players: _p, ...x }) => x as Team);
   const isOwner = session?.profileId === t.owner_id;

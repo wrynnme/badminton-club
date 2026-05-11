@@ -32,7 +32,7 @@ export function generateMatchesCsv(
     if (kind === "team") return teamById.get(id)?.name ?? id;
     const p = pairById.get(id);
     if (!p) return id;
-    return p.name ?? p.players.map((pl) => pl.display_name).join(" / ");
+    return p.display_pair_name ?? [p.player1?.display_name, p.player2?.display_name].filter(Boolean).join(" / ");
   }
 
   const headers = row(
@@ -85,7 +85,8 @@ export function generateMatchesCsv(
 export function generateRosterCsv(teams: (Team & { players: TeamPlayer[] })[], pairs: PairWithPlayers[]): string {
   const pairByPlayerId = new Map<string, PairWithPlayers>();
   for (const p of pairs) {
-    for (const pl of p.players) pairByPlayerId.set(pl.id, p);
+    if (p.player_id_1) pairByPlayerId.set(p.player_id_1, p);
+    if (p.player_id_2) pairByPlayerId.set(p.player_id_2, p);
   }
 
   const headers = row("ทีม", "สี", "id_player", "ชื่อผู้เล่น", "ตำแหน่ง", "Level", "คู่");
@@ -97,7 +98,7 @@ export function generateRosterCsv(teams: (Team & { players: TeamPlayer[] })[], p
     );
     for (const p of sorted) {
       const pair = pairByPlayerId.get(p.id);
-      const pairName = pair ? pair.name ?? pair.players.map((pl) => pl.display_name).join(" / ") : "";
+      const pairName = pair ? pair.display_pair_name ?? [pair.player1?.display_name, pair.player2?.display_name].filter(Boolean).join(" / ") : "";
       lines.push(row(t.name, t.color ?? "", p.csv_id ?? "", p.display_name, p.role === "captain" ? "หัวหน้า" : "สมาชิก", p.level ?? "", pairName));
     }
   }
@@ -120,9 +121,7 @@ export function generatePlayerImportTemplate(): string {
 }
 
 // Pre-filled pair template from existing players (csv_id already set)
-export function generatePairImportTemplate(
-  teams: (Team & { players: TeamPlayer[] })[],
-): string {
+export function generatePairImportTemplate(teams: (Team & { players: TeamPlayer[] })[]): string {
   const lines = ["id_player,pair_name"];
   for (const t of teams) {
     const sorted = [...t.players].sort((a, b) =>
@@ -131,7 +130,7 @@ export function generatePairImportTemplate(
     for (const p of sorted) {
       lines.push(row(p.csv_id ?? p.id.slice(0, 8), ""));
     }
-    if (t.players.length) lines.push(""); // blank line between teams
+    if (t.players.length) lines.push("");
   }
   return lines.join("\n");
 }

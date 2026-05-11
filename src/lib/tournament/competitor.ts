@@ -13,12 +13,14 @@ export function teamToCompetitor(t: Team): Competitor {
 }
 
 export function pairToCompetitor(p: PairWithPlayers, team?: Team): Competitor {
-  const names = p.players.map((pl) => pl.display_name).join(" / ");
+  const p1 = p.player1?.display_name ?? "";
+  const p2 = p.player2?.display_name ?? "";
+  const names = [p1, p2].filter(Boolean).join(" / ");
   return {
     id: p.id,
-    name: p.name || names || "คู่ไม่มีชื่อ",
+    name: p.display_pair_name || names || "คู่ไม่มีชื่อ",
     color: team?.color,
-    subtitle: p.name ? names : undefined,
+    subtitle: p.display_pair_name ? names : undefined,
     teamId: p.team_id,
   };
 }

@@ -110,13 +110,13 @@ export async function generatePairMatchesAction(tournamentId: string) {
   // Fetch teams with their pairs
   const { data: teams } = await sb
     .from("teams")
-    .select("id, pairs(id)")
+    .select("id, pairs(id, player_id_1, player_id_2)")
     .eq("tournament_id", tournamentId);
   if (!teams?.length) return { error: "ยังไม่มีทีม" };
 
-  type RawTeam = { id: string; pairs: { id: string }[] };
+  type RawTeam = { id: string; pairs: { id: string; player_id_1: string | null; player_id_2: string | null }[] };
   const teamPairs = (teams as RawTeam[])
-    .map((t) => ({ teamId: t.id, pairIds: t.pairs.map((p) => p.id) }))
+    .map((t) => ({ teamId: t.id, pairIds: t.pairs.filter((p) => p.player_id_1 && p.player_id_2).map((p) => p.id) }))
     .filter((tp) => tp.pairIds.length > 0);
 
   if (teamPairs.length < 2) return { error: "ต้องมีอย่างน้อย 2 ทีมที่มีคู่" };

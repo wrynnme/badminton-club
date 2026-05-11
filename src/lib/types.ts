@@ -134,14 +134,15 @@ export type Match = {
 export type Pair = {
   id: string;
   team_id: string;
-  name: string | null;
+  player_id_1: string | null;
+  player_id_2: string | null;
+  display_pair_name: string | null;
   created_at: string;
 };
 
-export type PairPlayer = { pair_id: string; player_id: string };
-
 export type PairWithPlayers = Pair & {
-  players: (TeamPlayer & { pair_player: PairPlayer })[];
+  player1: TeamPlayer | null;
+  player2: TeamPlayer | null;
 };
 
 export type GroupWithTeams = Group & {

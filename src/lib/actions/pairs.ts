@@ -27,13 +27,11 @@ async function tournamentIdOfTeam(teamId: string): Promise<string | null> {
 
 export async function createPairAction(input: {
   teamId: string;
-  playerIds: string[]; // length 2
+  playerIds: [string, string];
   name?: string;
 }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-
-  if (input.playerIds.length !== 2) return { error: "ต้องเลือก 2 คน" };
 
   const tournamentId = await tournamentIdOfTeam(input.teamId);
   if (!tournamentId) return { error: "ไม่พบทีม" };
@@ -41,32 +39,28 @@ export async function createPairAction(input: {
 
   const sb = await createAdminClient();
 
-  // Check players belong to this team
+  // Verify both players belong to this team
   const { data: players } = await sb
-    .from("team_players")
-    .select("id, team_id")
-    .in("id", input.playerIds);
+    .from("team_players").select("id, team_id").in("id", input.playerIds);
   if (!players || players.length !== 2 || players.some((p) => p.team_id !== input.teamId)) {
     return { error: "ผู้เล่นไม่ได้อยู่ในทีมนี้" };
   }
 
-  // Create pair
-  const { data: pair, error } = await sb
+  // Check neither player is already in a pair in this team
+  const { data: existing } = await sb
     .from("pairs")
-    .insert({ team_id: input.teamId, name: input.name || null })
     .select("id")
-    .single();
-  if (error || !pair) return { error: error?.message ?? "สร้างคู่ไม่สำเร็จ" };
+    .eq("team_id", input.teamId)
+    .or(`player_id_1.eq.${input.playerIds[0]},player_id_2.eq.${input.playerIds[0]},player_id_1.eq.${input.playerIds[1]},player_id_2.eq.${input.playerIds[1]}`);
+  if (existing?.length) return { error: "ผู้เล่นบางคนถูกจับคู่ไว้แล้ว" };
 
-  const { error: ppErr } = await sb
-    .from("pair_players")
-    .insert(input.playerIds.map((pid) => ({ pair_id: pair.id, player_id: pid })));
-
-  if (ppErr) {
-    await sb.from("pairs").delete().eq("id", pair.id);
-    if (ppErr.code === "23505") return { error: "ผู้เล่นบางคนถูกจับคู่ไว้แล้ว" };
-    return { error: ppErr.message };
-  }
+  const { error } = await sb.from("pairs").insert({
+    team_id: input.teamId,
+    player_id_1: input.playerIds[0],
+    player_id_2: input.playerIds[1],
+    display_pair_name: input.name || null,
+  });
+  if (error) return { error: error.message };
 
   revalidatePath(`/tournaments/${tournamentId}`);
   return { ok: true };
