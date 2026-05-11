@@ -246,8 +246,9 @@ export async function importPlayersCsvAction(
 // ── Step 2: Import pairs ──────────────────────────────────────────────────────
 
 export type PairCsvRow = {
-  csv_id: string;       // matches csv_id from player import
-  pair_name: string;
+  id_player_1: string;  // csv_id of first player
+  id_player_2: string;  // csv_id of second player
+  pair_name: string;    // display_pair_name (optional)
 };
 
 export async function importPairsCsvAction(
@@ -283,27 +284,22 @@ export async function importPairsCsvAction(
   const { data: existingPairs } = await sb.from("pairs").select("display_pair_name, team_id").in("team_id", allTeamIds);
   const existingPairSet = new Set(existingPairs?.map((p) => `${p.team_id}:${p.display_pair_name}`) ?? []);
 
-  // Group by pair_name
-  const groups = new Map<string, { teamId: string; pairName: string; playerIds: string[] }>();
+  // Each row = 1 pair (id_player_1 + id_player_2)
+  let pairsCreated = 0;
   let skipped = 0;
   for (const r of rows) {
-    if (!r.pair_name || !r.csv_id) continue;
-    const player = playerByCsvId.get(r.csv_id);
-    if (!player) { skipped++; continue; }
-    const key = `${player.teamId}:${r.pair_name}`;
-    if (!groups.has(key)) groups.set(key, { teamId: player.teamId, pairName: r.pair_name, playerIds: [] });
-    groups.get(key)!.playerIds.push(player.id);
-  }
-
-  let pairsCreated = 0;
-  for (const [key, g] of groups) {
-    if (g.playerIds.length !== 2) { skipped++; continue; }
+    if (!r.id_player_1 || !r.id_player_2) { skipped++; continue; }
+    const p1 = playerByCsvId.get(r.id_player_1);
+    const p2 = playerByCsvId.get(r.id_player_2);
+    if (!p1 || !p2) { skipped++; continue; }
+    if (p1.teamId !== p2.teamId) { skipped++; continue; } // must be same team
+    const key = `${p1.teamId}:${r.pair_name}`;
     if (existingPairSet.has(key)) { skipped++; continue; }
     const { error } = await sb.from("pairs").insert({
-      team_id: g.teamId,
-      player_id_1: g.playerIds[0],
-      player_id_2: g.playerIds[1],
-      display_pair_name: g.pairName,
+      team_id: p1.teamId,
+      player_id_1: p1.id,
+      player_id_2: p2.id,
+      display_pair_name: r.pair_name || null,
     });
     if (!error) pairsCreated++;
   }

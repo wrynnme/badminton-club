@@ -77,12 +77,12 @@ function parsePlayerCsv(text: string) {
 function parsePairCsv(text: string) {
   return parseFile<PairCsvRow>(
     text,
-    ["id_player", "pair_name"],
+    ["id_player_1", "id_player_2"],
     (h, v) => {
-      const csv_id = idx(h, "id_player", v);
-      const pair_name = idx(h, "pair_name", v);
-      if (!csv_id || !pair_name) return null;
-      return { csv_id, pair_name };
+      const id_player_1 = idx(h, "id_player_1", v);
+      const id_player_2 = idx(h, "id_player_2", v);
+      if (!id_player_1 || !id_player_2) return null;
+      return { id_player_1, id_player_2, pair_name: idx(h, "pair_name", v) };
     }
   );
 }
@@ -108,13 +108,10 @@ const PLAYER_TEMPLATE = [
 ].join("\n");
 
 const PAIR_TEMPLATE = [
-  "id_player,pair_name",
-  "R1-1a,คู่ที่ 1",
-  "R1-1b,คู่ที่ 1",
-  "R1-2a,คู่ที่ 2",
-  "R1-2b,คู่ที่ 2",
-  "G1-1a,G1-คู่ 1",
-  "G1-1b,G1-คู่ 1",
+  "id_player_1,id_player_2,pair_name",
+  "R1-1a,R1-1b,คู่ที่ 1",
+  "R1-2a,R1-2b,คู่ที่ 2",
+  "G1-1a,G1-1b,G1-คู่ 1",
 ].join("\n");
 
 // ── Subcomponent: file picker with preview ────────────────────────────────────
@@ -277,8 +274,8 @@ export function CsvImportDialog({ tournamentId }: { tournamentId: string }) {
               <div className="flex items-center justify-between">
                 <div className="rounded-md border bg-muted/30 p-2.5 text-xs flex-1 space-y-0.5">
                   <p className="font-medium text-muted-foreground">Columns:</p>
-                  <p><code className="text-foreground font-bold">id_player</code> * · <code className="text-foreground font-bold">pair_name</code> *</p>
-                  <p className="text-muted-foreground">2 แถวที่ pair_name เดียวกัน = 1 คู่ (ต้องอยู่ทีมเดียวกัน)</p>
+                  <p><code className="text-foreground font-bold">id_player_1</code> * · <code className="text-foreground font-bold">id_player_2</code> * · <code className="text-foreground">pair_name</code></p>
+                  <p className="text-muted-foreground">1 แถว = 1 คู่ · ทั้งสองต้องอยู่ทีมเดียวกัน</p>
                 </div>
                 <Button size="sm" variant="ghost" className="ml-2 h-7 text-xs gap-1 shrink-0" onClick={() => download(PAIR_TEMPLATE, "pairs_template.csv")}>
                   <Download className="h-3 w-3" />Template
@@ -290,7 +287,8 @@ export function CsvImportDialog({ tournamentId }: { tournamentId: string }) {
                 onParsed={setPairRows}
                 parseRow={parsePairCsv}
                 previewCols={[
-                  { key: "csv_id", label: "id_player" },
+                  { key: "id_player_1", label: "id_player_1" },
+                  { key: "id_player_2", label: "id_player_2" },
                   { key: "pair_name", label: "pair_name" },
                 ]}
               />

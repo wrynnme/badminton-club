@@ -122,15 +122,18 @@ export function generatePlayerImportTemplate(): string {
 
 // Pre-filled pair template from existing players (csv_id already set)
 export function generatePairImportTemplate(teams: (Team & { players: TeamPlayer[] })[]): string {
-  const lines = ["id_player,pair_name"];
+  const lines = ["id_player_1,id_player_2,pair_name"];
   for (const t of teams) {
     const sorted = [...t.players].sort((a, b) =>
       a.role === "captain" ? -1 : b.role === "captain" ? 1 : 0
     );
-    for (const p of sorted) {
-      lines.push(row(p.csv_id ?? p.id.slice(0, 8), ""));
+    // Pair players as consecutive rows: (0,1), (2,3), ...
+    for (let i = 0; i + 1 < sorted.length; i += 2) {
+      const p1 = sorted[i];
+      const p2 = sorted[i + 1];
+      lines.push(row(p1.csv_id ?? p1.id.slice(0, 8), p2.csv_id ?? p2.id.slice(0, 8), ""));
     }
-    if (t.players.length) lines.push("");
+    if (sorted.length > 0) lines.push("");
   }
   return lines.join("\n");
 }
