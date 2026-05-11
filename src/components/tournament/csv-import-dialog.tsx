@@ -215,13 +215,13 @@ export function CsvImportDialog({
       <DialogTrigger render={
         <Button size="sm" variant="outline">
           <Upload className="h-3.5 w-3.5 mr-1" />
-          {onlyMode === "pairs" ? "Import คู่ CSV" : "นำเข้า CSV"}
+          {onlyMode === "pairs" ? "Import การจับคู่" : "Import ทีมและผู้เล่น"}
         </Button>
       } />
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {onlyMode === "pairs" ? "นำเข้าคู่จาก CSV" : "นำเข้าข้อมูลจาก CSV"}
+            {onlyMode === "pairs" ? "Import การจับคู่" : "Import ทีมและผู้เล่น"}
           </DialogTitle>
         </DialogHeader>
 
