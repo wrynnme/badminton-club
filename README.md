@@ -135,7 +135,9 @@ src/
 
 ---
 
-## Roadmap (Phase 2+)
+## Roadmap
+
+### ก๊วนแบด
 
 - [ ] Cancel ก๊วน (เจ้าของเท่านั้น)
 - [ ] Waiting list เมื่อก๊วนเต็ม
@@ -146,3 +148,30 @@ src/
 - [ ] ระบบ rating / level
 - [ ] Real-time updates (Supabase Realtime)
 - [ ] PWA + push notification
+
+### Tournament System
+
+**โหมดกีฬาสี** (เริ่มทำ)
+
+- [ ] Phase 0 — Coming Soon page สำหรับ competition mode
+- [ ] Phase 1 — CRUD tournaments + teams + members
+- [ ] Phase 2 — Group stage: gen matches + score entry + standings
+- [ ] Phase 3 — Knockout: bracket gen + seeding (random / by-group-score)
+- [ ] Phase 4 — Lower bracket + drop-from-upper option
+- [ ] Phase 5 — Bracket visualization
+- [ ] Phase 6 — Realtime updates + public share link
+- [ ] Phase 7 — LINE notification + export PDF/CSV
+
+**โหมดแข่งขัน** (Coming Soon)
+
+**Formats:**
+- `group_only` — แบ่งกลุ่ม เจอกันหมดในสาย
+- `group_knockout` — แบ่งกลุ่ม → top N เข้า knockout (upper/lower bracket)
+- `knockout_only` — single elimination
+
+**Knockout pairing:**
+- Upper: 1st-A vs 2nd-B, 1st-B vs 2nd-C ...
+- Lower (optional): 3rd-A vs 4th-B, 3rd-B vs 4th-C ...
+- Drop from upper → lower: default off
+
+**Seeding:**  random draw หรือ by group score
