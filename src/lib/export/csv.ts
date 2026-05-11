@@ -1,0 +1,116 @@
+import type { Match, Team, TeamPlayer, PairWithPlayers, MatchUnit } from "@/lib/types";
+import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
+
+function escapeCsv(v: string | number | null | undefined): string {
+  const s = String(v ?? "");
+  return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function row(...cols: (string | number | null | undefined)[]): string {
+  return cols.map(escapeCsv).join(",");
+}
+
+function roundLabel(m: Match): string {
+  if (m.round_type === "group") return "กลุ่ม";
+  const bracketMap: Record<string, string> = { upper: "สายบน", lower: "สายล่าง", grand_final: "Grand Final" };
+  return bracketMap[m.bracket ?? "upper"] ?? "Knockout";
+}
+
+// ── Matches CSV ───────────────────────────────────────────────────────────────
+
+export function generateMatchesCsv(
+  matches: Match[],
+  teams: Team[],
+  pairs: PairWithPlayers[],
+  unit: MatchUnit
+): string {
+  const teamById = new Map(teams.map((t) => [t.id, t]));
+  const pairById = new Map(pairs.map((p) => [p.id, p]));
+
+  function competitorName(id: string | null, kind: "team" | "pair"): string {
+    if (!id) return "—";
+    if (kind === "team") return teamById.get(id)?.name ?? id;
+    const p = pairById.get(id);
+    if (!p) return id;
+    return p.name ?? p.players.map((pl) => pl.display_name).join(" / ");
+  }
+
+  const headers = row(
+    "แมตช์", "รอบ", "สาย",
+    unit === "pair" ? "คู่ A" : "ทีม A",
+    unit === "pair" ? "คู่ B" : "ทีม B",
+    "เกมที่ชนะ A", "เกมที่ชนะ B",
+    "แต้มรวม A", "แต้มรวม B",
+    "รายละเอียดเกม", "ผู้ชนะ", "สถานะ"
+  );
+
+  const lines = matches
+    .filter((m) => m.round_type === "group" || m.round_type === "knockout")
+    .sort((a, b) => a.match_number - b.match_number)
+    .map((m) => {
+      const isPair = unit === "pair" && (m.pair_a_id || m.pair_b_id);
+      const aId = isPair ? m.pair_a_id : m.team_a_id;
+      const bId = isPair ? m.pair_b_id : m.team_b_id;
+      const kind = isPair ? "pair" : "team";
+
+      const aName = competitorName(aId, kind);
+      const bName = competitorName(bId, kind);
+
+      const totals = m.games.length ? sumGameScores(m.games) : null;
+      const winner = m.games.length ? gameWinner(m.games) : null;
+      const gamesA = m.team_a_score ?? 0;
+      const gamesB = m.team_b_score ?? 0;
+      const gameDetail = m.games.map((g) => `${g.a}-${g.b}`).join(", ");
+      const winnerName = winner === "a" ? aName : winner === "b" ? bName : "เสมอ";
+      const statusMap: Record<string, string> = { pending: "รอ", in_progress: "กำลังแข่ง", completed: "จบแล้ว" };
+
+      return row(
+        m.match_number, roundLabel(m), m.round_number,
+        aName, bName,
+        m.status === "completed" ? gamesA : "",
+        m.status === "completed" ? gamesB : "",
+        m.status === "completed" && totals ? totals.a : "",
+        m.status === "completed" && totals ? totals.b : "",
+        m.status === "completed" ? gameDetail : "",
+        m.status === "completed" ? winnerName : "",
+        statusMap[m.status] ?? m.status
+      );
+    });
+
+  return [headers, ...lines].join("\n");
+}
+
+// ── Roster CSV ────────────────────────────────────────────────────────────────
+
+export function generateRosterCsv(teams: (Team & { players: TeamPlayer[] })[], pairs: PairWithPlayers[]): string {
+  const pairByPlayerId = new Map<string, PairWithPlayers>();
+  for (const p of pairs) {
+    for (const pl of p.players) pairByPlayerId.set(pl.id, p);
+  }
+
+  const headers = row("ทีม", "สี", "ชื่อผู้เล่น", "ตำแหน่ง", "คู่");
+
+  const lines: string[] = [];
+  for (const t of teams) {
+    const sorted = [...t.players].sort((a, b) =>
+      a.role === "captain" ? -1 : b.role === "captain" ? 1 : 0
+    );
+    for (const p of sorted) {
+      const pair = pairByPlayerId.get(p.id);
+      const pairName = pair ? pair.name ?? pair.players.map((pl) => pl.display_name).join(" / ") : "";
+      lines.push(row(t.name, t.color ?? "", p.display_name, p.role === "captain" ? "หัวหน้า" : "สมาชิก", pairName));
+    }
+  }
+
+  return [headers, ...lines].join("\n");
+}
+
+// ── Download helper ───────────────────────────────────────────────────────────
+
+export function downloadCsv(csv: string, filename: string) {
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}

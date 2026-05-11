@@ -12,6 +12,7 @@ import { GroupStage } from "@/components/tournament/group-stage";
 import { PairStage } from "@/components/tournament/pair-stage";
 import { KnockoutStage } from "@/components/tournament/knockout-stage";
 import { TournamentStatusControl } from "@/components/tournament/tournament-status-control";
+import { ExportButtons } from "@/components/tournament/export-buttons";
 import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -145,6 +146,14 @@ export default async function TournamentDetailPage({
       {isOwner && (
         <TournamentStatusControl tournamentId={t.id} currentStatus={t.status} />
       )}
+
+      <ExportButtons
+        tournamentName={t.name}
+        matches={allMatches}
+        teams={teams}
+        pairs={pairs}
+        matchUnit={t.match_unit}
+      />
 
       {t.notes && (
         <Card>
