@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { JoinForm } from "@/components/club/join-form";
 import { LeaveButton } from "@/components/club/leave-button";
+import { SetTotalCostForm } from "@/components/club/set-total-cost-form";
 
 export const dynamic = "force-dynamic";
 
@@ -77,10 +78,12 @@ export default async function ClubDetailPage({
             label={<Users className="h-4 w-4" />}
             text={`${joined} / ${club.max_players} คน`}
           />
-          {club.cost_per_person ? (
+          {club.total_cost ? (
             <Info
               label={<Wallet className="h-4 w-4" />}
-              text={`${club.cost_per_person} บาท/คน`}
+              text={joined > 0
+                ? `${(club.total_cost / joined).toFixed(0)} บาท/คน (รวม ${club.total_cost} บาท)`
+                : `รวม ${club.total_cost} บาท`}
             />
           ) : null}
           {club.shuttle_info && <Info label="🏸" text={club.shuttle_info} />}
@@ -92,6 +95,10 @@ export default async function ClubDetailPage({
           <CardHeader><CardTitle className="text-base">หมายเหตุ</CardTitle></CardHeader>
           <CardContent className="whitespace-pre-wrap text-sm">{club.notes}</CardContent>
         </Card>
+      )}
+
+      {session?.profileId === club.owner_id && (
+        <SetTotalCostForm clubId={club.id} currentTotal={club.total_cost} />
       )}
 
       <Separator />

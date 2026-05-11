@@ -2,13 +2,21 @@
 
 ระบบจัดก๊วนตีแบด — สร้างก๊วนของตัวเอง / ลงชื่อเล่นก๊วนคนอื่น
 
-**Stack**: Next.js 16 (App Router) · Tailwind v4 · shadcn/ui · Supabase · LINE Login
+**Stack**: Next.js 16 (App Router) · Tailwind v4 · shadcn/ui · TanStack Form v1 · Supabase · LINE Login · Google Font Anuphan
+
+## กฏการพัฒนา
+
+- Forms ทุกอันใช้ **TanStack Form** (`useForm`, `form.Field`, `form.Subscribe`)
+- UI components ใช้ **shadcn/ui** เท่านั้น — ห้ามเขียน HTML form element เปล่า
+- Server actions รับ **plain object** (ไม่ใช่ FormData)
+- Validation ทำ 2 ชั้น: client (TanStack validators) + server (zod)
 
 ---
 
 ## ฟีเจอร์ MVP
 
-- ✅ สร้างก๊วน (ชื่อ/สนาม/วัน/เวลา/จำนวนคน/ค่าก๊วน/ลูก/หมายเหตุ)
+- ✅ สร้างก๊วน (ชื่อ/สนาม/วัน/เวลา/จำนวนคน/ลูก/หมายเหตุ)
+- ✅ เจ้าของตั้งค่าก๊วนรวมหลังจบ → ระบบคำนวณค่า/คนอัตโนมัติ
 - ✅ Browse ก๊วนทั้งหมดที่ยังไม่ผ่าน
 - ✅ ลงชื่อเล่น + ถอนชื่อ (มี capacity check)
 - ✅ Auth: LINE Login + Guest mode
@@ -106,7 +114,8 @@ src/
 │   ├── club/
 │   │   ├── create-form.tsx
 │   │   ├── join-form.tsx
-│   │   └── leave-button.tsx
+│   │   ├── leave-button.tsx
+│   │   └── set-total-cost-form.tsx
 │   └── ui/                            # shadcn
 ├── lib/
 │   ├── supabase/{client,server}.ts
@@ -124,7 +133,8 @@ src/
 - [ ] Waiting list เมื่อก๊วนเต็ม
 - [ ] Notify ผ่าน LINE (Messaging API)
 - [ ] Recurring ก๊วน (ทุกพุธ/อังคาร)
-- [ ] หารค่าก๊วน + payment status
+- ✅ ตั้งค่าก๊วนรวม / คำนวณค่า/คน
+- [ ] Payment status (จ่ายแล้ว/ยังไม่จ่าย)
 - [ ] ระบบ rating / level
 - [ ] Real-time updates (Supabase Realtime)
 - [ ] PWA + push notification

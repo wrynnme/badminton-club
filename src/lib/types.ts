@@ -16,7 +16,7 @@ export type Club = {
   start_time: string;
   end_time: string;
   max_players: number;
-  cost_per_person: number | null;
+  total_cost: number | null;
   shuttle_info: string | null;
   notes: string | null;
   created_at: string;

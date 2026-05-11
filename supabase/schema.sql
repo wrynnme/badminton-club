@@ -23,7 +23,7 @@ create table if not exists public.clubs (
   start_time time not null,
   end_time time not null,
   max_players int not null default 12,
-  cost_per_person numeric(10,2) default 0,
+  total_cost numeric(10,2) default null,
   shuttle_info text,
   notes text,
   created_at timestamptz not null default now()

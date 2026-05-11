@@ -13,16 +13,17 @@ const ClubSchema = z.object({
   start_time: z.string().min(1),
   end_time: z.string().min(1),
   max_players: z.coerce.number().int().min(2).max(40),
-  cost_per_person: z.coerce.number().min(0).optional().default(0),
   shuttle_info: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
 });
 
-export async function createClubAction(formData: FormData) {
+export type CreateClubInput = z.infer<typeof ClubSchema>;
+
+export async function createClubAction(input: CreateClubInput) {
   const session = await getSession();
   if (!session) redirect("/?auth_error=login_required");
 
-  const parsed = ClubSchema.safeParse(Object.fromEntries(formData));
+  const parsed = ClubSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
   }
@@ -42,23 +43,24 @@ export async function createClubAction(formData: FormData) {
 
 const JoinSchema = z.object({
   club_id: z.string().uuid(),
-  display_name: z.string().min(2),
+  display_name: z.string().min(2, "ชื่อสั้นไป"),
   level: z.string().optional().nullable(),
   note: z.string().optional().nullable(),
 });
 
-export async function joinClubAction(formData: FormData) {
+export type JoinClubInput = z.infer<typeof JoinSchema>;
+
+export async function joinClubAction(input: JoinClubInput) {
   const session = await getSession();
   if (!session) redirect("/?auth_error=login_required");
 
-  const parsed = JoinSchema.safeParse(Object.fromEntries(formData));
+  const parsed = JoinSchema.safeParse(input);
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
   }
 
   const sb = await createAdminClient();
 
-  // Capacity check
   const { data: club } = await sb
     .from("clubs")
     .select("max_players")
@@ -89,6 +91,32 @@ export async function joinClubAction(formData: FormData) {
   }
 
   revalidatePath(`/clubs/${parsed.data.club_id}`);
+  return { ok: true };
+}
+
+export async function setTotalCostAction(input: { club_id: string; total_cost: number }) {
+  const session = await getSession();
+  if (!session) redirect("/?auth_error=login_required");
+
+  if (isNaN(input.total_cost) || input.total_cost < 0)
+    return { error: "ค่าก๊วนไม่ถูกต้อง" };
+
+  const sb = await createAdminClient();
+  const { data: club } = await sb
+    .from("clubs")
+    .select("owner_id")
+    .eq("id", input.club_id)
+    .single();
+
+  if (!club || club.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
+
+  const { error } = await sb
+    .from("clubs")
+    .update({ total_cost: input.total_cost })
+    .eq("id", input.club_id);
+
+  if (error) return { error: error.message };
+  revalidatePath(`/clubs/${input.club_id}`);
   return { ok: true };
 }
 
