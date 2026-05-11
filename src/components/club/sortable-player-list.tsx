@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, useTransition, useId, useEffect } from "react";
+import { useState, useTransition, useId, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
+import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   DndContext,
   closestCenter,
@@ -90,11 +93,22 @@ function SortableItem({
 export function SortablePlayerList({ clubId, players, sessionProfileId, isOwner }: Props) {
   const [items, setItems] = useState(players);
   const [, startTransition] = useTransition();
+  const [refreshing, startRefresh] = useTransition();
   const dndId = useId();
+  const router = useRouter();
 
   useEffect(() => {
     setItems(players);
   }, [players]);
+
+  const refresh = useCallback(() => {
+    startRefresh(() => { router.refresh(); });
+  }, [router]);
+
+  useEffect(() => {
+    const id = setInterval(refresh, 30_000);
+    return () => clearInterval(id);
+  }, [refresh]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -115,11 +129,34 @@ export function SortablePlayerList({ clubId, players, sessionProfileId, isOwner 
     });
   }
 
+  const refreshBtn = (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="h-7 w-7"
+      onClick={refresh}
+      disabled={refreshing}
+      aria-label="รีเฟรชรายชื่อ"
+    >
+      <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
+    </Button>
+  );
+
   if (!items.length) {
-    return <p className="text-sm text-muted-foreground">ยังไม่มีคนลงชื่อ</p>;
+    return (
+      <div className="flex items-center gap-2">
+        <p className="text-sm text-muted-foreground">ยังไม่มีคนลงชื่อ</p>
+        {refreshBtn}
+      </div>
+    );
   }
 
   return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">อัพเดทอัตโนมัติทุก 30 วินาที</span>
+        {refreshBtn}
+      </div>
     <DndContext id={dndId} sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={items.map((p) => p.id)} strategy={verticalListSortingStrategy}>
         <ol className="space-y-1">
@@ -136,5 +173,6 @@ export function SortablePlayerList({ clubId, players, sessionProfileId, isOwner 
         </ol>
       </SortableContext>
     </DndContext>
+    </div>
   );
 }

@@ -19,8 +19,13 @@
 ## Key conventions
 - Supabase key env var is `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (not ANON_KEY)
 - DB column for club cost is `total_cost` (not `cost_per_person`) — set by owner after game ends
+- `club_players` has `position` column for drag-and-drop ordering
 - Writes go through server actions using `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS)
 - Session stored in `bc_session` cookie (see `src/lib/auth/session.ts`)
+- Auth redirects: use `?redirectTo=/path` on login page; LINE OAuth stores it in `line_redirect_to` cookie
+- `loginRedirect()` in `clubs.ts` uses `referer` header to auto-populate `redirectTo`
+- Player list auto-refreshes via `router.refresh()` every 30s; manual refresh button included
+- `SortablePlayerList` uses `@dnd-kit` with `activationConstraint: { distance: 8 }` for mobile compat
 
 ## MCP servers
 - **supabase**: apply migrations, run SQL, list tables — use `apply_migration` for all DDL

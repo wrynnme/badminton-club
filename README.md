@@ -15,11 +15,15 @@
 
 ## ฟีเจอร์ MVP
 
-- ✅ สร้างก๊วน (ชื่อ/สนาม/วัน/เวลา/จำนวนคน/ลูก/หมายเหตุ)
+- ✅ สร้างก๊วน + แก้ไขข้อมูลก๊วน (เจ้าของ)
 - ✅ เจ้าของตั้งค่าก๊วนรวมหลังจบ → ระบบคำนวณค่า/คนอัตโนมัติ
-- ✅ Browse ก๊วนทั้งหมดที่ยังไม่ผ่าน
+- ✅ Browse ก๊วนทั้งหมด
 - ✅ ลงชื่อเล่น + ถอนชื่อ (มี capacity check)
-- ✅ Auth: LINE Login + Guest mode
+- ✅ เจ้าของถอนชื่อผู้เล่นได้ (kick)
+- ✅ Drag & drop จัดลำดับรายชื่อ (เจ้าของ)
+- ✅ Auto-refresh รายชื่อทุก 30 วิ + ปุ่มรีเฟรช
+- ✅ Auth: LINE Login + Guest mode + redirect หลัง login
+- ✅ Dark/Light theme toggle
 
 ---
 
@@ -113,9 +117,13 @@ src/
 │   ├── site-header.tsx
 │   ├── club/
 │   │   ├── create-form.tsx
+│   │   ├── edit-club-form.tsx
 │   │   ├── join-form.tsx
+│   │   ├── kick-button.tsx
 │   │   ├── leave-button.tsx
-│   │   └── set-total-cost-form.tsx
+│   │   ├── set-total-cost-form.tsx
+│   │   └── sortable-player-list.tsx
+│   ├── theme-toggle.tsx
 │   └── ui/                            # shadcn
 ├── lib/
 │   ├── supabase/{client,server}.ts
@@ -129,7 +137,7 @@ src/
 
 ## Roadmap (Phase 2+)
 
-- [ ] Edit/Cancel ก๊วน (เจ้าของเท่านั้น)
+- [ ] Cancel ก๊วน (เจ้าของเท่านั้น)
 - [ ] Waiting list เมื่อก๊วนเต็ม
 - [ ] Notify ผ่าน LINE (Messaging API)
 - [ ] Recurring ก๊วน (ทุกพุธ/อังคาร)
