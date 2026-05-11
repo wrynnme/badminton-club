@@ -97,6 +97,15 @@ export async function generateGroupMatchesAction(tournamentId: string) {
 
 // ============ PAIR MODE ============
 
+function levelToNum(level: string | null | undefined): number {
+  if (!level) return 0;
+  const map: Record<string, number> = { S: 5, A: 4, B: 3, C: 2, D: 1, N: 0 };
+  const upper = level.trim().toUpperCase();
+  if (upper in map) return map[upper];
+  const n = parseFloat(level);
+  return isNaN(n) ? 0 : n;
+}
+
 export async function generatePairMatchesAction(tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -104,40 +113,68 @@ export async function generatePairMatchesAction(tournamentId: string) {
 
   const sb = await createAdminClient();
 
-  // Clear existing pair matches
   await sb.from("matches").delete().eq("tournament_id", tournamentId).eq("round_type", "group");
 
-  // Fetch teams with their pairs
+  // Fetch pairs with player levels
   const { data: teams } = await sb
     .from("teams")
-    .select("id, pairs(id, player_id_1, player_id_2)")
+    .select("id, pairs(id, player_id_1, player_id_2, player1:team_players!player_id_1(level), player2:team_players!player_id_2(level))")
     .eq("tournament_id", tournamentId);
   if (!teams?.length) return { error: "ยังไม่มีทีม" };
 
-  type RawTeam = { id: string; pairs: { id: string; player_id_1: string | null; player_id_2: string | null }[] };
-  const teamPairs = (teams as RawTeam[])
-    .map((t) => ({ teamId: t.id, pairIds: t.pairs.filter((p) => p.player_id_1 && p.player_id_2).map((p) => p.id) }))
-    .filter((tp) => tp.pairIds.length > 0);
+  type RawPair = { id: string; player_id_1: string | null; player_id_2: string | null; player1: { level: string | null } | { level: string | null }[] | null; player2: { level: string | null } | { level: string | null }[] | null };
+  type RawTeam = { id: string; pairs: RawPair[] };
 
-  if (teamPairs.length < 2) return { error: "ต้องมีอย่างน้อย 2 ทีมที่มีคู่" };
+  const UPPER_THRESHOLD = 4;
 
-  const matches = generateAllPairMatches(teamPairs);
+  function extractLevel(rel: RawPair["player1"]): string | null {
+    if (!rel) return null;
+    if (Array.isArray(rel)) return rel[0]?.level ?? null;
+    return rel.level;
+  }
 
-  const inserts = matches.map((m, i) => ({
-    tournament_id: tournamentId,
-    round_type: "group",
-    round_number: 1,
-    match_number: i + 1,
-    team_a_id: m.teamAId,
-    team_b_id: m.teamBId,
-    pair_a_id: m.pairAId,
-    pair_b_id: m.pairBId,
+  function pairDivision(p: RawPair): "upper" | "lower" {
+    const combined = levelToNum(extractLevel(p.player1)) + levelToNum(extractLevel(p.player2));
+    return combined > UPPER_THRESHOLD ? "upper" : "lower";
+  }
+
+  const allTeamPairs = (teams as unknown as RawTeam[]).map((t) => ({
+    teamId: t.id,
+    pairs: t.pairs.filter((p) => p.player_id_1 && p.player_id_2),
   }));
+
+  function buildTierPairs(division: "upper" | "lower") {
+    return allTeamPairs
+      .map((t) => ({ teamId: t.teamId, pairIds: t.pairs.filter((p) => pairDivision(p) === division).map((p) => p.id) }))
+      .filter((tp) => tp.pairIds.length > 0);
+  }
+
+  const upperTeamPairs = buildTierPairs("upper");
+  const lowerTeamPairs = buildTierPairs("lower");
+
+  const upperMatches = upperTeamPairs.length >= 2 ? generateAllPairMatches(upperTeamPairs) : [];
+  const lowerMatches = lowerTeamPairs.length >= 2 ? generateAllPairMatches(lowerTeamPairs) : [];
+
+  if (!upperMatches.length && !lowerMatches.length) return { error: "ต้องมีอย่างน้อย 2 ทีมที่มีคู่" };
+
+  let matchNum = 1;
+  const inserts = [
+    ...upperMatches.map((m) => ({
+      tournament_id: tournamentId, round_type: "group", round_number: 1, match_number: matchNum++,
+      team_a_id: m.teamAId, team_b_id: m.teamBId, pair_a_id: m.pairAId, pair_b_id: m.pairBId,
+      division: "upper" as const,
+    })),
+    ...lowerMatches.map((m) => ({
+      tournament_id: tournamentId, round_type: "group", round_number: 1, match_number: matchNum++,
+      team_a_id: m.teamAId, team_b_id: m.teamBId, pair_a_id: m.pairAId, pair_b_id: m.pairBId,
+      division: "lower" as const,
+    })),
+  ];
 
   if (inserts.length) await sb.from("matches").insert(inserts);
 
   revalidatePath(`/tournaments/${tournamentId}`);
-  return { ok: true, count: inserts.length };
+  return { ok: true, count: inserts.length, upper: upperMatches.length, lower: lowerMatches.length };
 }
 
 // ============ KNOCKOUT ============

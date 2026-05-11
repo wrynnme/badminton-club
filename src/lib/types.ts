@@ -128,6 +128,7 @@ export type Match = {
   loser_next_match_id: string | null;
   loser_next_match_slot: "a" | "b" | null;
   bracket: BracketType | null;
+  division: "upper" | "lower" | null;
   created_at: string;
 };
 
