@@ -16,7 +16,10 @@ export async function SiteHeader() {
         <nav className="flex items-center gap-3">
           <ThemeToggle />
           <Link href="/clubs" className="text-sm hover:underline">
-            ก๊วนทั้งหมด
+            ก๊วน
+          </Link>
+          <Link href="/tournaments" className="text-sm hover:underline">
+            Tournament
           </Link>
           {session ? (
             <>

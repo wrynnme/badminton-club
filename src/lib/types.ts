@@ -33,6 +33,51 @@ export type ClubPlayer = {
   position: number | null;
 };
 
+export type TournamentMode = "sports_day" | "competition";
+export type TournamentStatus = "draft" | "registering" | "ongoing" | "completed";
+export type TournamentFormat = "group_only" | "group_knockout" | "knockout_only";
+export type SeedingMethod = "random" | "by_group_score";
+export type TeamRole = "captain" | "member";
+
+export type Tournament = {
+  id: string;
+  owner_id: string;
+  name: string;
+  venue: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  mode: TournamentMode;
+  status: TournamentStatus;
+  format: TournamentFormat;
+  has_lower_bracket: boolean;
+  allow_drop_to_lower: boolean;
+  seeding_method: SeedingMethod;
+  team_count: number;
+  notes: string | null;
+  created_at: string;
+};
+
+export type Team = {
+  id: string;
+  tournament_id: string;
+  name: string;
+  color: string | null;
+  seed: number | null;
+  created_at: string;
+};
+
+export type TeamPlayer = {
+  id: string;
+  team_id: string;
+  profile_id: string | null;
+  display_name: string;
+  role: TeamRole;
+  created_at: string;
+};
+
+export type TeamWithPlayers = Team & { players: TeamPlayer[] };
+export type TournamentWithTeams = Tournament & { teams: TeamWithPlayers[] };
+
 export type ClubWithPlayers = Club & {
   players: ClubPlayer[];
   owner?: Pick<Profile, "display_name" | "picture_url"> | null;
