@@ -87,8 +87,7 @@ export default async function TournamentDetailPage({
   const s = statusLabel[t.status];
   const showGroupStage = t.match_unit === "team" && (t.format === "group_only" || t.format === "group_knockout");
   const showPairStage = t.match_unit === "pair";
-  // Pair mode + knockout is Phase 4 — hide for now
-  const showKnockoutStage = (t.format === "group_knockout" || t.format === "knockout_only") && t.match_unit === "team";
+  const showKnockoutStage = t.format === "group_knockout" || t.format === "knockout_only";
   const knockoutMatches = allMatches.filter((m) => m.round_type === "knockout");
 
   return (
@@ -189,6 +188,8 @@ export default async function TournamentDetailPage({
             tournamentId={t.id}
             matches={knockoutMatches}
             teams={flatTeams}
+            pairs={t.match_unit === "pair" ? pairs : undefined}
+            matchUnit={t.match_unit}
             advanceCount={t.advance_count ?? 2}
             isOwner={isOwner}
           />

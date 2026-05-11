@@ -101,6 +101,8 @@ export type GroupTeam = {
 
 export type Game = { a: number; b: number };
 
+export type BracketType = "upper" | "lower" | "grand_final";
+
 export type Match = {
   id: string;
   tournament_id: string;
@@ -121,6 +123,9 @@ export type Match = {
   scheduled_at: string | null;
   next_match_id: string | null;
   next_match_slot: "a" | "b" | null;
+  loser_next_match_id: string | null;
+  loser_next_match_slot: "a" | "b" | null;
+  bracket: BracketType | null;
   created_at: string;
 };
 
