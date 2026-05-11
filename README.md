@@ -130,10 +130,14 @@ src/
 │   │   └── sortable-player-list.tsx
 │   ├── tournament/
 │   │   ├── create-tournament-form.tsx  # TanStack Form + zod, incl. match_unit
-│   │   ├── team-manager.tsx            # Add/remove teams + members
+│   │   ├── team-manager.tsx            # Teams + members (level, rename inline)
 │   │   ├── group-stage.tsx             # Gen groups, gen matches, standings
 │   │   ├── pair-stage.tsx              # Pair manager + matches + dual standings
-│   │   ├── pair-manager.tsx            # Create/delete pairs per team
+│   │   ├── pair-manager.tsx            # Create/delete pairs (player_id_1/2, level badge)
+│   │   ├── knockout-stage.tsx          # Upper/lower/grand_final bracket sections
+│   │   ├── csv-import-dialog.tsx       # 2-step: import players then pairs via csv_id
+│   │   ├── export-buttons.tsx          # Export matches/roster + download templates
+│   │   ├── tournament-status-control.tsx
 │   │   ├── match-row.tsx               # Single match row (score + reset)
 │   │   ├── score-form.tsx              # Games array entry (21-15, 21-19 …)
 │   │   └── standings-table.tsx         # P/W/D/L/+−/Pts table
@@ -143,14 +147,16 @@ src/
 │   ├── auth/session.ts                 # HMAC-signed cookie
 │   ├── actions/
 │   │   ├── clubs.ts                    # Club server actions
-│   │   ├── tournaments.ts              # Tournament CRUD
-│   │   ├── matches.ts                  # Generate groups/matches, record scores
-│   │   └── pairs.ts                    # Create/delete pairs
+│   │   ├── tournaments.ts              # Tournament CRUD + CSV import actions
+│   │   ├── matches.ts                  # Generate groups/matches/bracket, record scores
+│   │   └── pairs.ts                    # Create/delete pairs (flat player_id_1/2)
 │   ├── tournament/
 │   │   ├── competitor.ts               # Competitor abstraction (Team | Pair)
 │   │   ├── scheduling.ts               # Balanced round-robin pair scheduling
 │   │   ├── scoring.ts                  # computeStandings, leaguePoints, gameWinner
-│   │   └── bracket.ts                  # buildBracket, roundLabel, nextPowerOf2
+│   │   └── bracket.ts                  # buildBracket, buildDoubleBracket, roundLabel
+│   ├── export/
+│   │   └── csv.ts                      # generateMatchesCsv, generateRosterCsv, templates
 │   └── types.ts
 └── supabase/schema.sql                 # DB schema
 ```
@@ -173,16 +179,16 @@ src/
 
 ### Tournament System
 
-**โหมดกีฬาสี** (Phase 0–3 เสร็จแล้ว)
+**โหมดกีฬาสี** (Phase 0–4 เสร็จแล้ว)
 
 - ✅ Phase 0 — Coming Soon page สำหรับ competition mode
 - ✅ Phase 1 — CRUD tournaments + teams + members (captain/member roles)
 - ✅ Phase 2 — Group stage (team mode) + Pair stage (pair mode): gen matches + score entry + standings
 - ✅ Phase 3 — Knockout: single-elimination bracket, BYE auto-advance, winner auto-advance, tournament status control
-- [ ] Phase 4 — Lower bracket (double-elim) + Pair mode knockout
+- ✅ Phase 4 — Double-elimination bracket + pair mode KO + CSV import/export + player level
 - [ ] Phase 5 — Bracket visualization (visual tree diagram)
 - [ ] Phase 6 — Realtime updates + public share link (`/t/[token]`)
-- [ ] Phase 7 — LINE notification (Messaging API) + export CSV/PDF
+- [ ] Phase 7 — LINE notification (Messaging API) + export PDF
 
 **โหมดแข่งขัน** (Coming Soon)
 
@@ -203,24 +209,23 @@ src/
 - Match score: ป้อนเป็น games array (21-15, 21-19 …) — winner คำนวณจาก games ชนะมากกว่า
 - Standings: P / W / D / L / +− / Pts; tie-break = point diff → points for
 
-**Pair scheduling:**
+**Pair system (flat schema):**
 
-- แต่ละคนเล่นได้ 1 คู่ (enforced ด้วย `UNIQUE(player_id)` ใน `pair_players`)
-- Balanced round-robin: rotate sideB ทุก round เพื่อลดการเจอซ้ำ
+- `pairs` table: `player_id_1`, `player_id_2`, `display_pair_name` — ไม่มี junction table
+- 1-person-1-pair enforced by OR query ก่อน insert
+- Players มี `level` (S/A/B/C/D/N หรือ custom) + `csv_id` สำหรับ import
 
-**Knockout bracket (Phase 3):**
+**CSV import (2-step):**
 
-- Standard single-elim: seed 1 เจอ seed 2 ได้เฉพาะรอบชิง
-- Pad to power of 2 ด้วย BYE (auto-complete ทันที)
-- Winner auto-advance ไปรอบถัดไปเมื่อกรอกผล
-- Reset ถูก block ถ้ารอบถัดไปจบแล้ว
-- Champion banner แสดงเมื่อ final match จบ
+- Step 1 players: `team, color, id_player, display_name, role, level` — upsert by csv_id
+- Step 2 pairs: `id_player, pair_name` — lookup player UUID จาก csv_id
 
-**Phase 4 planned — Double-elimination:**
+**Knockout bracket (Phase 3+4):**
 
-- Upper bracket → loser → Lower bracket
-- Grand final: single match (no bracket reset)
-- `allow_drop_to_lower`: upper losers drop ลง lower (default off)
-- Lower bracket pre-seeded จาก 3rd/4th place ต่อกลุ่ม (ถ้า drop=off)
+- Standard single-elimination: seed 1 เจอ seed 2 ได้เฉพาะรอบชิง
+- Double-elimination: upper losers → lower bracket via `loser_next_match_id`
+- `allow_drop_to_lower=false`: lower bracket pre-seeded จาก 3rd/4th per group
+- Grand final: upper winner vs lower winner (single match, no bracket reset)
+- BYE auto-complete; winner + loser both auto-advance; reset blocked if next match จบ
 
 **Seeding:** random draw หรือ by group score
