@@ -173,9 +173,17 @@ function FilePicker<T>({
 
 type Mode = "players" | "pairs";
 
-export function CsvImportDialog({ tournamentId }: { tournamentId: string }) {
+export function CsvImportDialog({
+  tournamentId,
+  defaultMode = "players",
+  onlyMode,
+}: {
+  tournamentId: string;
+  defaultMode?: Mode;
+  onlyMode?: Mode;
+}) {
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<Mode>("players");
+  const [mode, setMode] = useState<Mode>(onlyMode ?? defaultMode);
   const [playerRows, setPlayerRows] = useState<PlayerCsvRow[]>([]);
   const [pairRows, setPairRows] = useState<PairCsvRow[]>([]);
   const [pending, setPending] = useState(false);
@@ -207,24 +215,28 @@ export function CsvImportDialog({ tournamentId }: { tournamentId: string }) {
       <DialogTrigger render={
         <Button size="sm" variant="outline">
           <Upload className="h-3.5 w-3.5 mr-1" />
-          นำเข้า CSV
+          {onlyMode === "pairs" ? "Import คู่ CSV" : "นำเข้า CSV"}
         </Button>
       } />
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>นำเข้าข้อมูลจาก CSV</DialogTitle>
+          <DialogTitle>
+            {onlyMode === "pairs" ? "นำเข้าคู่จาก CSV" : "นำเข้าข้อมูลจาก CSV"}
+          </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Mode toggle */}
-          <div className="flex gap-2">
-            {(["players", "pairs"] as Mode[]).map((m) => (
-              <Button key={m} size="sm" variant={mode === m ? "default" : "outline"}
-                className="flex-1" onClick={() => setMode(m)}>
-                {m === "players" ? "1. ผู้เล่น" : "2. จับคู่"}
-              </Button>
-            ))}
-          </div>
+          {/* Mode toggle — hide when onlyMode is set */}
+          {!onlyMode && (
+            <div className="flex gap-2">
+              {(["players", "pairs"] as Mode[]).map((m) => (
+                <Button key={m} size="sm" variant={mode === m ? "default" : "outline"}
+                  className="flex-1" onClick={() => setMode(m)}>
+                  {m === "players" ? "1. ผู้เล่น" : "2. จับคู่"}
+                </Button>
+              ))}
+            </div>
+          )}
 
           {mode === "players" && (
             <>

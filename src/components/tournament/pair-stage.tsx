@@ -13,6 +13,7 @@ import { StandingsTable } from "@/components/tournament/standings-table";
 import { generatePairMatchesAction } from "@/lib/actions/matches";
 import { buildCompetitorMap, pairToCompetitor, teamToCompetitor } from "@/lib/tournament/competitor";
 import { computeStandings } from "@/lib/tournament/scoring";
+import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
 import type { TeamWithPlayers, PairWithPlayers, Match, Team } from "@/lib/types";
 
 export function PairStage({
@@ -66,7 +67,10 @@ export function PairStage({
     <div className="space-y-6">
       {/* Pair manager per team */}
       <section className="space-y-3">
-        <h2 className="font-semibold">จับคู่ภายในทีม</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">จับคู่ภายในทีม</h2>
+          {isOwner && <CsvImportDialog tournamentId={tournamentId} onlyMode="pairs" />}
+        </div>
         {teams.length === 0 ? (
           <p className="text-sm text-muted-foreground">เพิ่มทีมก่อนจัดคู่</p>
         ) : (

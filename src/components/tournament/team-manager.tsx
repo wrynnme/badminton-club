@@ -286,7 +286,7 @@ export function TeamManager({ tournamentId, teams, isOwner, teamCount }: {
         </div>
         {isOwner && (
           <div className="flex items-center gap-2">
-            <CsvImportDialog tournamentId={tournamentId} />
+            <CsvImportDialog tournamentId={tournamentId} onlyMode="players" />
             {remaining > 0 && !adding && (
               <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
                 <Plus className="h-4 w-4 mr-1" />เพิ่มทีม
