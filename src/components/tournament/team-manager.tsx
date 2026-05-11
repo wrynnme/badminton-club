@@ -4,13 +4,13 @@ import * as z from "zod";
 import { useState, useTransition } from "react";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
-import { Plus, Trash2, ChevronDown, ChevronUp, UserMinus } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronUp, UserMinus, Pencil, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { createTeamAction, deleteTeamAction, addTeamPlayerAction, removeTeamPlayerAction } from "@/lib/actions/tournaments";
+import { createTeamAction, deleteTeamAction, addTeamPlayerAction, removeTeamPlayerAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
 import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
 import type { TeamWithPlayers } from "@/lib/types";
 
@@ -132,6 +132,53 @@ function AddMemberForm({ teamId, tournamentId, onDone }: { teamId: string; tourn
   );
 }
 
+function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
+  p: TeamWithPlayers["players"][number];
+  tournamentId: string;
+  isOwner: boolean;
+  startRemove: (fn: () => Promise<void>) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(p.display_name);
+  const [, startEdit] = useTransition();
+
+  const save = () => startEdit(async () => {
+    const res = await updateTeamPlayerAction(p.id, name, tournamentId);
+    if (res?.error) { toast.error(res.error); setName(p.display_name); }
+    setEditing(false);
+  });
+
+  return (
+    <li className="flex items-center gap-2 text-sm">
+      {p.role === "captain" && <Badge className="text-xs px-1 py-0 shrink-0">หัวหน้า</Badge>}
+      {editing ? (
+        <>
+          <Input value={name} onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") { setEditing(false); setName(p.display_name); } }}
+            className="h-6 text-xs flex-1 px-1.5" autoFocus />
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={save}><Check className="h-3 w-3" /></Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditing(false); setName(p.display_name); }}><X className="h-3 w-3" /></Button>
+        </>
+      ) : (
+        <>
+          <span className="flex-1">{name}</span>
+          {isOwner && (
+            <>
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                onClick={() => setEditing(true)}><Pencil className="h-3 w-3" /></Button>
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"
+                onClick={() => startRemove(async () => {
+                  const res = await removeTeamPlayerAction(p.id, tournamentId);
+                  if (res?.error) toast.error(res.error);
+                })}><UserMinus className="h-3 w-3" /></Button>
+            </>
+          )}
+        </>
+      )}
+    </li>
+  );
+}
+
 function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tournamentId: string; isOwner: boolean }) {
   const [open, setOpen] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
@@ -170,19 +217,7 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
           ) : (
             <ul className="space-y-1">
               {[...team.players].sort((a, b) => (a.role === "captain" ? -1 : b.role === "captain" ? 1 : 0)).map((p) => (
-                <li key={p.id} className="flex items-center gap-2 text-sm">
-                  {p.role === "captain" && <Badge className="text-xs px-1 py-0">หัวหน้า</Badge>}
-                  <span className="flex-1">{p.display_name}</span>
-                  {isOwner && (
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"
-                      onClick={() => startRemove(async () => {
-                        const res = await removeTeamPlayerAction(p.id, tournamentId);
-                        if (res?.error) toast.error(res.error);
-                      })}>
-                      <UserMinus className="h-3 w-3" />
-                    </Button>
-                  )}
-                </li>
+                <PlayerRow key={p.id} p={p} tournamentId={tournamentId} isOwner={isOwner} startRemove={startRemove} />
               ))}
             </ul>
           )}

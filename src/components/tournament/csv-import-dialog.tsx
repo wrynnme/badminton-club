@@ -176,6 +176,11 @@ export function CsvImportDialog({ tournamentId }: { tournamentId: string }) {
             </div>
           </div>
 
+          {/* Warning */}
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            ⚠ แต่ละแถวสร้างผู้เล่นใหม่เสมอ — นำเข้าซ้ำจะได้ผู้เล่นซ้ำ
+          </p>
+
           {/* File input */}
           <div className="space-y-2">
             <div className="flex items-center gap-2">

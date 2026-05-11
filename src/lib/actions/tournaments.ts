@@ -222,55 +222,46 @@ export async function importTournamentCsvAction(
     }
   }
 
-  // 4. Fetch existing players to prevent duplicates
   const allTeamIds = [...teamByName.values()];
-  const { data: existingPlayers } = await sb
-    .from("team_players").select("id, team_id, display_name").in("team_id", allTeamIds);
-  const existingSet = new Set(existingPlayers?.map((p) => `${p.team_id}:${p.display_name}`) ?? []);
 
-  // 5. Insert new players
-  const playerInserts = rows
-    .filter((r) => {
-      const tid = teamByName.get(r.team);
-      return tid && !existingSet.has(`${tid}:${r.display_name}`);
-    })
-    .map((r) => ({
-      team_id: teamByName.get(r.team)!,
-      display_name: r.display_name,
-      role: r.role,
-    }));
+  // 4. Insert every row as a new player (no dedup by name — ID is the unique key)
+  // Pairs match by row position in the group, not by name lookup
+  const rowPlayerIds: (string | null)[] = new Array(rows.length).fill(null);
+  let playersCreated = 0;
 
-  if (playerInserts.length) {
-    await sb.from("team_players").insert(playerInserts);
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const teamId = teamByName.get(r.team);
+    if (!teamId) continue;
+    const { data } = await sb
+      .from("team_players")
+      .insert({ team_id: teamId, display_name: r.display_name, role: r.role })
+      .select("id")
+      .single();
+    if (data) { rowPlayerIds[i] = data.id; playersCreated++; }
   }
 
-  // 6. Create pairs (only when match_unit = pair and pair_name columns used)
+  // 5. Create pairs — group by (team, pair_name) using row-level player IDs
   let pairsCreated = 0;
-  const rowsWithPairs = rows.filter((r) => r.pair_name);
-  if (tournament.match_unit === "pair" && rowsWithPairs.length > 0) {
-    const { data: allPlayers } = await sb
-      .from("team_players").select("id, team_id, display_name").in("team_id", allTeamIds);
-    const playerIdMap = new Map(allPlayers?.map((p) => [`${p.team_id}:${p.display_name}`, p.id]) ?? []);
-
-    // Get existing pairs to prevent duplicates
-    const { data: existingPairs } = await sb.from("pairs").select("id, name, team_id").in("team_id", allTeamIds);
+  if (tournament.match_unit === "pair" && rows.some((r) => r.pair_name)) {
+    const { data: existingPairs } = await sb
+      .from("pairs").select("id, name, team_id").in("team_id", allTeamIds);
     const existingPairSet = new Set(existingPairs?.map((p) => `${p.team_id}:${p.name}`) ?? []);
 
-    // Group by (team, pair_name)
     const pairGroups = new Map<string, { teamId: string; pairName: string; playerIds: string[] }>();
-    for (const r of rowsWithPairs) {
-      const tid = teamByName.get(r.team);
-      if (!tid) continue;
-      const pid = playerIdMap.get(`${tid}:${r.display_name}`);
-      if (!pid) continue;
-      const key = `${tid}:${r.pair_name}`;
-      if (!pairGroups.has(key)) pairGroups.set(key, { teamId: tid, pairName: r.pair_name, playerIds: [] });
-      pairGroups.get(key)!.playerIds.push(pid);
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r.pair_name) continue;
+      const teamId = teamByName.get(r.team);
+      const playerId = rowPlayerIds[i];
+      if (!teamId || !playerId) continue;
+      const key = `${teamId}:${r.pair_name}`;
+      if (!pairGroups.has(key)) pairGroups.set(key, { teamId, pairName: r.pair_name, playerIds: [] });
+      pairGroups.get(key)!.playerIds.push(playerId);
     }
 
     for (const [key, g] of pairGroups) {
-      if (g.playerIds.length !== 2) continue;
-      if (existingPairSet.has(key)) continue;
+      if (g.playerIds.length !== 2 || existingPairSet.has(key)) continue;
       const { data: pair } = await sb
         .from("pairs").insert({ team_id: g.teamId, name: g.pairName }).select("id").single();
       if (!pair) continue;
@@ -283,5 +274,27 @@ export async function importTournamentCsvAction(
   }
 
   revalidatePath(`/tournaments/${tournamentId}`);
-  return { ok: true, teams: teamsCreated, players: playerInserts.length, pairs: pairsCreated };
+  return { ok: true, teams: teamsCreated, players: playersCreated, pairs: pairsCreated };
+}
+
+export async function updateTeamPlayerAction(
+  playerId: string,
+  display_name: string,
+  tournamentId: string
+) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  const { data: t } = await sb.from("tournaments").select("owner_id").eq("id", tournamentId).single();
+  if (!t || t.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
+
+  if (!display_name.trim()) return { error: "ชื่อห้ามว่าง" };
+
+  const { error } = await sb
+    .from("team_players").update({ display_name: display_name.trim() }).eq("id", playerId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  return { ok: true };
 }
