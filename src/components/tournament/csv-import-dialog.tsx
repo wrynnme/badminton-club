@@ -69,7 +69,7 @@ function parsePlayerCsv(text: string) {
       const display_name = idx(h, "display_name", v);
       if (!team || !csv_id || !display_name) return null;
       const roleRaw = idx(h, "role", v).toLowerCase();
-      return { team, color: idx(h, "color", v), csv_id, display_name, role: roleRaw === "captain" ? "captain" : "member" };
+      return { team, color: idx(h, "color", v), csv_id, display_name, role: roleRaw === "captain" ? "captain" : "member", level: idx(h, "level", v) };
     }
   );
 }
@@ -98,13 +98,13 @@ function download(csv: string, filename: string) {
 }
 
 const PLAYER_TEMPLATE = [
-  "team,color,id_player,display_name,role",
-  "ทีมแดง,#ef4444,R1-1a,ชื่อ นามสกุล,captain",
-  "ทีมแดง,#ef4444,R1-1b,ชื่อ นามสกุล 2,member",
-  "ทีมแดง,#ef4444,R1-2a,ชื่อ นามสกุล 3,member",
-  "ทีมแดง,#ef4444,R1-2b,ชื่อ นามสกุล 4,member",
-  "ทีมเขียว,#22c55e,G1-1a,ชื่อ นามสกุล 5,member",
-  "ทีมเขียว,#22c55e,G1-1b,ชื่อ นามสกุล 6,member",
+  "team,color,id_player,display_name,role,level",
+  "ทีมแดง,#ef4444,R1-1a,ชื่อ นามสกุล,captain,A",
+  "ทีมแดง,#ef4444,R1-1b,ชื่อ นามสกุล 2,member,B",
+  "ทีมแดง,#ef4444,R1-2a,ชื่อ นามสกุล 3,member,B",
+  "ทีมแดง,#ef4444,R1-2b,ชื่อ นามสกุล 4,member,C",
+  "ทีมเขียว,#22c55e,G1-1a,ชื่อ นามสกุล 5,member,A",
+  "ทีมเขียว,#22c55e,G1-1b,ชื่อ นามสกุล 6,member,B",
 ].join("\n");
 
 const PAIR_TEMPLATE = [
@@ -234,7 +234,7 @@ export function CsvImportDialog({ tournamentId }: { tournamentId: string }) {
               <div className="flex items-center justify-between">
                 <div className="rounded-md border bg-muted/30 p-2.5 text-xs flex-1 space-y-0.5">
                   <p className="font-medium text-muted-foreground">Columns:</p>
-                  <p><code className="text-foreground">team</code> · <code className="text-foreground">color</code> · <code className="text-foreground font-bold">id_player</code> * · <code className="text-foreground">display_name</code> * · <code className="text-foreground">role</code></p>
+                  <p><code className="text-foreground">team</code> · <code className="text-foreground">color</code> · <code className="text-foreground font-bold">id_player</code> * · <code className="text-foreground">display_name</code> * · <code className="text-foreground">role</code> · <code className="text-foreground">level</code></p>
                   <p className="text-muted-foreground">id_player = ID คงที่ (ใช้ lookup ตอนจับคู่)</p>
                 </div>
                 <Button size="sm" variant="ghost" className="ml-2 h-7 text-xs gap-1 shrink-0" onClick={() => download(PLAYER_TEMPLATE, "players_template.csv")}>
@@ -251,6 +251,7 @@ export function CsvImportDialog({ tournamentId }: { tournamentId: string }) {
                   { key: "csv_id", label: "id_player" },
                   { key: "display_name", label: "ชื่อ" },
                   { key: "role", label: "Role" },
+                  { key: "level", label: "Level" },
                 ]}
               />
 

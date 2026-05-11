@@ -134,7 +134,7 @@ export async function deleteTeamAction(teamId: string, tournamentId: string) {
   return { ok: true };
 }
 
-export async function addTeamPlayerAction(input: { team_id: string; display_name: string; role: "captain" | "member"; tournament_id: string }) {
+export async function addTeamPlayerAction(input: { team_id: string; display_name: string; role: "captain" | "member"; level?: string; tournament_id: string }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
@@ -146,6 +146,7 @@ export async function addTeamPlayerAction(input: { team_id: string; display_name
     team_id: input.team_id,
     display_name: input.display_name,
     role: input.role,
+    level: input.level || null,
     profile_id: session.profileId,
   });
   if (error) return { error: error.message };
@@ -198,6 +199,7 @@ export type PlayerCsvRow = {
   csv_id: string;        // user-defined stable ID (e.g. "G2-1a")
   display_name: string;
   role: "captain" | "member";
+  level: string;
 };
 
 export async function importPlayersCsvAction(
@@ -229,11 +231,10 @@ export async function importPlayersCsvAction(
     if (!teamId) continue;
     const existingId = existingByCsvId.get(`${teamId}:${r.csv_id}`);
     if (existingId) {
-      // Upsert: update display_name + role
-      await sb.from("team_players").update({ display_name: r.display_name, role: r.role }).eq("id", existingId);
+      await sb.from("team_players").update({ display_name: r.display_name, role: r.role, level: r.level || null }).eq("id", existingId);
       updated++;
     } else {
-      await sb.from("team_players").insert({ team_id: teamId, csv_id: r.csv_id, display_name: r.display_name, role: r.role });
+      await sb.from("team_players").insert({ team_id: teamId, csv_id: r.csv_id, display_name: r.display_name, role: r.role, level: r.level || null });
       created++;
     }
   }
@@ -313,7 +314,7 @@ export async function importPairsCsvAction(
 
 export async function updateTeamPlayerAction(
   playerId: string,
-  display_name: string,
+  fields: { display_name?: string; level?: string | null },
   tournamentId: string
 ) {
   const session = await getSession();
@@ -323,10 +324,14 @@ export async function updateTeamPlayerAction(
   const { data: t } = await sb.from("tournaments").select("owner_id").eq("id", tournamentId).single();
   if (!t || t.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
 
-  if (!display_name.trim()) return { error: "ชื่อห้ามว่าง" };
+  if (fields.display_name !== undefined && !fields.display_name.trim()) return { error: "ชื่อห้ามว่าง" };
+
+  const update: Record<string, string | null> = {};
+  if (fields.display_name !== undefined) update.display_name = fields.display_name.trim();
+  if ("level" in fields) update.level = fields.level ?? null;
 
   const { error } = await sb
-    .from("team_players").update({ display_name: display_name.trim() }).eq("id", playerId);
+    .from("team_players").update(update).eq("id", playerId);
   if (error) return { error: error.message };
 
   revalidatePath(`/tournaments/${tournamentId}`);

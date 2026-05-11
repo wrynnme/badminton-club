@@ -75,6 +75,7 @@ export type TeamPlayer = {
   profile_id: string | null;
   display_name: string;
   role: TeamRole;
+  level: string | null;
   csv_id: string | null;
   created_at: string;
 };

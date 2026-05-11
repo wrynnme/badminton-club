@@ -19,9 +19,12 @@ const teamSchema = z.object({
   color: z.string(),
 });
 
+const LEVELS = ["S", "A", "B", "C", "D", "N"];
+
 const memberSchema = z.object({
   display_name: z.string().min(1, "ระบุชื่อสมาชิก"),
   role: z.enum(["captain", "member"]),
+  level: z.string(),
 });
 
 const COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ec4899", "#14b8a6", "#f97316"];
@@ -79,7 +82,7 @@ function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: (
 
 function AddMemberForm({ teamId, tournamentId, onDone }: { teamId: string; tournamentId: string; onDone: () => void }) {
   const form = useForm({
-    defaultValues: { display_name: "", role: "member" as "captain" | "member" },
+    defaultValues: { display_name: "", role: "member" as "captain" | "member", level: "" },
     validators: { onSubmit: memberSchema },
     onSubmit: async ({ value }) => {
       const res = await addTeamPlayerAction({ team_id: teamId, tournament_id: tournamentId, ...value });
@@ -119,6 +122,23 @@ function AddMemberForm({ teamId, tournamentId, onDone }: { teamId: string; tourn
             </div>
           </Field>
         )} />
+        <form.Field name="level" children={(field) => (
+          <Field>
+            <FieldLabel>Level</FieldLabel>
+            <div className="flex gap-1.5 flex-wrap">
+              {LEVELS.map((lv) => (
+                <Button key={lv} type="button" size="sm" className="h-7 w-8 p-0"
+                  variant={field.state.value === lv ? "default" : "outline"}
+                  onClick={() => field.handleChange(field.state.value === lv ? "" : lv)}>
+                  {lv}
+                </Button>
+              ))}
+              <Input value={!LEVELS.includes(field.state.value) ? field.state.value : ""}
+                onChange={(e) => field.handleChange(e.target.value)}
+                placeholder="อื่นๆ" className="h-7 w-16 text-xs px-2" />
+            </div>
+          </Field>
+        )} />
       </FieldGroup>
       <div className="flex gap-2">
         <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
@@ -140,13 +160,16 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
 }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(p.display_name);
+  const [level, setLevel] = useState(p.level ?? "");
   const [, startEdit] = useTransition();
 
   const save = () => startEdit(async () => {
-    const res = await updateTeamPlayerAction(p.id, name, tournamentId);
-    if (res?.error) { toast.error(res.error); setName(p.display_name); }
+    const res = await updateTeamPlayerAction(p.id, { display_name: name, level: level || null }, tournamentId);
+    if (res?.error) { toast.error(res.error); setName(p.display_name); setLevel(p.level ?? ""); }
     setEditing(false);
   });
+
+  const cancel = () => { setEditing(false); setName(p.display_name); setLevel(p.level ?? ""); };
 
   return (
     <li className="flex items-center gap-2 text-sm">
@@ -154,19 +177,22 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
       {editing ? (
         <>
           <Input value={name} onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") { setEditing(false); setName(p.display_name); } }}
-            className="h-6 text-xs flex-1 px-1.5" autoFocus />
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={save}><Check className="h-3 w-3" /></Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditing(false); setName(p.display_name); }}><X className="h-3 w-3" /></Button>
+            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
+            className="h-6 text-xs flex-1 px-1.5 min-w-0" autoFocus />
+          <Input value={level} onChange={(e) => setLevel(e.target.value)}
+            placeholder="Level" className="h-6 text-xs w-14 px-1.5" />
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={save}><Check className="h-3 w-3" /></Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={cancel}><X className="h-3 w-3" /></Button>
         </>
       ) : (
         <>
-          <span className="flex-1">{name}</span>
+          <span className="flex-1 truncate">{name}</span>
+          {p.level && <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">{p.level}</Badge>}
           {isOwner && (
             <>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground"
+              <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
                 onClick={() => setEditing(true)}><Pencil className="h-3 w-3" /></Button>
-              <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"
+              <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-destructive hover:text-destructive"
                 onClick={() => startRemove(async () => {
                   const res = await removeTeamPlayerAction(p.id, tournamentId);
                   if (res?.error) toast.error(res.error);

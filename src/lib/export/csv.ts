@@ -88,7 +88,7 @@ export function generateRosterCsv(teams: (Team & { players: TeamPlayer[] })[], p
     for (const pl of p.players) pairByPlayerId.set(pl.id, p);
   }
 
-  const headers = row("ทีม", "สี", "ชื่อผู้เล่น", "ตำแหน่ง", "คู่");
+  const headers = row("ทีม", "สี", "id_player", "ชื่อผู้เล่น", "ตำแหน่ง", "Level", "คู่");
 
   const lines: string[] = [];
   for (const t of teams) {
@@ -98,7 +98,7 @@ export function generateRosterCsv(teams: (Team & { players: TeamPlayer[] })[], p
     for (const p of sorted) {
       const pair = pairByPlayerId.get(p.id);
       const pairName = pair ? pair.name ?? pair.players.map((pl) => pl.display_name).join(" / ") : "";
-      lines.push(row(t.name, t.color ?? "", p.display_name, p.role === "captain" ? "หัวหน้า" : "สมาชิก", pairName));
+      lines.push(row(t.name, t.color ?? "", p.csv_id ?? "", p.display_name, p.role === "captain" ? "หัวหน้า" : "สมาชิก", p.level ?? "", pairName));
     }
   }
 
@@ -109,13 +109,13 @@ export function generateRosterCsv(teams: (Team & { players: TeamPlayer[] })[], p
 
 export function generatePlayerImportTemplate(): string {
   return [
-    "team,color,id_player,display_name,role",
-    "ทีมแดง,#ef4444,R1-1a,ชื่อ นามสกุล,captain",
-    "ทีมแดง,#ef4444,R1-1b,ชื่อ นามสกุล 2,member",
-    "ทีมแดง,#ef4444,R1-2a,ชื่อ นามสกุล 3,member",
-    "ทีมแดง,#ef4444,R1-2b,ชื่อ นามสกุล 4,member",
-    "ทีมเขียว,#22c55e,G1-1a,ชื่อ นามสกุล 5,member",
-    "ทีมเขียว,#22c55e,G1-1b,ชื่อ นามสกุล 6,member",
+    "team,color,id_player,display_name,role,level",
+    "ทีมแดง,#ef4444,R1-1a,ชื่อ นามสกุล,captain,A",
+    "ทีมแดง,#ef4444,R1-1b,ชื่อ นามสกุล 2,member,B",
+    "ทีมแดง,#ef4444,R1-2a,ชื่อ นามสกุล 3,member,B",
+    "ทีมแดง,#ef4444,R1-2b,ชื่อ นามสกุล 4,member,C",
+    "ทีมเขียว,#22c55e,G1-1a,ชื่อ นามสกุล 5,member,A",
+    "ทีมเขียว,#22c55e,G1-1b,ชื่อ นามสกุล 6,member,B",
   ].join("\n");
 }
 
