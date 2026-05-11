@@ -1,0 +1,46 @@
+"use client";
+
+import { useTransition } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { updateTournamentStatusAction } from "@/lib/actions/tournaments";
+import type { TournamentStatus } from "@/lib/types";
+
+const STATUSES: { value: TournamentStatus; label: string }[] = [
+  { value: "draft", label: "แบบร่าง" },
+  { value: "registering", label: "เปิดรับสมัคร" },
+  { value: "ongoing", label: "กำลังแข่ง" },
+  { value: "completed", label: "จบแล้ว" },
+];
+
+export function TournamentStatusControl({
+  tournamentId,
+  currentStatus,
+}: {
+  tournamentId: string;
+  currentStatus: TournamentStatus;
+}) {
+  const [, start] = useTransition();
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap text-sm">
+      <span className="text-xs text-muted-foreground shrink-0">สถานะ:</span>
+      {STATUSES.map((s) => (
+        <Button
+          key={s.value}
+          size="sm"
+          className="h-7 text-xs px-2.5"
+          variant={s.value === currentStatus ? "default" : "outline"}
+          onClick={() =>
+            start(async () => {
+              const res = await updateTournamentStatusAction(tournamentId, s.value);
+              if (res?.error) toast.error(res.error);
+            })
+          }
+        >
+          {s.label}
+        </Button>
+      ))}
+    </div>
+  );
+}

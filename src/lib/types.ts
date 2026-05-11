@@ -55,6 +55,7 @@ export type Tournament = {
   allow_drop_to_lower: boolean;
   seeding_method: SeedingMethod;
   team_count: number;
+  advance_count: number;
   notes: string | null;
   created_at: string;
 };
@@ -77,7 +78,7 @@ export type TeamPlayer = {
   created_at: string;
 };
 
-export type MatchRoundType = "group" | "upper_qf" | "upper_sf" | "upper_final" | "lower_qf" | "lower_sf" | "lower_final" | "grand_final";
+export type MatchRoundType = "group" | "knockout" | "upper_qf" | "upper_sf" | "upper_final" | "lower_qf" | "lower_sf" | "lower_final" | "grand_final";
 export type MatchStatus = "pending" | "in_progress" | "completed";
 
 export type Group = {
@@ -118,6 +119,8 @@ export type Match = {
   status: MatchStatus;
   court: string | null;
   scheduled_at: string | null;
+  next_match_id: string | null;
+  next_match_slot: "a" | "b" | null;
   created_at: string;
 };
 

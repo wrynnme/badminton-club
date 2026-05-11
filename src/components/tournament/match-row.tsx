@@ -30,6 +30,7 @@ export function MatchRow({
   const bId = unit === "team" ? match.team_b_id : match.pair_b_id;
   const a = aId ? competitorById.get(aId) : undefined;
   const b = bId ? competitorById.get(bId) : undefined;
+  const unknownLabel = unit === "team" ? "TBD" : "—";
 
   const winner = match.status === "completed" ? gameWinner(match.games) : null;
   const totals = match.status === "completed" ? sumGameScores(match.games) : null;
@@ -41,7 +42,7 @@ export function MatchRow({
       <div className="flex items-center gap-2 text-sm">
         <div className={`flex-1 text-right ${winner === "a" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
           {a?.color && <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: a.color }} />}
-          <span>{a?.name ?? "—"}</span>
+          <span>{a?.name ?? unknownLabel}</span>
           {a?.subtitle && <div className="text-[11px] text-muted-foreground font-normal">{a.subtitle}</div>}
         </div>
 
@@ -56,7 +57,7 @@ export function MatchRow({
 
         <div className={`flex-1 ${winner === "b" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
           {b?.color && <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: b.color }} />}
-          <span>{b?.name ?? "—"}</span>
+          <span>{b?.name ?? unknownLabel}</span>
           {b?.subtitle && <div className="text-[11px] text-muted-foreground font-normal">{b.subtitle}</div>}
         </div>
 

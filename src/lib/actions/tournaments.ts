@@ -30,6 +30,7 @@ const TournamentSchema = z.object({
   has_lower_bracket: z.boolean().default(false),
   allow_drop_to_lower: z.boolean().default(false),
   seeding_method: z.enum(["random", "by_group_score"]).default("random"),
+  advance_count: z.number().int().min(1).max(8).default(2),
   team_count: z.number().int().min(2).max(64),
   notes: z.string().optional(),
 });

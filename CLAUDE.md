@@ -28,26 +28,27 @@
 - `SortablePlayerList` uses `@dnd-kit` with `activationConstraint: { distance: 8 }` for mobile compat
 - Theme stored in `theme` cookie — `layout.tsx` reads it server-side to add `dark` class on `<html>` (no next-themes)
 
-## Tournament System (Phase 0–2 done)
+## Tournament System (Phase 0–3 done)
 
 ### Architecture
 - `src/lib/tournament/competitor.ts` — `Competitor` type abstracts over `Team` and `Pair`; `buildCompetitorMap`, `teamToCompetitor`, `pairToCompetitor`
 - `src/lib/tournament/scheduling.ts` — `balancedRoundRobin(sizeA, sizeB)` rotates sideB each round; `generateAllPairMatches(teamPairs)` produces every inter-team pair matchup
 - `src/lib/tournament/scoring.ts` — `computeStandings(matches, unit, ids)` returns `StandingRow[]`; `gameWinner(games)`, `leaguePoints(wins, draws)`; Win=3, Draw=1, Loss=0
+- `src/lib/tournament/bracket.ts` — `buildBracket(entries)` generates single-elimination bracket with pre-assigned UUIDs + `next_match_id` links; `nextPowerOf2(n)`, `roundLabel(round, maxRound, bracketSize)`
 
 ### Schema tables
-- `tournaments` — id, owner_id, name, mode (`sports_day`|`competition`), status (`draft`|`registering`|`ongoing`|`completed`), format (`group_only`|`group_knockout`|`knockout_only`), match_unit (`team`|`pair`), has_lower_bracket, allow_drop_to_lower (default false), seeding_method (`random`|`by_group_score`), team_count, scoring_rules jsonb
+- `tournaments` — id, owner_id, name, mode (`sports_day`|`competition`), status, format, match_unit (`team`|`pair`), has_lower_bracket, allow_drop_to_lower (default false), seeding_method (`random`|`by_group_score`), advance_count (default 2), team_count, scoring_rules jsonb
 - `teams` — id, tournament_id, name, color, seed
 - `team_players` — id, team_id, profile_id?, display_name, role (`captain`|`member`)
 - `groups` — id, tournament_id, name
 - `group_teams` — group_id, team_id, position
 - `pairs` — id, team_id, name (optional)
 - `pair_players` — pair_id, player_id; UNIQUE(player_id) — 1 person = 1 pair
-- `matches` — id, tournament_id, round_type, round_number, team_a_id, team_b_id, pair_a_id, pair_b_id, games jsonb (`[{a,b}]`), winner_id, status (`pending`|`in_progress`|`completed`), court?, scheduled_at?
+- `matches` — id, tournament_id, round_type (`group`|`knockout`), round_number, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id, games jsonb (`[{a,b}]`), winner_id, status, next_match_id (self-ref), next_match_slot (`a`|`b`), court?, scheduled_at?
 
 ### Server actions
 - `src/lib/actions/tournaments.ts` — `createTournamentAction` (includes `match_unit`)
-- `src/lib/actions/matches.ts` — `generateGroupsAction`, `generateGroupMatchesAction`, `generatePairMatchesAction`, `recordMatchScoreAction({ matchId, tournamentId, games })`, `resetMatchScoreAction`
+- `src/lib/actions/matches.ts` — `generateGroupsAction`, `generateGroupMatchesAction`, `generatePairMatchesAction`, `generateKnockoutAction`, `recordMatchScoreAction({ matchId, tournamentId, games })`, `resetMatchScoreAction`
 - `src/lib/actions/pairs.ts` — `createPairAction({ teamId, playerIds: [2], name? })`, `deletePairAction`
 
 ### Components
@@ -55,6 +56,7 @@
 - `group-stage.tsx` — gen groups (configurable count), gen matches, `GroupCard` per group with `StandingsTable` + `MatchRow`
 - `pair-stage.tsx` — `PairManager` grid (per team) + generate pair matches + dual standings (team aggregate + per-pair)
 - `pair-manager.tsx` — toggle-select 2 players to create pair; delete pairs
+- `knockout-stage.tsx` — gen bracket (advance_count per group), round-by-round match list, BYE auto-advance, champion banner
 - `match-row.tsx` — shows competitor names + game score (e.g. "2:0") + point totals; reset (↺) or "กรอกผล"
 - `score-form.tsx` — games array UI (add/remove rows of score A : score B)
 - `standings-table.tsx` — P/W/D/L/+−/Pts; Trophy icon for leader; shows pair subtitle (player names)
@@ -74,11 +76,15 @@
 - Balanced round-robin rotates sideB so no player plays consecutive matches repeatedly
 - `generatePairMatchesAction` deletes existing pair matches before regenerating
 
-### Knockout bracket logic (planned Phase 3)
-- Upper pairing: 1st-groupN vs 2nd-groupN+1 (cross-group)
-- Lower pairing: 3rd-groupN vs 4th-groupN+1
-- Bracket size: pad to power of 2 with BYE
-- Tie-breaker: head-to-head → point diff → coin flip
+### Knockout bracket logic (Phase 3 done)
+- Collect top `advance_count` from each group (sort by pts → diff → pf)
+- Seeding: random shuffle OR by group score (rank 1 all groups first, rank 2 all groups next…)
+- Pad to power of 2 with BYE — BYE matches auto-complete and advance winner
+- Standard bracket: seed 1 can only meet seed 2 in the final (recursive bracketSlots)
+- `next_match_id` + `next_match_slot` on each match — winner auto-filled on score entry
+- Reset blocked if next match already completed
+- Champion banner shown when final match is completed
+- Lower bracket → Phase 4
 
 ## MCP servers
 - **supabase**: apply migrations, run SQL, list tables — use `apply_migration` for all DDL

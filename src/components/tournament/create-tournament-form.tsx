@@ -20,6 +20,7 @@ const formSchema = z.object({
   has_lower_bracket: z.boolean(),
   allow_drop_to_lower: z.boolean(),
   seeding_method: z.enum(["random", "by_group_score"]),
+  advance_count: z.number().int().min(1).max(8),
   team_count: z.number().int().min(2, "อย่างน้อย 2 ทีม").max(64),
   notes: z.string(),
 });
@@ -38,6 +39,7 @@ export function CreateTournamentForm() {
       has_lower_bracket: false,
       allow_drop_to_lower: false,
       seeding_method: "random" as SeedingMethod,
+      advance_count: 2,
       team_count: 4,
       notes: "",
     },
@@ -151,6 +153,30 @@ export function CreateTournamentForm() {
             </Field>
           )}
         </form.Field>
+
+        {/* Advance count — shown for group_knockout */}
+        <form.Subscribe selector={(s) => s.values.format}>
+          {(fmt) => fmt === "group_knockout" && (
+            <form.Field name="advance_count">
+              {(field) => (
+                <Field>
+                  <FieldLabel htmlFor={field.name}>ทีมผ่านรอบต่อกลุ่ม</FieldLabel>
+                  <div className="flex gap-2">
+                    {[1, 2, 3, 4].map((n) => (
+                      <Button key={n} type="button" size="sm"
+                        variant={field.state.value === n ? "default" : "outline"}
+                        className="h-8 w-8 p-0"
+                        onClick={() => field.handleChange(n)}>
+                        {n}
+                      </Button>
+                    ))}
+                  </div>
+                  <FieldDescription>จำนวนทีมที่เข้ารอบ knockout จากแต่ละกลุ่ม</FieldDescription>
+                </Field>
+              )}
+            </form.Field>
+          )}
+        </form.Subscribe>
 
         {/* Lower bracket options */}
         <form.Subscribe selector={(s) => s.values.format}>

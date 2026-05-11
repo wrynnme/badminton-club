@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { th } from "date-fns/locale";
-import { Trophy, MapPin, CalendarDays, Users, Swords } from "lucide-react";
+import { Trophy, MapPin, CalendarDays, Users, Swords, GitBranch } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,8 @@ import { Separator } from "@/components/ui/separator";
 import { TeamManager } from "@/components/tournament/team-manager";
 import { GroupStage } from "@/components/tournament/group-stage";
 import { PairStage } from "@/components/tournament/pair-stage";
+import { KnockoutStage } from "@/components/tournament/knockout-stage";
+import { TournamentStatusControl } from "@/components/tournament/tournament-status-control";
 import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -45,10 +47,15 @@ export default async function TournamentDetailPage({
   if (!tournament) notFound();
   const t = tournament as Tournament;
 
-  const [teamsRes, groupsRes, pairsRes, matchesRes] = await Promise.all([
-    sb.from("teams").select("*, players:team_players(*)").eq("tournament_id", id).order("created_at"),
+  // Fetch teams first so we can filter pairs by team_id
+  const teamsRes = await sb.from("teams").select("*, players:team_players(*)").eq("tournament_id", id).order("created_at");
+  const teamIdList = (teamsRes.data ?? []).map((t) => t.id);
+
+  const [groupsRes, pairsRes, matchesRes] = await Promise.all([
     sb.from("groups").select("*, group_teams(*, team:teams(*)), matches(*)").eq("tournament_id", id).order("name"),
-    sb.from("pairs").select("*, pair_players(*, team_players(*))").order("created_at"),
+    teamIdList.length
+      ? sb.from("pairs").select("*, pair_players(*, team_players(*))").in("team_id", teamIdList).order("created_at")
+      : Promise.resolve({ data: [] }),
     sb.from("matches").select("*").eq("tournament_id", id).order("match_number"),
   ]);
 
@@ -56,8 +63,6 @@ export default async function TournamentDetailPage({
   const groups: GroupWithTeams[] = (groupsRes.data ?? []) as GroupWithTeams[];
   const allMatches: Match[] = (matchesRes.data ?? []) as Match[];
 
-  // Filter pairs to those of this tournament's teams
-  const teamIds = new Set(teams.map((tt) => tt.id));
   type RawPair = {
     id: string;
     team_id: string;
@@ -66,7 +71,6 @@ export default async function TournamentDetailPage({
     pair_players: { pair_id: string; player_id: string; team_players: unknown }[];
   };
   const pairs: PairWithPlayers[] = ((pairsRes.data ?? []) as RawPair[])
-    .filter((p) => teamIds.has(p.team_id))
     .map((p) => ({
       id: p.id,
       team_id: p.team_id,
@@ -83,6 +87,9 @@ export default async function TournamentDetailPage({
   const s = statusLabel[t.status];
   const showGroupStage = t.match_unit === "team" && (t.format === "group_only" || t.format === "group_knockout");
   const showPairStage = t.match_unit === "pair";
+  // Pair mode + knockout is Phase 4 — hide for now
+  const showKnockoutStage = (t.format === "group_knockout" || t.format === "knockout_only") && t.match_unit === "team";
+  const knockoutMatches = allMatches.filter((m) => m.round_type === "knockout");
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -127,8 +134,18 @@ export default async function TournamentDetailPage({
             <Swords className="h-4 w-4 text-muted-foreground" />
             <span>{t.match_unit === "pair" ? "คู่ vs คู่" : "ทีม vs ทีม"}</span>
           </div>
+          {t.format === "group_knockout" && (
+            <div className="flex items-center gap-2">
+              <GitBranch className="h-4 w-4 text-muted-foreground" />
+              <span>ผ่านรอบ {t.advance_count ?? 2} ทีม/กลุ่ม</span>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {isOwner && (
+        <TournamentStatusControl tournamentId={t.id} currentStatus={t.status} />
+      )}
 
       {t.notes && (
         <Card>
@@ -160,6 +177,19 @@ export default async function TournamentDetailPage({
             teams={teams}
             pairs={pairs}
             matches={allMatches.filter((m) => m.pair_a_id)}
+            isOwner={isOwner}
+          />
+        </>
+      )}
+
+      {showKnockoutStage && (
+        <>
+          <Separator />
+          <KnockoutStage
+            tournamentId={t.id}
+            matches={knockoutMatches}
+            teams={flatTeams}
+            advanceCount={t.advance_count ?? 2}
             isOwner={isOwner}
           />
         </>
