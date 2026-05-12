@@ -8,6 +8,11 @@
 - Auth: LINE Login + Guest mode (HMAC-signed cookie, no Supabase Auth)
 - Font: Google Font Anuphan (`thai` + `latin` subsets)
 
+## After completing any task
+1. Update `spec.md` — current state, decisions made, what's next
+2. Update data contracts if any interface changed
+3. Never claim "done" without updating `spec.md` first
+
 ## กฏการพัฒนา (สำคัญ)
 
 - **Forms**: ใช้ TanStack Form ทุกอัน — `useForm` + `form.Field` + `form.Subscribe`
