@@ -77,12 +77,13 @@ function parsePlayerCsv(text: string) {
 function parsePairCsv(text: string) {
   return parseFile<PairCsvRow>(
     text,
-    ["id_player_1", "id_player_2"],
+    ["pair_code", "id_player_1", "id_player_2"],
     (h, v) => {
+      const pair_code = idx(h, "pair_code", v);
       const id_player_1 = idx(h, "id_player_1", v);
       const id_player_2 = idx(h, "id_player_2", v);
-      if (!id_player_1 || !id_player_2) return null;
-      return { pair_code: idx(h, "pair_code", v), id_player_1, id_player_2, pair_name: idx(h, "pair_name", v), pair_level: idx(h, "pair_level", v) };
+      if (!pair_code || !id_player_1 || !id_player_2) return null;
+      return { pair_code, id_player_1, id_player_2, pair_name: idx(h, "pair_name", v), pair_level: idx(h, "pair_level", v) };
     }
   );
 }
@@ -289,7 +290,7 @@ export function CsvImportDialog({
               <div className="flex items-center justify-between">
                 <div className="rounded-md border bg-muted/30 p-2.5 text-xs flex-1 space-y-0.5">
                   <p className="font-medium text-muted-foreground">Columns:</p>
-                  <p><code className="text-foreground">pair_code</code> · <code className="text-foreground font-bold">id_player_1</code> * · <code className="text-foreground font-bold">id_player_2</code> * · <code className="text-foreground">pair_name</code> · <code className="text-foreground">pair_level</code></p>
+                  <p><code className="text-foreground font-bold">pair_code</code> * · <code className="text-foreground font-bold">id_player_1</code> * · <code className="text-foreground font-bold">id_player_2</code> * · <code className="text-foreground">pair_name</code> · <code className="text-foreground">pair_level</code></p>
                   <p className="text-muted-foreground">1 แถว = 1 คู่ · ทั้งสองต้องอยู่ทีมเดียวกัน</p>
                 </div>
                 <Button size="sm" variant="ghost" className="ml-2 h-7 text-xs gap-1 shrink-0" onClick={() => download(PAIR_TEMPLATE, "pairs_template.csv")}>
