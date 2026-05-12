@@ -19,6 +19,7 @@ function CreatePairForm({ teamId, availablePlayers, onDone }: {
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [name, setName] = useState("");
+  const [pairCode, setPairCode] = useState("");
   const [pairLevel, setPairLevel] = useState("");
   const [pending, setPending] = useState(false);
 
@@ -33,15 +34,17 @@ function CreatePairForm({ teamId, availablePlayers, onDone }: {
   const submit = async () => {
     if (selected.length !== 2) { toast.error("เลือก 2 คน"); return; }
     setPending(true);
-    const res = await createPairAction({ teamId, playerIds: [selected[0], selected[1]], name: name || undefined, pairLevel: pairLevel || undefined });
+    const res = await createPairAction({ teamId, playerIds: [selected[0], selected[1]], name: name || undefined, pairLevel: pairLevel || undefined, pairCode: pairCode || undefined });
     setPending(false);
     if (res?.error) toast.error(res.error);
-    else { toast.success("จับคู่แล้ว"); setSelected([]); setName(""); setPairLevel(""); onDone(); }
+    else { toast.success("จับคู่แล้ว"); setSelected([]); setName(""); setPairCode(""); setPairLevel(""); onDone(); }
   };
 
   return (
     <div className="space-y-3 pt-3 border-t">
       <div className="flex gap-2">
+        <Input value={pairCode} onChange={(e) => setPairCode(e.target.value)}
+          placeholder="รหัสคู่ (pair_code)" className="text-sm w-28 font-mono" />
         <Input value={name} onChange={(e) => setName(e.target.value)}
           placeholder="ชื่อคู่ (optional)" className="text-sm flex-1" />
         <div className="flex gap-1 shrink-0">
@@ -98,6 +101,7 @@ function PairItem({ pair, isOwner, color }: {
       {color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
+          {pair.pair_code && <span className="text-xs text-muted-foreground font-mono shrink-0">{pair.pair_code}</span>}
           {pair.display_pair_name && <span className="font-medium truncate">{pair.display_pair_name}</span>}
           {pair.pair_level && <Badge className="text-[10px] px-1.5 py-0 shrink-0">{pair.pair_level}</Badge>}
         </div>

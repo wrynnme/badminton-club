@@ -139,6 +139,7 @@ export type Pair = {
   player_id_2: string | null;
   display_pair_name: string | null;
   pair_level: string | null;
+  pair_code: string | null;
   created_at: string;
 };
 

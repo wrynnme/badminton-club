@@ -246,6 +246,7 @@ export async function importPlayersCsvAction(
 // ── Step 2: Import pairs ──────────────────────────────────────────────────────
 
 export type PairCsvRow = {
+  pair_code: string;    // stable pair ID for upsert (optional)
   id_player_1: string;  // csv_id of first player
   id_player_2: string;  // csv_id of second player
   pair_name: string;    // display_pair_name (optional)
@@ -255,7 +256,7 @@ export type PairCsvRow = {
 export async function importPairsCsvAction(
   tournamentId: string,
   rows: PairCsvRow[]
-): Promise<{ ok: true; pairs: number; skipped: number } | { error: string }> {
+): Promise<{ ok: true; pairs: number; updated: number; skipped: number } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
@@ -280,34 +281,46 @@ export async function importPairsCsvAction(
     }
   }
 
-  // Existing pairs to prevent duplicates
+  // Existing pairs indexed by pair_code for upsert
   const allTeamIds = [...teamIdSet];
-  const { data: existingPairs } = await sb.from("pairs").select("display_pair_name, team_id").in("team_id", allTeamIds);
-  const existingPairSet = new Set(existingPairs?.map((p) => `${p.team_id}:${p.display_pair_name}`) ?? []);
+  const { data: existingPairs } = await sb.from("pairs").select("id, pair_code, player_id_1, player_id_2, team_id").in("team_id", allTeamIds);
+  const existingByPairCode = new Map(existingPairs?.filter((p) => p.pair_code).map((p) => [p.pair_code!, p.id]) ?? []);
+  const existingPlayerPairSet = new Set(existingPairs?.map((p) => `${p.player_id_1}:${p.player_id_2}`) ?? []);
 
-  // Each row = 1 pair (id_player_1 + id_player_2)
-  let pairsCreated = 0;
-  let skipped = 0;
+  // Each row = 1 pair
+  let pairsCreated = 0, pairsUpdated = 0, skipped = 0;
   for (const r of rows) {
     if (!r.id_player_1 || !r.id_player_2) { skipped++; continue; }
     const p1 = playerByCsvId.get(r.id_player_1);
     const p2 = playerByCsvId.get(r.id_player_2);
     if (!p1 || !p2) { skipped++; continue; }
-    if (p1.teamId !== p2.teamId) { skipped++; continue; } // must be same team
-    const key = `${p1.teamId}:${r.pair_name}`;
-    if (existingPairSet.has(key)) { skipped++; continue; }
-    const { error } = await sb.from("pairs").insert({
-      team_id: p1.teamId,
+    if (p1.teamId !== p2.teamId) { skipped++; continue; }
+
+    const payload = {
       player_id_1: p1.id,
       player_id_2: p2.id,
       display_pair_name: r.pair_name || null,
       pair_level: r.pair_level || null,
-    });
-    if (!error) pairsCreated++;
+      pair_code: r.pair_code || null,
+    };
+
+    // Upsert by pair_code if provided and exists
+    const existingId = r.pair_code ? existingByPairCode.get(r.pair_code) : undefined;
+    if (existingId) {
+      await sb.from("pairs").update(payload).eq("id", existingId);
+      pairsUpdated++;
+    } else {
+      // Skip if exact player pair already exists (without pair_code)
+      const playerKey = `${p1.id}:${p2.id}`;
+      const playerKeyRev = `${p2.id}:${p1.id}`;
+      if (existingPlayerPairSet.has(playerKey) || existingPlayerPairSet.has(playerKeyRev)) { skipped++; continue; }
+      await sb.from("pairs").insert({ team_id: p1.teamId, ...payload });
+      pairsCreated++;
+    }
   }
 
   revalidatePath(`/tournaments/${tournamentId}`);
-  return { ok: true, pairs: pairsCreated, skipped };
+  return { ok: true, pairs: pairsCreated, updated: pairsUpdated, skipped };
 }
 
 export async function updateTeamPlayerAction(

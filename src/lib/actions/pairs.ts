@@ -30,6 +30,7 @@ export async function createPairAction(input: {
   playerIds: [string, string];
   name?: string;
   pairLevel?: string;
+  pairCode?: string;
 }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -61,6 +62,7 @@ export async function createPairAction(input: {
     player_id_2: input.playerIds[1],
     display_pair_name: input.name || null,
     pair_level: input.pairLevel || null,
+    pair_code: input.pairCode || null,
   });
   if (error) return { error: error.message };
 
