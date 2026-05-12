@@ -123,15 +123,24 @@ export function generatePlayerImportTemplate(): string {
 // Pre-filled pair template from existing players (csv_id already set)
 export function generatePairImportTemplate(teams: (Team & { players: TeamPlayer[] })[]): string {
   const lines = ["pair_code,id_player_1,id_player_2,pair_name,pair_level"];
+
+  // Derive team prefix from player csv_id (e.g. "R1-1a" → "R1")
+  function teamPrefix(csvId: string | null | undefined, fallback: string): string {
+    if (!csvId) return fallback;
+    const parts = csvId.split("-");
+    return parts.length > 1 ? parts.slice(0, -1).join("-") : csvId;
+  }
+
   for (const t of teams) {
     const sorted = [...t.players].sort((a, b) =>
       a.role === "captain" ? -1 : b.role === "captain" ? 1 : 0
     );
-    // Pair players as consecutive rows: (0,1), (2,3), ...
+    const prefix = teamPrefix(sorted[0]?.csv_id, t.name.slice(0, 3));
     for (let i = 0; i + 1 < sorted.length; i += 2) {
       const p1 = sorted[i];
       const p2 = sorted[i + 1];
-      lines.push(row("", p1.csv_id ?? p1.id.slice(0, 8), p2.csv_id ?? p2.id.slice(0, 8), "", ""));
+      const pairCode = `${prefix}-P${Math.floor(i / 2) + 1}`;
+      lines.push(row(pairCode, p1.csv_id ?? p1.id.slice(0, 8), p2.csv_id ?? p2.id.slice(0, 8), "", ""));
     }
     if (sorted.length > 0) lines.push("");
   }
