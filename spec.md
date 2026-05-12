@@ -121,7 +121,13 @@ Free numeric (any number, decimal supported e.g. `3.5`) — `parseFloat`, no fix
   - `BracketMatchCard` — competitors + score + winner highlight
   - "ดูสาย" button in knockout-stage links to bracket page (no auth required)
 
+- Phase 6 — Realtime + public share link
+  - `tournaments.share_token` (UUID, unique nullable)
+  - `generateShareTokenAction` / `revokeShareTokenAction`
+  - `share-controls.tsx` — owner-only generate/copy/revoke
+  - `/t/[token]` — public read-only page, fetches by share_token, no auth
+  - `TournamentLiveWrapper` — Supabase Realtime `postgres_changes` on matches → `router.refresh()`; green LIVE badge
+
 ## Todo
 
-- Phase 6 — Realtime + public share link (`/t/[token]`)
 - Phase 7 — LINE notification + PDF export
