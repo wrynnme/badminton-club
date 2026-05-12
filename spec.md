@@ -29,9 +29,9 @@
 ### Group Stage Division
 
 - `matches.division` column: `upper | lower | null`
-- `generatePairMatchesAction` splits pairs by `pair_level`:
-  - B/A/S (levelToNum > 2) → upper
-  - C/D/N or unset → lower
+- `tournaments.pair_division_threshold` — configurable per tournament (numeric, nullable)
+  - `null` = no division; all pairs play together
+  - `pair_level > threshold` → upper; else → lower
 - Cross-division matches only in knockout
 
 ### CSV Import (2-step)
@@ -65,7 +65,7 @@ team, pair_code*, id_player_1*, id_player_2*, pair_name, pair_level
 
 ### Level Mapping (shared across player + pair)
 
-`5, 4, 3, 2, 1, 0` — free-text also supported (numeric string → parseFloat)
+Free numeric (any number, decimal supported e.g. `3.5`) — `parseFloat`, no fixed scale or letter mapping
 
 ---
 
