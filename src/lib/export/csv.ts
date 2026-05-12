@@ -122,7 +122,7 @@ export function generatePlayerImportTemplate(): string {
 
 // Pre-filled pair template from existing players (csv_id already set)
 export function generatePairImportTemplate(teams: (Team & { players: TeamPlayer[] })[]): string {
-  const lines = ["pair_code,id_player_1,id_player_2,pair_name,pair_level"];
+  const lines = ["team,pair_code,id_player_1,id_player_2,pair_name,pair_level"];
 
   // Derive team prefix from player csv_id (e.g. "R1-1a" → "R1")
   function teamPrefix(csvId: string | null | undefined, fallback: string): string {
@@ -140,7 +140,7 @@ export function generatePairImportTemplate(teams: (Team & { players: TeamPlayer[
       const p1 = sorted[i];
       const p2 = sorted[i + 1];
       const pairCode = `${prefix}-P${Math.floor(i / 2) + 1}`;
-      lines.push(row(pairCode, p1.csv_id ?? p1.id.slice(0, 8), p2.csv_id ?? p2.id.slice(0, 8), "", ""));
+      lines.push(row(t.name, pairCode, p1.csv_id ?? p1.id.slice(0, 8), p2.csv_id ?? p2.id.slice(0, 8), "", ""));
     }
     if (sorted.length > 0) lines.push("");
   }

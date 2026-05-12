@@ -83,7 +83,7 @@ function parsePairCsv(text: string) {
       const id_player_1 = idx(h, "id_player_1", v);
       const id_player_2 = idx(h, "id_player_2", v);
       if (!pair_code || !id_player_1 || !id_player_2) return null;
-      return { pair_code, id_player_1, id_player_2, pair_name: idx(h, "pair_name", v), pair_level: idx(h, "pair_level", v) };
+      return { team: idx(h, "team", v), pair_code, id_player_1, id_player_2, pair_name: idx(h, "pair_name", v), pair_level: idx(h, "pair_level", v) };
     }
   );
 }
@@ -109,10 +109,10 @@ const PLAYER_TEMPLATE = [
 ].join("\n");
 
 const PAIR_TEMPLATE = [
-  "pair_code,id_player_1,id_player_2,pair_name,pair_level",
-  "R1-P1,R1-1a,R1-1b,คู่ที่ 1,A",
-  "R1-P2,R1-2a,R1-2b,คู่ที่ 2,B",
-  "G1-P1,G1-1a,G1-1b,G1-คู่ 1,B",
+  "team,pair_code,id_player_1,id_player_2,pair_name,pair_level",
+  "ทีมแดง,R1-P1,R1-1a,R1-1b,คู่ที่ 1,A",
+  "ทีมแดง,R1-P2,R1-2a,R1-2b,คู่ที่ 2,B",
+  "ทีมเขียว,G1-P1,G1-1a,G1-1b,G1-คู่ 1,B",
 ].join("\n");
 
 // ── Subcomponent: file picker with preview ────────────────────────────────────
@@ -290,7 +290,7 @@ export function CsvImportDialog({
               <div className="flex items-center justify-between">
                 <div className="rounded-md border bg-muted/30 p-2.5 text-xs flex-1 space-y-0.5">
                   <p className="font-medium text-muted-foreground">Columns:</p>
-                  <p><code className="text-foreground font-bold">pair_code</code> * · <code className="text-foreground font-bold">id_player_1</code> * · <code className="text-foreground font-bold">id_player_2</code> * · <code className="text-foreground">pair_name</code> · <code className="text-foreground">pair_level</code></p>
+                  <p><code className="text-foreground">team</code> · <code className="text-foreground font-bold">pair_code</code> * · <code className="text-foreground font-bold">id_player_1</code> * · <code className="text-foreground font-bold">id_player_2</code> * · <code className="text-foreground">pair_name</code> · <code className="text-foreground">pair_level</code></p>
                   <p className="text-muted-foreground">1 แถว = 1 คู่ · ทั้งสองต้องอยู่ทีมเดียวกัน</p>
                 </div>
                 <Button size="sm" variant="ghost" className="ml-2 h-7 text-xs gap-1 shrink-0" onClick={() => download(PAIR_TEMPLATE, "pairs_template.csv")}>
@@ -303,10 +303,10 @@ export function CsvImportDialog({
                 onParsed={setPairRows}
                 parseRow={parsePairCsv}
                 previewCols={[
+                  { key: "team", label: "ทีม" },
                   { key: "pair_code", label: "pair_code" },
                   { key: "id_player_1", label: "id_player_1" },
                   { key: "id_player_2", label: "id_player_2" },
-                  { key: "pair_name", label: "pair_name" },
                   { key: "pair_level", label: "Level" },
                 ]}
               />

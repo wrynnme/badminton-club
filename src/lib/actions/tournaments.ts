@@ -246,7 +246,8 @@ export async function importPlayersCsvAction(
 // ── Step 2: Import pairs ──────────────────────────────────────────────────────
 
 export type PairCsvRow = {
-  pair_code: string;    // stable pair ID for upsert (optional)
+  team: string;         // team name (informational, for readability)
+  pair_code: string;    // stable pair ID for upsert
   id_player_1: string;  // csv_id of first player
   id_player_2: string;  // csv_id of second player
   pair_name: string;    // display_pair_name (optional)
