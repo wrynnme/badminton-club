@@ -350,3 +350,36 @@ export async function updateTeamPlayerAction(
   revalidatePath(`/tournaments/${tournamentId}`);
   return { ok: true };
 }
+
+// ============ SHARE TOKEN ============
+
+export async function generateShareTokenAction(tournamentId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  const { data: t } = await sb.from("tournaments").select("owner_id").eq("id", tournamentId).single();
+  if (!t || t.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
+
+  const token = crypto.randomUUID();
+  const { error } = await sb.from("tournaments").update({ share_token: token }).eq("id", tournamentId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  return { ok: true, token };
+}
+
+export async function revokeShareTokenAction(tournamentId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  const { data: t } = await sb.from("tournaments").select("owner_id").eq("id", tournamentId).single();
+  if (!t || t.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
+
+  const { error } = await sb.from("tournaments").update({ share_token: null }).eq("id", tournamentId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  return { ok: true };
+}

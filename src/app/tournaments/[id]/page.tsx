@@ -13,6 +13,8 @@ import { PairStage } from "@/components/tournament/pair-stage";
 import { KnockoutStage } from "@/components/tournament/knockout-stage";
 import { TournamentStatusControl } from "@/components/tournament/tournament-status-control";
 import { ExportButtons } from "@/components/tournament/export-buttons";
+import { ShareControls } from "@/components/tournament/share-controls";
+import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -74,7 +76,10 @@ export default async function TournamentDetailPage({
   const showKnockoutStage = t.format === "group_knockout" || t.format === "knockout_only";
   const knockoutMatches = allMatches.filter((m) => m.round_type === "knockout");
 
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
+
   return (
+    <TournamentLiveWrapper tournamentId={t.id}>
     <div className="space-y-6 max-w-3xl mx-auto">
       <div>
         <div className="flex items-start justify-between gap-2">
@@ -127,7 +132,10 @@ export default async function TournamentDetailPage({
       </Card>
 
       {isOwner && (
-        <TournamentStatusControl tournamentId={t.id} currentStatus={t.status} />
+        <>
+          <TournamentStatusControl tournamentId={t.id} currentStatus={t.status} />
+          <ShareControls tournamentId={t.id} shareToken={t.share_token} appUrl={appUrl} />
+        </>
       )}
 
       <ExportButtons
@@ -188,5 +196,6 @@ export default async function TournamentDetailPage({
         </>
       )}
     </div>
+    </TournamentLiveWrapper>
   );
 }
