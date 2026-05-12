@@ -113,8 +113,15 @@ Free numeric (any number, decimal supported e.g. `3.5`) — `parseFloat`, no fix
 
 ---
 
+## Done (continued)
+
+- Phase 5 — Bracket visualization at `/tournaments/[id]/bracket`
+  - `buildVisualBracket(matches, section)` → `VisualRound[]` (slot height = `CARD_H * 2^roundIdx`)
+  - `BracketView` — flex columns + CSS horizontal/vertical connector lines, horizontal scroll
+  - `BracketMatchCard` — competitors + score + winner highlight
+  - "ดูสาย" button in knockout-stage links to bracket page (no auth required)
+
 ## Todo
 
-- Phase 5 — Bracket visualization (`/tournaments/[id]/bracket`)
 - Phase 6 — Realtime + public share link (`/t/[token]`)
 - Phase 7 — LINE notification + PDF export
