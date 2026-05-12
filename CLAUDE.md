@@ -1,14 +1,17 @@
 @AGENTS.md
+@spec.md
 
 # Project: ก๊วนแบด (Badminton Club)
 
 ## Stack
+
 - Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1
 - Supabase (Postgres + RLS) — MCP connected via `.mcp.json`
 - Auth: LINE Login + Guest mode (HMAC-signed cookie, no Supabase Auth)
 - Font: Google Font Anuphan (`thai` + `latin` subsets)
 
 ## After completing any task
+
 1. Update `spec.md` — current state, decisions made, what's next
 2. Update data contracts if any interface changed
 3. Never claim "done" without updating `spec.md` first
@@ -22,6 +25,7 @@
 - **DB writes**: ทำผ่าน server actions ด้วย service role key (bypass RLS)
 
 ## Key conventions
+
 - Supabase key env var is `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (not ANON_KEY)
 - DB column for club cost is `total_cost` (not `cost_per_person`) — set by owner after game ends
 - `club_players` has `position` column for drag-and-drop ordering
@@ -36,6 +40,7 @@
 ## Tournament System (Phase 0–4 done)
 
 ### Architecture
+
 - `src/lib/tournament/competitor.ts` — `Competitor` type abstracts over `Team` and `Pair`; `buildCompetitorMap`, `teamToCompetitor`, `pairToCompetitor`
 - `src/lib/tournament/scheduling.ts` — `balancedRoundRobin(sizeA, sizeB)` rotates sideB each round; `generateAllPairMatches(teamPairs)` produces every inter-team pair matchup
 - `src/lib/tournament/scoring.ts` — `computeStandings(matches, unit, ids)` returns `StandingRow[]`; `gameWinner(games)`, `leaguePoints(wins, draws)`; Win=3, Draw=1, Loss=0
@@ -43,6 +48,7 @@
 - `src/lib/export/csv.ts` — `generateMatchesCsv`, `generateRosterCsv`, `generatePlayerImportTemplate`, `generatePairImportTemplate`, `downloadCsv`
 
 ### Schema tables
+
 - `tournaments` — id, owner_id, name, mode (`sports_day`|`competition`), status, format, match_unit (`team`|`pair`), has_lower_bracket, allow_drop_to_lower (default false), seeding_method (`random`|`by_group_score`), advance_count (default 2), team_count, scoring_rules jsonb
 - `teams` — id, tournament_id, name, color, seed
 - `team_players` — id, team_id, profile_id?, display_name, role (`captain`|`member`), level text, csv_id text, created_at
@@ -52,11 +58,13 @@
 - `matches` — id, tournament_id, round_type (`group`|`knockout`), round_number, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id, games jsonb (`[{a,b}]`), winner_id, status, next_match_id (self-ref), next_match_slot (`a`|`b`), loser_next_match_id (self-ref), loser_next_match_slot (`a`|`b`), bracket (`upper`|`lower`|`grand_final`), court?, scheduled_at?
 
 ### Server actions
+
 - `src/lib/actions/tournaments.ts` — `createTournamentAction`, `updateTournamentStatusAction`, `addTeamPlayerAction` (incl. level), `updateTeamPlayerAction({display_name?, level?})`, `importPlayersCsvAction(tournamentId, PlayerCsvRow[])`, `importPairsCsvAction(tournamentId, PairCsvRow[])`
 - `src/lib/actions/matches.ts` — `generateGroupsAction`, `generateGroupMatchesAction`, `generatePairMatchesAction`, `generateKnockoutAction`, `recordMatchScoreAction({ matchId, tournamentId, games })`, `resetMatchScoreAction`
 - `src/lib/actions/pairs.ts` — `createPairAction({ teamId, playerIds: [id1,id2], name? })` inserts `player_id_1`/`player_id_2` directly; checks duplicates via OR query; `deletePairAction`
 
 ### Components
+
 - `team-manager.tsx` — add teams + members (level preset S/A/B/C/D/N); captain listed first; inline rename + level edit via `PlayerRow`
 - `group-stage.tsx` — gen groups (configurable count), gen matches, `GroupCard` per group with `StandingsTable` + `MatchRow`
 - `pair-stage.tsx` — `PairManager` grid (per team) + generate pair matches + dual standings (team aggregate + per-pair)
@@ -113,6 +121,7 @@
 ### Knockout bracket logic (Phase 4 done)
 
 DB additions:
+
 ```sql
 ALTER TABLE matches
   ADD COLUMN loser_next_match_id uuid REFERENCES matches(id) ON DELETE SET NULL,
@@ -121,6 +130,7 @@ ALTER TABLE matches
 ```
 
 Architecture:
+
 - `buildDoubleBracket()` in `bracket.ts` — upper + lower + grand final with `loser_next_match_id` links
 - `allow_drop_to_lower=true`: upper losers routed to lower via `loser_next_match_id`
 - `allow_drop_to_lower=false` + `has_lower_bracket=true`: lower seeded from 3rd/4th per group; `buildIndependentDoubleBracket()`
