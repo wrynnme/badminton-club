@@ -10,8 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createPairAction, deletePairAction } from "@/lib/actions/pairs";
 import type { TeamWithPlayers, PairWithPlayers } from "@/lib/types";
 
-const LEVELS = ["S", "A", "B", "C", "D", "N"];
-
 function CreatePairForm({ teamId, availablePlayers, onDone }: {
   teamId: string;
   availablePlayers: TeamWithPlayers["players"];
@@ -44,18 +42,11 @@ function CreatePairForm({ teamId, availablePlayers, onDone }: {
     <div className="space-y-3 pt-3 border-t">
       <div className="flex gap-2">
         <Input value={pairCode} onChange={(e) => setPairCode(e.target.value)}
-          placeholder="รหัสคู่ (pair_code)" className="text-sm w-28 font-mono" />
+          placeholder="รหัสคู่" className="text-sm w-24 font-mono" />
         <Input value={name} onChange={(e) => setName(e.target.value)}
           placeholder="ชื่อคู่ (optional)" className="text-sm flex-1" />
-        <div className="flex gap-1 shrink-0">
-          {LEVELS.map((lv) => (
-            <Button key={lv} type="button" size="sm" className="h-9 w-8 p-0 text-xs"
-              variant={pairLevel === lv ? "default" : "outline"}
-              onClick={() => setPairLevel(pairLevel === lv ? "" : lv)}>
-              {lv}
-            </Button>
-          ))}
-        </div>
+        <Input type="number" step="0.5" value={pairLevel} onChange={(e) => setPairLevel(e.target.value)}
+          placeholder="Level" className="text-sm w-20" />
       </div>
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">เลือก 2 คน:</p>

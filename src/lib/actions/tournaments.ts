@@ -32,6 +32,7 @@ const TournamentSchema = z.object({
   seeding_method: z.enum(["random", "by_group_score"]).default("random"),
   advance_count: z.number().int().min(1).max(8).default(2),
   team_count: z.number().int().min(2).max(64),
+  pair_division_threshold: z.number().nullable().optional(),
   notes: z.string().optional(),
 });
 

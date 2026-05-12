@@ -22,6 +22,7 @@ const formSchema = z.object({
   seeding_method: z.enum(["random", "by_group_score"]),
   advance_count: z.number().int().min(1).max(8),
   team_count: z.number().int().min(2, "อย่างน้อย 2 ทีม").max(64),
+  pair_division_threshold: z.number().nullable(),
   notes: z.string(),
 });
 
@@ -41,6 +42,7 @@ export function CreateTournamentForm() {
       seeding_method: "random" as SeedingMethod,
       advance_count: 2,
       team_count: 4,
+      pair_division_threshold: null as number | null,
       notes: "",
     },
     validators: { onSubmit: formSchema },
@@ -153,6 +155,34 @@ export function CreateTournamentForm() {
             </Field>
           )}
         </form.Field>
+
+        {/* Pair division threshold — shown for pair mode */}
+        <form.Subscribe selector={(s) => s.values.match_unit}>
+          {(unit) => unit === "pair" && (
+            <form.Field name="pair_division_threshold">
+              {(field) => (
+                <Field>
+                  <FieldLabel>Threshold แบ่งกลุ่มบน/ล่าง</FieldLabel>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      step="0.5"
+                      placeholder="ไม่แบ่งกลุ่ม"
+                      value={field.state.value ?? ""}
+                      onChange={(e) => field.handleChange(e.target.value === "" ? null : Number(e.target.value))}
+                      className="w-32"
+                    />
+                    {field.state.value != null && (
+                      <Button type="button" size="sm" variant="ghost" className="text-xs text-muted-foreground"
+                        onClick={() => field.handleChange(null)}>ล้าง</Button>
+                    )}
+                  </div>
+                  <FieldDescription>pair_level &gt; ค่านี้ → กลุ่มบน · ว่างไว้ = ไม่แบ่ง</FieldDescription>
+                </Field>
+              )}
+            </form.Field>
+          )}
+        </form.Subscribe>
 
         {/* Advance count — shown for group_knockout */}
         <form.Subscribe selector={(s) => s.values.format}>

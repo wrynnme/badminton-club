@@ -19,7 +19,6 @@ const teamSchema = z.object({
   color: z.string(),
 });
 
-const LEVELS = ["S", "A", "B", "C", "D", "N"];
 
 const memberSchema = z.object({
   display_name: z.string().min(1, "ระบุชื่อสมาชิก"),
@@ -125,18 +124,9 @@ function AddMemberForm({ teamId, tournamentId, onDone }: { teamId: string; tourn
         <form.Field name="level" children={(field) => (
           <Field>
             <FieldLabel>Level</FieldLabel>
-            <div className="flex gap-1.5 flex-wrap">
-              {LEVELS.map((lv) => (
-                <Button key={lv} type="button" size="sm" className="h-7 w-8 p-0"
-                  variant={field.state.value === lv ? "default" : "outline"}
-                  onClick={() => field.handleChange(field.state.value === lv ? "" : lv)}>
-                  {lv}
-                </Button>
-              ))}
-              <Input value={!LEVELS.includes(field.state.value) ? field.state.value : ""}
-                onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="อื่นๆ" className="h-7 w-16 text-xs px-2" />
-            </div>
+            <Input type="number" step="0.5" value={field.state.value}
+              onChange={(e) => field.handleChange(e.target.value)}
+              placeholder="เช่น 3.5" className="w-28" />
           </Field>
         )} />
       </FieldGroup>
@@ -179,8 +169,8 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
           <Input value={name} onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
             className="h-6 text-xs flex-1 px-1.5 min-w-0" autoFocus />
-          <Input value={level} onChange={(e) => setLevel(e.target.value)}
-            placeholder="Level" className="h-6 text-xs w-14 px-1.5" />
+          <Input type="number" step="0.5" value={level} onChange={(e) => setLevel(e.target.value)}
+            placeholder="Level" className="h-6 text-xs w-16 px-1.5" />
           <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={save}><Check className="h-3 w-3" /></Button>
           <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={cancel}><X className="h-3 w-3" /></Button>
         </>

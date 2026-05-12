@@ -56,6 +56,7 @@ export type Tournament = {
   seeding_method: SeedingMethod;
   team_count: number;
   advance_count: number;
+  pair_division_threshold: number | null;
   notes: string | null;
   created_at: string;
 };
