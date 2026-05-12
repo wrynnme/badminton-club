@@ -2,7 +2,8 @@
 
 import { useTransition } from "react";
 import { toast } from "sonner";
-import { RefreshCw, Trophy } from "lucide-react";
+import Link from "next/link";
+import { RefreshCw, Trophy, GitBranch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -154,22 +155,30 @@ export function KnockoutStage({
             <Badge variant="outline" className="text-xs">{completedPlayable}/{totalPlayable} แมตช์</Badge>
           )}
         </div>
-        {isOwner && (
-          <Button
-            size="sm"
-            variant={hasMatches ? "outline" : "default"}
-            onClick={() =>
-              startGen(async () => {
-                const res = await generateKnockoutAction(tournamentId);
-                if ("error" in res) toast.error(res.error);
-                else toast.success(`สร้าง bracket ${res.count} แมตช์แล้ว`);
-              })
-            }
-          >
-            <RefreshCw className="h-3.5 w-3.5 mr-1" />
-            {hasMatches ? "สร้าง bracket ใหม่" : "สร้าง bracket"}
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {hasMatches && (
+            <Button render={<Link href={`/tournaments/${tournamentId}/bracket`} />} size="sm" variant="outline">
+              <GitBranch className="h-3.5 w-3.5 mr-1" />
+              ดูสาย
+            </Button>
+          )}
+          {isOwner && (
+            <Button
+              size="sm"
+              variant={hasMatches ? "outline" : "default"}
+              onClick={() =>
+                startGen(async () => {
+                  const res = await generateKnockoutAction(tournamentId);
+                  if ("error" in res) toast.error(res.error);
+                  else toast.success(`สร้าง bracket ${res.count} แมตช์แล้ว`);
+                })
+              }
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+              {hasMatches ? "สร้าง bracket ใหม่" : "สร้าง bracket"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {!hasMatches && (
