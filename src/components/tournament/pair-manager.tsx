@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createPairAction, deletePairAction } from "@/lib/actions/pairs";
 import type { TeamWithPlayers, PairWithPlayers } from "@/lib/types";
 
+const LEVELS = ["S", "A", "B", "C", "D", "N"];
+
 function CreatePairForm({ teamId, availablePlayers, onDone }: {
   teamId: string;
   availablePlayers: TeamWithPlayers["players"];
@@ -17,6 +19,7 @@ function CreatePairForm({ teamId, availablePlayers, onDone }: {
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [name, setName] = useState("");
+  const [pairLevel, setPairLevel] = useState("");
   const [pending, setPending] = useState(false);
 
   const toggle = (pid: string) => {
@@ -30,16 +33,27 @@ function CreatePairForm({ teamId, availablePlayers, onDone }: {
   const submit = async () => {
     if (selected.length !== 2) { toast.error("เลือก 2 คน"); return; }
     setPending(true);
-    const res = await createPairAction({ teamId, playerIds: [selected[0], selected[1]], name: name || undefined });
+    const res = await createPairAction({ teamId, playerIds: [selected[0], selected[1]], name: name || undefined, pairLevel: pairLevel || undefined });
     setPending(false);
     if (res?.error) toast.error(res.error);
-    else { toast.success("จับคู่แล้ว"); setSelected([]); setName(""); onDone(); }
+    else { toast.success("จับคู่แล้ว"); setSelected([]); setName(""); setPairLevel(""); onDone(); }
   };
 
   return (
     <div className="space-y-3 pt-3 border-t">
-      <Input value={name} onChange={(e) => setName(e.target.value)}
-        placeholder="ชื่อคู่ (optional)" className="text-sm" />
+      <div className="flex gap-2">
+        <Input value={name} onChange={(e) => setName(e.target.value)}
+          placeholder="ชื่อคู่ (optional)" className="text-sm flex-1" />
+        <div className="flex gap-1 shrink-0">
+          {LEVELS.map((lv) => (
+            <Button key={lv} type="button" size="sm" className="h-9 w-8 p-0 text-xs"
+              variant={pairLevel === lv ? "default" : "outline"}
+              onClick={() => setPairLevel(pairLevel === lv ? "" : lv)}>
+              {lv}
+            </Button>
+          ))}
+        </div>
+      </div>
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">เลือก 2 คน:</p>
         {availablePlayers.length === 0 ? (
@@ -83,10 +97,11 @@ function PairItem({ pair, isOwner, color }: {
     <div className="flex items-center gap-2 text-sm py-1 px-2 border rounded">
       {color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />}
       <div className="flex-1 min-w-0">
-        {pair.display_pair_name && <div className="font-medium truncate">{pair.display_pair_name}</div>}
-        <div className={`truncate ${pair.display_pair_name ? "text-xs text-muted-foreground" : ""}`}>
-          {names || "—"}
+        <div className="flex items-center gap-1.5">
+          {pair.display_pair_name && <span className="font-medium truncate">{pair.display_pair_name}</span>}
+          {pair.pair_level && <Badge className="text-[10px] px-1.5 py-0 shrink-0">{pair.pair_level}</Badge>}
         </div>
+        <div className="text-xs text-muted-foreground truncate">{names || "—"}</div>
         {levels.length > 0 && (
           <div className="flex gap-1 mt-0.5">
             {levels.map((lv, i) => (

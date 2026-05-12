@@ -249,6 +249,7 @@ export type PairCsvRow = {
   id_player_1: string;  // csv_id of first player
   id_player_2: string;  // csv_id of second player
   pair_name: string;    // display_pair_name (optional)
+  pair_level: string;   // level of the pair (optional, e.g. A/B/C)
 };
 
 export async function importPairsCsvAction(
@@ -300,6 +301,7 @@ export async function importPairsCsvAction(
       player_id_1: p1.id,
       player_id_2: p2.id,
       display_pair_name: r.pair_name || null,
+      pair_level: r.pair_level || null,
     });
     if (!error) pairsCreated++;
   }

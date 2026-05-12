@@ -115,27 +115,19 @@ export async function generatePairMatchesAction(tournamentId: string) {
 
   await sb.from("matches").delete().eq("tournament_id", tournamentId).eq("round_type", "group");
 
-  // Fetch pairs with player levels
+  // Fetch pairs with pair_level
   const { data: teams } = await sb
     .from("teams")
-    .select("id, pairs(id, player_id_1, player_id_2, player1:team_players!player_id_1(level), player2:team_players!player_id_2(level))")
+    .select("id, pairs(id, player_id_1, player_id_2, pair_level)")
     .eq("tournament_id", tournamentId);
   if (!teams?.length) return { error: "ยังไม่มีทีม" };
 
-  type RawPair = { id: string; player_id_1: string | null; player_id_2: string | null; player1: { level: string | null } | { level: string | null }[] | null; player2: { level: string | null } | { level: string | null }[] | null };
+  type RawPair = { id: string; player_id_1: string | null; player_id_2: string | null; pair_level: string | null };
   type RawTeam = { id: string; pairs: RawPair[] };
 
-  const UPPER_THRESHOLD = 4;
-
-  function extractLevel(rel: RawPair["player1"]): string | null {
-    if (!rel) return null;
-    if (Array.isArray(rel)) return rel[0]?.level ?? null;
-    return rel.level;
-  }
-
+  // pair_level > 2 (B=3,A=4,S=5) → upper; C=2 and below → lower
   function pairDivision(p: RawPair): "upper" | "lower" {
-    const combined = levelToNum(extractLevel(p.player1)) + levelToNum(extractLevel(p.player2));
-    return combined > UPPER_THRESHOLD ? "upper" : "lower";
+    return levelToNum(p.pair_level) > 2 ? "upper" : "lower";
   }
 
   const allTeamPairs = (teams as unknown as RawTeam[]).map((t) => ({

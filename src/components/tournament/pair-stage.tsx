@@ -126,8 +126,8 @@ export function PairStage({
           const hasDivisions = upperMatches.length > 0 || lowerMatches.length > 0;
           const displayGroups: { label: string; matchList: typeof matches }[] = hasDivisions
             ? [
-                ...(upperMatches.length > 0 ? [{ label: "กลุ่มบน (Level รวม > 4)", matchList: upperMatches }] : []),
-                ...(lowerMatches.length > 0 ? [{ label: "กลุ่มล่าง (Level รวม ≤ 4)", matchList: lowerMatches }] : []),
+                ...(upperMatches.length > 0 ? [{ label: "กลุ่มบน", matchList: upperMatches }] : []),
+                ...(lowerMatches.length > 0 ? [{ label: "กลุ่มล่าง", matchList: lowerMatches }] : []),
               ]
             : [{ label: "แมตช์ทั้งหมด", matchList: undividedMatches.length > 0 ? undividedMatches : matches }];
 
@@ -188,7 +188,7 @@ export function PairStage({
                     const { divCompetitors } = divisionStandings(upperMatches);
                     return (
                       <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-2">กลุ่มบน (Level รวม &gt; 4)</p>
+                        <p className="text-xs font-medium text-muted-foreground mb-2">กลุ่มบน</p>
                         <Card>
                           <CardContent className="pt-3">
                             <StandingsTable matches={upperMatches} competitors={divCompetitors} unit="pair" />
@@ -201,7 +201,7 @@ export function PairStage({
                     const { divCompetitors } = divisionStandings(lowerMatches);
                     return (
                       <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-2">กลุ่มล่าง (Level รวม ≤ 4)</p>
+                        <p className="text-xs font-medium text-muted-foreground mb-2">กลุ่มล่าง</p>
                         <Card>
                           <CardContent className="pt-3">
                             <StandingsTable matches={lowerMatches} competitors={divCompetitors} unit="pair" />
