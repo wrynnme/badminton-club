@@ -71,7 +71,7 @@ export default async function PublicTournamentPage({
   const s = statusLabel[t.status];
 
   return (
-    <TournamentLiveWrapper tournamentId={t.id}>
+    <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"}>
       <div className="space-y-6 max-w-3xl mx-auto px-4 py-6">
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-2">

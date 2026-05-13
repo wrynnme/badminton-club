@@ -79,7 +79,7 @@ export default async function TournamentDetailPage({
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   return (
-    <TournamentLiveWrapper tournamentId={t.id}>
+    <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"}>
     <div className="space-y-6 max-w-3xl mx-auto">
       <div>
         <div className="flex items-start justify-between gap-2">

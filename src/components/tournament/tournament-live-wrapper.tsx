@@ -7,26 +7,30 @@ import { Badge } from "@/components/ui/badge";
 
 export function TournamentLiveWrapper({
   tournamentId,
+  isOngoing,
   children,
 }: {
   tournamentId: string;
+  isOngoing: boolean;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const [live, setLive] = useState(false);
 
   useEffect(() => {
+    if (!isOngoing) return;
+
     const sb = createClient();
     const channel = sb
       .channel(`tournament:${tournamentId}`)
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "matches",
-          filter: `tournament_id=eq.${tournamentId}`,
-        },
+        { event: "INSERT", schema: "public", table: "matches", filter: `tournament_id=eq.${tournamentId}` },
+        () => router.refresh()
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "matches", filter: `tournament_id=eq.${tournamentId}` },
         () => router.refresh()
       )
       .subscribe((status) => {
@@ -34,7 +38,7 @@ export function TournamentLiveWrapper({
       });
 
     return () => { sb.removeChannel(channel); };
-  }, [tournamentId, router]);
+  }, [tournamentId, isOngoing, router]);
 
   return (
     <>
