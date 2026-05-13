@@ -1,6 +1,48 @@
 @AGENTS.md
 @spec.md
 
+# Project Operating Rules
+
+## Agent Communication
+
+- All agent outputs must be valid JSON with: trace_id, agent, status, output, assumptions
+- Agents do not communicate directly — route everything through the Orchestrator
+- Only Orchestrator speaks to the user
+
+## Hard Prohibitions (all agents)
+
+- Never write secrets, tokens, or passwords in any output or file
+- Never run destructive DB commands (DROP, DELETE without WHERE) without explicit user approval
+- Never deploy to production without QA + Security sign-off
+- Never fabricate file paths, function names, or library versions
+- Fail fast on errors — never guess through incomplete inputs
+
+## Output Envelope
+
+Every agent responds in this format:
+
+```json
+{
+  "trace_id": "<inherited>",
+  "agent": "<name>@<version>",
+  "status": "success | needs_clarification | out_of_scope | error",
+  "confidence": "high | medium | low",
+  "output": {},
+  "assumptions": [],
+  "warnings": [],
+  "handoff_to": "<agent or null>"
+}
+```
+
+## Human Approval Required
+
+- After requirements finalized
+- After design + architecture are finalized
+- Before any production deployment
+- Before any destructive database operation
+
+---
+
 # Project: ก๊วนแบด (Badminton Club)
 
 ## Stack
