@@ -11,12 +11,14 @@ export function ExportButtons({
   teams,
   pairs,
   matchUnit,
+  isOwner = false,
 }: {
   tournamentName: string;
   matches: Match[];
   teams: (Team & { players: TeamPlayer[] })[];
   pairs: PairWithPlayers[];
   matchUnit: MatchUnit;
+  isOwner?: boolean;
 }) {
   const slug = tournamentName.replace(/\s+/g, "_");
 
@@ -51,15 +53,17 @@ export function ExportButtons({
           <Download className="h-3 w-3" />รายชื่อ
         </Button>
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground shrink-0">Template:</span>
-        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={exportPlayerTemplate}>
-          <Download className="h-3 w-3" />ผู้เล่น
-        </Button>
-        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={exportPairTemplate}>
-          <Download className="h-3 w-3" />จับคู่
-        </Button>
-      </div>
+      {isOwner && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground shrink-0">Template:</span>
+          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={exportPlayerTemplate}>
+            <Download className="h-3 w-3" />ผู้เล่น
+          </Button>
+          <Button size="sm" variant="ghost" className="h-7 text-xs gap-1" onClick={exportPairTemplate}>
+            <Download className="h-3 w-3" />จับคู่
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

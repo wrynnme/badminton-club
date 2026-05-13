@@ -144,6 +144,7 @@ export default async function TournamentDetailPage({
         teams={teams}
         pairs={pairs}
         matchUnit={t.match_unit}
+        isOwner={isOwner}
       />
 
       {t.notes && (
