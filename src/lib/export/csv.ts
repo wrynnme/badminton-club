@@ -89,7 +89,7 @@ export function generateRosterCsv(teams: (Team & { players: TeamPlayer[] })[], p
     if (p.player_id_2) pairByPlayerId.set(p.player_id_2, p);
   }
 
-  const headers = row("ทีม", "สี", "id_player", "ชื่อผู้เล่น", "ตำแหน่ง", "Level", "pair_code", "คู่", "pair_level");
+  const headers = row("ทีม", "สี", "id_player", "ชื่อผู้เล่น", "ตำแหน่ง", "Level", "pair_id", "คู่", "pair_level");
 
   const lines: string[] = [];
   for (const t of teams) {
@@ -99,7 +99,7 @@ export function generateRosterCsv(teams: (Team & { players: TeamPlayer[] })[], p
     for (const p of sorted) {
       const pair = pairByPlayerId.get(p.id);
       const pairName = pair ? pair.display_pair_name ?? [pair.player1?.display_name, pair.player2?.display_name].filter(Boolean).join(" / ") : "";
-      lines.push(row(t.name, t.color ?? "", p.csv_id ?? "", p.display_name, p.role === "captain" ? "หัวหน้า" : "สมาชิก", p.level ?? "", pair?.pair_code ?? "", pairName, pair?.pair_level ?? ""));
+      lines.push(row(t.name, t.color ?? "", p.csv_id ?? "", p.display_name, p.role === "captain" ? "หัวหน้า" : "สมาชิก", p.level ?? "", pair?.id ?? "", pairName, pair?.pair_level ?? ""));
     }
   }
 
@@ -122,7 +122,7 @@ export function generatePlayerImportTemplate(): string {
 
 // Pre-filled pair template from existing players (csv_id already set)
 export function generatePairImportTemplate(teams: (Team & { players: TeamPlayer[] })[]): string {
-  const lines = ["team,pair_code,id_player_1,id_player_2,pair_name,pair_level"];
+  const lines = ["team,pair_id,id_player_1,id_player_2,pair_name"];
 
   // Derive team prefix from player csv_id (e.g. "R1-1a" → "R1")
   function teamPrefix(csvId: string | null | undefined, fallback: string): string {
@@ -139,8 +139,7 @@ export function generatePairImportTemplate(teams: (Team & { players: TeamPlayer[
     for (let i = 0; i + 1 < sorted.length; i += 2) {
       const p1 = sorted[i];
       const p2 = sorted[i + 1];
-      const pairCode = `${prefix}-P${Math.floor(i / 2) + 1}`;
-      lines.push(row(t.name, pairCode, p1.csv_id ?? p1.id.slice(0, 8), p2.csv_id ?? p2.id.slice(0, 8), "", ""));
+      lines.push(row(t.name, "", p1.csv_id ?? p1.id.slice(0, 8), p2.csv_id ?? p2.id.slice(0, 8), ""));
     }
     if (sorted.length > 0) lines.push("");
   }

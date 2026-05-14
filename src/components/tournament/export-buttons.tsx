@@ -1,12 +1,13 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { Download, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { generateMatchesCsv, generateRosterCsv, generatePlayerImportTemplate, generatePairImportTemplate, downloadCsv } from "@/lib/export/csv";
 import type { Match, Team, TeamPlayer, PairWithPlayers, MatchUnit } from "@/lib/types";
 
 export function ExportButtons({
   tournamentName,
+  tournamentId,
   matches,
   teams,
   pairs,
@@ -14,6 +15,7 @@ export function ExportButtons({
   isOwner = false,
 }: {
   tournamentName: string;
+  tournamentId: string;
   matches: Match[];
   teams: (Team & { players: TeamPlayer[] })[];
   pairs: PairWithPlayers[];
@@ -64,6 +66,25 @@ export function ExportButtons({
           </Button>
         </div>
       )}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground shrink-0">พิมพ์:</span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs gap-1"
+          onClick={() => window.open(`/tournaments/${tournamentId}/print/matches`, "_blank")}
+        >
+          <Printer className="h-3 w-3" />ผลแข่งขัน
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs gap-1"
+          onClick={() => window.open(`/tournaments/${tournamentId}/print/roster`, "_blank")}
+        >
+          <Printer className="h-3 w-3" />รายชื่อ
+        </Button>
+      </div>
     </div>
   );
 }

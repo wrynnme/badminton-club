@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -17,8 +17,6 @@ function CreatePairForm({ teamId, availablePlayers, onDone }: {
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [name, setName] = useState("");
-  const [pairCode, setPairCode] = useState("");
-  const [pairLevel, setPairLevel] = useState("");
   const [pending, setPending] = useState(false);
 
   const toggle = (pid: string) => {
@@ -32,21 +30,17 @@ function CreatePairForm({ teamId, availablePlayers, onDone }: {
   const submit = async () => {
     if (selected.length !== 2) { toast.error("เลือก 2 คน"); return; }
     setPending(true);
-    const res = await createPairAction({ teamId, playerIds: [selected[0], selected[1]], name: name || undefined, pairLevel: pairLevel || undefined, pairCode: pairCode || undefined });
+    const res = await createPairAction({ teamId, playerIds: [selected[0], selected[1]], name: name || undefined });
     setPending(false);
     if (res?.error) toast.error(res.error);
-    else { toast.success("จับคู่แล้ว"); setSelected([]); setName(""); setPairCode(""); setPairLevel(""); onDone(); }
+    else { toast.success("จับคู่แล้ว"); setSelected([]); setName(""); onDone(); }
   };
 
   return (
     <div className="space-y-3 pt-3 border-t">
       <div className="flex gap-2">
-        <Input value={pairCode} onChange={(e) => setPairCode(e.target.value)}
-          placeholder="รหัสคู่" className="text-sm w-24 font-mono" />
         <Input value={name} onChange={(e) => setName(e.target.value)}
           placeholder="ชื่อคู่ (optional)" className="text-sm flex-1" />
-        <Input type="number" step="0.5" value={pairLevel} onChange={(e) => setPairLevel(e.target.value)}
-          placeholder="Level" className="text-sm w-20" />
       </div>
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">เลือก 2 คน:</p>
@@ -69,6 +63,7 @@ function CreatePairForm({ teamId, availablePlayers, onDone }: {
       <div className="flex gap-2 justify-end">
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>ยกเลิก</Button>
         <Button type="button" size="sm" onClick={submit} disabled={selected.length !== 2 || pending}>
+          {pending && <Loader2 className="h-4 w-4 animate-spin" />}
           {pending ? "บันทึก..." : "จับคู่"}
         </Button>
       </div>
@@ -92,7 +87,7 @@ function PairItem({ pair, isOwner, color }: {
       {color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          {pair.pair_code && <span className="text-xs text-muted-foreground font-mono shrink-0">{pair.pair_code}</span>}
+          <span className="text-xs text-muted-foreground font-mono shrink-0">{pair.id.slice(0, 6)}</span>
           {pair.display_pair_name && <span className="font-medium truncate">{pair.display_pair_name}</span>}
           {pair.pair_level && <Badge className="text-[10px] px-1.5 py-0 shrink-0">{pair.pair_level}</Badge>}
         </div>

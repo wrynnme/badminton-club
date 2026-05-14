@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Upload, Download } from "lucide-react";
+import { Upload, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -77,13 +77,12 @@ function parsePlayerCsv(text: string) {
 function parsePairCsv(text: string) {
   return parseFile<PairCsvRow>(
     text,
-    ["pair_code", "id_player_1", "id_player_2"],
+    ["id_player_1", "id_player_2"],
     (h, v) => {
-      const pair_code = idx(h, "pair_code", v);
       const id_player_1 = idx(h, "id_player_1", v);
       const id_player_2 = idx(h, "id_player_2", v);
-      if (!pair_code || !id_player_1 || !id_player_2) return null;
-      return { team: idx(h, "team", v), pair_code, id_player_1, id_player_2, pair_name: idx(h, "pair_name", v), pair_level: idx(h, "pair_level", v) };
+      if (!id_player_1 || !id_player_2) return null;
+      return { team: idx(h, "team", v), pair_id: idx(h, "pair_id", v), id_player_1, id_player_2, pair_name: idx(h, "pair_name", v) };
     }
   );
 }
@@ -109,10 +108,10 @@ const PLAYER_TEMPLATE = [
 ].join("\n");
 
 const PAIR_TEMPLATE = [
-  "team,pair_code,id_player_1,id_player_2,pair_name,pair_level",
-  "ทีมแดง,R1-P1,R1-1a,R1-1b,คู่ที่ 1,A",
-  "ทีมแดง,R1-P2,R1-2a,R1-2b,คู่ที่ 2,B",
-  "ทีมเขียว,G1-P1,G1-1a,G1-1b,G1-คู่ 1,B",
+  "team,pair_id,id_player_1,id_player_2,pair_name",
+  "ทีมแดง,,R1-1a,R1-1b,คู่ที่ 1",
+  "ทีมแดง,,R1-2a,R1-2b,คู่ที่ 2",
+  "ทีมเขียว,,G1-1a,G1-1b,G1-คู่ 1",
 ].join("\n");
 
 // ── Subcomponent: file picker with preview ────────────────────────────────────
@@ -278,6 +277,7 @@ export function CsvImportDialog({
                     ⚠ id_player ซ้ำ = อัพเดทชื่อ/role, id_player ใหม่ = สร้างผู้เล่นใหม่
                   </p>
                   <Button className="w-full" onClick={handleImportPlayers} disabled={pending}>
+                    {pending && <Loader2 className="h-4 w-4 animate-spin" />}
                     {pending ? "กำลังนำเข้า..." : `นำเข้า ${playerRows.length} คน`}
                   </Button>
                 </div>
@@ -290,7 +290,7 @@ export function CsvImportDialog({
               <div className="flex items-center justify-between">
                 <div className="rounded-md border bg-muted/30 p-2.5 text-xs flex-1 space-y-0.5">
                   <p className="font-medium text-muted-foreground">Columns:</p>
-                  <p><code className="text-foreground">team</code> · <code className="text-foreground font-bold">pair_code</code> * · <code className="text-foreground font-bold">id_player_1</code> * · <code className="text-foreground font-bold">id_player_2</code> * · <code className="text-foreground">pair_name</code> · <code className="text-foreground">pair_level</code></p>
+                  <p><code className="text-foreground">team</code> · <code className="text-foreground">pair_id</code> · <code className="text-foreground font-bold">id_player_1</code> * · <code className="text-foreground font-bold">id_player_2</code> * · <code className="text-foreground">pair_name</code></p>
                   <p className="text-muted-foreground">1 แถว = 1 คู่ · ทั้งสองต้องอยู่ทีมเดียวกัน</p>
                 </div>
                 <Button size="sm" variant="ghost" className="ml-2 h-7 text-xs gap-1 shrink-0" onClick={() => download(PAIR_TEMPLATE, "pairs_template.csv")}>
@@ -304,10 +304,9 @@ export function CsvImportDialog({
                 parseRow={parsePairCsv}
                 previewCols={[
                   { key: "team", label: "ทีม" },
-                  { key: "pair_code", label: "pair_code" },
+                  { key: "pair_id", label: "pair_id" },
                   { key: "id_player_1", label: "id_player_1" },
                   { key: "id_player_2", label: "id_player_2" },
-                  { key: "pair_level", label: "Level" },
                 ]}
               />
 
@@ -317,6 +316,7 @@ export function CsvImportDialog({
                     {new Set(pairRows.map((r) => r.pair_name)).size} คู่ ({pairRows.length} แถว)
                   </Badge>
                   <Button className="w-full" onClick={handleImportPairs} disabled={pending}>
+                    {pending && <Loader2 className="h-4 w-4 animate-spin" />}
                     {pending ? "กำลังนำเข้า..." : `สร้างคู่จาก ${pairRows.length} แถว`}
                   </Button>
                 </div>

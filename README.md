@@ -70,7 +70,8 @@ npx skills add supabase/agent-skills   # ติดตั้งครั้งเ
 
 ### Level
 
-Free numeric (เช่น `3`, `3.5`, `7`) — ไม่มี fixed scale ทั้ง player level และ pair_level
+- Player level: free numeric (เช่น `3`, `3.5`, `7`) — ไม่มี fixed scale
+- Pair level: auto-computed = player1.level + player2.level (sum) — ไม่ต้องกรอกเอง
 
 ### CSV Import (2-step)
 
@@ -86,19 +87,19 @@ team, color, id_player*, display_name*, role, level
 **Step 2 — จับคู่**
 
 ```
-team, pair_code*, id_player_1*, id_player_2*, pair_name, pair_level
+team, pair_id, id_player_1*, id_player_2*, pair_name
 ```
 
-- `pair_code` required
-- upsert by `pair_code` — ถ้าซ้ำ → update; ใหม่ → insert
+- `pair_id` optional — UUID ของคู่ที่มีอยู่สำหรับ upsert; ว่าง = สร้างใหม่
+- `pair_level` ไม่ต้องใส่ — คำนวณอัตโนมัติจาก player levels
 - `team` column เป็น informational เท่านั้น — team validate จาก player membership
 
 ### CSV Export
 
 - **ผลแข่งขัน** — match results
-- **รายชื่อ** — roster (ทีม, id_player, ชื่อ, level, pair_code, คู่, pair_level)
+- **รายชื่อ** — roster (ทีม, id_player, ชื่อ, level, pair_id, คู่, pair_level)
 - **Template ผู้เล่น** — blank template
-- **Template จับคู่** — pre-filled จาก player csv_ids ที่มีอยู่
+- **Template จับคู่** — pre-filled จาก player csv_ids (pair_id ว่าง = new pairs)
 
 ### Knockout Bracket
 
@@ -121,37 +122,43 @@ team, pair_code*, id_player_1*, id_player_2*, pair_name, pair_level
 ```
 src/
 ├── app/
-│   ├── page.tsx                        # Login (LINE / Guest)
-│   ├── clubs/                          # ก๊วนแบด
-│   ├── tournaments/
-│   │   ├── page.tsx                    # Tournament list
-│   │   ├── new/page.tsx                # Create
-│   │   └── [id]/page.tsx               # Detail + stages
-│   └── api/auth/                       # LINE OAuth + guest + logout
-├── components/
-│   ├── tournament/
-│   │   ├── create-tournament-form.tsx  # incl. pair_division_threshold
-│   │   ├── team-manager.tsx            # Teams + members (numeric level, inline rename)
-│   │   ├── pair-manager.tsx            # Create/delete pairs (pair_code, pair_level)
-│   │   ├── pair-stage.tsx              # Pair matches + division standings
-│   │   ├── group-stage.tsx             # Team mode group stage
-│   │   ├── knockout-stage.tsx          # Upper / lower / grand_final sections
-│   │   ├── csv-import-dialog.tsx       # 2-step CSV import (players + pairs)
-│   │   ├── export-buttons.tsx          # Export matches/roster + templates
-│   │   ├── match-row.tsx
-│   │   ├── score-form.tsx
-│   │   └── standings-table.tsx
-│   └── ui/                             # shadcn/ui
+│   ├── (app)/
+│   │   ├── page.tsx                        # Login (LINE / Guest)
+│   │   ├── clubs/                          # ก๊วนแบด
+│   │   └── tournaments/
+│   │       ├── page.tsx                    # Tournament list
+│   │       ├── new/page.tsx                # Create
+│   │       └── [id]/page.tsx               # Detail — tabs (ทีม/กลุ่ม/คู่/Knockout/ตั้งค่า)
+│   ├── (public)/t/[token]/page.tsx         # Public share page (no auth)
+│   └── api/auth/                           # LINE OAuth + guest + logout
+├── components/tournament/
+│   ├── tournament-tabs.tsx             # Tab wrapper (client)
+│   ├── team-manager.tsx                # Teams + members
+│   ├── pair-manager.tsx                # Create/delete pairs (auto pair_level)
+│   ├── pair-stage.tsx                  # Pair matches + division standings
+│   ├── manual-match-dialog.tsx         # Manual pair match creation
+│   ├── group-stage.tsx                 # Team mode group stage
+│   ├── knockout-stage.tsx              # Upper / lower / grand_final
+│   ├── csv-import-dialog.tsx           # 2-step CSV import
+│   ├── export-buttons.tsx              # Export + templates
+│   ├── share-controls.tsx              # Share link (owner)
+│   ├── co-admin-controls.tsx           # Co-admin management (owner)
+│   ├── audit-log-panel.tsx             # Audit log (owner + co-admin)
+│   ├── tournament-live-wrapper.tsx     # Supabase Realtime
+│   ├── match-row.tsx · score-form.tsx · standings-table.tsx
+│   └── bracket-view.tsx · bracket-match-card.tsx
 └── lib/
     ├── actions/
-    │   ├── tournaments.ts              # CRUD + importPlayersCsvAction + importPairsCsvAction
-    │   ├── matches.ts                  # generatePairMatchesAction (division-aware)
-    │   └── pairs.ts                    # createPairAction (pair_code, pair_level)
+    │   ├── tournaments.ts              # CRUD + CSV import
+    │   ├── matches.ts                  # generate* + score + createManualMatchAction
+    │   ├── pairs.ts                    # createPairAction (auto level/code)
+    │   └── admins.ts                   # co-admin + audit log actions
     ├── tournament/
-    │   ├── bracket.ts                  # buildBracket, buildDoubleBracket
-    │   ├── scheduling.ts               # generateAllPairMatches
-    │   └── scoring.ts                  # computeStandings
-    ├── export/csv.ts                   # generateMatchesCsv, generateRosterCsv, templates
+    │   ├── permissions.ts              # assertIsOwner, assertCanEdit
+    │   ├── audit.ts                    # writeAuditLog
+    │   ├── bracket.ts · scheduling.ts · scoring.ts · competitor.ts
+    │   └── bracket-visual.ts
+    ├── export/csv.ts
     └── types.ts
 ```
 
@@ -161,10 +168,11 @@ src/
 
 ### Tournament System
 
-- ✅ Phase 0–4 — CRUD · group stage · pair mode · double elimination · CSV import/export · player/pair level · pair_code · configurable division threshold
-- [ ] Phase 5 — Bracket visualization
-- [ ] Phase 6 — Realtime + public share link (`/t/[token]`)
-- [ ] Phase 7 — LINE notification + PDF export
+- ✅ Phase 0–4 — CRUD · group stage · pair mode · double elimination · CSV import/export · player/pair level · configurable division threshold
+- ✅ Phase 5 — Bracket visualization (`/tournaments/[id]/bracket`)
+- ✅ Phase 6 — Realtime + public share link (`/t/[token]`)
+- ✅ Phase 7b — Co-admin · audit log · tournament tabs · manual match creation · UI improvements
+- [ ] Phase 7a — LINE notification + PDF export
 
 ### ก๊วนแบด
 

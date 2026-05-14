@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { BracketView } from "@/components/tournament/bracket-view";
 import { buildVisualBracket } from "@/lib/tournament/bracket-visual";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
+import { PrintButton } from "@/components/ui/print-button";
 import type { Tournament, TeamWithPlayers, PairWithPlayers, Match, Team } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -65,15 +66,22 @@ export default async function BracketPage({
 
   return (
     <div className="min-h-screen p-4 md:p-8 max-w-[1400px] mx-auto">
-      <div className="mb-6 flex items-center gap-3">
-        <Button render={<Link href={`/tournaments/${id}`} />} variant="ghost" size="sm">
-          <ArrowLeft className="h-4 w-4 mr-1" />
-          กลับ
-        </Button>
-        <div>
-          <h1 className="text-lg font-bold leading-tight">{t.name}</h1>
-          <p className="text-xs text-muted-foreground">สายการแข่งขัน</p>
+      <div className="mb-6 flex items-center justify-between print:hidden">
+        <div className="flex items-center gap-3">
+          <Button render={<Link href={`/tournaments/${id}`} />} nativeButton={false} variant="ghost" size="sm">
+            <ArrowLeft className="h-4 w-4 mr-1" />
+            กลับ
+          </Button>
+          <div>
+            <h1 className="text-lg font-bold leading-tight">{t.name}</h1>
+            <p className="text-xs text-muted-foreground">สายการแข่งขัน</p>
+          </div>
         </div>
+        <PrintButton />
+      </div>
+      <div className="mb-6 hidden print:block">
+        <h1 className="text-lg font-bold leading-tight">{t.name}</h1>
+        <p className="text-xs text-muted-foreground">สายการแข่งขัน</p>
       </div>
 
       {!hasBracket && (

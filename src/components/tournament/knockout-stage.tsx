@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { RefreshCw, Trophy, GitBranch } from "lucide-react";
+import { RefreshCw, Trophy, GitBranch, CheckCircle2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -99,6 +99,8 @@ function BracketSection({
   );
 }
 
+type Req = { label: string; met: boolean };
+
 export function KnockoutStage({
   tournamentId,
   matches,
@@ -107,6 +109,10 @@ export function KnockoutStage({
   matchUnit,
   advanceCount,
   isOwner,
+  format,
+  groupCount,
+  groupMatchTotal,
+  groupMatchCompleted,
 }: {
   tournamentId: string;
   matches: Match[];
@@ -115,10 +121,32 @@ export function KnockoutStage({
   matchUnit: MatchUnit;
   advanceCount: number;
   isOwner: boolean;
+  format: "group_only" | "group_knockout" | "knockout_only";
+  groupCount?: number;
+  groupMatchTotal?: number;
+  groupMatchCompleted?: number;
 }) {
-  const [, startGen] = useTransition();
+  const [isPending, startGen] = useTransition();
 
   const competitorMap = buildCompetitorMap(matchUnit, teams, pairs ?? []);
+
+  // Build requirements checklist
+  const reqs: Req[] = [];
+  if (matchUnit === "pair") {
+    const pairCount = (pairs ?? []).length;
+    reqs.push({ label: `มีคู่อย่างน้อย 2 คู่ (มี ${pairCount} คู่)`, met: pairCount >= 2 });
+    if (format === "group_knockout") {
+      reqs.push({ label: `มีตารางแข่งกลุ่ม (${groupMatchTotal ?? 0} นัด)`, met: (groupMatchTotal ?? 0) > 0 });
+      reqs.push({ label: `มีผลกลุ่มอย่างน้อย 1 นัด (${groupMatchCompleted ?? 0}/${groupMatchTotal ?? 0})`, met: (groupMatchCompleted ?? 0) > 0 });
+    }
+  } else {
+    reqs.push({ label: `มีทีมอย่างน้อย 2 ทีม (มี ${teams.length} ทีม)`, met: teams.length >= 2 });
+    if (format === "group_knockout") {
+      reqs.push({ label: `แบ่งกลุ่มแล้ว (${groupCount ?? 0} กลุ่ม)`, met: (groupCount ?? 0) > 0 });
+      reqs.push({ label: `มีผลกลุ่มครบทุกนัด (${groupMatchCompleted ?? 0}/${groupMatchTotal ?? 0})`, met: (groupMatchTotal ?? 0) > 0 && groupMatchCompleted === groupMatchTotal });
+    }
+  }
+  const allReqsMet = reqs.every((r) => r.met);
 
   const upperMatches = matches.filter((m) => !m.bracket || m.bracket === "upper");
   const lowerMatches = matches.filter((m) => m.bracket === "lower");
@@ -157,7 +185,7 @@ export function KnockoutStage({
         </div>
         <div className="flex items-center gap-2">
           {hasMatches && (
-            <Button render={<Link href={`/tournaments/${tournamentId}/bracket`} />} size="sm" variant="outline">
+            <Button render={<Link href={`/tournaments/${tournamentId}/bracket`} />} nativeButton={false} size="sm" variant="outline">
               <GitBranch className="h-3.5 w-3.5 mr-1" />
               ดูสาย
             </Button>
@@ -166,6 +194,7 @@ export function KnockoutStage({
             <Button
               size="sm"
               variant={hasMatches ? "outline" : "default"}
+              disabled={!allReqsMet || isPending}
               onClick={() =>
                 startGen(async () => {
                   const res = await generateKnockoutAction(tournamentId);
@@ -174,19 +203,28 @@ export function KnockoutStage({
                 })
               }
             >
-              <RefreshCw className="h-3.5 w-3.5 mr-1" />
+              {isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
               {hasMatches ? "สร้าง bracket ใหม่" : "สร้าง bracket"}
             </Button>
           )}
         </div>
       </div>
 
-      {!hasMatches && (
-        <p className="text-sm text-muted-foreground">
-          {isOwner
-            ? `กด "สร้าง bracket" — ดึง top ${advanceCount} จากแต่ละกลุ่มเข้า knockout อัตโนมัติ`
-            : "ยังไม่มี bracket"}
-        </p>
+      {/* Requirements checklist */}
+      {reqs.length > 0 && (!hasMatches || !allReqsMet) && (
+        <div className="space-y-1.5">
+          {reqs.map((r) => (
+            <div key={r.label} className="flex items-center gap-2 text-sm">
+              {r.met
+                ? <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
+                : <XCircle className="h-4 w-4 text-destructive shrink-0" />}
+              <span className={r.met ? "text-muted-foreground" : ""}>{r.label}</span>
+            </div>
+          ))}
+          {allReqsMet && !hasMatches && (
+            <p className="text-xs text-muted-foreground pt-1">พร้อมสร้าง bracket แล้ว</p>
+          )}
+        </div>
       )}
 
       {hasMatches && (

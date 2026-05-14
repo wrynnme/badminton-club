@@ -79,7 +79,7 @@ Every agent responds in this format:
 - `SortablePlayerList` uses `@dnd-kit` with `activationConstraint: { distance: 8 }` for mobile compat
 - Theme stored in `theme` cookie — `layout.tsx` reads it server-side to add `dark` class on `<html>` (no next-themes)
 
-## Tournament System (Phase 0–6 done)
+## Tournament System (Phase 0–7b done)
 
 ### Architecture
 
@@ -97,26 +97,31 @@ Every agent responds in this format:
 - `team_players` — id, team_id, profile_id?, display_name, role (`captain`|`member`), level text, csv_id text, created_at
 - `groups` — id, tournament_id, name
 - `group_teams` — group_id, team_id, position, wins, draws, losses, points_for, points_against
-- `pairs` — id, team_id, player_id_1 (FK team_players), player_id_2 (FK team_players), display_pair_name (optional), pair_level text, pair_code text, created_at
+- `pairs` — id, team_id, player_id_1 (FK team_players), player_id_2 (FK team_players), display_pair_name (optional), pair_level text (auto-computed = sum of player levels), created_at
 - `matches` — id, tournament_id, round_type (`group`|`knockout`), round_number, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id, games jsonb (`[{a,b}]`), winner_id, status, next_match_id (self-ref), next_match_slot (`a`|`b`), loser_next_match_id (self-ref), loser_next_match_slot (`a`|`b`), bracket (`upper`|`lower`|`grand_final`), division (`upper`|`lower`|null), court?, scheduled_at?
 
 ### Server Actions
 
 - `src/lib/actions/tournaments.ts` — `createTournamentAction`, `updateTournamentStatusAction`, `addTeamPlayerAction` (incl. level), `updateTeamPlayerAction({display_name?, level?})`, `importPlayersCsvAction(tournamentId, PlayerCsvRow[])`, `importPairsCsvAction(tournamentId, PairCsvRow[])`, `generateShareTokenAction`, `revokeShareTokenAction`
-- `src/lib/actions/matches.ts` — `generateGroupsAction`, `generateGroupMatchesAction`, `generatePairMatchesAction` (division-aware, reads `pair_division_threshold`), `generateKnockoutAction`, `recordMatchScoreAction({ matchId, tournamentId, games })`, `resetMatchScoreAction`
-- `src/lib/actions/pairs.ts` — `createPairAction({ teamId, playerIds: [id1,id2], name?, pairLevel?, pairCode? })` inserts flat; checks duplicates via OR query; `deletePairAction`
+- `src/lib/actions/matches.ts` — `generateGroupsAction`, `generateGroupMatchesAction`, `generatePairMatchesAction` (division-aware, reads `pair_division_threshold`), `generateKnockoutAction`, `recordMatchScoreAction({ matchId, tournamentId, games })`, `resetMatchScoreAction`, `createManualMatchAction({ tournamentId, pairAId, pairBId })` (pair mode, same division)
+- `src/lib/actions/pairs.ts` — `createPairAction({ teamId, playerIds: [id1,id2], name? })` — pair_level auto-computed (sum), no pair_code; `deletePairAction`
+- `src/lib/actions/admins.ts` — `addCoAdminAction`, `removeCoAdminAction` (owner-only), `getCoAdminsAction`, `getAuditLogsAction`
 
 ### Components
 
 - `team-manager.tsx` — add teams + members (numeric level input); captain listed first; inline rename + level edit via `PlayerRow`
 - `group-stage.tsx` — gen groups (configurable count), gen matches, `GroupCard` per group with `StandingsTable` + `MatchRow`
 - `pair-stage.tsx` — `PairManager` grid (per team) + generate pair matches + division standings (upper/lower when threshold set)
-- `pair-manager.tsx` — toggle-select 2 players; pair_code + pair_level inputs; flat pair create/delete; shows level badges
+- `pair-manager.tsx` — toggle-select 2 players; name input only (pair_level auto, no pair_code); shows level badges + short UUID
 - `knockout-stage.tsx` — gen bracket; renders upper/lower/grand_final sections; BYE auto-advance; champion banner; "View Bracket" button
-- `tournament-status-control.tsx` — owner changes status (draft → registering → ongoing → completed)
-- `csv-import-dialog.tsx` — 2-step: step 1 players (upsert by csv_id), step 2 pairs (upsert by pair_code); preview tables; download templates
-- `export-buttons.tsx` — Export: matches · roster + Template: players · pairs (owner-only); `isOwner` prop controls template visibility
+- `tournament-status-control.tsx` — owner/co-admin changes status (draft → registering → ongoing → completed)
+- `csv-import-dialog.tsx` — 2-step: step 1 players (upsert by csv_id), step 2 pairs (upsert by pair_id UUID); preview tables; download templates
+- `export-buttons.tsx` — Export: matches · roster + Template: players · pairs (canEdit); `isOwner` prop controls template visibility
 - `share-controls.tsx` — owner-only: generate/copy/revoke share link
+- `co-admin-controls.tsx` — owner-only: add/remove co-admins by LINE user_id
+- `audit-log-panel.tsx` — collapsible panel; owner + co-admin; newest-first, limit 50
+- `manual-match-dialog.tsx` — Dialog to create manual pair match; filters pair B by same division as pair A
+- `tournament-tabs.tsx` — client Tab wrapper: ทีม · กลุ่ม* · คู่* · Knockout* · ตั้งค่า (* = conditional per format)
 - `tournament-live-wrapper.tsx` — Supabase Realtime client component; subscribes to match UPDATE → `router.refresh()`; shows green LIVE badge
 - `bracket-match-card.tsx` — compact card: competitors + game score + winner highlight
 - `bracket-view.tsx` — flex-column rounds + CSS horizontal/vertical connector lines; horizontal scroll
@@ -128,7 +133,7 @@ Every agent responds in this format:
 
 - `/tournaments` — list
 - `/tournaments/new` — create form (mode, format, match_unit, pair_division_threshold, advance_count, team_count …)
-- `/tournaments/[id]` — detail + TeamManager + GroupStage or PairStage + KnockoutStage + ExportButtons + ShareControls
+- `/tournaments/[id]` — detail page with tabs (ทีม · กลุ่ม · คู่ · Knockout · ตั้งค่า); `canEdit = isOwner || isCoAdmin`
 - `/tournaments/[id]/bracket` — visual bracket page (no auth required)
 - `/t/[token]` — public read-only share page (no auth, fetched by share_token)
 
@@ -146,8 +151,8 @@ Every agent responds in this format:
 ### Pair System (flat schema)
 
 - `pairs` stores `player_id_1` and `player_id_2` directly — no junction table
-- `pair_code` — stable user-defined ID for upsert on re-import
-- `pair_level` — numeric level; `pair_level > pair_division_threshold` → upper group; else → lower group
+- No `pair_code` — use `pair.id` (UUID) as stable CSV upsert key
+- `pair_level` — auto-computed = `player1.level + player2.level` (sum); null if both players have no level
 - 1-person-1-pair enforced at app level via OR query before insert
 - `pairToCompetitor` builds name from `player1.display_name / player2.display_name`
 - Query pairs with players: `select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)")`
@@ -158,9 +163,10 @@ Every agent responds in this format:
   - `csv_id` = `id_player` stored on `team_players` — stable lookup key
   - Upsert: same csv_id → update; new csv_id → insert
   - Auto-creates teams if missing; preset colors if color not specified
-- **Step 2 — pairs**: `team, pair_code*, id_player_1*, id_player_2*, pair_name, pair_level`
-  - `pair_code` required — stable upsert key
-  - Upsert: same pair_code → update players/name/level; new → insert
+- **Step 2 — pairs**: `team, pair_id, id_player_1*, id_player_2*, pair_name`
+  - `pair_id` optional — UUID for upsert; empty = new pair
+  - `pair_level` not in CSV — auto-computed from player levels on insert/update
+  - Upsert: same pair_id → update; empty → insert new
   - Team validated via player membership (not `team` column)
   - Types: `PlayerCsvRow`, `PairCsvRow` in `src/lib/actions/tournaments.ts`
 
@@ -168,8 +174,16 @@ Every agent responds in this format:
 
 - Free numeric (e.g. `3`, `3.5`) — `parseFloat`, no fixed letter scale
 - Player level: stored on `team_players.level`
-- Pair level: stored on `pairs.pair_level`
+- Pair level: auto = sum of player levels; stored on `pairs.pair_level`
 - Division split: `pair_level > tournaments.pair_division_threshold` → upper; else → lower; null threshold = no split
+
+### Permission System (Phase 7b)
+
+- `src/lib/tournament/permissions.ts` — `assertIsOwner(tournamentId, userId)`, `assertCanEdit(tournamentId, userId)` (owner OR co-admin)
+- `src/lib/tournament/audit.ts` — `writeAuditLog(params)` — inserts to `audit_logs` after every write
+- `tournament_admins` table — PK (tournament_id, user_id), added_by, added_at
+- `audit_logs` table — id, tournament_id, actor_id, actor_name, event_type, entity_type, entity_id, description, created_at
+- `canEdit = isOwner || isCoAdmin` — passed to all edit components; owner-only: ShareControls, CoAdminControls
 
 ### Knockout Bracket
 

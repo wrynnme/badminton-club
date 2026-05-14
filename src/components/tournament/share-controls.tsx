@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Link2, Link2Off, Copy, Check } from "lucide-react";
+import { Link2, Link2Off, Copy, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { generateShareTokenAction, revokeShareTokenAction } from "@/lib/actions/tournaments";
@@ -18,7 +18,7 @@ export function ShareControls({
 }) {
   const [token, setToken] = useState(shareToken);
   const [copied, setCopied] = useState(false);
-  const [, start] = useTransition();
+  const [isPending, start] = useTransition();
 
   const shareUrl = token ? `${appUrl}/t/${token}` : null;
 
@@ -58,9 +58,9 @@ export function ShareControls({
           </Button>
         </div>
       ) : (
-        <Button size="sm" variant="outline" onClick={generate} className="self-start">
-          <Link2 className="h-3.5 w-3.5 mr-1" />
-          สร้างลิงก์แชร์
+        <Button size="sm" variant="outline" onClick={generate} className="self-start" disabled={isPending}>
+          {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+          {isPending ? "กำลังสร้าง..." : "สร้างลิงก์แชร์"}
         </Button>
       )}
       {shareUrl && (

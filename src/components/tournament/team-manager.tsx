@@ -4,7 +4,7 @@ import * as z from "zod";
 import { useState, useTransition } from "react";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
-import { Plus, Trash2, ChevronDown, ChevronUp, UserMinus, Pencil, Check, X } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronUp, UserMinus, Pencil, Check, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -70,7 +70,7 @@ function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: (
       <div className="flex gap-2">
         <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
           {([can, sub]) => (
-            <Button type="submit" size="sm" disabled={!can || sub}>{sub ? "กำลังเพิ่ม..." : "เพิ่มทีม"}</Button>
+            <Button type="submit" size="sm" disabled={!can || sub}>{sub && <Loader2 className="h-4 w-4 animate-spin" />}{sub ? "กำลังเพิ่ม..." : "เพิ่มทีม"}</Button>
           )}
         </form.Subscribe>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>ยกเลิก</Button>
@@ -133,7 +133,7 @@ function AddMemberForm({ teamId, tournamentId, onDone }: { teamId: string; tourn
       <div className="flex gap-2">
         <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
           {([can, sub]) => (
-            <Button type="submit" size="sm" disabled={!can || sub}>{sub ? "กำลังเพิ่ม..." : "เพิ่ม"}</Button>
+            <Button type="submit" size="sm" disabled={!can || sub}>{sub && <Loader2 className="h-4 w-4 animate-spin" />}{sub ? "กำลังเพิ่ม..." : "เพิ่ม"}</Button>
           )}
         </form.Subscribe>
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>ยกเลิก</Button>

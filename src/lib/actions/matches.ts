@@ -6,10 +6,13 @@ import { headers } from "next/headers";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { generateAllPairMatches } from "@/lib/tournament/scheduling";
-import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
+import { gameWinner, sumGameScores, computeStandings } from "@/lib/tournament/scoring";
 import { buildBracket, buildDoubleBracket, nextPowerOf2 } from "@/lib/tournament/bracket";
 import type { BracketEntry, BracketMatchDef } from "@/lib/tournament/bracket";
-import type { Game } from "@/lib/types";
+import type { Game, Match } from "@/lib/types";
+import { assertCanEdit } from "@/lib/tournament/permissions";
+import { writeAuditLog } from "@/lib/tournament/audit";
+import { notifyTournamentOwner } from "@/lib/notification/line";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
@@ -18,18 +21,12 @@ async function loginRedirect(): Promise<never> {
   redirect(`/?auth_error=login_required&redirectTo=${encodeURIComponent(redirectTo)}`);
 }
 
-async function assertOwner(tournamentId: string, profileId: string): Promise<boolean> {
-  const sb = await createAdminClient();
-  const { data } = await sb.from("tournaments").select("owner_id").eq("id", tournamentId).single();
-  return data?.owner_id === profileId;
-}
-
 // ============ TEAM MODE ============
 
 export async function generateGroupsAction(tournamentId: string, groupCount: number) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
   const { data: teams } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
@@ -45,20 +42,29 @@ export async function generateGroupsAction(tournamentId: string, groupCount: num
     .from("groups")
     .insert(names.map((n) => ({ tournament_id: tournamentId, name: `กลุ่ม ${n}` })))
     .select("id");
-  if (!groups) return { error: "สร้างกลุ่มไม่สำเร็จ" };
+  if (!groups) return { error: "สร้างกลุ่มไม่สำเร็จ กรุณาลองใหม่" };
 
   await sb.from("group_teams").insert(
     shuffled.map((team, i) => ({ group_id: groups[i % groupCount].id, team_id: team.id }))
   );
 
   revalidatePath(`/tournaments/${tournamentId}`);
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "bracket_generated",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: `สร้างกลุ่ม ${groupCount} กลุ่ม`,
+  });
   return { ok: true };
 }
 
 export async function generateGroupMatchesAction(tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
   await sb.from("matches").delete().eq("tournament_id", tournamentId).eq("round_type", "group");
@@ -92,6 +98,15 @@ export async function generateGroupMatchesAction(tournamentId: string) {
   if (inserts.length) await sb.from("matches").insert(inserts);
 
   revalidatePath(`/tournaments/${tournamentId}`);
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "bracket_generated",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: `สร้างแมตช์กลุ่ม ${inserts.length} นัด`,
+  });
   return { ok: true, count: inserts.length };
 }
 
@@ -106,7 +121,7 @@ function levelToNum(level: string | null | undefined): number {
 export async function generatePairMatchesAction(tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
 
@@ -171,6 +186,15 @@ export async function generatePairMatchesAction(tournamentId: string) {
   if (allMatchInserts.length) await sb.from("matches").insert(allMatchInserts);
 
   revalidatePath(`/tournaments/${tournamentId}`);
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "bracket_generated",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: `สร้างแมตช์คู่ ${allMatchInserts.length} นัด`,
+  });
   return { ok: true, count: allMatchInserts.length, upper: upperCount, lower: lowerCount };
 }
 
@@ -266,7 +290,7 @@ async function insertAndResolveByes(
   }));
 
   const { error } = await sb.from("matches").insert(inserts);
-  if (error) return { error: error.message };
+  if (error) return { error: "สร้างสายน็อกเอาต์ไม่สำเร็จ" };
 
   // Auto-complete BYE matches and advance winners; do 2 passes for cascading lower bracket BYEs
   for (let pass = 0; pass < 2; pass++) {
@@ -315,52 +339,109 @@ async function insertAndResolveByes(
 export async function generateKnockoutAction(tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
 
   const { data: tournament } = await sb
     .from("tournaments")
-    .select("advance_count, seeding_method, format, has_lower_bracket, allow_drop_to_lower, match_unit")
+    .select("advance_count, seeding_method, format, has_lower_bracket, allow_drop_to_lower, match_unit, pair_division_threshold")
     .eq("id", tournamentId)
     .single();
   if (!tournament) return { error: "ไม่พบทัวร์นาเมนต์" };
 
   await sb.from("matches").delete().eq("tournament_id", tournamentId).eq("round_type", "knockout");
 
-  // ── Pair mode knockout (knockout_only only) ──
+  // ── Pair mode ──
   if (tournament.match_unit === "pair") {
-    if (tournament.format !== "knockout_only") {
-      return { error: "Pair mode knockout รองรับเฉพาะ knockout_only ใน Phase นี้" };
-    }
-    const { data: teams } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
-    const teamIds = teams?.map((t) => t.id) ?? [];
+    const { data: teamsData } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
+    const teamIds = teamsData?.map((t) => t.id) ?? [];
     if (!teamIds.length) return { error: "ยังไม่มีทีม" };
 
-    type RawPair = { id: string; name: string | null; pair_players: { team_players: { display_name: string }[] }[] };
+    type RawPair = {
+      id: string;
+      pair_level: string | null;
+      player1: { display_name: string } | null;
+      player2: { display_name: string } | null;
+    };
     const { data: pairsRaw } = await sb
       .from("pairs")
-      .select("id, name, pair_players(team_players(display_name))")
+      .select("id, pair_level, player1:team_players!player_id_1(display_name), player2:team_players!player_id_2(display_name)")
       .in("team_id", teamIds);
     const pairs = (pairsRaw as unknown as RawPair[]) ?? [];
     if (pairs.length < 2) return { error: "ต้องมีอย่างน้อย 2 คู่" };
 
-    const pairSeeds = tournament.seeding_method === "random"
-      ? [...pairs].sort(() => Math.random() - 0.5)
-      : pairs;
+    function pairSeed(p: RawPair): Seed {
+      const label = [p.player1?.display_name, p.player2?.display_name].filter(Boolean).join(" / ") || p.id.slice(0, 6);
+      return { teamId: p.id, name: label };
+    }
 
-    const pairEntries: BracketEntry[] = pairSeeds.map((p) => ({
-      teamId: p.id,
-      label: p.name ?? p.pair_players.flatMap((pp) => pp.team_players).map((tp) => tp?.display_name ?? "").join("/"),
-    }));
-    const bracketSize = nextPowerOf2(pairEntries.length);
-    const entries = [...pairEntries, ...Array(bracketSize - pairEntries.length).fill({ teamId: null, label: "BYE" })];
-    const allMatches = buildBracket(entries);
+    let allMatches: BracketMatchDef[];
+
+    if (tournament.format === "group_knockout") {
+      // Seed from group stage pair standings
+      const { data: groupMatchesRaw } = await sb
+        .from("matches").select("*").eq("tournament_id", tournamentId).eq("round_type", "group");
+      const groupMatches = (groupMatchesRaw ?? []) as Match[];
+      const standings = computeStandings(groupMatches, "pair", pairs.map((p) => p.id));
+
+      const threshold = tournament.pair_division_threshold ?? null;
+      const advanceCount = tournament.advance_count ?? 2;
+
+      function pairDiv(pairId: string): "upper" | "lower" | null {
+        if (threshold === null) return null;
+        const p = pairs.find((x) => x.id === pairId);
+        const n = parseFloat(p?.pair_level ?? "");
+        return !isNaN(n) && n > threshold ? "upper" : "lower";
+      }
+
+      function seedsFromStandings(rows: typeof standings, count: number): Seed[] {
+        return rows.slice(0, count).map((s) => pairSeed(pairs.find((p) => p.id === s.competitorId)!));
+      }
+
+      if (threshold === null) {
+        let topSeeds = seedsFromStandings(standings, advanceCount);
+        if (topSeeds.length < 2) return { error: "คู่ที่ผ่านรอบมีไม่ถึง 2 คู่" };
+        if (tournament.seeding_method === "random") topSeeds = [...topSeeds].sort(() => Math.random() - 0.5);
+        allMatches = buildBracket(toEntries(topSeeds, nextPowerOf2(topSeeds.length)));
+      } else {
+        const upperStandings = standings.filter((s) => pairDiv(s.competitorId) === "upper");
+        const lowerStandings = standings.filter((s) => pairDiv(s.competitorId) === "lower");
+        let upperSeeds = seedsFromStandings(upperStandings, advanceCount);
+        let lowerSeeds = seedsFromStandings(lowerStandings, advanceCount);
+        if (upperSeeds.length < 2 && lowerSeeds.length < 2) return { error: "ไม่มีคู่ที่ผ่านรอบเพียงพอในทั้งสอง division" };
+        if (tournament.seeding_method === "random") {
+          upperSeeds = [...upperSeeds].sort(() => Math.random() - 0.5);
+          lowerSeeds = [...lowerSeeds].sort(() => Math.random() - 0.5);
+        }
+        if (upperSeeds.length >= 2 && lowerSeeds.length >= 2) {
+          allMatches = buildIndependentDoubleBracket(upperSeeds, lowerSeeds);
+        } else {
+          const s = upperSeeds.length >= 2 ? upperSeeds : lowerSeeds;
+          allMatches = buildBracket(toEntries(s, nextPowerOf2(s.length)));
+        }
+      }
+    } else {
+      // knockout_only — seed all pairs
+      let pairSeeds = pairs.map(pairSeed);
+      if (tournament.seeding_method === "random") pairSeeds = pairSeeds.sort(() => Math.random() - 0.5);
+      allMatches = buildBracket(toEntries(pairSeeds, nextPowerOf2(pairSeeds.length)));
+    }
 
     const err = await insertAndResolveByes(sb, tournamentId, allMatches, true);
     if (err) return err;
 
     revalidatePath(`/tournaments/${tournamentId}`);
+    await writeAuditLog({
+      tournament_id: tournamentId,
+      actor_id: session.profileId,
+      actor_name: session.displayName,
+      event_type: "bracket_generated",
+      entity_type: "tournament",
+      entity_id: tournamentId,
+      description: "สร้างสายน็อกเอาต์",
+    });
+    notifyTournamentOwner(tournamentId, "สร้างสายน็อกเอาต์แล้ว").catch(() => {});
     return { ok: true, count: allMatches.filter((m) => !m.isBye).length };
   }
 
@@ -380,7 +461,7 @@ export async function generateKnockoutAction(tournamentId: string) {
       .from("groups")
       .select("id, group_teams(team_id, wins, draws, losses, points_for, points_against, team:teams(id, name, color))")
       .eq("tournament_id", tournamentId);
-    if (!groups?.length) return { error: "ยังไม่มีกลุ่ม กรุณาแบ่งกลุ่มก่อน" };
+    if (!groups?.length) return { error: "ยังไม่มีกลุ่ม — แบ่งกลุ่มก่อน" };
 
     const advanceCount = tournament.advance_count ?? 2;
     type Advancer = Seed & { groupRank: number; pts: number; diff: number; pf: number };
@@ -397,7 +478,7 @@ export async function generateKnockoutAction(tournamentId: string) {
       }
     }
 
-    if (advancers.length < 2) return { error: "ต้องมีผู้เข้ารอบอย่างน้อย 2 ทีม" };
+    if (advancers.length < 2) return { error: "ผู้เข้ารอบยังไม่ครบ — ต้องมีอย่างน้อย 2 ทีม" };
 
     seeds = tournament.seeding_method === "by_group_score"
       ? [...advancers].sort((a, b) => a.groupRank - b.groupRank || b.pts - a.pts || b.diff - a.diff || b.pf - a.pf)
@@ -427,7 +508,101 @@ export async function generateKnockoutAction(tournamentId: string) {
   if (err) return err;
 
   revalidatePath(`/tournaments/${tournamentId}`);
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "bracket_generated",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: `สร้างสายน็อกเอาต์`,
+  });
+  notifyTournamentOwner(tournamentId, "สร้างสายน็อกเอาต์แล้ว").catch(() => {});
   return { ok: true, count: allMatches.filter((m) => !m.isBye && m.bracket !== "grand_final").length };
+}
+
+// ============ MANUAL MATCH ============
+
+export async function createManualMatchAction(input: {
+  tournamentId: string;
+  pairAId: string;
+  pairBId: string;
+}) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (input.pairAId === input.pairBId) return { error: "ต้องเลือกคู่ที่ต่างกัน" };
+
+  const sb = await createAdminClient();
+
+  const { data: pairsData } = await sb
+    .from("pairs")
+    .select("id, team_id, pair_level, teams!inner(tournament_id)")
+    .in("id", [input.pairAId, input.pairBId]);
+
+  if (!pairsData || pairsData.length !== 2) return { error: "ไม่พบคู่" };
+
+  for (const p of pairsData) {
+    const tid = (p.teams as unknown as { tournament_id: string }).tournament_id;
+    if (tid !== input.tournamentId) return { error: "คู่ไม่ได้อยู่ใน tournament นี้" };
+  }
+
+  const pA = pairsData.find((p) => p.id === input.pairAId)!;
+  const pB = pairsData.find((p) => p.id === input.pairBId)!;
+
+  const { data: tournament } = await sb
+    .from("tournaments")
+    .select("pair_division_threshold")
+    .eq("id", input.tournamentId)
+    .single();
+
+  const threshold = tournament?.pair_division_threshold ?? null;
+
+  function pairDiv(level: string | null | undefined): "upper" | "lower" | null {
+    if (threshold === null) return null;
+    const n = parseFloat(level ?? "");
+    return !isNaN(n) && n > threshold ? "upper" : "lower";
+  }
+
+  const divA = pairDiv(pA.pair_level as string | null);
+  const divB = pairDiv(pB.pair_level as string | null);
+  if (divA !== divB) return { error: "คู่ต้องอยู่ใน division เดียวกัน" };
+
+  const { data: maxRow } = await sb
+    .from("matches")
+    .select("match_number")
+    .eq("tournament_id", input.tournamentId)
+    .eq("round_type", "group")
+    .order("match_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { error } = await sb.from("matches").insert({
+    tournament_id: input.tournamentId,
+    round_type: "group",
+    round_number: 1,
+    match_number: (maxRow?.match_number ?? 0) + 1,
+    pair_a_id: input.pairAId,
+    pair_b_id: input.pairBId,
+    team_a_id: pA.team_id,
+    team_b_id: pB.team_id,
+    division: divA,
+    games: [],
+    status: "pending",
+  });
+
+  if (error) return { error: "สร้างแมตช์ไม่สำเร็จ" };
+
+  revalidatePath(`/tournaments/${input.tournamentId}`);
+  await writeAuditLog({
+    tournament_id: input.tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "match_created",
+    entity_type: "match",
+    description: "สร้างแมตช์ manual",
+  });
+  return { ok: true };
 }
 
 // ============ SCORE ENTRY ============
@@ -439,7 +614,7 @@ export async function recordMatchScoreAction(input: {
 }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertOwner(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   if (!input.games.length) return { error: "ต้องมีอย่างน้อย 1 เกม" };
 
@@ -456,7 +631,7 @@ export async function recordMatchScoreAction(input: {
   const aId = isPairKnockout ? match.pair_a_id : match.team_a_id;
   const bId = isPairKnockout ? match.pair_b_id : match.team_b_id;
   const winnerId = winner === "a" ? aId : winner === "b" ? bId : null;
-  const loserId = winnerId === aId ? bId : aId;
+  const loserId = winner !== "draw" && winnerId ? (winnerId === aId ? bId : aId) : null;
 
   let gamesWonA = 0, gamesWonB = 0;
   for (const g of input.games) {
@@ -492,17 +667,59 @@ export async function recordMatchScoreAction(input: {
   }
 
   revalidatePath(`/tournaments/${input.tournamentId}`);
+  await writeAuditLog({
+    tournament_id: input.tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "score_updated",
+    entity_type: "match",
+    entity_id: input.matchId,
+    description: `บันทึกผลแมตช์`,
+  });
+  // Build and send match result notification in background
+  (async () => {
+    try {
+      const isPair = !!match.pair_a_id;
+      let nameA = "—", nameB = "—", winnerName = "เสมอ";
+
+      if (isPair) {
+        const ids = [aId, bId].filter(Boolean) as string[];
+        type PairRow = { id: string; display_pair_name: string | null; player1: { display_name: string } | null; player2: { display_name: string } | null };
+        const { data } = await sb.from("pairs")
+          .select("id, display_pair_name, player1:team_players!player_id_1(display_name), player2:team_players!player_id_2(display_name)")
+          .in("id", ids);
+        const pairMap = new Map((data as unknown as PairRow[] ?? []).map((p) => [
+          p.id,
+          (p.display_pair_name ?? [p.player1?.display_name, p.player2?.display_name].filter(Boolean).join(" / ")) || p.id.slice(0, 6),
+        ]));
+        nameA = (aId && pairMap.get(aId)) || "—";
+        nameB = (bId && pairMap.get(bId)) || "—";
+        winnerName = (winnerId && pairMap.get(winnerId)) || "เสมอ";
+      } else {
+        const ids = [aId, bId].filter(Boolean) as string[];
+        const { data } = await sb.from("teams").select("id, name").in("id", ids);
+        const teamMap = new Map((data ?? []).map((t) => [t.id, t.name]));
+        nameA = (aId && teamMap.get(aId)) || "—";
+        nameB = (bId && teamMap.get(bId)) || "—";
+        winnerName = (winnerId && teamMap.get(winnerId)) || "เสมอ";
+      }
+
+      const gameDetail = input.games.map((g) => `${g.a}-${g.b}`).join(", ");
+      const msg = `🏸 ${nameA} vs ${nameB}\nเกมที่ชนะ: ${gamesWonA}:${gamesWonB} (${gameDetail})\nผู้ชนะ: ${winnerName}`;
+      await notifyTournamentOwner(input.tournamentId, msg);
+    } catch {}
+  })();
   return { ok: true };
 }
 
 export async function resetMatchScoreAction(matchId: string, tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
   const { data: match } = await sb.from("matches").select("*").eq("id", matchId).single();
-  if (!match || match.status !== "completed") return { error: "ยังไม่มีผล" };
+  if (!match || match.status !== "completed") return { error: "แมตช์นี้ยังไม่มีคะแนน" };
 
   if (match.group_id && !match.pair_a_id && match.team_a_id && match.team_b_id) {
     const totals = sumGameScores(match.games);
@@ -516,7 +733,7 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
   // Knockout: block reset if winner's next match already completed; clear winner slot
   if (match.round_type === "knockout" && match.next_match_id && match.next_match_slot) {
     const { data: nextMatch } = await sb.from("matches").select("status").eq("id", match.next_match_id).single();
-    if (nextMatch?.status === "completed") return { error: "รอบถัดไปเล่นไปแล้ว ไม่สามารถรีเซ็ตได้" };
+    if (nextMatch?.status === "completed") return { error: "รีเซ็ตไม่ได้ — รอบถัดไปเล่นไปแล้ว" };
     const slot = `${colPrefix}_${match.next_match_slot}_id`;
     await sb.from("matches").update({ [slot]: null }).eq("id", match.next_match_id);
   }
@@ -524,7 +741,7 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
   // Knockout: block reset if loser's next match already completed; clear loser slot
   if (match.round_type === "knockout" && match.loser_next_match_id && match.loser_next_match_slot) {
     const { data: loserNext } = await sb.from("matches").select("status").eq("id", match.loser_next_match_id).single();
-    if (loserNext?.status === "completed") return { error: "แมตช์สายล่างถัดไปเล่นไปแล้ว ไม่สามารถรีเซ็ตได้" };
+    if (loserNext?.status === "completed") return { error: "รีเซ็ตไม่ได้ — แมตช์สายล่างถัดไปเล่นไปแล้ว" };
     const slot = `${colPrefix}_${match.loser_next_match_slot}_id`;
     await sb.from("matches").update({ [slot]: null }).eq("id", match.loser_next_match_id);
   }
@@ -538,6 +755,15 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
   }).eq("id", matchId);
 
   revalidatePath(`/tournaments/${tournamentId}`);
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "score_reset",
+    entity_type: "match",
+    entity_id: matchId,
+    description: `รีเซ็ตผลแมตช์`,
+  });
   return { ok: true };
 }
 

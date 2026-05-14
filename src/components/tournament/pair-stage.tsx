@@ -14,6 +14,7 @@ import { generatePairMatchesAction } from "@/lib/actions/matches";
 import { buildCompetitorMap, pairToCompetitor, teamToCompetitor } from "@/lib/tournament/competitor";
 import { computeStandings } from "@/lib/tournament/scoring";
 import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
+import { ManualMatchDialog } from "@/components/tournament/manual-match-dialog";
 import type { TeamWithPlayers, PairWithPlayers, Match, Team } from "@/lib/types";
 
 export function PairStage({
@@ -22,14 +23,16 @@ export function PairStage({
   pairs,
   matches,
   isOwner,
+  pairDivisionThreshold = null,
 }: {
   tournamentId: string;
   teams: TeamWithPlayers[];
   pairs: PairWithPlayers[];
   matches: Match[];
   isOwner: boolean;
+  pairDivisionThreshold?: number | null;
 }) {
-  const [showMatches, setShowMatches] = useState(true);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [, startGen] = useTransition();
 
   const flatTeams: Team[] = teams.map(({ players: _p, ...t }) => t as Team);
@@ -100,21 +103,32 @@ export function PairStage({
             <h2 className="font-semibold">การแข่งขัน</h2>
             {hasMatches && <Badge variant="outline" className="text-xs">{completedMatches}/{totalMatches} แมตช์</Badge>}
           </div>
-          {isOwner && totalPairs >= 2 && teamsWithPairs >= 2 && (
-            <Button size="sm" variant={hasMatches ? "outline" : "default"}
-              onClick={() => startGen(async () => {
-                const res = await generatePairMatchesAction(tournamentId);
-                if ("error" in res) toast.error(res.error);
-                else {
-                  const parts = [];
-                  if (res.upper) parts.push(`กลุ่มบน ${res.upper}`);
-                  if (res.lower) parts.push(`กลุ่มล่าง ${res.lower}`);
-                  toast.success(`สร้าง ${res.count} แมตช์ (${parts.join(", ")})`);
-                }
-              })}>
-              <Swords className="h-3.5 w-3.5 mr-1" />
-              {hasMatches ? "สร้างใหม่" : "สร้างตารางแข่ง"}
-            </Button>
+          {isOwner && (
+            <div className="flex items-center gap-2">
+              {hasMatches && (
+                <ManualMatchDialog
+                  tournamentId={tournamentId}
+                  pairs={pairs}
+                  pairDivisionThreshold={pairDivisionThreshold}
+                />
+              )}
+              {totalPairs >= 2 && teamsWithPairs >= 2 && (
+                <Button size="sm" variant={hasMatches ? "outline" : "default"}
+                  onClick={() => startGen(async () => {
+                    const res = await generatePairMatchesAction(tournamentId);
+                    if ("error" in res) toast.error(res.error);
+                    else {
+                      const parts = [];
+                      if (res.upper) parts.push(`กลุ่มบน ${res.upper}`);
+                      if (res.lower) parts.push(`กลุ่มล่าง ${res.lower}`);
+                      toast.success(`สร้าง ${res.count} แมตช์ (${parts.join(", ")})`);
+                    }
+                  })}>
+                  <Swords className="h-3.5 w-3.5 mr-1" />
+                  {hasMatches ? "สร้างใหม่" : "สร้างตารางแข่ง"}
+                </Button>
+              )}
+            </div>
           )}
         </div>
 
@@ -133,17 +147,19 @@ export function PairStage({
 
           return (
             <div className="space-y-3">
-              {displayGroups.map(({ label, matchList }) => (
+              {displayGroups.map(({ label, matchList }) => {
+                const isOpen = openGroups[label] !== false;
+                return (
                 <Card key={label}>
                   <CardContent className="pt-4 space-y-2">
                     <button
                       className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => setShowMatches(!showMatches)}>
-                      {showMatches ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      onClick={() => setOpenGroups(prev => ({ ...prev, [label]: !isOpen }))}>
+                      {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                       {label}
                       <span className="ml-1">({matchList.filter(m => m.status === "completed").length}/{matchList.length})</span>
                     </button>
-                    {showMatches && (
+                    {isOpen && (
                       <div className="divide-y">
                         {matchList.map((m) => (
                           <MatchRow
@@ -158,7 +174,8 @@ export function PairStage({
                     )}
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           );
         })()}

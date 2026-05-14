@@ -113,13 +113,14 @@ export default async function PublicTournamentPage({
         <div className="flex items-center gap-2">
           <ExportButtons
             tournamentName={t.name}
+            tournamentId={t.id}
             matches={allMatches}
             teams={teams}
             pairs={pairs}
             matchUnit={t.match_unit}
           />
           {knockoutMatches.length > 0 && (
-            <Button render={<Link href={`/tournaments/${t.id}/bracket`} />} size="sm" variant="outline">
+            <Button render={<Link href={`/tournaments/${t.id}/bracket`} />} nativeButton={false} size="sm" variant="outline">
               <GitBranch className="h-3.5 w-3.5 mr-1" />
               ดูสาย
             </Button>
@@ -145,6 +146,7 @@ export default async function PublicTournamentPage({
               teams={teams}
               pairs={pairs}
               matches={allMatches.filter((m) => m.pair_a_id)}
+              pairDivisionThreshold={t.pair_division_threshold}
               isOwner={false}
             />
           </>
@@ -161,6 +163,7 @@ export default async function PublicTournamentPage({
               matchUnit={t.match_unit}
               advanceCount={t.advance_count ?? 2}
               isOwner={false}
+              format={t.format}
             />
           </>
         )}

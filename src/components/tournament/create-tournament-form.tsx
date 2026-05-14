@@ -3,6 +3,7 @@
 import * as z from "zod";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -314,6 +315,7 @@ export function CreateTournamentForm() {
         <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
           {([canSubmit, isSubmitting]) => (
             <Button type="submit" className="w-full" disabled={!canSubmit || isSubmitting}>
+              {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
               {isSubmitting ? "กำลังสร้าง..." : "สร้างทัวร์นาเมนต์"}
             </Button>
           )}

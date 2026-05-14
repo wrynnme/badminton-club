@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Plus, X } from "lucide-react";
+import { Plus, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { recordMatchScoreAction } from "@/lib/actions/matches";
@@ -80,6 +80,7 @@ export function ScoreForm({
         <div className="flex-1" />
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>ยกเลิก</Button>
         <Button type="button" size="sm" onClick={submit} disabled={pending}>
+          {pending && <Loader2 className="h-4 w-4 animate-spin" />}
           {pending ? "บันทึก..." : "บันทึกผล"}
         </Button>
       </div>
