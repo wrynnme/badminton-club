@@ -10,8 +10,11 @@ export async function SiteHeader() {
   return (
     <header className="border-b">
       <div className="mx-auto max-w-5xl px-4 h-14 flex items-center justify-between">
-        <Link href="/" className="font-bold text-lg">
+        <Link href="/" className="font-bold text-lg flex items-center gap-2">
           🏸 ก๊วนแบด
+          <Badge variant="outline" className="text-xs font-mono font-normal hidden sm:inline-flex">
+            v{process.env.NEXT_PUBLIC_APP_VERSION} ({process.env.NEXT_PUBLIC_GIT_COMMIT})
+          </Badge>
         </Link>
         <nav className="flex items-center gap-3">
           <ThemeToggle />
