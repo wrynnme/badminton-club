@@ -110,8 +110,19 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - Phase 0–4: group stage, knockout (single + double elim), pair mode, CSV import/export, player level, flat pairs, player rename
 - Phase 5: bracket visualization at `/tournaments/[id]/bracket`
 - Phase 6: Realtime + public share link (`/t/[token]`)
+- Phase 7a: LINE Notification + Print/PDF (see below)
 - Phase 7b: Co-admin + Audit Log (see below)
 - DB fixes: dropped `matches_winner_id_fkey` FK (was referencing `teams.id` — blocked pair mode winner), fixed `matches_round_type_check` + `matches_bracket_check` constraints to allow `upper/lower/grand_final`
+- Code review fixes (committed with Phase 7a+7b):
+  - `matches.ts` — `loserId` now `null` when `winner === "draw"` (was incorrectly routing team A as loser)
+  - `pair-stage.tsx` — per-group open state; was shared `showMatches` collapsing all groups at once
+  - `/t/[token]/page.tsx` — pass `pairDivisionThreshold` to `PairStage` (divisions were missing on public page)
+  - `admins.ts` — `getCoAdminsAction` now requires `assertCanEdit` (was open to any authenticated user)
+  - `permissions.ts` — `assertIsOwner`/`assertCanEdit` throw on DB error instead of returning false; `assertCanEdit` now single-query JOIN (was 2 round-trips)
+  - `audit.ts` — `writeAuditLog` logs `console.error` on failure (was silently swallowed)
+  - `edit-tournament-form.tsx` — replaced raw `<input type="checkbox">` with shadcn `<Checkbox>`
+  - `print-button.tsx` — replaced raw `<button>` with shadcn `<Button>`
+  - `tournaments.ts` — `importPlayersCsvAction` parallelized with `Promise.all` (was sequential per row)
 
 ### Phase 5 — Bracket Visualization
 
