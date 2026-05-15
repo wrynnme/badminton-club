@@ -207,6 +207,13 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **Bracket print**: `src/components/ui/print-button.tsx` client component → `window.print()`; added to bracket page header
 - **Export buttons**: added `tournamentId` prop + "พิมพ์:" section with match + roster links (open new tab)
 
+### Version Badge
+
+- **Build-time env injection** (`next.config.ts`):
+  - `NEXT_PUBLIC_APP_VERSION` — read from `package.json` via `readFileSync` + `JSON.parse`
+  - `NEXT_PUBLIC_GIT_COMMIT` — `execSync("git rev-parse --short HEAD")` with `try/catch` → `"unknown"` fallback (shallow CI clones)
+- **UI**: `SiteHeader` shows outline `Badge` next to 🏸 ก๊วนแบด logo with `v{version} ({commit})` — `hidden sm:inline-flex` (mobile-hidden)
+
 ---
 
 ## Todo
