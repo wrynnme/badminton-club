@@ -290,8 +290,7 @@ export async function toggleCheckInAction(input: { club_id: string; player_id: s
   if (!player) return { error: "ไม่พบผู้เล่น" };
 
   const isOwner = await assertClubOwner(sb, input.club_id, session.profileId);
-  const isSelf = player.profile_id === session.profileId;
-  if (!isOwner && !isSelf) return { error: "ไม่มีสิทธิ์" };
+  if (!isOwner) return { error: "ไม่มีสิทธิ์" };
 
   const next = player.checked_in_at ? null : new Date().toISOString();
   const { error } = await sb

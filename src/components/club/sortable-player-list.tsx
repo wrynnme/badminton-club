@@ -113,7 +113,7 @@ function SortableItem({
   };
 
   const isSelf = sessionProfileId === player.profile_id;
-  const canToggleCheckIn = isOwner || isSelf;
+  const canToggleCheckIn = isOwner;
   const isCheckedIn = !!player.checked_in_at;
 
   return (
