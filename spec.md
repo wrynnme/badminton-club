@@ -141,7 +141,8 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ### Phase 7b — Co-admin + Audit Log
 
-- **DB**: `tournament_admins` (PK: tournament_id + user_id, added_by, added_at) + `audit_logs` (id, tournament_id, actor_id, actor_name, event_type, entity_type, entity_id, description, created_at)
+- **DB**: `tournament_admins` (PK: tournament_id + user_id (uuid → profiles.id), added_by (uuid → profiles.id), added_at) + `audit_logs` (id, tournament_id, actor_id, actor_name, event_type, entity_type, entity_id, description, created_at)
+  - migration `tournament_admins_user_id_to_uuid`: backfilled LINE user_id text → profile UUID via `profiles.line_user_id` lookup; converted columns `user_id` + `added_by` `text → uuid` and added FK `→ profiles(id)` (user_id ON DELETE CASCADE; added_by ON DELETE SET NULL — column nullable)
 - **Permission layer**: `src/lib/tournament/permissions.ts` — `assertIsOwner`, `assertCanEdit` (owner OR co-admin)
 - **Audit helper**: `src/lib/tournament/audit.ts` — `writeAuditLog(params)` — inserts to `audit_logs` after every write
 - **Co-admin actions**: `src/lib/actions/admins.ts` — `addCoAdminAction`, `removeCoAdminAction` (owner-only), `getCoAdminsAction`, `getAuditLogsAction` (owner + co-admin, limit 50)
@@ -198,9 +199,10 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 - **LINE notification**: `src/lib/notification/line.ts` — `notifyTournamentAdmins(tournamentId, text)` sends LINE push to owner + all co-admins
   - Env var: `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN` (silently skipped if missing or no recipients have line_user_id)
-  - Recipients: owner_id + all user_ids from `tournament_admins`; queried via single `profiles.line_user_id IN (...)` lookup
+  - Recipients: dedupe `[owner_id, ...tournament_admins.user_id]` (all profile UUIDs now), single `profiles.line_user_id IN (...)` lookup
   - Delivery: LINE `/push` for 1 recipient, `/multicast` for 2+ (up to 500 IDs per request)
-  - Non-blocking: `.catch(() => {})` — never affects action result
+  - Errors logged to `console.error` (API non-2xx + exceptions); no success/recipient logs (low noise)
+  - Non-blocking: `.catch(() => {})` at the caller — never affects action result
   - 3 triggers: `recordMatchScoreAction` (includes competitor names + game scores), `updateTournamentStatusAction` (Thai status label), `generateKnockoutAction`
   - Score notification format: `🏸 A vs B\nเกมที่ชนะ: 2:1 (21-15, 18-21, 21-19)\nผู้ชนะ: ชื่อ`
 - **Print pages**: `/tournaments/[id]/print/matches` + `/tournaments/[id]/print/roster` — server-rendered, print-optimized; nav hidden on print

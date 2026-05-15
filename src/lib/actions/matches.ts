@@ -626,10 +626,10 @@ export async function recordMatchScoreAction(input: {
   const winner = gameWinner(input.games);
   const totals = sumGameScores(input.games);
 
-  // Detect pair knockout (pair_a_id set, no team ids)
-  const isPairKnockout = match.round_type === "knockout" && !!(match.pair_a_id || match.pair_b_id);
-  const aId = isPairKnockout ? match.pair_a_id : match.team_a_id;
-  const bId = isPairKnockout ? match.pair_b_id : match.team_b_id;
+  // Detect pair mode (pair_a_id/pair_b_id set) — applies to BOTH group and knockout
+  const isPair = !!(match.pair_a_id || match.pair_b_id);
+  const aId = isPair ? match.pair_a_id : match.team_a_id;
+  const bId = isPair ? match.pair_b_id : match.team_b_id;
   const winnerId = winner === "a" ? aId : winner === "b" ? bId : null;
   const loserId = winner !== "draw" && winnerId ? (winnerId === aId ? bId : aId) : null;
 
@@ -652,7 +652,7 @@ export async function recordMatchScoreAction(input: {
     await updateGroupTeamStandings(match.group_id, aId, bId, totals.a, totals.b, winner);
   }
 
-  const colPrefix = isPairKnockout ? "pair" : "team";
+  const colPrefix = isPair ? "pair" : "team";
 
   // Knockout: advance winner to next match
   if (match.round_type === "knockout" && winnerId && match.next_match_id && match.next_match_slot) {
@@ -727,8 +727,8 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
     await reverseGroupTeamStandings(match.group_id, match.team_a_id, match.team_b_id, totals.a, totals.b, winner);
   }
 
-  const isPairKnockout = match.round_type === "knockout" && !!(match.pair_a_id || match.pair_b_id);
-  const colPrefix = isPairKnockout ? "pair" : "team";
+  const isPair = !!(match.pair_a_id || match.pair_b_id);
+  const colPrefix = isPair ? "pair" : "team";
 
   // Knockout: block reset if winner's next match already completed; clear winner slot
   if (match.round_type === "knockout" && match.next_match_id && match.next_match_slot) {

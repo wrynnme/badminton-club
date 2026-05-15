@@ -21,9 +21,9 @@ export function CoAdminControls({
   const [isPending, startTransition] = useTransition();
 
   const form = useForm({
-    defaultValues: { userId: "" },
+    defaultValues: { lineUserId: "" },
     onSubmit: async ({ value }) => {
-      const res = await addCoAdminAction(tournamentId, value.userId.trim());
+      const res = await addCoAdminAction(tournamentId, value.lineUserId.trim());
       if ("error" in res) {
         toast.error(res.error);
         return;
@@ -33,7 +33,9 @@ export function CoAdminControls({
         ...prev,
         {
           tournament_id: tournamentId,
-          user_id: value.userId.trim(),
+          user_id: "",
+          line_user_id: value.lineUserId.trim(),
+          display_name: null,
           added_by: "",
           added_at: new Date().toISOString(),
         },
@@ -64,14 +66,21 @@ export function CoAdminControls({
         ) : (
           <ul className="space-y-1">
             {admins.map((admin) => (
-              <li key={admin.user_id} className="flex items-center justify-between gap-2">
-                <span className="text-sm font-mono truncate">{admin.user_id}</span>
+              <li key={admin.user_id || admin.line_user_id} className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">
+                    {admin.display_name ?? "(ไม่มีชื่อ)"}
+                  </p>
+                  <p className="text-xs font-mono text-muted-foreground truncate">
+                    {admin.line_user_id ?? admin.user_id}
+                  </p>
+                </div>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
                   className="text-destructive hover:text-destructive shrink-0"
-                  disabled={isPending}
+                  disabled={isPending || !admin.user_id}
                   onClick={() => handleRemove(admin.user_id)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -89,10 +98,14 @@ export function CoAdminControls({
           className="flex gap-2"
         >
           <form.Field
-            name="userId"
+            name="lineUserId"
             validators={{
               onChange: ({ value }) =>
-                !value.trim() ? "ระบุ LINE user ID" : undefined,
+                !value.trim()
+                  ? "ระบุ LINE user ID"
+                  : !/^U[0-9a-f]{32}$/i.test(value.trim())
+                  ? "รูปแบบ LINE ID ไม่ถูกต้อง (U + 32 hex)"
+                  : undefined,
             }}
           >
             {(field) => (
@@ -100,7 +113,7 @@ export function CoAdminControls({
                 value={field.state.value}
                 onChange={(e) => field.handleChange(e.target.value)}
                 onBlur={field.handleBlur}
-                placeholder="LINE user ID"
+                placeholder="LINE user ID (U + 32 hex)"
                 className="h-8 text-sm flex-1"
               />
             )}

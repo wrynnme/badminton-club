@@ -19,7 +19,9 @@ export async function notifyTournamentAdmins(tournamentId: string, text: string)
       .select("user_id")
       .eq("tournament_id", tournamentId);
 
-    const userIds = [tournament.owner_id, ...(coAdmins ?? []).map((a) => a.user_id)];
+    const userIds = Array.from(
+      new Set([tournament.owner_id, ...(coAdmins ?? []).map((a) => a.user_id)])
+    );
 
     const { data: profiles } = await sb
       .from("profiles")
@@ -33,34 +35,27 @@ export async function notifyTournamentAdmins(tournamentId: string, text: string)
     if (lineUserIds.length === 0) return;
 
     const message = `[${tournament.name}]\n${text}`;
+    const endpoint = lineUserIds.length === 1
+      ? "https://api.line.me/v2/bot/message/push"
+      : "https://api.line.me/v2/bot/message/multicast";
+    const body = lineUserIds.length === 1
+      ? { to: lineUserIds[0], messages: [{ type: "text", text: message }] }
+      : { to: lineUserIds, messages: [{ type: "text", text: message }] };
 
-    // LINE multicast: up to 500 IDs per request
-    if (lineUserIds.length === 1) {
-      await fetch("https://api.line.me/v2/bot/message/push", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          to: lineUserIds[0],
-          messages: [{ type: "text", text: message }],
-        }),
-      });
-    } else {
-      await fetch("https://api.line.me/v2/bot/message/multicast", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          to: lineUserIds,
-          messages: [{ type: "text", text: message }],
-        }),
-      });
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error("[LINE] API error:", res.status, errBody);
     }
-  } catch {
-    // notification must never throw
+  } catch (err) {
+    console.error("[LINE] exception:", err);
   }
 }

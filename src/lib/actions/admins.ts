@@ -25,10 +25,14 @@ async function loginRedirect(): Promise<never> {
 
 export type TournamentAdmin = {
   tournament_id: string;
-  user_id: string;
+  user_id: string;        // profile UUID
+  line_user_id: string | null;
+  display_name: string | null;
   added_by: string;
   added_at: string;
 };
+
+const LINE_USER_ID_RE = /^U[0-9a-f]{32}$/i;
 
 export type AuditLogEntry = {
   id: string;
@@ -46,18 +50,33 @@ export type AuditLogEntry = {
 
 export async function addCoAdminAction(
   tournamentId: string,
-  userId: string
+  lineUserId: string
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
   if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
-  if (userId === session.profileId) return { error: "ไม่สามารถเพิ่มตัวเองเป็น co-admin" };
+
+  const trimmed = lineUserId.trim();
+  if (!LINE_USER_ID_RE.test(trimmed)) {
+    return { error: "LINE user ID ต้องขึ้นต้นด้วย U ตามด้วย 32 hex (เช่น U30d2f650...)" };
+  }
 
   const sb = await createAdminClient();
+
+  // Look up profile UUID from LINE user_id
+  const { data: profile } = await sb
+    .from("profiles")
+    .select("id")
+    .eq("line_user_id", trimmed)
+    .maybeSingle();
+
+  if (!profile) return { error: "ไม่พบผู้ใช้ที่ login ด้วย LINE นี้" };
+  if (profile.id === session.profileId) return { error: "ไม่สามารถเพิ่มตัวเองเป็น co-admin" };
+
   const { error } = await sb.from("tournament_admins").insert({
     tournament_id: tournamentId,
-    user_id: userId,
+    user_id: profile.id,
     added_by: session.profileId,
   });
 
@@ -71,7 +90,9 @@ export async function addCoAdminAction(
     actor_id: session.profileId,
     actor_name: session.displayName,
     event_type: "admin_added",
-    description: `เพิ่ม co-admin: ${userId}`,
+    entity_type: "admin",
+    entity_id: profile.id,
+    description: `เพิ่ม co-admin: ${trimmed}`,
   });
 
   revalidatePath(`/tournaments/${tournamentId}`);
@@ -99,6 +120,8 @@ export async function removeCoAdminAction(
     actor_id: session.profileId,
     actor_name: session.displayName,
     event_type: "admin_removed",
+    entity_type: "admin",
+    entity_id: userId,
     description: `ลบ co-admin: ${userId}`,
   });
 
@@ -115,14 +138,31 @@ export async function getCoAdminsAction(
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
+  type Row = {
+    tournament_id: string;
+    user_id: string;
+    added_by: string;
+    added_at: string;
+    profile: { line_user_id: string | null; display_name: string | null } | null;
+  };
   const { data, error } = await sb
     .from("tournament_admins")
-    .select("tournament_id, user_id, added_by, added_at")
+    .select("tournament_id, user_id, added_by, added_at, profile:profiles!user_id(line_user_id, display_name)")
     .eq("tournament_id", tournamentId)
     .order("added_at", { ascending: true });
 
   if (error) return { error: "โหลดรายชื่อผู้ช่วยดูแลไม่สำเร็จ" };
-  return { ok: true, admins: (data ?? []) as TournamentAdmin[] };
+
+  const admins: TournamentAdmin[] = (data as unknown as Row[] ?? []).map((r) => ({
+    tournament_id: r.tournament_id,
+    user_id: r.user_id,
+    line_user_id: r.profile?.line_user_id ?? null,
+    display_name: r.profile?.display_name ?? null,
+    added_by: r.added_by,
+    added_at: r.added_at,
+  }));
+
+  return { ok: true, admins };
 }
 
 export async function getAuditLogsAction(
