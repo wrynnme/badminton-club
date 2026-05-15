@@ -8,7 +8,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { assertIsOwner, assertCanEdit } from "@/lib/tournament/permissions";
 import { writeAuditLog } from "@/lib/tournament/audit";
-import { notifyTournamentOwner } from "@/lib/notification/line";
+import { notifyTournamentAdmins } from "@/lib/notification/line";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
@@ -107,7 +107,7 @@ export async function updateTournamentStatusAction(id: string, status: "draft" |
     ongoing: "กำลังแข่งขัน",
     completed: "จบการแข่งขัน",
   };
-  notifyTournamentOwner(id, `สถานะเปลี่ยนเป็น: ${statusLabel[status] ?? status}`).catch(() => {});
+  notifyTournamentAdmins(id, `สถานะเปลี่ยนเป็น: ${statusLabel[status] ?? status}`).catch(() => {});
   return { ok: true };
 }
 

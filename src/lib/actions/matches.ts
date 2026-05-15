@@ -12,7 +12,7 @@ import type { BracketEntry, BracketMatchDef } from "@/lib/tournament/bracket";
 import type { Game, Match } from "@/lib/types";
 import { assertCanEdit } from "@/lib/tournament/permissions";
 import { writeAuditLog } from "@/lib/tournament/audit";
-import { notifyTournamentOwner } from "@/lib/notification/line";
+import { notifyTournamentAdmins } from "@/lib/notification/line";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
@@ -441,7 +441,7 @@ export async function generateKnockoutAction(tournamentId: string) {
       entity_id: tournamentId,
       description: "สร้างสายน็อกเอาต์",
     });
-    notifyTournamentOwner(tournamentId, "สร้างสายน็อกเอาต์แล้ว").catch(() => {});
+    notifyTournamentAdmins(tournamentId, "สร้างสายน็อกเอาต์แล้ว").catch(() => {});
     return { ok: true, count: allMatches.filter((m) => !m.isBye).length };
   }
 
@@ -517,7 +517,7 @@ export async function generateKnockoutAction(tournamentId: string) {
     entity_id: tournamentId,
     description: `สร้างสายน็อกเอาต์`,
   });
-  notifyTournamentOwner(tournamentId, "สร้างสายน็อกเอาต์แล้ว").catch(() => {});
+  notifyTournamentAdmins(tournamentId, "สร้างสายน็อกเอาต์แล้ว").catch(() => {});
   return { ok: true, count: allMatches.filter((m) => !m.isBye && m.bracket !== "grand_final").length };
 }
 
@@ -706,7 +706,7 @@ export async function recordMatchScoreAction(input: {
 
       const gameDetail = input.games.map((g) => `${g.a}-${g.b}`).join(", ");
       const msg = `🏸 ${nameA} vs ${nameB}\nเกมที่ชนะ: ${gamesWonA}:${gamesWonB} (${gameDetail})\nผู้ชนะ: ${winnerName}`;
-      await notifyTournamentOwner(input.tournamentId, msg);
+      await notifyTournamentAdmins(input.tournamentId, msg);
     } catch {}
   })();
   return { ok: true };

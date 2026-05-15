@@ -196,8 +196,10 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ### Phase 7a — LINE Notification + Print/PDF
 
-- **LINE notification**: `src/lib/notification/line.ts` — `notifyTournamentOwner(tournamentId, text)` sends LINE push message to owner
-  - Env var: `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN` (silently skipped if missing or owner is guest)
+- **LINE notification**: `src/lib/notification/line.ts` — `notifyTournamentAdmins(tournamentId, text)` sends LINE push to owner + all co-admins
+  - Env var: `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN` (silently skipped if missing or no recipients have line_user_id)
+  - Recipients: owner_id + all user_ids from `tournament_admins`; queried via single `profiles.line_user_id IN (...)` lookup
+  - Delivery: LINE `/push` for 1 recipient, `/multicast` for 2+ (up to 500 IDs per request)
   - Non-blocking: `.catch(() => {})` — never affects action result
   - 3 triggers: `recordMatchScoreAction` (includes competitor names + game scores), `updateTournamentStatusAction` (Thai status label), `generateKnockoutAction`
   - Score notification format: `🏸 A vs B\nเกมที่ชนะ: 2:1 (21-15, 18-21, 21-19)\nผู้ชนะ: ชื่อ`
