@@ -10,7 +10,8 @@ import { JoinForm } from "@/components/club/join-form";
 import { EditClubForm } from "@/components/club/edit-club-form";
 import { SortablePlayerList } from "@/components/club/sortable-player-list";
 import { ExpenseManager } from "@/components/club/expense-manager";
-import type { ClubExpense } from "@/lib/actions/clubs";
+import { ClubCoAdminControls } from "@/components/club/club-co-admin-controls";
+import type { ClubExpense, ClubAdmin } from "@/lib/actions/clubs";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -44,11 +45,26 @@ export default async function ClubDetailPage({
       .select("*")
       .eq("club_id", id)
       .order("created_at", { ascending: true }),
+    sb
+      .from("club_admins")
+      .select("club_id, user_id, added_by, added_at, profile:profiles!user_id(display_name, line_user_id)")
+      .eq("club_id", id)
+      .order("added_at", { ascending: true }),
   ]);
 
   const owner = ownerRes.data;
   const players = playersRes.data ?? [];
   const expenses: ClubExpense[] = (expensesRes.data ?? []) as ClubExpense[];
+
+  type AdminRow = { club_id: string; user_id: string; added_by: string | null; added_at: string; profile: { display_name: string | null; line_user_id: string | null } | null };
+  const coAdmins: ClubAdmin[] = ((adminsRes.data ?? []) as unknown as AdminRow[]).map((r) => ({
+    club_id: r.club_id,
+    user_id: r.user_id,
+    display_name: r.profile?.display_name ?? null,
+    line_user_id: r.profile?.line_user_id ?? null,
+    added_by: r.added_by,
+    added_at: r.added_at,
+  }));
 
   const joined = players.length;
   const full = joined >= club.max_players;
@@ -56,6 +72,8 @@ export default async function ClubDetailPage({
     ? players.find((p) => p.profile_id === session.profileId)
     : null;
   const isOwner = session?.profileId === club.owner_id;
+  const isCoAdmin = session ? coAdmins.some((a) => a.user_id === session.profileId) : false;
+  const canManage = isOwner || isCoAdmin;
 
   // Compute total from expenses; fall back to legacy total_cost
   const expenseTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
@@ -129,6 +147,8 @@ export default async function ClubDetailPage({
               />
             </CardContent>
           </Card>
+
+          <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />
         </div>
       )}
 
@@ -156,7 +176,7 @@ export default async function ClubDetailPage({
           clubId={club.id}
           players={players}
           sessionProfileId={session?.profileId ?? null}
-          isOwner={isOwner}
+          canManage={canManage}
         />
       </section>
     </div>

@@ -32,7 +32,7 @@ type Props = {
   clubId: string;
   players: ClubPlayer[];
   sessionProfileId: string | null;
-  isOwner: boolean;
+  canManage: boolean;
 };
 
 function CheckInButton({
@@ -93,17 +93,17 @@ function SortableItem({
   index,
   clubId,
   sessionProfileId,
-  isOwner,
+  canManage,
 }: {
   player: ClubPlayer;
   index: number;
   clubId: string;
   sessionProfileId: string | null;
-  isOwner: boolean;
+  canManage: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: player.id,
-    disabled: !isOwner,
+    disabled: !canManage,
   });
 
   const style = {
@@ -113,7 +113,7 @@ function SortableItem({
   };
 
   const isSelf = sessionProfileId === player.profile_id;
-  const canToggleCheckIn = isOwner;
+  const canToggleCheckIn = canManage;
   const isCheckedIn = !!player.checked_in_at;
 
   return (
@@ -124,7 +124,7 @@ function SortableItem({
         isCheckedIn ? "border-green-500/30 bg-green-500/5 dark:bg-green-500/5" : ""
       }`}
     >
-      {isOwner && (
+      {canManage && (
         <button
           {...attributes}
           {...listeners}
@@ -145,13 +145,13 @@ function SortableItem({
       <span className="ml-auto flex items-center gap-1.5">
         <CheckInButton player={player} clubId={clubId} canToggle={canToggleCheckIn} />
         {isSelf && <LeaveButton clubId={clubId} />}
-        {isOwner && !isSelf && <KickButton clubId={clubId} playerId={player.id} />}
+        {canManage && !isSelf && <KickButton clubId={clubId} playerId={player.id} />}
       </span>
     </li>
   );
 }
 
-export function SortablePlayerList({ clubId, players, sessionProfileId, isOwner }: Props) {
+export function SortablePlayerList({ clubId, players, sessionProfileId, canManage }: Props) {
   const [items, setItems] = useState(players);
   const [, startTransition] = useTransition();
   const [refreshing, startRefresh] = useTransition();
@@ -243,7 +243,7 @@ export function SortablePlayerList({ clubId, players, sessionProfileId, isOwner 
                 index={i}
                 clubId={clubId}
                 sessionProfileId={sessionProfileId}
-                isOwner={isOwner}
+                canManage={canManage}
               />
             ))}
           </ol>

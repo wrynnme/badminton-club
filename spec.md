@@ -273,6 +273,26 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ## Club System
 
+### Co-Admin
+
+- **DB**: `club_admins` (PK: club_id + user_id, FK → clubs ON DELETE CASCADE, FK → profiles ON DELETE CASCADE, added_by nullable)
+- **`assertCanManageClub`** — LEFT JOIN query: `owner_id === profileId OR club_admins[user_id=profileId].length > 0`
+- **Actions** (`src/lib/actions/clubs.ts`):
+  - `addClubCoAdminAction(clubId, lineUserId)` — owner only; validates LINE ID regex, resolves UUID via `profiles.line_user_id`
+  - `removeClubCoAdminAction(clubId, userId)` — owner only
+  - `searchClubProfilesAction(clubId, query)` — owner only; ILIKE display_name, excludes owner + existing co-admins + null line_user_id, limit 20
+  - `reorderPlayersAction`, `kickPlayerAction`, `toggleCheckInAction` → updated to `assertCanManageClub`
+  - `ClubAdmin`, `ClubProfileSearchResult` types exported
+- **`ClubCoAdminControls`** (`src/components/club/club-co-admin-controls.tsx`) — client component; Popover + Command combobox (250ms debounce), list + remove; mirrors tournament co-admin pattern
+- **`SortablePlayerList`** prop renamed `isOwner` → `canManage`; DnD, kick, check-in ทำได้ถ้า `canManage`
+- **Club detail page**: fetch `club_admins` parallel; compute `isCoAdmin`, `canManage = isOwner || isCoAdmin`; `ClubCoAdminControls` แสดงเฉพาะ owner
+
+| Action | Owner | Co-Admin | Player |
+|---|---|---|---|
+| Check-in / Kick / Reorder | ✓ | ✓ | ✗ |
+| Edit club / Expenses | ✓ | ✗ | ✗ |
+| Add/remove co-admins | ✓ | ✗ | ✗ |
+
 ### เช็คอิน
 
 - **DB**: `club_players.checked_in_at timestamptz nullable`

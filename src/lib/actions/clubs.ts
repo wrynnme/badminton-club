@@ -153,6 +153,18 @@ async function assertClubOwner(sb: Awaited<ReturnType<typeof createAdminClient>>
   return true;
 }
 
+async function assertCanManageClub(sb: Awaited<ReturnType<typeof createAdminClient>>, clubId: string, profileId: string) {
+  const { data } = await sb
+    .from("clubs")
+    .select("owner_id, club_admins!left(user_id)")
+    .eq("id", clubId)
+    .eq("club_admins.user_id", profileId)
+    .single();
+  if (!data) return false;
+  const admins = (data.club_admins ?? []) as { user_id: string }[];
+  return data.owner_id === profileId || admins.length > 0;
+}
+
 export async function addExpenseAction(input: { club_id: string; label: string; amount: number }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -245,8 +257,7 @@ export async function reorderPlayersAction(clubId: string, orderedIds: string[])
   if (!session) return await loginRedirect();
 
   const sb = await createAdminClient();
-  const { data: club } = await sb.from("clubs").select("owner_id").eq("id", clubId).single();
-  if (!club || club.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   await Promise.all(
     orderedIds.map((id, i) =>
@@ -266,8 +277,7 @@ export async function kickPlayerAction(formData: FormData) {
   const playerId = formData.get("player_id") as string;
 
   const sb = await createAdminClient();
-  const { data: club } = await sb.from("clubs").select("owner_id").eq("id", clubId).single();
-  if (!club || club.owner_id !== session.profileId) return;
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return;
 
   await sb.from("club_players").delete().eq("id", playerId).eq("club_id", clubId);
   revalidatePath(`/clubs/${clubId}`);
@@ -289,8 +299,8 @@ export async function toggleCheckInAction(input: { club_id: string; player_id: s
 
   if (!player) return { error: "ไม่พบผู้เล่น" };
 
-  const isOwner = await assertClubOwner(sb, input.club_id, session.profileId);
-  if (!isOwner) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanManageClub(sb, input.club_id, session.profileId)))
+    return { error: "ไม่มีสิทธิ์" };
 
   const next = player.checked_in_at ? null : new Date().toISOString();
   const { error } = await sb
@@ -302,6 +312,113 @@ export async function toggleCheckInAction(input: { club_id: string; player_id: s
   revalidatePath(`/clubs/${input.club_id}`);
   return { ok: true };
 }
+
+// ─── Co-Admin ─────────────────────────────────────────────────────────────────
+
+export type ClubAdmin = {
+  club_id: string;
+  user_id: string;
+  display_name: string | null;
+  line_user_id: string | null;
+  added_by: string | null;
+  added_at: string;
+};
+
+export type ClubProfileSearchResult = {
+  id: string;
+  display_name: string | null;
+  line_user_id: string | null;
+};
+
+const LINE_USER_ID_RE = /^U[0-9a-f]{32}$/i;
+
+export async function addClubCoAdminAction(
+  clubId: string,
+  lineUserId: string
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const trimmed = lineUserId.trim();
+  if (!LINE_USER_ID_RE.test(trimmed))
+    return { error: "LINE user ID ไม่ถูกต้อง" };
+
+  const { data: profile } = await sb
+    .from("profiles")
+    .select("id")
+    .eq("line_user_id", trimmed)
+    .maybeSingle();
+
+  if (!profile) return { error: "ไม่พบผู้ใช้ที่ login ด้วย LINE นี้" };
+  if (profile.id === session.profileId) return { error: "ไม่สามารถเพิ่มตัวเองเป็น co-admin" };
+
+  const { error } = await sb.from("club_admins").insert({
+    club_id: clubId,
+    user_id: profile.id,
+    added_by: session.profileId,
+  });
+
+  if (error) {
+    if (error.code === "23505") return { error: "ผู้ใช้นี้เป็น co-admin อยู่แล้ว" };
+    return { error: "เพิ่มผู้ช่วยดูแลไม่สำเร็จ" };
+  }
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
+export async function removeClubCoAdminAction(
+  clubId: string,
+  userId: string
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  await sb.from("club_admins").delete().eq("club_id", clubId).eq("user_id", userId);
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
+export async function searchClubProfilesAction(
+  clubId: string,
+  query: string
+): Promise<{ ok: true; results: ClubProfileSearchResult[] } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const q = query.trim();
+  if (q.length < 1) return { ok: true, results: [] };
+
+  const { data: existing } = await sb
+    .from("club_admins")
+    .select("user_id")
+    .eq("club_id", clubId);
+
+  const excludeIds = [session.profileId, ...(existing ?? []).map((r) => r.user_id)];
+
+  const { data, error } = await sb
+    .from("profiles")
+    .select("id, display_name, line_user_id")
+    .ilike("display_name", `%${q}%`)
+    .not("id", "in", `(${excludeIds.join(",")})`)
+    .not("line_user_id", "is", null)
+    .limit(20);
+
+  if (error) return { error: "ค้นหาไม่สำเร็จ" };
+  return { ok: true, results: (data ?? []) as ClubProfileSearchResult[] };
+}
+
+// ─── Leave ────────────────────────────────────────────────────────────────────
 
 export async function leaveClubAction(formData: FormData) {
   const session = await getSession();
