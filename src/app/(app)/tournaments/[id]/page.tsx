@@ -85,8 +85,27 @@ export default async function TournamentDetailPage({
   }
   const canEdit = isOwner || isCoAdmin;
 
+  type CoAdminRow = {
+    tournament_id: string;
+    user_id: string;
+    added_by: string | null;
+    added_at: string;
+    profile: { line_user_id: string | null; display_name: string | null } | null;
+  };
   const coAdmins: TournamentAdmin[] = isOwner
-    ? ((await sb.from("tournament_admins").select("*").eq("tournament_id", id).order("added_at")).data ?? []) as TournamentAdmin[]
+    ? (((await sb
+        .from("tournament_admins")
+        .select("tournament_id, user_id, added_by, added_at, profile:profiles!user_id(line_user_id, display_name)")
+        .eq("tournament_id", id)
+        .order("added_at")
+      ).data ?? []) as unknown as CoAdminRow[]).map((r) => ({
+        tournament_id: r.tournament_id,
+        user_id: r.user_id,
+        line_user_id: r.profile?.line_user_id ?? null,
+        display_name: r.profile?.display_name ?? null,
+        added_by: r.added_by ?? "",
+        added_at: r.added_at,
+      }))
     : [];
 
   const s = statusLabel[t.status];

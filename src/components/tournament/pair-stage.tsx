@@ -6,7 +6,7 @@ import { ChevronDown, ChevronUp, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PairManager } from "@/components/tournament/pair-manager";
 import { MatchRow } from "@/components/tournament/match-row";
 import { StandingsTable } from "@/components/tournament/standings-table";
@@ -70,10 +70,18 @@ export function PairStage({
   const totalPairs = pairs.length;
   const teamsWithPairs = pairsByTeam.size;
 
+  const showStandings = hasMatches && completedMatches > 0;
+
   return (
-    <div className="space-y-6">
+    <Tabs defaultValue="pairs" className="space-y-4">
+      <TabsList className="w-full flex-wrap h-auto">
+        <TabsTrigger value="pairs">คู่</TabsTrigger>
+        <TabsTrigger value="matches">แข่งขัน</TabsTrigger>
+        <TabsTrigger value="standings" disabled={!showStandings}>คะแนนกลุ่ม</TabsTrigger>
+      </TabsList>
+
       {/* Pair manager per team */}
-      <section className="space-y-3">
+      <TabsContent value="pairs" className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">จับคู่ภายในทีม</h2>
           {isOwner && <CsvImportDialog tournamentId={tournamentId} onlyMode="pairs" />}
@@ -92,12 +100,10 @@ export function PairStage({
             ))}
           </div>
         )}
-      </section>
-
-      <Separator />
+      </TabsContent>
 
       {/* Generate matches */}
-      <section className="space-y-3">
+      <TabsContent value="matches" className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <h2 className="font-semibold">การแข่งขัน</h2>
@@ -179,25 +185,26 @@ export function PairStage({
             </div>
           );
         })()}
-      </section>
+      </TabsContent>
 
       {/* Standings */}
-      {hasMatches && completedMatches > 0 && (() => {
-        const hasDivisions = upperMatches.length > 0 || lowerMatches.length > 0;
+      <TabsContent value="standings" className="space-y-3">
+        {!showStandings ? (
+          <p className="text-sm text-muted-foreground">ยังไม่มีผลการแข่งขัน</p>
+        ) : (() => {
+          const hasDivisions = upperMatches.length > 0 || lowerMatches.length > 0;
 
-        function divisionStandings(divMatches: typeof matches) {
-          const pairIds = [...new Set([
-            ...divMatches.map(m => m.pair_a_id),
-            ...divMatches.map(m => m.pair_b_id),
-          ].filter(Boolean) as string[])];
-          const divCompetitors = pairIds.map(id => pairCompetitorMap.get(id)).filter(Boolean) as typeof pairCompetitors;
-          return { divCompetitors, pairIds };
-        }
+          function divisionStandings(divMatches: typeof matches) {
+            const pairIds = [...new Set([
+              ...divMatches.map(m => m.pair_a_id),
+              ...divMatches.map(m => m.pair_b_id),
+            ].filter(Boolean) as string[])];
+            const divCompetitors = pairIds.map(id => pairCompetitorMap.get(id)).filter(Boolean) as typeof pairCompetitors;
+            return { divCompetitors, pairIds };
+          }
 
-        return (
-          <>
-            <Separator />
-            <section className="space-y-3">
+          return (
+            <>
               <h2 className="font-semibold">อันดับ</h2>
               {hasDivisions ? (
                 <div className="space-y-4">
@@ -278,10 +285,10 @@ export function PairStage({
                   </Card>
                 </div>
               )}
-            </section>
-          </>
-        );
-      })()}
-    </div>
+            </>
+          );
+        })()}
+      </TabsContent>
+    </Tabs>
   );
 }
