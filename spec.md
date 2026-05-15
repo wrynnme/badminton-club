@@ -226,6 +226,27 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
   - `NEXT_PUBLIC_GIT_COMMIT` — `execSync("git rev-parse --short HEAD")` with `try/catch` → `"unknown"` fallback (shallow CI clones)
 - **UI**: `SiteHeader` shows outline `Badge` next to 🏸 ก๊วนแบด logo with `v{version} ({commit})` — `hidden sm:inline-flex` (mobile-hidden)
 
+### Public Share Page Redesign (`/t/[token]`)
+
+- **Layout**: hero banner + notes banner + tabs (ภาพรวม / กลุ่ม / คู่ / สาย)
+- **`PublicHero`** (`src/components/tournament/public/public-hero.tsx`) — server component:
+  - Gradient card: `from-amber-50 via-background to-orange-50` + 1px gold accent stripe + decorative bg trophy
+  - Title row: amber Trophy icon + tournament name + TV button (secondary)
+  - Status pill (custom colors per status) + venue + date meta row
+  - Stat grid 2×2 → 4-col: รูปแบบ / ทีม / คู่แข่ง / การแข่งขัน (`completed/total`)
+  - Action row: `ExportButtons` + "ดูสาย" bracket link (conditional)
+- **`PublicOverview`** (`src/components/tournament/public/public-overview.tsx`) — server component:
+  - In-progress card: `ring-2 ring-green-500/30` + pulsing dot + `MatchRow` list
+  - 2-col grid (lg): standings mini-table (top 6, played > 0) + recent results (last 5)
+  - Empty states: no matches / waiting to start
+- **`PublicTournamentShell`** (`src/components/tournament/public/public-tournament-shell.tsx`) — client component:
+  - `Tabs variant="line"` with border-b underline style
+  - Tabs: ภาพรวม (always) · กลุ่ม · คู่ · สาย (conditional on format/unit)
+  - Receives pre-rendered `ReactNode` props — server data stays server-side across the boundary
+- **Notes banner**: amber left-border strip (`border-l-4 border-amber-400`) with `Info` icon
+- Container widened to `max-w-5xl`
+- `FORMAT_LABEL` map: `group_only` → "แบ่งกลุ่ม", `group_knockout` → "กลุ่ม + สาย", `knockout_only` → "สายเดียว"
+
 ### Phase 8 — TV Display Mode
 
 - **Route**: `/t/[token]/tv` — public, no auth; requires valid `share_token`
