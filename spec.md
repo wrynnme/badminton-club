@@ -203,8 +203,13 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
   - Delivery: LINE `/push` for 1 recipient, `/multicast` for 2+ (up to 500 IDs per request)
   - Errors logged to `console.error` (API non-2xx + exceptions); no success/recipient logs (low noise)
   - Non-blocking: `.catch(() => {})` at the caller — never affects action result
-  - 3 triggers: `recordMatchScoreAction` (includes competitor names + game scores), `updateTournamentStatusAction` (Thai status label), `generateKnockoutAction`
-  - Score notification format: `🏸 A vs B\nเกมที่ชนะ: 2:1 (21-15, 18-21, 21-19)\nผู้ชนะ: ชื่อ`
+  - **3 triggers**:
+    | Trigger | Action | Message |
+    |---|---|---|
+    | Record match score | `recordMatchScoreAction` | `🏸 A vs B\nเกมที่ชนะ: 2:1 (21-15, 18-21, 21-19)\nผู้ชนะ: ชื่อ` |
+    | Generate knockout bracket | `generateKnockoutAction` (2 code paths) | `สร้างสายน็อกเอาต์แล้ว` |
+    | Tournament status change | `updateTournamentStatusAction` | `สถานะเปลี่ยนเป็น: <Thai label>` |
+  - **Not triggered**: reset score, create/delete team/group/pair/match, add/remove co-admin, export/print, update tournament settings
 - **Print pages**: `/tournaments/[id]/print/matches` + `/tournaments/[id]/print/roster` — server-rendered, print-optimized; nav hidden on print
 - **Bracket print**: `src/components/ui/print-button.tsx` client component → `window.print()`; added to bracket page header
 - **Export buttons**: added `tournamentId` prop + "พิมพ์:" section with match + roster links (open new tab)
