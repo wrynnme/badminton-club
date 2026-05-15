@@ -34,6 +34,12 @@ export type TournamentAdmin = {
 
 const LINE_USER_ID_RE = /^U[0-9a-f]{32}$/i;
 
+export type ProfileSearchResult = {
+  id: string;
+  display_name: string | null;
+  line_user_id: string | null;
+};
+
 export type AuditLogEntry = {
   id: string;
   tournament_id: string;
@@ -163,6 +169,39 @@ export async function getCoAdminsAction(
   }));
 
   return { ok: true, admins };
+}
+
+export async function searchProfilesAction(
+  tournamentId: string,
+  query: string
+): Promise<{ ok: true; results: ProfileSearchResult[] } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const q = query.trim();
+  if (q.length < 1) return { ok: true, results: [] };
+
+  const sb = await createAdminClient();
+
+  const { data: existing } = await sb
+    .from("tournament_admins")
+    .select("user_id")
+    .eq("tournament_id", tournamentId);
+
+  const excludeIds = [session.profileId, ...(existing ?? []).map((r) => r.user_id)];
+
+  const { data, error } = await sb
+    .from("profiles")
+    .select("id, display_name, line_user_id")
+    .ilike("display_name", `%${q}%`)
+    .not("id", "in", `(${excludeIds.join(",")})`)
+    .not("line_user_id", "is", null)
+    .limit(20);
+
+  if (error) return { error: "ค้นหาไม่สำเร็จ" };
+  return { ok: true, results: (data ?? []) as ProfileSearchResult[] };
 }
 
 export async function getAuditLogsAction(

@@ -1,14 +1,25 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useForm } from "@tanstack/react-form";
+import { useState, useTransition, useEffect } from "react";
 import { toast } from "sonner";
-import { UserPlus, Trash2, Loader2 } from "lucide-react";
+import { Check, ChevronsUpDown, UserPlus, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { addCoAdminAction, removeCoAdminAction } from "@/lib/actions/admins";
-import type { TournamentAdmin } from "@/lib/actions/admins";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  addCoAdminAction,
+  removeCoAdminAction,
+  searchProfilesAction,
+} from "@/lib/actions/admins";
+import type { TournamentAdmin, ProfileSearchResult } from "@/lib/actions/admins";
 
 export function CoAdminControls({
   tournamentId,
@@ -20,29 +31,59 @@ export function CoAdminControls({
   const [admins, setAdmins] = useState<TournamentAdmin[]>(initialAdmins);
   const [isPending, startTransition] = useTransition();
 
-  const form = useForm({
-    defaultValues: { lineUserId: "" },
-    onSubmit: async ({ value }) => {
-      const res = await addCoAdminAction(tournamentId, value.lineUserId.trim());
-      if ("error" in res) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ProfileSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<ProfileSearchResult | null>(null);
+  const [adding, setAdding] = useState(false);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 1) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const t = setTimeout(async () => {
+      const res = await searchProfilesAction(tournamentId, q);
+      if ("ok" in res) setResults(res.results);
+      else {
+        setResults([]);
         toast.error(res.error);
-        return;
       }
-      toast.success("เพิ่ม co-admin แล้ว");
-      setAdmins((prev) => [
-        ...prev,
-        {
-          tournament_id: tournamentId,
-          user_id: "",
-          line_user_id: value.lineUserId.trim(),
-          display_name: null,
-          added_by: "",
-          added_at: new Date().toISOString(),
-        },
-      ]);
-      form.reset();
-    },
-  });
+      setSearching(false);
+    }, 250);
+    return () => clearTimeout(t);
+  }, [query, tournamentId]);
+
+  async function handleAdd() {
+    if (!selected?.line_user_id) return;
+    setAdding(true);
+    const res = await addCoAdminAction(tournamentId, selected.line_user_id);
+    setAdding(false);
+    if ("error" in res) {
+      toast.error(res.error);
+      return;
+    }
+    toast.success("เพิ่ม co-admin แล้ว");
+    setAdmins((prev) => [
+      ...prev,
+      {
+        tournament_id: tournamentId,
+        user_id: selected.id,
+        line_user_id: selected.line_user_id,
+        display_name: selected.display_name,
+        added_by: "",
+        added_at: new Date().toISOString(),
+      },
+    ]);
+    setSelected(null);
+    setQuery("");
+    setResults([]);
+    setOpen(false);
+  }
 
   function handleRemove(userId: string) {
     startTransition(async () => {
@@ -66,7 +107,10 @@ export function CoAdminControls({
         ) : (
           <ul className="space-y-1">
             {admins.map((admin) => (
-              <li key={admin.user_id || admin.line_user_id} className="flex items-center justify-between gap-2">
+              <li
+                key={admin.user_id || admin.line_user_id}
+                className="flex items-center justify-between gap-2"
+              >
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">
                     {admin.display_name ?? "(ไม่มีชื่อ)"}
@@ -90,49 +134,95 @@ export function CoAdminControls({
           </ul>
         )}
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            form.handleSubmit();
-          }}
-          className="flex gap-2"
-        >
-          <form.Field
-            name="lineUserId"
-            validators={{
-              onChange: ({ value }) =>
-                !value.trim()
-                  ? "ระบุ LINE user ID"
-                  : !/^U[0-9a-f]{32}$/i.test(value.trim())
-                  ? "รูปแบบ LINE ID ไม่ถูกต้อง (U + 32 hex)"
-                  : undefined,
-            }}
+        <div className="flex gap-2">
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={open}
+                  className="flex-1 h-8 justify-between font-normal"
+                >
+                  <span className="truncate">
+                    {selected
+                      ? (selected.display_name ?? selected.line_user_id ?? "(ไม่มีชื่อ)")
+                      : "ค้นหาผู้ใช้..."}
+                  </span>
+                  <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
+                </Button>
+              }
+            />
+            <PopoverContent
+              className="w-(--anchor-width) p-0 gap-0"
+              align="start"
+            >
+              <Command shouldFilter={false}>
+                <CommandInput
+                  placeholder="พิมพ์ชื่อ..."
+                  value={query}
+                  onValueChange={setQuery}
+                />
+                <CommandList>
+                  {searching && (
+                    <div className="p-3 text-sm text-center text-muted-foreground flex items-center justify-center gap-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      กำลังค้นหา
+                    </div>
+                  )}
+                  {!searching && query.trim().length === 0 && (
+                    <CommandEmpty>พิมพ์ชื่อเพื่อค้นหา</CommandEmpty>
+                  )}
+                  {!searching && query.trim().length > 0 && results.length === 0 && (
+                    <CommandEmpty>ไม่พบผู้ใช้</CommandEmpty>
+                  )}
+                  {!searching && results.length > 0 && (
+                    <CommandGroup>
+                      {results.map((r) => (
+                        <CommandItem
+                          key={r.id}
+                          value={r.id}
+                          onSelect={() => {
+                            setSelected(r);
+                            setOpen(false);
+                          }}
+                        >
+                          <div className="flex flex-col flex-1 min-w-0">
+                            <span className="truncate">
+                              {r.display_name ?? "(ไม่มีชื่อ)"}
+                            </span>
+                            <span className="text-xs font-mono text-muted-foreground truncate">
+                              {r.line_user_id}
+                            </span>
+                          </div>
+                          {selected?.id === r.id && (
+                            <Check className="h-4 w-4 shrink-0" />
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 shrink-0"
+            disabled={!selected || adding}
+            onClick={handleAdd}
           >
-            {(field) => (
-              <Input
-                value={field.state.value}
-                onChange={(e) => field.handleChange(e.target.value)}
-                onBlur={field.handleBlur}
-                placeholder="LINE user ID (U + 32 hex)"
-                className="h-8 text-sm flex-1"
-              />
+            {adding ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <UserPlus className="h-3.5 w-3.5" />
             )}
-          </form.Field>
-          <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting] as const}>
-            {([canSubmit, isSubmitting]) => (
-              <Button
-                type="submit"
-                size="sm"
-                disabled={!canSubmit || isSubmitting || isPending}
-                className="h-8 shrink-0"
-              >
-                {(isSubmitting || isPending) && <Loader2 className="h-4 w-4 animate-spin" />}
-                {!(isSubmitting || isPending) && <UserPlus className="h-3.5 w-3.5" />}
-                เพิ่ม
-              </Button>
-            )}
-          </form.Subscribe>
-        </form>
+            เพิ่ม
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );
