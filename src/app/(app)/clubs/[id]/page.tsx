@@ -7,9 +7,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { JoinForm } from "@/components/club/join-form";
-import { SetTotalCostForm } from "@/components/club/set-total-cost-form";
 import { EditClubForm } from "@/components/club/edit-club-form";
 import { SortablePlayerList } from "@/components/club/sortable-player-list";
+import { ExpenseManager } from "@/components/club/expense-manager";
+import type { ClubExpense } from "@/lib/actions/clubs";
 
 export const dynamic = "force-dynamic";
 
@@ -30,24 +31,36 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  const { data: owner } = await sb
-    .from("profiles")
-    .select("display_name, picture_url")
-    .eq("id", club.owner_id)
-    .single();
+  const [ownerRes, playersRes, expensesRes] = await Promise.all([
+    sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
+    sb
+      .from("club_players")
+      .select("*")
+      .eq("club_id", id)
+      .order("position", { ascending: true, nullsFirst: false })
+      .order("joined_at", { ascending: true }),
+    sb
+      .from("club_expenses")
+      .select("*")
+      .eq("club_id", id)
+      .order("created_at", { ascending: true }),
+  ]);
 
-  const { data: players } = await sb
-    .from("club_players")
-    .select("*")
-    .eq("club_id", id)
-    .order("position", { ascending: true, nullsFirst: false })
-    .order("joined_at", { ascending: true });
+  const owner = ownerRes.data;
+  const players = playersRes.data ?? [];
+  const expenses: ClubExpense[] = (expensesRes.data ?? []) as ClubExpense[];
 
-  const joined = players?.length ?? 0;
+  const joined = players.length;
   const full = joined >= club.max_players;
   const myRow = session
-    ? players?.find((p) => p.profile_id === session.profileId)
+    ? players.find((p) => p.profile_id === session.profileId)
     : null;
+  const isOwner = session?.profileId === club.owner_id;
+
+  // Compute total from expenses; fall back to legacy total_cost
+  const expenseTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
+  const displayTotal = expenseTotal > 0 ? expenseTotal : (club.total_cost ?? 0);
+  const perPerson = joined > 0 && displayTotal > 0 ? Math.ceil(displayTotal / joined) : null;
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -74,20 +87,18 @@ export default async function ClubDetailPage({
           />
           <Info
             label={<Clock className="h-4 w-4" />}
-            text={`${club.start_time.slice(0,5)} – ${club.end_time.slice(0,5)}`}
+            text={`${club.start_time.slice(0, 5)} – ${club.end_time.slice(0, 5)}`}
           />
           <Info
             label={<Users className="h-4 w-4" />}
             text={`${joined} / ${club.max_players} คน`}
           />
-          {club.total_cost ? (
+          {perPerson && (
             <Info
               label={<Wallet className="h-4 w-4" />}
-              text={joined > 0
-                ? `${(club.total_cost / joined).toFixed(0)} บาท/คน (รวม ${club.total_cost} บาท)`
-                : `รวม ${club.total_cost} บาท`}
+              text={`~${perPerson.toLocaleString()} บาท/คน (รวม ${displayTotal.toLocaleString()} บาท)`}
             />
-          ) : null}
+          )}
           {club.shuttle_info && <Info label="🏸" text={club.shuttle_info} />}
         </CardContent>
       </Card>
@@ -99,10 +110,25 @@ export default async function ClubDetailPage({
         </Card>
       )}
 
-      {session?.profileId === club.owner_id && (
-        <div className="space-y-3">
+      {isOwner && (
+        <div className="space-y-4">
           <EditClubForm club={club} />
-          <SetTotalCostForm clubId={club.id} currentTotal={club.total_cost} />
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Wallet className="h-4 w-4" />
+                ค่าใช้จ่าย
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ExpenseManager
+                clubId={club.id}
+                expenses={expenses}
+                playerCount={joined}
+              />
+            </CardContent>
+          </Card>
         </div>
       )}
 
@@ -128,9 +154,9 @@ export default async function ClubDetailPage({
         <h2 className="font-semibold">รายชื่อผู้เล่น ({joined})</h2>
         <SortablePlayerList
           clubId={club.id}
-          players={players ?? []}
+          players={players}
           sessionProfileId={session?.profileId ?? null}
-          isOwner={session?.profileId === club.owner_id}
+          isOwner={isOwner}
         />
       </section>
     </div>

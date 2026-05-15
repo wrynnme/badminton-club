@@ -271,6 +271,27 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ---
 
+## Club System
+
+### ค่าใช้จ่ายแบบแยกรายการ
+
+- **DB**: `club_expenses` table — `id, club_id (FK clubs ON DELETE CASCADE), label, amount numeric(10,2), created_at`
+- **Actions** (`src/lib/actions/clubs.ts`):
+  - `addExpenseAction({ club_id, label, amount })` — owner only
+  - `updateExpenseAction({ id, club_id, label, amount })` — owner only
+  - `deleteExpenseAction({ id, club_id })` — owner only
+  - `assertClubOwner()` — internal helper, checks `clubs.owner_id`
+  - `ClubExpense` type exported
+  - `setTotalCostAction` ยังคงไว้ (legacy)
+- **`ExpenseManager`** (`src/components/club/expense-manager.tsx`) — client component:
+  - แสดง expense rows แบบ hover-reveal edit/delete buttons
+  - Inline `AddRow` + `EditRow` ใช้ TanStack Form (`z.number()` ไม่ใช่ `z.coerce`)
+  - Total computed จาก `expenses.reduce`; per-person = `Math.ceil(total / playerCount)`
+  - `router.refresh()` หลัง mutate
+- **Club detail page** — แทน `SetTotalCostForm` ด้วย `ExpenseManager` Card; fetch `club_expenses` parallel กับ players/owner; แสดง per-person ใน info grid (fallback เป็น `total_cost` legacy ถ้า expenses ว่าง)
+
+---
+
 ## Todo
 
 - Phase 9 — (TBD)
