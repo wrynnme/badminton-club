@@ -24,6 +24,7 @@ export function PairStage({
   matches,
   isOwner,
   pairDivisionThreshold = null,
+  matchRowSize,
 }: {
   tournamentId: string;
   teams: TeamWithPlayers[];
@@ -31,6 +32,7 @@ export function PairStage({
   matches: Match[];
   isOwner: boolean;
   pairDivisionThreshold?: number | null;
+  matchRowSize?: "compact" | "comfortable";
 }) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [, startGen] = useTransition();
@@ -174,6 +176,7 @@ export function PairStage({
                             tournamentId={tournamentId}
                             isOwner={isOwner}
                             unit="pair"
+                            size={matchRowSize}
                           />
                         ))}
                       </div>

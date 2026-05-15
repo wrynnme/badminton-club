@@ -18,11 +18,12 @@ import {
 import { teamToCompetitor } from "@/lib/tournament/competitor";
 import type { GroupWithTeams, Team } from "@/lib/types";
 
-function GroupCard({ group, teams, tournamentId, isOwner }: {
+function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
   group: GroupWithTeams;
   teams: Team[];
   tournamentId: string;
   isOwner: boolean;
+  matchRowSize?: "compact" | "comfortable";
 }) {
   const [showMatches, setShowMatches] = useState(true);
 
@@ -55,6 +56,7 @@ function GroupCard({ group, teams, tournamentId, isOwner }: {
                     competitorById={competitorMap}
                     tournamentId={tournamentId}
                     isOwner={isOwner} unit="team"
+                    size={matchRowSize}
                   />
                 ))}
               </div>
@@ -66,11 +68,12 @@ function GroupCard({ group, teams, tournamentId, isOwner }: {
   );
 }
 
-export function GroupStage({ tournamentId, groups, teams, isOwner }: {
+export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize }: {
   tournamentId: string;
   groups: GroupWithTeams[];
   teams: Team[];
   isOwner: boolean;
+  matchRowSize?: "compact" | "comfortable";
 }) {
   const [groupCount, setGroupCount] = useState(2);
   const [, startGen] = useTransition();
@@ -135,7 +138,7 @@ export function GroupStage({ tournamentId, groups, teams, isOwner }: {
       {hasGroups ? (
         <div className="grid gap-4 sm:grid-cols-2">
           {groups.map((g) => (
-            <GroupCard key={g.id} group={g} teams={teams} tournamentId={tournamentId} isOwner={isOwner} />
+            <GroupCard key={g.id} group={g} teams={teams} tournamentId={tournamentId} isOwner={isOwner} matchRowSize={matchRowSize} />
           ))}
         </div>
       ) : (

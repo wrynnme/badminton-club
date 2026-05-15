@@ -138,6 +138,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - `share-controls.tsx` — owner-only generate/copy/revoke
 - `/t/[token]` — public read-only page, fetches by share_token, no auth
 - `TournamentLiveWrapper` — Supabase Realtime `postgres_changes` on matches → `router.refresh()`; green LIVE badge
+- `share-controls.tsx` — QR Code button (icon-only, outline) beside copy/revoke when share link exists; opens Dialog with `react-qr-code` SVG (240x240, white bg) + URL below; `react-qr-code@2.0.21`
 
 ### Phase 7b — Co-admin + Audit Log
 
@@ -225,8 +226,30 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
   - `NEXT_PUBLIC_GIT_COMMIT` — `execSync("git rev-parse --short HEAD")` with `try/catch` → `"unknown"` fallback (shallow CI clones)
 - **UI**: `SiteHeader` shows outline `Badge` next to 🏸 ก๊วนแบด logo with `v{version} ({commit})` — `hidden sm:inline-flex` (mobile-hidden)
 
+### Phase 8 — TV Display Mode
+
+- **Route**: `/t/[token]/tv` — public, no auth; requires valid `share_token`
+- **`TvDisplayPage`** (`src/app/(public)/t/[token]/tv/page.tsx`):
+  - `force-dynamic` rendering
+  - Fetches tournament, teams, pairs (with players), all matches in parallel
+  - **Upcoming/in-progress** section: up to 8 matches; sorted `in_progress` first → by `match_number`
+  - **Standings** sidebar: top 8 by `computeStandings()`; shown only when `played > 0`
+  - **จบล่าสุด** sidebar: latest 6 completed matches by `match_number` desc
+  - Wraps in `TournamentLiveWrapper` — Realtime updates on match changes
+  - "ออก TV" link back to `/t/[token]`
+- **`TvMatchCard`** (`src/components/tournament/tv-match-card.tsx`):
+  - Large-format card: text-2xl/4xl; status pill; court badge
+  - Winner → green + bold; loser → muted + line-through
+  - Completed: game score (`gamesA : gamesB`) + point totals (`totals.a–totals.b`); pending: "VS"
+  - Supports `unit: "team" | "pair"`; renders color dot + subtitle
+- **TV button** on public share page (`/t/[token]`): outline `Button` with `Tv` icon beside status badge → links to `/t/[token]/tv`
+- **`matchRowSize` prop** — `"compact"` (default) | `"comfortable"` — added to `MatchRow`, `GroupStage`, `PairStage`, `KnockoutStage`, `BracketSection`
+  - `comfortable`: larger text (base → lg), bigger score (lg/2xl bold), larger color dot (2.5/3)
+  - Public share page passes `matchRowSize="comfortable"` to all stage components
+- **Public page layout** improvements: container widened to `max-w-4xl`; responsive padding `px-3 sm:px-4 lg:px-6`; info grid `grid-cols-2 sm:grid-cols-4`
+
 ---
 
 ## Todo
 
-- Phase 8 — (TBD)
+- Phase 9 — (TBD)

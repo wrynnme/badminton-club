@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { Trophy, MapPin, CalendarDays, Users, Swords, GitBranch } from "lucide-react";
+import { Trophy, MapPin, CalendarDays, Users, Swords, GitBranch, Tv } from "lucide-react";
 import { format } from "date-fns";
 import { th } from "date-fns/locale";
 import Link from "next/link";
@@ -72,17 +72,23 @@ export default async function PublicTournamentPage({
 
   return (
     <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"}>
-      <div className="space-y-6 max-w-3xl mx-auto px-4 py-6">
+      <div className="space-y-5 sm:space-y-6 max-w-4xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6">
         <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <Trophy className="h-6 w-6 shrink-0" />
-            <h1 className="text-2xl font-bold">{t.name}</h1>
+          <div className="flex items-center gap-2 min-w-0">
+            <Trophy className="h-7 w-7 sm:h-8 sm:w-8 shrink-0" />
+            <h1 className="text-2xl sm:text-3xl font-bold truncate">{t.name}</h1>
           </div>
-          <Badge variant={s.variant}>{s.label}</Badge>
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge variant={s.variant} className="text-xs sm:text-sm">{s.label}</Badge>
+            <Button render={<Link href={`/t/${token}/tv`} />} nativeButton={false} size="sm" variant="outline">
+              <Tv className="h-3.5 w-3.5 mr-1" />
+              <span className="hidden sm:inline">TV</span>
+            </Button>
+          </div>
         </div>
 
         <Card>
-          <CardContent className="grid sm:grid-cols-2 gap-3 pt-6 text-sm">
+          <CardContent className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-6 text-sm sm:text-base">
             {t.venue && (
               <div className="flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-muted-foreground" />
@@ -136,7 +142,7 @@ export default async function PublicTournamentPage({
         <Separator />
 
         {showGroupStage && (
-          <GroupStage tournamentId={t.id} groups={groups} teams={flatTeams} isOwner={false} />
+          <GroupStage tournamentId={t.id} groups={groups} teams={flatTeams} isOwner={false} matchRowSize="comfortable" />
         )}
 
         {showPairStage && (
@@ -148,6 +154,7 @@ export default async function PublicTournamentPage({
               matches={allMatches.filter((m) => m.pair_a_id)}
               pairDivisionThreshold={t.pair_division_threshold}
               isOwner={false}
+              matchRowSize="comfortable"
             />
           </>
         )}
@@ -164,6 +171,7 @@ export default async function PublicTournamentPage({
               advanceCount={t.advance_count ?? 2}
               isOwner={false}
               format={t.format}
+              matchRowSize="comfortable"
             />
           </>
         )}

@@ -26,6 +26,7 @@ function BracketSection({
   isFinalBracket = false,
   totalLowerRounds = 0,
   isLower = false,
+  matchRowSize,
 }: {
   label: string;
   matches: Match[];
@@ -38,6 +39,7 @@ function BracketSection({
   isFinalBracket?: boolean;
   totalLowerRounds?: number;
   isLower?: boolean;
+  matchRowSize?: "compact" | "comfortable";
 }) {
   const rounds = new Map<number, Match[]>();
   for (const m of matches) {
@@ -87,6 +89,7 @@ function BracketSection({
                         tournamentId={tournamentId}
                         isOwner={isOwner}
                         unit={unit}
+                        size={matchRowSize}
                       />
                     );
                   })}
@@ -113,6 +116,7 @@ export function KnockoutStage({
   groupCount,
   groupMatchTotal,
   groupMatchCompleted,
+  matchRowSize,
 }: {
   tournamentId: string;
   matches: Match[];
@@ -125,6 +129,7 @@ export function KnockoutStage({
   groupCount?: number;
   groupMatchTotal?: number;
   groupMatchCompleted?: number;
+  matchRowSize?: "compact" | "comfortable";
 }) {
   const [isPending, startGen] = useTransition();
 
@@ -239,6 +244,7 @@ export function KnockoutStage({
             tournamentId={tournamentId}
             isOwner={isOwner}
             unit={matchUnit}
+            matchRowSize={matchRowSize}
           />
 
           {/* Lower bracket */}
@@ -256,6 +262,7 @@ export function KnockoutStage({
                 unit={matchUnit}
                 isLower
                 totalLowerRounds={totalLowerRounds}
+                matchRowSize={matchRowSize}
               />
             </>
           )}
@@ -274,6 +281,7 @@ export function KnockoutStage({
                 isOwner={isOwner}
                 unit={matchUnit}
                 isFinalBracket
+                matchRowSize={matchRowSize}
               />
             </>
           )}

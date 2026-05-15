@@ -16,12 +16,14 @@ export function MatchRow({
   tournamentId,
   isOwner,
   unit,
+  size = "compact",
 }: {
   match: Match;
   competitorById: Map<string, Competitor>;
   tournamentId: string;
   isOwner: boolean;
   unit: "team" | "pair";
+  size?: "compact" | "comfortable";
 }) {
   const [editing, setEditing] = useState(false);
   const [, startReset] = useTransition();
@@ -37,28 +39,36 @@ export function MatchRow({
   const gamesA = match.team_a_score ?? 0;
   const gamesB = match.team_b_score ?? 0;
 
+  const isComfy = size === "comfortable";
+  const rowText = isComfy ? "text-base sm:text-lg" : "text-sm";
+  const subText = isComfy ? "text-xs sm:text-sm" : "text-[11px]";
+  const scoreText = isComfy ? "text-lg sm:text-2xl font-bold tabular-nums" : "font-bold tabular-nums";
+  const totalsText = isComfy ? "text-xs sm:text-sm text-muted-foreground tabular-nums" : "text-[10px] text-muted-foreground tabular-nums";
+  const vsText = isComfy ? "text-muted-foreground px-2 text-sm" : "text-muted-foreground px-2 text-xs";
+  const colorDot = isComfy ? "inline-block w-2.5 h-2.5 rounded-full mr-2" : "inline-block w-2 h-2 rounded-full mr-1.5";
+
   return (
-    <div className="py-2 space-y-2">
-      <div className="flex items-center gap-2 text-sm">
+    <div className={isComfy ? "py-3 space-y-2" : "py-2 space-y-2"}>
+      <div className={`flex items-center gap-2 ${rowText}`}>
         <div className={`flex-1 text-right ${winner === "a" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
-          {a?.color && <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: a.color }} />}
+          {a?.color && <span className={colorDot} style={{ backgroundColor: a.color }} />}
           <span>{a?.name ?? unknownLabel}</span>
-          {a?.subtitle && <div className="text-[11px] text-muted-foreground font-normal">{a.subtitle}</div>}
+          {a?.subtitle && <div className={`${subText} text-muted-foreground font-normal`}>{a.subtitle}</div>}
         </div>
 
         {match.status === "completed" ? (
           <div className="text-center px-2">
-            <div className="font-bold tabular-nums">{gamesA} : {gamesB}</div>
-            {totals && <div className="text-[10px] text-muted-foreground tabular-nums">({totals.a}–{totals.b})</div>}
+            <div className={scoreText}>{gamesA} : {gamesB}</div>
+            {totals && <div className={totalsText}>({totals.a}–{totals.b})</div>}
           </div>
         ) : (
-          <span className="text-muted-foreground px-2 text-xs">vs</span>
+          <span className={vsText}>vs</span>
         )}
 
         <div className={`flex-1 ${winner === "b" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
-          {b?.color && <span className="inline-block w-2 h-2 rounded-full mr-1.5" style={{ backgroundColor: b.color }} />}
+          {b?.color && <span className={colorDot} style={{ backgroundColor: b.color }} />}
           <span>{b?.name ?? unknownLabel}</span>
-          {b?.subtitle && <div className="text-[11px] text-muted-foreground font-normal">{b.subtitle}</div>}
+          {b?.subtitle && <div className={`${subText} text-muted-foreground font-normal`}>{b.subtitle}</div>}
         </div>
 
         {isOwner && (
