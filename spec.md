@@ -273,6 +273,16 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ## Club System
 
+### เช็คอิน
+
+- **DB**: `club_players.checked_in_at timestamptz nullable`
+- **Action**: `toggleCheckInAction({ club_id, player_id })` — toggle `checked_in_at` null ↔ now(); owner toggle ใครก็ได้, ผู้เล่น toggle ตัวเอง
+- **`CheckInButton`** (ใน `sortable-player-list.tsx`):
+  - `canToggle` = `isOwner || isSelf` — แสดงปุ่ม; ถ้าไม่มีสิทธิ์แสดงแค่ badge สถานะ
+  - พร้อมแล้ว → สีเขียว + ข้อความ "พร้อม"; ยังไม่ → "เช็คอิน" outline
+  - Row highlight: `border-green-500/30 bg-green-500/5` เมื่อ checked in
+- **Count badge**: "X/N พร้อม" สีเขียวในหัว section (แสดงเมื่อ checkedInCount > 0)
+
 ### ค่าใช้จ่ายแบบแยกรายการ
 
 - **DB**: `club_expenses` table — `id, club_id (FK clubs ON DELETE CASCADE), label, amount numeric(10,2), created_at`

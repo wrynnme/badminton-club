@@ -31,6 +31,7 @@ export type ClubPlayer = {
   note: string | null;
   joined_at: string;
   position: number | null;
+  checked_in_at: string | null;
 };
 
 export type TournamentMode = "sports_day" | "competition";

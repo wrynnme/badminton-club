@@ -273,6 +273,37 @@ export async function kickPlayerAction(formData: FormData) {
   revalidatePath(`/clubs/${clubId}`);
 }
 
+export async function toggleCheckInAction(input: { club_id: string; player_id: string }) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+
+  // Fetch player row
+  const { data: player } = await sb
+    .from("club_players")
+    .select("profile_id, checked_in_at, club_id")
+    .eq("id", input.player_id)
+    .eq("club_id", input.club_id)
+    .single();
+
+  if (!player) return { error: "ไม่พบผู้เล่น" };
+
+  const isOwner = await assertClubOwner(sb, input.club_id, session.profileId);
+  const isSelf = player.profile_id === session.profileId;
+  if (!isOwner && !isSelf) return { error: "ไม่มีสิทธิ์" };
+
+  const next = player.checked_in_at ? null : new Date().toISOString();
+  const { error } = await sb
+    .from("club_players")
+    .update({ checked_in_at: next })
+    .eq("id", input.player_id);
+
+  if (error) return { error: error.message };
+  revalidatePath(`/clubs/${input.club_id}`);
+  return { ok: true };
+}
+
 export async function leaveClubAction(formData: FormData) {
   const session = await getSession();
   if (!session) return await loginRedirect();
