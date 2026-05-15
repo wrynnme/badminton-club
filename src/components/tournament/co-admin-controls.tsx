@@ -165,44 +165,37 @@ export function CoAdminControls({
                   onValueChange={setQuery}
                 />
                 <CommandList>
-                  {searching && (
-                    <div className="p-3 text-sm text-center text-muted-foreground flex items-center justify-center gap-2">
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      กำลังค้นหา
-                    </div>
-                  )}
-                  {!searching && query.trim().length === 0 && (
-                    <CommandEmpty>พิมพ์ชื่อเพื่อค้นหา</CommandEmpty>
-                  )}
-                  {!searching && query.trim().length > 0 && results.length === 0 && (
-                    <CommandEmpty>ไม่พบผู้ใช้</CommandEmpty>
-                  )}
-                  {!searching && results.length > 0 && (
-                    <CommandGroup>
-                      {results.map((r) => (
-                        <CommandItem
-                          key={r.id}
-                          value={r.id}
-                          onSelect={() => {
-                            setSelected(r);
-                            setOpen(false);
-                          }}
-                        >
-                          <div className="flex flex-col flex-1 min-w-0">
-                            <span className="truncate">
-                              {r.display_name ?? "(ไม่มีชื่อ)"}
-                            </span>
-                            <span className="text-xs font-mono text-muted-foreground truncate">
-                              {r.line_user_id}
-                            </span>
-                          </div>
-                          {selected?.id === r.id && (
-                            <Check className="h-4 w-4 shrink-0" />
-                          )}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  )}
+                  <CommandEmpty>
+                    {searching
+                      ? "กำลังค้นหา..."
+                      : query.trim().length === 0
+                      ? "พิมพ์ชื่อเพื่อค้นหา"
+                      : "ไม่พบผู้ใช้"}
+                  </CommandEmpty>
+                  <CommandGroup>
+                    {results.map((r) => (
+                      <CommandItem
+                        key={r.id}
+                        value={r.id}
+                        onSelect={() => {
+                          setSelected(r);
+                          setOpen(false);
+                        }}
+                      >
+                        <div className="flex flex-col flex-1 min-w-0">
+                          <span className="truncate">
+                            {r.display_name ?? "(ไม่มีชื่อ)"}
+                          </span>
+                          <span className="text-xs font-mono text-muted-foreground truncate">
+                            {r.line_user_id}
+                          </span>
+                        </div>
+                        {selected?.id === r.id && (
+                          <Check className="h-4 w-4 shrink-0" />
+                        )}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
                 </CommandList>
               </Command>
             </PopoverContent>

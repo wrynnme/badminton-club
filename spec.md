@@ -150,6 +150,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **Co-admin UI**: `co-admin-controls.tsx` — owner-only Card; searchable Combobox (shadcn `Popover` + `Command`) to find profiles by `display_name`; list + remove
   - Server search: `searchProfilesAction(tournamentId, query)` — owner-gated, ILIKE on display_name, excludes self + existing co-admins + profiles without `line_user_id`; limit 20
   - Debounced 250ms client-side; `shouldFilter={false}` (server filters)
+  - `CommandList` keeps a stable structure (one `CommandEmpty` with dynamic text + one `CommandGroup`) — cmdk requires this; mixing multiple conditional `CommandEmpty`/raw elements breaks its child diffing
   - On submit, passes selected profile's `line_user_id` to `addCoAdminAction` (which still validates LINE format + resolves to profile UUID)
 - **Audit log UI**: `audit-log-panel.tsx` — collapsible Card; fetches on first open; newest-first list
 - **Page**: `canEdit = isOwner || isCoAdmin` — `TournamentStatusControl` + all edit components use `canEdit`; owner-only: `ShareControls` + `CoAdminControls`
