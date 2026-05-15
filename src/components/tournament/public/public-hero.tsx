@@ -3,6 +3,7 @@ import { Trophy, MapPin, CalendarDays, GitBranch, Tv } from "lucide-react";
 import { format } from "date-fns";
 import { th } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { ExportButtons } from "@/components/tournament/export-buttons";
 import type { Tournament, TeamWithPlayers, PairWithPlayers, Match } from "@/lib/types";
 
@@ -88,16 +89,19 @@ export function PublicHero({
               {t.name}
             </h1>
           </div>
-          <Button
-            render={<Link href={`/t/${token}/tv`} />}
-            nativeButton={false}
-            size="sm"
-            variant="secondary"
-            className="shrink-0"
-          >
-            <Tv className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">TV</span>
-          </Button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <ThemeToggle />
+            <Button
+              render={<Link href={`/t/${token}/tv`} />}
+              nativeButton={false}
+              size="sm"
+              variant="secondary"
+              className="shrink-0"
+            >
+              <Tv className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">TV</span>
+            </Button>
+          </div>
         </div>
 
         {/* Status pill + meta */}
