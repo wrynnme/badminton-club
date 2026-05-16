@@ -145,7 +145,8 @@ src/
 │   ├── manual-match-dialog.tsx         # Manual pair match creation
 │   ├── group-stage.tsx                 # Team mode group stage
 │   ├── knockout-stage.tsx              # Upper / lower / grand_final
-│   ├── match-queue.tsx                 # Drag-drop queue + court + start/end (Phase 9)
+│   ├── match-queue.tsx                 # Drag-drop queue + court + start/end + auto-rotate (Phase 9–10)
+│   ├── court-manager.tsx               # Court list (DnD) — Settings tab, owner-only (Phase 10)
 │   ├── csv-import-dialog.tsx           # 2-step CSV import
 │   ├── export-buttons.tsx              # Export + templates
 │   ├── share-controls.tsx              # Share link (owner)
@@ -184,7 +185,8 @@ src/
 - ✅ Phase 7b — Co-admin · audit log · tournament tabs · manual match creation · UI improvements
 - ✅ Phase 8 — TV display mode (`/t/[token]/tv`)
 - ✅ Phase 9 — Match Schedule/Queue tab (drag-drop ordering, court, start/end buttons)
-- [ ] Phase 10 — TBD
+- ✅ Phase 10 — Smart Scheduling: court list, court occupancy guard, auto-rotate queue (anti back-to-back)
+- [ ] Phase 11 — TBD
 
 ### ก๊วนแบด
 
