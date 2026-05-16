@@ -123,6 +123,43 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
   - `edit-tournament-form.tsx` — replaced raw `<input type="checkbox">` with shadcn `<Checkbox>`
   - `print-button.tsx` — replaced raw `<button>` with shadcn `<Button>`
   - `tournaments.ts` — `importPlayersCsvAction` parallelized with `Promise.all` (was sequential per row)
+- Critical review fixes (2026-05-16):
+  - `matches.ts` `recordMatchScoreAction` — reject `winner === "draw"` when `round_type === "knockout"` (previously marked status=completed with winner_id=null, breaking bracket silently)
+  - `matches.ts` `insertAndResolveByes` — removed `!m.loserNextMatchId` filter on BYE auto-complete; UR1 BYEs in double-elim now advance correctly (every UR1 match has `loserNextMatchId` set by `buildDoubleBracket`, so the previous filter excluded all double-elim BYEs)
+  - `tournament-live-wrapper.tsx` — debounce `router.refresh()` (400ms trailing) to coalesce rapid match updates; subscribe with `event: "*"` (INSERT/UPDATE/DELETE) and additionally watch `tournaments` row so status changes propagate to public/TV views
+  - **Atomic write RPCs** (Postgres functions, `SECURITY INVOKER` + `search_path = ''`, executable by `service_role` only):
+    - `record_match_score(p_match_id, p_games, p_team_a_score, p_team_b_score, p_winner_slot)` — locks the match row with `FOR UPDATE`, validates `knockout_no_draw`, updates the match, then advances winner to `next_match` slot and loser to `loser_next_match` slot in a single transaction. Replaces 3 separate `UPDATE`s in `recordMatchScoreAction` (race fix: concurrent score writes feeding the same next-match slot are now serialized)
+    - `replace_tournament_matches(p_tournament_id, p_round_type, p_matches jsonb)` — atomic `DELETE` + bulk `INSERT` of matches scoped to a `round_type`. Wraps the previous `sb.from("matches").delete()…insert()` pairs in `generateGroupMatchesAction`, `generatePairMatchesAction`, and `insertAndResolveByes`. On insert failure the old bracket survives
+    - `regenerate_tournament_groups(p_tournament_id, p_group_names text[], p_assignments jsonb)` — atomic `DELETE groups` (cascades `group_teams` + group-bound matches) + `DELETE` pair-mode group matches + `INSERT groups` + `INSERT group_teams`. Replaces 4 round-trips in `generateGroupsAction`
+  - migrations: `rpc_record_match_score`, `rpc_replace_tournament_matches`, `rpc_regenerate_tournament_groups`
+- Server High/Medium fixes (2026-05-16):
+  - **H1** `matches.ts` `seedsFromStandings` (~L399) — drop non-null assertion; filter out pairs missing from the lookup before `pairSeed`; callers handle `< 2` seeds via existing checks
+  - **H2** `permissions.ts` `assertCanEdit` — switch `.single()` → `.maybeSingle()` so owners without a `tournament_admins` row no longer crash with PGRST116; DB errors still throw
+  - **H3** `admins.ts` `addCoAdminAction` — fetch `profiles.display_name` and include it in audit log description (`เพิ่ม co-admin: <name> (<line_id>)`)
+  - **H4** `admins.ts` `searchProfilesAction` (~L199) — escape `\`/`%`/`_` in user query before `ILIKE`; only apply `.not("id","in",...)` when `excludeIds` is non-empty
+  - **H5** `tournaments.ts` `importPlayersCsvAction` + `importPairsCsvAction` — dedupe rows in-batch (player: `team_id:csv_id`; pair: `pair_id` else canonical sorted `player_id_1:player_id_2`) before the upsert loop; last-write-wins for intra-CSV duplicates
+  - **M2** `tournaments.ts` `deleteTeamAction` / `removeTeamPlayerAction`, `pairs.ts` `deletePairAction`, `admins.ts` `removeCoAdminAction` — check `error` after `.delete()`; bail before `writeAuditLog` on DB failure
+  - **M3** `tournaments.ts` `createTournamentAction` (~L44) — added `writeAuditLog` (`event_type: "tournament_created"`) before `redirect()`
+  - **M4** `tournaments.ts` `updateTournamentAction` — snapshot prior fields, diff with the parsed payload, audit-log `event_type: "tournament_updated"` with `อัปเดตการตั้งค่า: <changed fields>`
+  - **M5** `tournaments.ts` `generateShareTokenAction` / `revokeShareTokenAction` — audit-log `share_token_generated` / `share_token_revoked` (token value never logged)
+  - **M6** `matches.ts` `generateGroupsAction` — fetch `match_unit`; return `{ error: "โหมดคู่ไม่ใช้กลุ่ม" }` when `pair`
+  - **M8** `bracket-visual.ts` `roundLabel` — accept `bracketSize`; compute teams-per-round via `bracketSize / 2^(roundIdx-1)` (no more hardcoded 8/16); quarter-final now `"รอบก่อนรองชนะเลิศ"` for consistency with `bracket.ts`
+  - **M9** `bracket.ts` `bracketSlots` — throw `Error("bracketSlots requires power-of-2 input")` when `n < 1` or `n & (n-1) !== 0`
+  - **M10** `scheduling.ts` `balancedRoundRobin` — iterate `a` over full `sizeA` (was `min(sizeA,sizeB)`) so pairs with `a >= sizeB` are no longer dropped; verified `sizeA=5, sizeB=3 → 15 unique pairs`
+- UI High/Medium fixes (2026-05-16):
+  - **UI-3** `group-stage.tsx`, `pair-stage.tsx` — collapsible toggles now use shadcn `<Button variant="ghost" size="sm">` (was raw `<button>`); `team-manager.tsx` color swatches kept as `<button type="button">` (visual fidelity) but gained `aria-label` + `aria-pressed`
+  - **UI-4** `manual-match-dialog.tsx` — raw `<label>` replaced with shadcn `<Label htmlFor={…}>`; `SelectTrigger` got matching `id`
+  - **UI-5** Added `aria-label` to icon-only buttons: `match-row.tsx` (reset), `team-manager.tsx` (save/cancel/edit/remove player/expand/delete team), `pair-manager.tsx` (delete pair), `share-controls.tsx` (copy / revoke), `co-admin-controls.tsx` (remove co-admin)
+  - **UI-6** `bracket-match-card.tsx` — removed unused `sumGameScores` import
+  - **UI-7** New `src/components/tournament/tv-auto-refresh.tsx` ("use client") calls `router.refresh()` every 60s; mounted in TV page so updates propagate even when status ≠ `ongoing` (Realtime is off)
+  - **UI-8** `tv-match-card.tsx` + TV `page.tsx` — added `2xl:` text-size step (heading, name, status badge, court, score, standings table) for 4K mounts
+  - **UI-9** `tv-match-card.tsx` — competitor names use `break-words` (allow wrap) and shrink to `text-xl lg:text-2xl 2xl:text-3xl` for names > 30 chars
+  - **UI-10** `pair-stage.tsx` — `openGroups` state keyed by stable IDs `'upper' | 'lower' | 'all'`; Thai labels resolved via `GROUP_LABEL` map (was keyed by Thai string)
+  - **UI-11** `score-form.tsx` — disable submit when all games are 0:0 with inline "ต้องกรอกอย่างน้อย 1 เกม"; clamp inputs to `max=99` (also enforced in `updateGame`)
+  - **UI-12** `csv-import-dialog.tsx` — `FilePicker` clears stale preview rows when a new file fails to parse (`setRows([])` + `onParsed([])`)
+  - **UI-13** `co-admin-controls.tsx` — filter out malformed rows missing `user_id` instead of using `||` key fallback; remove button no longer needs `!admin.user_id` guard
+  - **UI-14** `edit-tournament-form.tsx` — new `existingTeamCount` prop; inline amber warning when `team_count` set below current team count (`page.tsx` passes `teams.length`)
+  - **UI-15** `tournament-tabs.tsx` — active tab synced to `?tab=` via `useSearchParams` + `router.replace(..., { scroll: false })`; defaults to `teams` when missing; `tab=teams` removes the param to keep canonical URL clean
 
 ### Phase 5 — Bracket Visualization
 
@@ -273,52 +310,56 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ## Club System
 
-### Co-Admin
+### Permission Helpers (`src/lib/actions/clubs.ts`)
 
-- **DB**: `club_admins` (PK: club_id + user_id, FK → clubs ON DELETE CASCADE, FK → profiles ON DELETE CASCADE, added_by nullable)
-- **`assertCanManageClub`** — LEFT JOIN query: `owner_id === profileId OR club_admins[user_id=profileId].length > 0`
-- **Actions** (`src/lib/actions/clubs.ts`):
-  - `addClubCoAdminAction(clubId, lineUserId)` — owner only; validates LINE ID regex, resolves UUID via `profiles.line_user_id`
-  - `removeClubCoAdminAction(clubId, userId)` — owner only
-  - `searchClubProfilesAction(clubId, query)` — owner only; ILIKE display_name, excludes owner + existing co-admins + null line_user_id, limit 20
-  - `reorderPlayersAction`, `kickPlayerAction`, `toggleCheckInAction` → updated to `assertCanManageClub`
-  - `ClubAdmin`, `ClubProfileSearchResult` types exported
-- **`ClubCoAdminControls`** (`src/components/club/club-co-admin-controls.tsx`) — client component; Popover + Command combobox (250ms debounce), list + remove; mirrors tournament co-admin pattern
-- **`SortablePlayerList`** prop renamed `isOwner` → `canManage`; DnD, kick, check-in ทำได้ถ้า `canManage`
-- **Club detail page**: fetch `club_admins` parallel; compute `isCoAdmin`, `canManage = isOwner || isCoAdmin`; `ClubCoAdminControls` แสดงเฉพาะ owner
+- **`assertClubOwner(sb, clubId, profileId)`** — owner-only check; `maybeSingle()`, throws on DB error
+- **`assertCanManageClub(sb, clubId, profileId)`** — owner OR co-admin; LEFT JOIN query `clubs ← club_admins[user_id=profileId]`; `maybeSingle()`, throws on DB error
 
 | Action | Owner | Co-Admin | Player |
 |---|---|---|---|
-| Check-in / Kick / Reorder | ✓ | ✓ | ✗ |
+| เช็คอิน / Kick / Reorder | ✓ | ✓ | ✗ |
 | Edit club / Expenses | ✓ | ✗ | ✗ |
 | Add/remove co-admins | ✓ | ✗ | ✗ |
+
+### Co-Admin
+
+- **DB**: `club_admins` — PK `(club_id, user_id)`; FK `club_admins_club_id_fkey → clubs ON DELETE CASCADE`; FK `club_admins_user_id_fkey → profiles ON DELETE CASCADE`; `added_by` nullable FK → profiles ON DELETE SET NULL
+- **Actions**:
+  - `addClubCoAdminAction(clubId, lineUserId)` — owner only; LINE ID regex validate → resolve UUID via `profiles.line_user_id`; duplicate → error 23505
+  - `removeClubCoAdminAction(clubId, userId)` — owner only; checks delete error
+  - `searchClubProfilesAction(clubId, query)` — owner only; min 2 chars; ILIKE escape (`%`, `_`, `\`); excludes owner + existing co-admins + null `line_user_id`; limit 20; `excludeIds` always non-empty (has `session.profileId`)
+  - `ClubAdmin`, `ClubProfileSearchResult` types exported
+- **`ClubCoAdminControls`** (`src/components/club/club-co-admin-controls.tsx`) — client; Popover + Command combobox, 250ms debounce; toast on add error incl. missing LINE account
+- **Club detail page**: JOIN `!club_admins_user_id_fkey` (explicit FK name — 2 FKs to profiles); fetch parallel; `canManage = isOwner || isCoAdmin`; `SortablePlayerList` prop `isOwner` → `canManage`
 
 ### เช็คอิน
 
 - **DB**: `club_players.checked_in_at timestamptz nullable`
-- **Action**: `toggleCheckInAction({ club_id, player_id })` — toggle `checked_in_at` null ↔ now(); owner toggle ใครก็ได้, ผู้เล่น toggle ตัวเอง
+- **Action**: `toggleCheckInAction({ club_id, player_id })` — permission check **ก่อน** player fetch; owner+co-admin เท่านั้น (`assertCanManageClub`) — **ผู้เล่นทั่วไปเช็คอินเองไม่ได้**
 - **`CheckInButton`** (ใน `sortable-player-list.tsx`):
-  - `canToggle` = `isOwner || isSelf` — แสดงปุ่ม; ถ้าไม่มีสิทธิ์แสดงแค่ badge สถานะ
-  - พร้อมแล้ว → สีเขียว + ข้อความ "พร้อม"; ยังไม่ → "เช็คอิน" outline
-  - Row highlight: `border-green-500/30 bg-green-500/5` เมื่อ checked in
-- **Count badge**: "X/N พร้อม" สีเขียวในหัว section (แสดงเมื่อ checkedInCount > 0)
+  - `canToggle = canManage` — เจ้าของ/co-admin มีปุ่ม; ผู้เล่นทั่วไปเห็นแค่ badge read-only
+  - checked in → สีเขียว "พร้อม"; ยังไม่ → "เช็คอิน" outline
+  - Row highlight: `border-green-500/30 bg-green-500/5`
+- **Count badge**: "X/N พร้อม" ในหัว section (เมื่อ `checkedInCount > 0`)
 
 ### ค่าใช้จ่ายแบบแยกรายการ
 
-- **DB**: `club_expenses` table — `id, club_id (FK clubs ON DELETE CASCADE), label, amount numeric(10,2), created_at`
-- **Actions** (`src/lib/actions/clubs.ts`):
-  - `addExpenseAction({ club_id, label, amount })` — owner only
-  - `updateExpenseAction({ id, club_id, label, amount })` — owner only
-  - `deleteExpenseAction({ id, club_id })` — owner only
-  - `assertClubOwner()` — internal helper, checks `clubs.owner_id`
-  - `ClubExpense` type exported
-  - `setTotalCostAction` ยังคงไว้ (legacy)
-- **`ExpenseManager`** (`src/components/club/expense-manager.tsx`) — client component:
-  - แสดง expense rows แบบ hover-reveal edit/delete buttons
-  - Inline `AddRow` + `EditRow` ใช้ TanStack Form (`z.number()` ไม่ใช่ `z.coerce`)
-  - Total computed จาก `expenses.reduce`; per-person = `Math.ceil(total / playerCount)`
+- **DB**: `club_expenses` — `id, club_id (FK → clubs CASCADE), label text, amount numeric(10,2), created_at`
+- **Actions** (owner only): `addExpenseAction`, `updateExpenseAction`, `deleteExpenseAction`; `ClubExpense` type exported; `setTotalCostAction` ยังคงไว้ (legacy)
+- **`ExpenseManager`** (`src/components/club/expense-manager.tsx`) — client:
+  - Shared `ExpenseForm` (TanStack Form + `z.number()`) สำหรับทั้ง add และ edit
+  - Hover-reveal edit/delete buttons; aria-label ครบ
+  - Total = `expenses.reduce`; per-person = `Math.ceil(total / playerCount)`
   - `router.refresh()` หลัง mutate
-- **Club detail page** — แทน `SetTotalCostForm` ด้วย `ExpenseManager` Card; fetch `club_expenses` parallel กับ players/owner; แสดง per-person ใน info grid (fallback เป็น `total_cost` legacy ถ้า expenses ว่าง)
+- **Club detail page**: fetch parallel; per-person ใน info grid; fallback `total_cost` (legacy) ถ้า expenses ว่าง
+
+### Color Summary (Group Stage)
+
+- **Component**: `ColorSummary` + `buildColorSummary` ใน `src/components/tournament/group-stage.tsx`
+- แสดงก่อน standings grid เมื่อ `completedMatches > 0` และ `hasGroups`
+- `buildColorSummary(groups, teams)` — aggregate `leaguePoints` ต่อ `team.color` cross-group; sort desc; `useMemo`
+- **Cards grid** `grid-cols-2 sm:grid-cols-4` — แต่ละสี: color ring (`--tw-ring-color` CSS variable) + pts + ชื่อทีม (truncate)
+- **Bar chart** — horizontal bars ความกว้างตาม `pts/maxPts`; `Card`/`CardContent`; `transition-[width] duration-500`
 
 ---
 
