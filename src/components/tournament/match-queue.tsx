@@ -71,7 +71,7 @@ export function MatchQueue({
 }) {
   const router = useRouter();
   const [items, setItems] = useState<Match[]>([]);
-  const [, startReorder] = useTransition();
+  const [reorderPending, startReorder] = useTransition();
 
   // keep local state in sync with server-side `matches`
   useEffect(() => {
@@ -127,6 +127,7 @@ export function MatchQueue({
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
             รอแข่ง <Badge variant="outline" className="text-xs">{pending.length}</Badge>
+            {reorderPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-0 space-y-2">
@@ -346,8 +347,8 @@ function QueueRowBody({
   const { a, b, unknownLabel } = getCompetitorNames(match, unit, competitorById);
   const [court, setCourt] = useState(match.court ?? "");
   const [savingCourt, setSavingCourt] = useState(false);
-  const [, startStart] = useTransition();
-  const [, startReset] = useTransition();
+  const [startPending, startStart] = useTransition();
+  const [resetPending, startReset] = useTransition();
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
@@ -425,13 +426,15 @@ function QueueRowBody({
               size="sm"
               variant="default"
               className="h-7 text-xs px-2 gap-1"
+              disabled={startPending}
               onClick={() => startStart(async () => {
                 const res = await startMatchAction(match.id, tournamentId);
                 if (res && "error" in res) toast.error(res.error);
                 else toast.success(`เริ่มแมตช์ #${match.match_number}`);
               })}
             >
-              <Play className="h-3 w-3" />เริ่ม
+              {startPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+              เริ่ม
             </Button>
           )}
 
@@ -452,13 +455,14 @@ function QueueRowBody({
               variant="ghost"
               className="h-7 text-xs px-2 gap-1"
               aria-label="รีเซ็ตผล"
+              disabled={resetPending}
               onClick={() => startReset(async () => {
                 const res = await resetMatchScoreAction(match.id, tournamentId);
                 if (res && "error" in res) toast.error(res.error);
                 else toast.success("รีเซ็ตผลแมตช์แล้ว");
               })}
             >
-              <RotateCcw className="h-3 w-3" />
+              {resetPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
             </Button>
           )}
         </div>

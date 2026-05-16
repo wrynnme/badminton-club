@@ -76,7 +76,7 @@ function PairItem({ pair, isOwner, color }: {
   isOwner: boolean;
   color?: string | null;
 }) {
-  const [, startDel] = useTransition();
+  const [delPending, startDel] = useTransition();
   const p1 = pair.player1;
   const p2 = pair.player2;
   const names = [p1?.display_name, p2?.display_name].filter(Boolean).join(" / ");
@@ -103,12 +103,13 @@ function PairItem({ pair, isOwner, color }: {
       {isOwner && (
         <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"
           aria-label="ลบคู่"
+          disabled={delPending}
           onClick={() => startDel(async () => {
             const res = await deletePairAction(pair.id);
             if (res?.error) toast.error(res.error);
             else toast.success("ลบคู่แล้ว");
           })}>
-          <X className="h-3 w-3" />
+          {delPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
         </Button>
       )}
     </div>

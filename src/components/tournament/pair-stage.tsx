@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { ChevronDown, ChevronUp, Swords } from "lucide-react";
+import { ChevronDown, ChevronUp, Swords, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,7 +35,7 @@ export function PairStage({
   matchRowSize?: "compact" | "comfortable";
 }) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-  const [, startGen] = useTransition();
+  const [genPending, startGen] = useTransition();
 
   const flatTeams: Team[] = teams.map(({ players: _p, ...t }) => t as Team);
   const teamById = new Map(flatTeams.map((t) => [t.id, t]));
@@ -122,6 +122,7 @@ export function PairStage({
               )}
               {totalPairs >= 2 && teamsWithPairs >= 2 && (
                 <Button size="sm" variant={hasMatches ? "outline" : "default"}
+                  disabled={genPending}
                   onClick={() => startGen(async () => {
                     const res = await generatePairMatchesAction(tournamentId);
                     if ("error" in res) toast.error(res.error);
@@ -132,7 +133,7 @@ export function PairStage({
                       toast.success(`สร้าง ${res.count} แมตช์ (${parts.join(", ")})`);
                     }
                   })}>
-                  <Swords className="h-3.5 w-3.5 mr-1" />
+                  {genPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Swords className="h-3.5 w-3.5 mr-1" />}
                   {hasMatches ? "สร้างใหม่" : "สร้างตารางแข่ง"}
                 </Button>
               )}

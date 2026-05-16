@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScoreForm } from "@/components/tournament/score-form";
 import { resetMatchScoreAction } from "@/lib/actions/matches";
@@ -26,7 +26,7 @@ export function MatchRow({
   size?: "compact" | "comfortable";
 }) {
   const [editing, setEditing] = useState(false);
-  const [, startReset] = useTransition();
+  const [resetPending, startReset] = useTransition();
 
   const aId = unit === "team" ? match.team_a_id : match.pair_a_id;
   const bId = unit === "team" ? match.team_b_id : match.pair_b_id;
@@ -76,12 +76,13 @@ export function MatchRow({
             {match.status === "completed" ? (
               <Button variant="ghost" size="icon" className="h-6 w-6"
                 aria-label="รีเซ็ตผลแมตช์"
+                disabled={resetPending}
                 onClick={() => startReset(async () => {
                   const res = await resetMatchScoreAction(match.id, tournamentId);
                   if (res?.error) toast.error(res.error);
                   else toast.success("รีเซ็ตผลแมตช์แล้ว");
                 })}>
-                <RotateCcw className="h-3 w-3" />
+                {resetPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
               </Button>
             ) : (
               <Button variant="outline" size="sm" className="h-6 text-xs px-2" onClick={() => setEditing(true)}>
