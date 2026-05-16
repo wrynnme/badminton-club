@@ -365,6 +365,28 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ---
 
+## Phase 9 — Match Schedule/Queue
+
+- **DB**: `matches.queue_position int` (nullable; backfilled per tournament from `match_number` via `ROW_NUMBER() OVER (PARTITION BY tournament_id ORDER BY match_number)`); index `idx_matches_tournament_queue_position` on `(tournament_id, queue_position)`
+- migration: `add_match_queue_position`
+- **Types**: `Match.queue_position: number | null`
+- **Server actions** (`src/lib/actions/matches.ts`):
+  - `reorderMatchQueueAction(tournamentId, orderedMatchIds[])` — `assertCanEdit`; validates all IDs belong to tournament; bulk UPDATE `queue_position` per id; revalidatePath
+  - `setMatchCourtAction({ matchId, tournamentId, court })` — trim empty → null; revalidatePath
+  - `startMatchAction(matchId, tournamentId)` — set `status='in_progress'`; reject if completed/in_progress; LINE notify `🏸 เรียกแมตช์ #N (สนาม X)\n A vs B`; writeAuditLog `match_started`
+- **Page query order**: `.order("queue_position", { ascending: true, nullsFirst: false }).order("match_number")` on both `/tournaments/[id]` and `/t/[token]`
+- **Component**: `src/components/tournament/match-queue.tsx`
+  - 3 sections: รอแข่ง (`pending`, draggable when `canEdit`) · กำลังแข่ง (`in_progress`) · จบแล้ว (`completed`)
+  - DnD: `@dnd-kit/sortable` with `PointerSensor` `activationConstraint: { distance: 8 }`; only pending list is sortable
+  - per-row: queue index `#N` · color dot + name vs name · court `<Input>` (onBlur save) · status badge · action button
+  - actions: "เริ่ม" (pending → in_progress) · "จบแข่ง" (in_progress → opens `ScoreForm` inline) · "↺" reset (completed)
+  - public share: `canEdit=false` → view-only (no drag, no court input, no buttons)
+- **Wiring**:
+  - `tournament-tabs.tsx` — `queueTab` prop + `showQueue` flag (TabId added `"queue"`); tab `ตารางคิว`
+  - `public-tournament-shell.tsx` — same `queue` slot + `showQueue` flag
+  - tournament detail page + `/t/[token]/page.tsx` — `showQueue = allMatches.length > 0`; pass `competitorById = buildCompetitorMap(...)`
+- **Permission**: Owner + co-admin = drag/court/start/end/reset; public viewer = read-only
+
 ## Todo
 
-- Phase 9 — (TBD)
+- Phase 10 — (TBD)
