@@ -17,6 +17,8 @@ import { CoAdminControls } from "@/components/tournament/co-admin-controls";
 import { AuditLogPanel } from "@/components/tournament/audit-log-panel";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import { TournamentTabs } from "@/components/tournament/tournament-tabs";
+import { MatchQueue } from "@/components/tournament/match-queue";
+import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { EditTournamentForm } from "@/components/tournament/edit-tournament-form";
 import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match } from "@/lib/types";
 import type { TournamentAdmin } from "@/lib/actions/admins";
@@ -62,7 +64,7 @@ export default async function TournamentDetailPage({
     teamIdList.length
       ? sb.from("pairs").select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)").in("team_id", teamIdList).order("created_at")
       : Promise.resolve({ data: [] }),
-    sb.from("matches").select("*").eq("tournament_id", id).order("match_number"),
+    sb.from("matches").select("*").eq("tournament_id", id).order("queue_position", { ascending: true, nullsFirst: false }).order("match_number"),
   ]);
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];
@@ -112,6 +114,8 @@ export default async function TournamentDetailPage({
   const showGroups = t.match_unit === "team" && (t.format === "group_only" || t.format === "group_knockout");
   const showPairs = t.match_unit === "pair";
   const showKnockout = t.format === "group_knockout" || t.format === "knockout_only";
+  const showQueue = allMatches.length > 0;
+  const competitorById = buildCompetitorMap(t.match_unit, flatTeams, pairs);
   const knockoutMatches = allMatches.filter((m) => m.round_type === "knockout");
   const groupMatches = allMatches.filter((m) => m.round_type === "group");
   const groupMatchCompleted = groupMatches.filter((m) => m.status === "completed").length;
@@ -175,6 +179,7 @@ export default async function TournamentDetailPage({
           showGroups={showGroups}
           showPairs={showPairs}
           showKnockout={showKnockout}
+          showQueue={showQueue}
           teamsTab={
             <TeamManager
               tournamentId={t.id}
@@ -209,6 +214,15 @@ export default async function TournamentDetailPage({
               groupCount={groups.length}
               groupMatchTotal={groupMatches.length}
               groupMatchCompleted={groupMatchCompleted}
+            />
+          }
+          queueTab={
+            <MatchQueue
+              matches={allMatches}
+              competitorById={competitorById}
+              tournamentId={t.id}
+              unit={t.match_unit}
+              canEdit={canEdit}
             />
           }
           settingsTab={

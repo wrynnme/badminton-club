@@ -4,26 +4,30 @@ import { useMemo, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type TabId = "teams" | "groups" | "pairs" | "knockout" | "settings";
+type TabId = "teams" | "groups" | "pairs" | "knockout" | "queue" | "settings";
 
 export function TournamentTabs({
   teamsTab,
   groupsTab,
   pairsTab,
   knockoutTab,
+  queueTab,
   settingsTab,
   showGroups,
   showPairs,
   showKnockout,
+  showQueue,
 }: {
   teamsTab: ReactNode;
   groupsTab?: ReactNode;
   pairsTab?: ReactNode;
   knockoutTab?: ReactNode;
+  queueTab?: ReactNode;
   settingsTab: ReactNode;
   showGroups: boolean;
   showPairs: boolean;
   showKnockout: boolean;
+  showQueue: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -34,9 +38,10 @@ export function TournamentTabs({
     if (showGroups) list.push("groups");
     if (showPairs) list.push("pairs");
     if (showKnockout) list.push("knockout");
+    if (showQueue) list.push("queue");
     list.push("settings");
     return list;
-  }, [showGroups, showPairs, showKnockout]);
+  }, [showGroups, showPairs, showKnockout, showQueue]);
 
   const queryTab = searchParams.get("tab") as TabId | null;
   const activeTab: TabId =
@@ -57,6 +62,7 @@ export function TournamentTabs({
         {showGroups && <TabsTrigger value="groups">กลุ่ม</TabsTrigger>}
         {showPairs && <TabsTrigger value="pairs">คู่</TabsTrigger>}
         {showKnockout && <TabsTrigger value="knockout">Knockout</TabsTrigger>}
+        {showQueue && <TabsTrigger value="queue">ตารางคิว</TabsTrigger>}
         <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>
       </TabsList>
 
@@ -79,6 +85,12 @@ export function TournamentTabs({
       {showKnockout && (
         <TabsContent value="knockout" className="mt-6">
           {knockoutTab}
+        </TabsContent>
+      )}
+
+      {showQueue && (
+        <TabsContent value="queue" className="mt-6">
+          {queueTab}
         </TabsContent>
       )}
 

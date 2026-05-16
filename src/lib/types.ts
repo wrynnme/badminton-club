@@ -132,6 +132,7 @@ export type Match = {
   loser_next_match_slot: "a" | "b" | null;
   bracket: BracketType | null;
   division: "upper" | "lower" | null;
+  queue_position: number | null;
   created_at: string;
 };
 
