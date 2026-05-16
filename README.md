@@ -185,7 +185,7 @@ src/
 - ✅ Phase 7b — Co-admin · audit log · tournament tabs · manual match creation · UI improvements
 - ✅ Phase 8 — TV display mode (`/t/[token]/tv`)
 - ✅ Phase 9 — Match Schedule/Queue tab (drag-drop ordering, court, start/end buttons)
-- ✅ Phase 10 — Smart Scheduling: court list, court occupancy guard, auto-rotate queue (anti back-to-back)
+- ✅ Phase 10 — Smart Scheduling: court list, court occupancy guard (partial UNIQUE index), auto-rotate queue (anti back-to-back), atomic reorder via `reorder_tournament_queue` RPC
 - [ ] Phase 11 — TBD
 
 ### ก๊วนแบด
