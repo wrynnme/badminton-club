@@ -180,6 +180,7 @@ export default async function TournamentDetailPage({
           showPairs={showPairs}
           showKnockout={showKnockout}
           showQueue={showQueue}
+          showSettings={canEdit}
           teamsTab={
             <TeamManager
               tournamentId={t.id}

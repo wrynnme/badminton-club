@@ -17,17 +17,19 @@ export function TournamentTabs({
   showPairs,
   showKnockout,
   showQueue,
+  showSettings,
 }: {
   teamsTab: ReactNode;
   groupsTab?: ReactNode;
   pairsTab?: ReactNode;
   knockoutTab?: ReactNode;
   queueTab?: ReactNode;
-  settingsTab: ReactNode;
+  settingsTab?: ReactNode;
   showGroups: boolean;
   showPairs: boolean;
   showKnockout: boolean;
   showQueue: boolean;
+  showSettings: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -39,9 +41,9 @@ export function TournamentTabs({
     if (showPairs) list.push("pairs");
     if (showKnockout) list.push("knockout");
     if (showQueue) list.push("queue");
-    list.push("settings");
+    if (showSettings) list.push("settings");
     return list;
-  }, [showGroups, showPairs, showKnockout, showQueue]);
+  }, [showGroups, showPairs, showKnockout, showQueue, showSettings]);
 
   const queryTab = searchParams.get("tab") as TabId | null;
   const activeTab: TabId =
@@ -63,7 +65,7 @@ export function TournamentTabs({
         {showPairs && <TabsTrigger value="pairs">คู่</TabsTrigger>}
         {showKnockout && <TabsTrigger value="knockout">Knockout</TabsTrigger>}
         {showQueue && <TabsTrigger value="queue">ตารางคิว</TabsTrigger>}
-        <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>
+        {showSettings && <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>}
       </TabsList>
 
       <TabsContent value="teams" className="mt-6">
@@ -94,9 +96,11 @@ export function TournamentTabs({
         </TabsContent>
       )}
 
-      <TabsContent value="settings" className="mt-6 space-y-6">
-        {settingsTab}
-      </TabsContent>
+      {showSettings && (
+        <TabsContent value="settings" className="mt-6 space-y-6">
+          {settingsTab}
+        </TabsContent>
+      )}
     </Tabs>
   );
 }
