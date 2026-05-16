@@ -6,30 +6,29 @@
  * involve the same competitor when possible.
  */
 export function balancedRoundRobin(sizeA: number, sizeB: number): Array<[number, number]> {
+  if (sizeA <= 0 || sizeB <= 0) return [];
+
   const matches: Array<[number, number]> = [];
-  const maxRound = Math.max(sizeA, sizeB);
-
-  for (let round = 0; round < maxRound; round++) {
-    for (let i = 0; i < Math.min(sizeA, sizeB); i++) {
-      const a = i;
-      const b = (i + round) % sizeB;
-      matches.push([a, b]);
-    }
-  }
-
-  // Dedupe (when sizeA < sizeB, rotation creates duplicates after sizeA rounds)
+  // Iterate `a` over the FULL sizeA so no row is dropped when sizeA > sizeB.
+  // `b = (a + round) % sizeB` rotates each round so consecutive matches
+  // tend to involve different sideB competitors.
+  const totalPairs = sizeA * sizeB;
   const seen = new Set<string>();
-  const unique: Array<[number, number]> = [];
-  for (const [a, b] of matches) {
-    const key = `${a}-${b}`;
-    if (!seen.has(key)) {
+
+  // We need enough rounds to cover every (a, b) pair; sizeB rounds suffice
+  // because for a fixed a, b cycles through all sizeB values across rounds.
+  for (let round = 0; round < sizeB && matches.length < totalPairs; round++) {
+    for (let a = 0; a < sizeA; a++) {
+      const b = (a + round) % sizeB;
+      const key = `${a}-${b}`;
+      if (seen.has(key)) continue;
       seen.add(key);
-      unique.push([a, b]);
+      matches.push([a, b]);
+      if (matches.length === totalPairs) break;
     }
-    if (unique.length === sizeA * sizeB) break;
   }
 
-  return unique;
+  return matches;
 }
 
 /**

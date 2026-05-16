@@ -73,7 +73,7 @@ export async function addCoAdminAction(
   // Look up profile UUID from LINE user_id
   const { data: profile } = await sb
     .from("profiles")
-    .select("id")
+    .select("id, display_name")
     .eq("line_user_id", trimmed)
     .maybeSingle();
 
@@ -91,6 +91,7 @@ export async function addCoAdminAction(
     return { error: "เพิ่มผู้ช่วยดูแลไม่สำเร็จ" };
   }
 
+  const targetName = profile.display_name ?? "(ไม่มีชื่อ)";
   await writeAuditLog({
     tournament_id: tournamentId,
     actor_id: session.profileId,
@@ -98,7 +99,7 @@ export async function addCoAdminAction(
     event_type: "admin_added",
     entity_type: "admin",
     entity_id: profile.id,
-    description: `เพิ่ม co-admin: ${trimmed}`,
+    description: `เพิ่ม co-admin: ${targetName} (${trimmed})`,
   });
 
   revalidatePath(`/tournaments/${tournamentId}`);
@@ -115,11 +116,12 @@ export async function removeCoAdminAction(
   if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
-  await sb
+  const { error: deleteError } = await sb
     .from("tournament_admins")
     .delete()
     .eq("tournament_id", tournamentId)
     .eq("user_id", userId);
+  if (deleteError) return { error: "ลบผู้ช่วยดูแลไม่สำเร็จ" };
 
   await writeAuditLog({
     tournament_id: tournamentId,
@@ -192,13 +194,20 @@ export async function searchProfilesAction(
 
   const excludeIds = [session.profileId, ...(existing ?? []).map((r) => r.user_id)];
 
-  const { data, error } = await sb
+  // Escape ILIKE wildcards in user input so '%' / '_' / '\' are treated literally
+  const escapedQ = q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+
+  const baseQuery = sb
     .from("profiles")
     .select("id, display_name, line_user_id")
-    .ilike("display_name", `%${q}%`)
-    .not("id", "in", `(${excludeIds.join(",")})`)
-    .not("line_user_id", "is", null)
-    .limit(20);
+    .ilike("display_name", `%${escapedQ}%`)
+    .not("line_user_id", "is", null);
+
+  const filtered = excludeIds.length > 0
+    ? baseQuery.not("id", "in", `(${excludeIds.join(",")})`)
+    : baseQuery;
+
+  const { data, error } = await filtered.limit(20);
 
   if (error) return { error: "ค้นหาไม่สำเร็จ" };
   return { ok: true, results: (data ?? []) as ProfileSearchResult[] };

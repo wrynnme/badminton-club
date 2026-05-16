@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Trophy } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
+import { TvAutoRefresh } from "@/components/tournament/tv-auto-refresh";
 import { TvMatchCard } from "@/components/tournament/tv-match-card";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { computeStandings } from "@/lib/tournament/scoring";
@@ -80,25 +81,26 @@ export default async function TvDisplayPage({
 
   return (
     <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"}>
+      <TvAutoRefresh intervalMs={60_000} />
       <div className="min-h-screen w-full bg-background text-foreground p-4 sm:p-6 lg:p-10 space-y-6 lg:space-y-8">
         {/* Hero */}
         <header className="flex flex-wrap items-center justify-between gap-4 border-b pb-4 lg:pb-6">
           <div className="flex items-center gap-3 lg:gap-4 min-w-0">
-            <Trophy className="h-8 w-8 lg:h-12 lg:w-12 shrink-0" />
+            <Trophy className="h-8 w-8 lg:h-12 lg:w-12 2xl:h-16 2xl:w-16 shrink-0" />
             <div className="min-w-0">
-              <h1 className="text-3xl lg:text-5xl xl:text-6xl font-bold truncate">{t.name}</h1>
+              <h1 className="text-3xl lg:text-5xl xl:text-6xl 2xl:text-7xl font-bold truncate">{t.name}</h1>
               {t.venue && (
-                <p className="text-base lg:text-2xl text-muted-foreground truncate">{t.venue}</p>
+                <p className="text-base lg:text-2xl 2xl:text-3xl text-muted-foreground truncate">{t.venue}</p>
               )}
             </div>
           </div>
           <div className="flex items-center gap-3 lg:gap-4">
-            <span className="px-3 py-1 lg:px-4 lg:py-2 rounded-full border text-base lg:text-xl font-semibold">
+            <span className="px-3 py-1 lg:px-4 lg:py-2 rounded-full border text-base lg:text-xl 2xl:text-2xl font-semibold">
               {STATUS_TEXT[t.status] ?? t.status}
             </span>
             <Link
               href={`/t/${token}`}
-              className="text-sm lg:text-base text-muted-foreground hover:text-foreground underline"
+              className="text-sm lg:text-base 2xl:text-lg text-muted-foreground hover:text-foreground underline"
             >
               ออก TV
             </Link>
@@ -107,15 +109,15 @@ export default async function TvDisplayPage({
 
         {allMatches.length === 0 ? (
           <div className="flex items-center justify-center min-h-[60vh]">
-            <p className="text-2xl lg:text-4xl text-muted-foreground">ยังไม่มีการแข่งขัน</p>
+            <p className="text-2xl lg:text-4xl 2xl:text-5xl text-muted-foreground">ยังไม่มีการแข่งขัน</p>
           </div>
         ) : (
           <div className="grid gap-6 lg:gap-8 xl:grid-cols-3">
             {/* Upcoming / In progress */}
             <section className="xl:col-span-2 space-y-3 lg:space-y-4">
-              <h2 className="text-2xl lg:text-3xl font-bold">กำลังเล่น / ถัดไป</h2>
+              <h2 className="text-2xl lg:text-3xl 2xl:text-4xl font-bold">กำลังเล่น / ถัดไป</h2>
               {upcoming.length === 0 ? (
-                <p className="text-lg lg:text-2xl text-muted-foreground">ไม่มีคิวค้าง</p>
+                <p className="text-lg lg:text-2xl 2xl:text-3xl text-muted-foreground">ไม่มีคิวค้าง</p>
               ) : (
                 <div className="space-y-3 lg:space-y-4">
                   {upcoming.map((m) => (
@@ -129,9 +131,9 @@ export default async function TvDisplayPage({
             <aside className="space-y-6 lg:space-y-8">
               {showStandings && (
                 <section className="space-y-3 lg:space-y-4">
-                  <h2 className="text-2xl lg:text-3xl font-bold">อันดับ</h2>
+                  <h2 className="text-2xl lg:text-3xl 2xl:text-4xl font-bold">อันดับ</h2>
                   <div className="rounded-xl border bg-card p-3 lg:p-5">
-                    <table className="w-full text-base lg:text-xl">
+                    <table className="w-full text-base lg:text-xl 2xl:text-2xl">
                       <thead>
                         <tr className="text-left text-muted-foreground border-b">
                           <th className="py-1 font-normal w-8">#</th>
@@ -164,9 +166,9 @@ export default async function TvDisplayPage({
               )}
 
               <section className="space-y-3 lg:space-y-4">
-                <h2 className="text-2xl lg:text-3xl font-bold">จบล่าสุด</h2>
+                <h2 className="text-2xl lg:text-3xl 2xl:text-4xl font-bold">จบล่าสุด</h2>
                 {completed.length === 0 ? (
-                  <p className="text-lg lg:text-2xl text-muted-foreground">ยังไม่มีผล</p>
+                  <p className="text-lg lg:text-2xl 2xl:text-3xl text-muted-foreground">ยังไม่มีผล</p>
                 ) : (
                   <div className="space-y-3 lg:space-y-4">
                     {completed.map((m) => (

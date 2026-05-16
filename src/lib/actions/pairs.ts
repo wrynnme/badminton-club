@@ -96,7 +96,8 @@ export async function deletePairAction(pairId: string) {
   const tournamentId = (pair.teams as unknown as { tournament_id: string }).tournament_id;
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
-  await sb.from("pairs").delete().eq("id", pairId);
+  const { error: deleteError } = await sb.from("pairs").delete().eq("id", pairId);
+  if (deleteError) return { error: "ลบคู่ไม่สำเร็จ" };
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
     tournament_id: tournamentId,

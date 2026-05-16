@@ -1,7 +1,10 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+type TabId = "teams" | "groups" | "pairs" | "knockout" | "settings";
 
 export function TournamentTabs({
   teamsTab,
@@ -22,8 +25,33 @@ export function TournamentTabs({
   showPairs: boolean;
   showKnockout: boolean;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const validTabs = useMemo(() => {
+    const list: TabId[] = ["teams"];
+    if (showGroups) list.push("groups");
+    if (showPairs) list.push("pairs");
+    if (showKnockout) list.push("knockout");
+    list.push("settings");
+    return list;
+  }, [showGroups, showPairs, showKnockout]);
+
+  const queryTab = searchParams.get("tab") as TabId | null;
+  const activeTab: TabId =
+    queryTab && validTabs.includes(queryTab) ? queryTab : "teams";
+
+  const onValueChange = (next: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === "teams") params.delete("tab");
+    else params.set("tab", next);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  };
+
   return (
-    <Tabs defaultValue="teams">
+    <Tabs value={activeTab} onValueChange={onValueChange}>
       <TabsList className="w-full flex-wrap h-auto">
         <TabsTrigger value="teams">ทีม</TabsTrigger>
         {showGroups && <TabsTrigger value="groups">กลุ่ม</TabsTrigger>}

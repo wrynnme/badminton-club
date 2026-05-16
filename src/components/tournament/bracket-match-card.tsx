@@ -1,5 +1,5 @@
 import { CARD_H } from "@/lib/tournament/bracket-visual";
-import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
+import { gameWinner } from "@/lib/tournament/scoring";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 

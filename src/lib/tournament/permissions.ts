@@ -14,9 +14,9 @@ export async function assertCanEdit(tournamentId: string, userId: string): Promi
     .select("owner_id, tournament_admins!left(user_id)")
     .eq("id", tournamentId)
     .eq("tournament_admins.user_id", userId)
-    .single();
+    .maybeSingle();
   if (error) throw new Error("permission_check_failed");
   if (!data) return false;
-  const admins = data.tournament_admins as { user_id: string }[];
+  const admins = (data.tournament_admins ?? []) as { user_id: string }[];
   return data.owner_id === userId || admins.length > 0;
 }

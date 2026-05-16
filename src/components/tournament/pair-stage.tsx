@@ -146,27 +146,36 @@ export function PairStage({
 
         {hasMatches && (() => {
           const hasDivisions = upperMatches.length > 0 || lowerMatches.length > 0;
-          const displayGroups: { label: string; matchList: typeof matches }[] = hasDivisions
+          type GroupId = "upper" | "lower" | "all";
+          const GROUP_LABEL: Record<GroupId, string> = {
+            upper: "กลุ่มบน",
+            lower: "กลุ่มล่าง",
+            all: "แมตช์ทั้งหมด",
+          };
+          const displayGroups: { id: GroupId; matchList: typeof matches }[] = hasDivisions
             ? [
-                ...(upperMatches.length > 0 ? [{ label: "กลุ่มบน", matchList: upperMatches }] : []),
-                ...(lowerMatches.length > 0 ? [{ label: "กลุ่มล่าง", matchList: lowerMatches }] : []),
+                ...(upperMatches.length > 0 ? [{ id: "upper" as const, matchList: upperMatches }] : []),
+                ...(lowerMatches.length > 0 ? [{ id: "lower" as const, matchList: lowerMatches }] : []),
               ]
-            : [{ label: "แมตช์ทั้งหมด", matchList: undividedMatches.length > 0 ? undividedMatches : matches }];
+            : [{ id: "all" as const, matchList: undividedMatches.length > 0 ? undividedMatches : matches }];
 
           return (
             <div className="space-y-3">
-              {displayGroups.map(({ label, matchList }) => {
-                const isOpen = openGroups[label] !== false;
+              {displayGroups.map(({ id, matchList }) => {
+                const isOpen = openGroups[id] !== false;
                 return (
-                <Card key={label}>
+                <Card key={id}>
                   <CardContent className="pt-4 space-y-2">
-                    <button
-                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => setOpenGroups(prev => ({ ...prev, [label]: !isOpen }))}>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => setOpenGroups(prev => ({ ...prev, [id]: !isOpen }))}>
                       {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                      {label}
+                      {GROUP_LABEL[id]}
                       <span className="ml-1">({matchList.filter(m => m.status === "completed").length}/{matchList.length})</span>
-                    </button>
+                    </Button>
                     {isOpen && (
                       <div className="divide-y">
                         {matchList.map((m) => (

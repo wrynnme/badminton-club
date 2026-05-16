@@ -10,12 +10,14 @@ export type VisualRound = {
   matches: Array<Match | null>; // null = empty/bye slot
 };
 
-function roundLabel(roundsFromFinal: number, totalRounds: number): string {
+function roundLabel(roundsFromFinal: number, totalRounds: number, bracketSize: number): string {
   if (roundsFromFinal === 0) return "รอบชิงชนะเลิศ";
   if (roundsFromFinal === 1 && totalRounds > 2) return "รอบรองชนะเลิศ";
-  if (roundsFromFinal === 2 && totalRounds > 3) return "รอบ 8 ทีม";
-  if (roundsFromFinal === 3 && totalRounds > 4) return "รอบ 16 ทีม";
-  return `รอบที่ ${totalRounds - roundsFromFinal}`;
+  // roundsFromFinal === 2 corresponds to quarter-final when totalRounds > 3
+  if (roundsFromFinal === 2 && totalRounds > 3) return "รอบก่อนรองชนะเลิศ";
+  const roundIdx = totalRounds - roundsFromFinal; // 1-based round number
+  const teamsInRound = Math.max(2, Math.round(bracketSize / Math.pow(2, roundIdx - 1)));
+  return `รอบ ${teamsInRound} ทีม`;
 }
 
 export function buildVisualBracket(
@@ -37,6 +39,7 @@ export function buildVisualBracket(
   const roundNumbers = [...byRound.keys()].sort((a, b) => a - b);
   const totalRounds = roundNumbers.length;
   const firstRoundCount = byRound.get(roundNumbers[0])!.length;
+  const bracketSize = firstRoundCount * 2; // round 1 has bracketSize/2 matches
 
   return roundNumbers.map((rn, idx) => {
     const rMatches = byRound.get(rn)!.sort((a, b) => a.match_number - b.match_number);
@@ -49,7 +52,7 @@ export function buildVisualBracket(
 
     return {
       roundNumber: rn,
-      label: roundLabel(totalRounds - 1 - idx, totalRounds),
+      label: roundLabel(totalRounds - 1 - idx, totalRounds, bracketSize),
       slotHeight,
       matches: slots,
     };

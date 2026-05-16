@@ -31,7 +31,7 @@ const formSchema = z.object({
 
 const TEAM_COUNT_PRESETS = [4, 6, 8, 12, 16];
 
-export function EditTournamentForm({ tournament }: { tournament: Tournament }) {
+export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tournament: Tournament; existingTeamCount?: number }) {
   const form = useForm({
     defaultValues: {
       name: tournament.name,
@@ -253,6 +253,7 @@ export function EditTournamentForm({ tournament }: { tournament: Tournament }) {
             <form.Field name="team_count">
               {(field) => {
                 const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
+                const belowExisting = existingTeamCount > 0 && field.state.value < existingTeamCount;
                 return (
                   <Field data-invalid={isInvalid}>
                     <FieldLabel htmlFor={field.name}>จำนวนทีม *</FieldLabel>
@@ -273,6 +274,11 @@ export function EditTournamentForm({ tournament }: { tournament: Tournament }) {
                       <InputGroupAddon align="inline-end"><InputGroupText>ทีม</InputGroupText></InputGroupAddon>
                     </InputGroup>
                     {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+                    {belowExisting && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        มีทีมในระบบ {existingTeamCount} ทีม — ลดจำนวนต่ำกว่านี้ทีมเดิมจะไม่ถูกลบอัตโนมัติ
+                      </p>
+                    )}
                   </Field>
                 );
               }}

@@ -59,6 +59,16 @@ export async function createTournamentAction(input: CreateTournamentInput) {
 
   if (error || !data) return { error: "สร้างทัวร์นาเมนต์ไม่สำเร็จ" };
 
+  await writeAuditLog({
+    tournament_id: data.id,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "tournament_created",
+    entity_type: "tournament",
+    entity_id: data.id,
+    description: `สร้างทัวร์นาเมนต์: ${parsed.data.name}`,
+  });
+
   revalidatePath("/tournaments");
   redirect(`/tournaments/${data.id}`);
 }
@@ -76,8 +86,38 @@ export async function updateTournamentAction(input: CreateTournamentInput & { id
   if (!(await assertIsOwner(id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
+
+  // Snapshot pre-update fields to compute which fields actually changed
+  const { data: before } = await sb
+    .from("tournaments")
+    .select("name, venue, start_date, end_date, format, match_unit, has_lower_bracket, allow_drop_to_lower, seeding_method, advance_count, team_count, pair_division_threshold, notes")
+    .eq("id", id)
+    .maybeSingle();
+
   const { error } = await sb.from("tournaments").update(parsed.data).eq("id", id);
   if (error) return { error: "บันทึกการตั้งค่าไม่สำเร็จ" };
+
+  const changedFields: string[] = [];
+  if (before) {
+    for (const key of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
+      const prev = (before as Record<string, unknown>)[key as string];
+      const next = (parsed.data as Record<string, unknown>)[key as string];
+      if (prev !== next) changedFields.push(key as string);
+    }
+  }
+  const description = changedFields.length
+    ? `อัปเดตการตั้งค่า: ${changedFields.join(", ")}`
+    : "อัปเดตการตั้งค่าทัวร์นาเมนต์";
+
+  await writeAuditLog({
+    tournament_id: id,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "tournament_updated",
+    entity_type: "tournament",
+    entity_id: id,
+    description,
+  });
 
   revalidatePath(`/tournaments/${id}`);
   return { ok: true };
@@ -151,7 +191,8 @@ export async function deleteTeamAction(teamId: string, tournamentId: string) {
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
-  await sb.from("teams").delete().eq("id", teamId);
+  const { error: deleteError } = await sb.from("teams").delete().eq("id", teamId);
+  if (deleteError) return { error: "ลบทีมไม่สำเร็จ" };
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
     tournament_id: tournamentId,
@@ -200,7 +241,8 @@ export async function removeTeamPlayerAction(playerId: string, tournamentId: str
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
-  await sb.from("team_players").delete().eq("id", playerId);
+  const { error: deleteError } = await sb.from("team_players").delete().eq("id", playerId);
+  if (deleteError) return { error: "ลบผู้เล่นไม่สำเร็จ" };
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
     tournament_id: tournamentId,
@@ -270,11 +312,19 @@ export async function importPlayersCsvAction(
     existingPlayers?.filter((p) => p.csv_id).map((p) => [`${p.team_id}:${p.csv_id}`, p.id]) ?? []
   );
 
+  // Dedupe rows by (team_id, csv_id) within this CSV batch — last write wins.
+  // Without this, Promise.all races duplicates against the pre-fetched existingByCsvId map.
+  const dedupedRows = new Map<string, PlayerCsvRow & { __teamId: string }>();
+  for (const r of rows) {
+    const teamId = teamByName.get(r.team);
+    if (!teamId) continue;
+    dedupedRows.set(`${teamId}:${r.csv_id}`, { ...r, __teamId: teamId });
+  }
+
   let created = 0, updated = 0;
   await Promise.all(
-    rows.map(async (r) => {
-      const teamId = teamByName.get(r.team);
-      if (!teamId) return;
+    [...dedupedRows.values()].map(async (r) => {
+      const teamId = r.__teamId;
       const existingId = existingByCsvId.get(`${teamId}:${r.csv_id}`);
       if (existingId) {
         await sb.from("team_players").update({ display_name: r.display_name, role: r.role, level: r.level || null }).eq("id", existingId);
@@ -343,9 +393,27 @@ export async function importPairsCsvAction(
   const existingIdSet = new Set(existingPairs?.map((p) => p.id) ?? []);
   const existingPlayerPairSet = new Set(existingPairs?.map((p) => `${p.player_id_1}:${p.player_id_2}`) ?? []);
 
+  // Dedupe rows within this CSV batch — last write wins.
+  // Key: pair_id if provided (upsert key), else canonical sorted (id_player_1, id_player_2).
+  // Without this, duplicates in the same upload all insert as new pairs.
+  const dedupedRows = new Map<string, PairCsvRow>();
+  for (const r of rows) {
+    let key: string;
+    if (r.pair_id) {
+      key = `id:${r.pair_id}`;
+    } else if (r.id_player_1 && r.id_player_2) {
+      const sorted = [r.id_player_1, r.id_player_2].sort();
+      key = `pp:${sorted[0]}:${sorted[1]}`;
+    } else {
+      // Will be skipped by the loop anyway; preserve so the skipped counter still ticks
+      key = `bad:${dedupedRows.size}`;
+    }
+    dedupedRows.set(key, r);
+  }
+
   // Each row = 1 pair
   let pairsCreated = 0, pairsUpdated = 0, skipped = 0;
-  for (const r of rows) {
+  for (const r of dedupedRows.values()) {
     if (!r.id_player_1 || !r.id_player_2) { skipped++; continue; }
     const p1 = playerByCsvId.get(r.id_player_1);
     const p2 = playerByCsvId.get(r.id_player_2);
@@ -439,6 +507,16 @@ export async function generateShareTokenAction(tournamentId: string) {
   const { error } = await sb.from("tournaments").update({ share_token: token }).eq("id", tournamentId);
   if (error) return { error: "สร้างลิงก์ไม่สำเร็จ" };
 
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "share_token_generated",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: "สร้างลิงก์แชร์สาธารณะ",
+  });
+
   revalidatePath(`/tournaments/${tournamentId}`);
   return { ok: true, token };
 }
@@ -452,6 +530,16 @@ export async function revokeShareTokenAction(tournamentId: string) {
   const sb = await createAdminClient();
   const { error } = await sb.from("tournaments").update({ share_token: null }).eq("id", tournamentId);
   if (error) return { error: "ยกเลิกลิงก์ไม่สำเร็จ" };
+
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "share_token_revoked",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: "ยกเลิกลิงก์แชร์สาธารณะ",
+  });
 
   revalidatePath(`/tournaments/${tournamentId}`);
   return { ok: true };

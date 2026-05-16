@@ -59,6 +59,8 @@ function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: (
             <div className="flex gap-2 flex-wrap">
               {COLORS.map((c) => (
                 <button key={c} type="button"
+                  aria-label={`สี ${c}`}
+                  aria-pressed={field.state.value === c}
                   className={`w-7 h-7 rounded-full border-2 transition-all ${field.state.value === c ? "border-foreground scale-110" : "border-transparent"}`}
                   style={{ backgroundColor: c }}
                   onClick={() => field.handleChange(c)} />
@@ -171,8 +173,8 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
             className="h-6 text-xs flex-1 px-1.5 min-w-0" autoFocus />
           <Input type="number" step="0.5" value={level} onChange={(e) => setLevel(e.target.value)}
             placeholder="Level" className="h-6 text-xs w-16 px-1.5" />
-          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={save}><Check className="h-3 w-3" /></Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={cancel}><X className="h-3 w-3" /></Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label="บันทึก" onClick={save}><Check className="h-3 w-3" /></Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label="ยกเลิก" onClick={cancel}><X className="h-3 w-3" /></Button>
         </>
       ) : (
         <>
@@ -181,8 +183,10 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
           {isOwner && (
             <>
               <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label="แก้ไข"
                 onClick={() => setEditing(true)}><Pencil className="h-3 w-3" /></Button>
               <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-destructive hover:text-destructive"
+                aria-label="ลบผู้เล่น"
                 onClick={() => startRemove(async () => {
                   const res = await removeTeamPlayerAction(p.id, tournamentId);
                   if (res?.error) toast.error(res.error);
@@ -211,11 +215,14 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
             <Badge variant="outline" className="text-xs">{team.players.length} คน</Badge>
           </div>
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setOpen(!open); setAddingMember(false); }}>
+            <Button variant="ghost" size="icon" className="h-7 w-7"
+              aria-label={open ? "เลื่อนขึ้น" : "เลื่อนลง"}
+              onClick={() => { setOpen(!open); setAddingMember(false); }}>
               {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </Button>
             {isOwner && (
               <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
+                aria-label="ลบทีม"
                 onClick={() => startDel(async () => {
                   const res = await deleteTeamAction(team.id, tournamentId);
                   if (res?.error) toast.error(res.error);

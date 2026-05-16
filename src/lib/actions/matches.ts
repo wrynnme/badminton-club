@@ -29,24 +29,28 @@ export async function generateGroupsAction(tournamentId: string, groupCount: num
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
+
+  const { data: tournament } = await sb
+    .from("tournaments")
+    .select("match_unit")
+    .eq("id", tournamentId)
+    .maybeSingle();
+  if (!tournament) return { error: "ไม่พบทัวร์นาเมนต์" };
+  if (tournament.match_unit !== "team") return { error: "โหมดคู่ไม่ใช้กลุ่ม" };
+
   const { data: teams } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
   if (!teams?.length) return { error: "ยังไม่มีทีม" };
 
-  await sb.from("matches").delete().eq("tournament_id", tournamentId).eq("round_type", "group");
-  await sb.from("groups").delete().eq("tournament_id", tournamentId);
-
   const shuffled = [...teams].sort(() => Math.random() - 0.5);
-  const names = "ABCDEFGHIJKLMNOP".split("").slice(0, groupCount);
+  const names = "ABCDEFGHIJKLMNOP".split("").slice(0, groupCount).map((n) => `กลุ่ม ${n}`);
+  const assignments = shuffled.map((team, i) => ({ group_index: i % groupCount, team_id: team.id }));
 
-  const { data: groups } = await sb
-    .from("groups")
-    .insert(names.map((n) => ({ tournament_id: tournamentId, name: `กลุ่ม ${n}` })))
-    .select("id");
-  if (!groups) return { error: "สร้างกลุ่มไม่สำเร็จ กรุณาลองใหม่" };
-
-  await sb.from("group_teams").insert(
-    shuffled.map((team, i) => ({ group_id: groups[i % groupCount].id, team_id: team.id }))
-  );
+  const { error: rpcError } = await sb.rpc("regenerate_tournament_groups", {
+    p_tournament_id: tournamentId,
+    p_group_names: names,
+    p_assignments: assignments,
+  });
+  if (rpcError) return { error: "สร้างกลุ่มไม่สำเร็จ กรุณาลองใหม่" };
 
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
@@ -67,7 +71,6 @@ export async function generateGroupMatchesAction(tournamentId: string) {
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
-  await sb.from("matches").delete().eq("tournament_id", tournamentId).eq("round_type", "group");
 
   const { data: groups } = await sb
     .from("groups")
@@ -83,9 +86,7 @@ export async function generateGroupMatchesAction(tournamentId: string) {
     for (let i = 0; i < teamIds.length; i++) {
       for (let j = i + 1; j < teamIds.length; j++) {
         inserts.push({
-          tournament_id: tournamentId,
           group_id: g.id,
-          round_type: "group",
           round_number: 1,
           match_number: n++,
           team_a_id: teamIds[i],
@@ -95,7 +96,12 @@ export async function generateGroupMatchesAction(tournamentId: string) {
     }
   }
 
-  if (inserts.length) await sb.from("matches").insert(inserts);
+  const { error: rpcError } = await sb.rpc("replace_tournament_matches", {
+    p_tournament_id: tournamentId,
+    p_round_type: "group",
+    p_matches: inserts,
+  });
+  if (rpcError) return { error: "สร้างแมตช์กลุ่มไม่สำเร็จ" };
 
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
@@ -125,8 +131,6 @@ export async function generatePairMatchesAction(tournamentId: string) {
 
   const sb = await createAdminClient();
 
-  await sb.from("matches").delete().eq("tournament_id", tournamentId).eq("round_type", "group");
-
   // Fetch tournament threshold + pairs
   const { data: tournament } = await sb.from("tournaments").select("pair_division_threshold").eq("id", tournamentId).single();
   const threshold = tournament?.pair_division_threshold ?? null;
@@ -150,7 +154,7 @@ export async function generatePairMatchesAction(tournamentId: string) {
     pairs: t.pairs.filter((p) => p.player_id_1 && p.player_id_2),
   }));
 
-  let allMatchInserts: { tournament_id: string; round_type: string; round_number: number; match_number: number; team_a_id: string; team_b_id: string; pair_a_id: string; pair_b_id: string; division?: "upper" | "lower" }[];
+  let allMatchInserts: { round_number: number; match_number: number; team_a_id: string; team_b_id: string; pair_a_id: string; pair_b_id: string; division?: "upper" | "lower" }[];
   let upperCount = 0, lowerCount = 0;
 
   if (threshold === null) {
@@ -161,7 +165,7 @@ export async function generatePairMatchesAction(tournamentId: string) {
     if (teamPairs.length < 2) return { error: "ต้องมีอย่างน้อย 2 ทีมที่มีคู่" };
     const all = generateAllPairMatches(teamPairs);
     allMatchInserts = all.map((m, i) => ({
-      tournament_id: tournamentId, round_type: "group", round_number: 1, match_number: i + 1,
+      round_number: 1, match_number: i + 1,
       team_a_id: m.teamAId, team_b_id: m.teamBId, pair_a_id: m.pairAId, pair_b_id: m.pairBId,
     }));
   } else {
@@ -178,12 +182,17 @@ export async function generatePairMatchesAction(tournamentId: string) {
     lowerCount = lowerMatches.length;
     let matchNum = 1;
     allMatchInserts = [
-      ...upperMatches.map((m) => ({ tournament_id: tournamentId, round_type: "group", round_number: 1, match_number: matchNum++, team_a_id: m.teamAId, team_b_id: m.teamBId, pair_a_id: m.pairAId, pair_b_id: m.pairBId, division: "upper" as const })),
-      ...lowerMatches.map((m) => ({ tournament_id: tournamentId, round_type: "group", round_number: 1, match_number: matchNum++, team_a_id: m.teamAId, team_b_id: m.teamBId, pair_a_id: m.pairAId, pair_b_id: m.pairBId, division: "lower" as const })),
+      ...upperMatches.map((m) => ({ round_number: 1, match_number: matchNum++, team_a_id: m.teamAId, team_b_id: m.teamBId, pair_a_id: m.pairAId, pair_b_id: m.pairBId, division: "upper" as const })),
+      ...lowerMatches.map((m) => ({ round_number: 1, match_number: matchNum++, team_a_id: m.teamAId, team_b_id: m.teamBId, pair_a_id: m.pairAId, pair_b_id: m.pairBId, division: "lower" as const })),
     ];
   }
 
-  if (allMatchInserts.length) await sb.from("matches").insert(allMatchInserts);
+  const { error: rpcError } = await sb.rpc("replace_tournament_matches", {
+    p_tournament_id: tournamentId,
+    p_round_type: "group",
+    p_matches: allMatchInserts,
+  });
+  if (rpcError) return { error: "สร้างแมตช์คู่ไม่สำเร็จ" };
 
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
@@ -274,8 +283,6 @@ async function insertAndResolveByes(
 
   const inserts = allMatches.map((m) => ({
     id: m.id,
-    tournament_id: tournamentId,
-    round_type: "knockout",
     round_number: m.roundNumber,
     match_number: m.matchNumber,
     [colA]: m.teamAId,
@@ -289,15 +296,19 @@ async function insertAndResolveByes(
     games: [],
   }));
 
-  const { error } = await sb.from("matches").insert(inserts);
+  const { error } = await sb.rpc("replace_tournament_matches", {
+    p_tournament_id: tournamentId,
+    p_round_type: "knockout",
+    p_matches: inserts,
+  });
   if (error) return { error: "สร้างสายน็อกเอาต์ไม่สำเร็จ" };
 
   // Auto-complete BYE matches and advance winners; do 2 passes for cascading lower bracket BYEs
   for (let pass = 0; pass < 2; pass++) {
-    const byeMatches = allMatches.filter((m) => m.isBye && !m.loserNextMatchId);
+    const byeMatches = allMatches.filter((m) => m.isBye);
     const lowerByeCandidates = allMatches.filter((m) => m.bracket === "lower" || m.bracket === "grand_final");
 
-    // Upper BYEs
+    // Upper BYEs — advance winner only; BYE has no real loser, so loserNextMatch slot is left null
     if (pass === 0) {
       for (const m of byeMatches) {
         const winner = m.teamAId ?? m.teamBId;
@@ -350,8 +361,6 @@ export async function generateKnockoutAction(tournamentId: string) {
     .single();
   if (!tournament) return { error: "ไม่พบทัวร์นาเมนต์" };
 
-  await sb.from("matches").delete().eq("tournament_id", tournamentId).eq("round_type", "knockout");
-
   // ── Pair mode ──
   if (tournament.match_unit === "pair") {
     const { data: teamsData } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
@@ -396,7 +405,13 @@ export async function generateKnockoutAction(tournamentId: string) {
       }
 
       function seedsFromStandings(rows: typeof standings, count: number): Seed[] {
-        return rows.slice(0, count).map((s) => pairSeed(pairs.find((p) => p.id === s.competitorId)!));
+        return rows
+          .slice(0, count)
+          .map((s) => {
+            const p = pairs.find((x) => x.id === s.competitorId);
+            return p ? pairSeed(p) : null;
+          })
+          .filter((s): s is Seed => s !== null);
       }
 
       if (threshold === null) {
@@ -626,6 +641,10 @@ export async function recordMatchScoreAction(input: {
   const winner = gameWinner(input.games);
   const totals = sumGameScores(input.games);
 
+  if (match.round_type === "knockout" && winner === "draw") {
+    return { error: "แมตช์น็อกเอาต์ไม่อนุญาตให้เสมอ" };
+  }
+
   // Detect pair mode (pair_a_id/pair_b_id set) — applies to BOTH group and knockout
   const isPair = !!(match.pair_a_id || match.pair_b_id);
   const aId = isPair ? match.pair_a_id : match.team_a_id;
@@ -639,31 +658,20 @@ export async function recordMatchScoreAction(input: {
     else if (g.b > g.a) gamesWonB++;
   }
 
-  await sb.from("matches").update({
-    games: input.games,
-    team_a_score: gamesWonA,
-    team_b_score: gamesWonB,
-    winner_id: winnerId,
-    status: "completed",
-  }).eq("id", input.matchId);
+  const winnerSlot: "a" | "b" | null = winner === "draw" ? null : winner;
+
+  const { error: rpcError } = await sb.rpc("record_match_score", {
+    p_match_id: input.matchId,
+    p_games: input.games,
+    p_team_a_score: gamesWonA,
+    p_team_b_score: gamesWonB,
+    p_winner_slot: winnerSlot,
+  });
+  if (rpcError) return { error: "บันทึกผลไม่สำเร็จ" };
 
   // Update group_teams standings only for team-mode group matches (not pair)
   if (match.group_id && !match.pair_a_id) {
     await updateGroupTeamStandings(match.group_id, aId, bId, totals.a, totals.b, winner);
-  }
-
-  const colPrefix = isPair ? "pair" : "team";
-
-  // Knockout: advance winner to next match
-  if (match.round_type === "knockout" && winnerId && match.next_match_id && match.next_match_slot) {
-    const slot = `${colPrefix}_${match.next_match_slot}_id`;
-    await sb.from("matches").update({ [slot]: winnerId }).eq("id", match.next_match_id);
-  }
-
-  // Knockout: route loser to lower bracket (double elimination)
-  if (match.round_type === "knockout" && loserId && match.loser_next_match_id && match.loser_next_match_slot) {
-    const slot = `${colPrefix}_${match.loser_next_match_slot}_id`;
-    await sb.from("matches").update({ [slot]: loserId }).eq("id", match.loser_next_match_id);
   }
 
   revalidatePath(`/tournaments/${input.tournamentId}`);

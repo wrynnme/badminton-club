@@ -59,7 +59,7 @@ export function ShareControls({
       {shareUrl ? (
         <div className="flex gap-2">
           <Input value={shareUrl} readOnly className="text-xs h-8 flex-1 font-mono" />
-          <Button size="sm" variant="outline" className="h-8 shrink-0" onClick={copy}>
+          <Button size="sm" variant="outline" className="h-8 shrink-0" aria-label="คัดลอกลิงก์" onClick={copy}>
             {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
           </Button>
           <Dialog open={qrOpen} onOpenChange={setQrOpen}>
@@ -79,7 +79,7 @@ export function ShareControls({
               </div>
             </DialogContent>
           </Dialog>
-          <Button size="sm" variant="outline" className="h-8 shrink-0 text-destructive hover:text-destructive" onClick={revoke}>
+          <Button size="sm" variant="outline" className="h-8 shrink-0 text-destructive hover:text-destructive" aria-label="เพิกถอนลิงก์" onClick={revoke}>
             <Link2Off className="h-3.5 w-3.5" />
           </Button>
         </div>

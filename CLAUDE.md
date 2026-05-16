@@ -79,7 +79,7 @@ Every agent responds in this format:
 - `SortablePlayerList` uses `@dnd-kit` with `activationConstraint: { distance: 8 }` for mobile compat
 - Theme stored in `theme` cookie — `layout.tsx` reads it server-side to add `dark` class on `<html>` (no next-themes)
 
-## Tournament System (Phase 0–7b done)
+## Tournament System (Phase 0–8 done)
 
 ### Architecture
 
@@ -117,7 +117,8 @@ Every agent responds in this format:
 - `tournament-status-control.tsx` — owner/co-admin changes status (draft → registering → ongoing → completed)
 - `csv-import-dialog.tsx` — 2-step: step 1 players (upsert by csv_id), step 2 pairs (upsert by pair_id UUID); preview tables; download templates
 - `export-buttons.tsx` — Export: matches · roster + Template: players · pairs (canEdit); `isOwner` prop controls template visibility
-- `share-controls.tsx` — owner-only: generate/copy/revoke share link
+- `share-controls.tsx` — owner-only: generate/copy/revoke share link + QR Code dialog (`react-qr-code` 240x240)
+- `tv-match-card.tsx` — large-format match card for TV display (status pill, court badge, winner highlight, gamesA:gamesB + point totals)
 - `co-admin-controls.tsx` — owner-only: add/remove co-admins by LINE user_id
 - `audit-log-panel.tsx` — collapsible panel; owner + co-admin; newest-first, limit 50
 - `manual-match-dialog.tsx` — Dialog to create manual pair match; filters pair B by same division as pair A
@@ -125,7 +126,7 @@ Every agent responds in this format:
 - `tournament-live-wrapper.tsx` — Supabase Realtime client component; subscribes to match UPDATE → `router.refresh()`; shows green LIVE badge
 - `bracket-match-card.tsx` — compact card: competitors + game score + winner highlight
 - `bracket-view.tsx` — flex-column rounds + CSS horizontal/vertical connector lines; horizontal scroll
-- `match-row.tsx` — shows competitor names + game score (e.g. "2:0") + point totals; "TBD" for unassigned slots; reset (↺) or score entry
+- `match-row.tsx` — competitor names + game score (e.g. "2:0") + point totals; "TBD" for unassigned slots; reset (↺) or score entry; `matchRowSize` prop `"compact"` (default) | `"comfortable"` (larger text/score/dot) — propagated through `GroupStage`/`PairStage`/`KnockoutStage`/`BracketSection`
 - `score-form.tsx` — games array UI (add/remove rows of score A : score B)
 - `standings-table.tsx` — P/W/D/L/+−/Pts; Trophy icon for leader; shows pair subtitle (player names)
 
@@ -135,12 +136,13 @@ Every agent responds in this format:
 - `/tournaments/new` — create form (mode, format, match_unit, pair_division_threshold, advance_count, team_count …)
 - `/tournaments/[id]` — detail page with tabs (ทีม · กลุ่ม · คู่ · Knockout · ตั้งค่า); `canEdit = isOwner || isCoAdmin`
 - `/tournaments/[id]/bracket` — visual bracket page (no auth required)
-- `/t/[token]` — public read-only share page (no auth, fetched by share_token)
+- `/t/[token]` — public read-only share page (no auth, fetched by share_token); passes `matchRowSize="comfortable"` to all stages; `max-w-4xl` layout
+- `/t/[token]/tv` — full-screen TV display: upcoming/in-progress (top 8) + standings sidebar (top 8) + จบล่าสุด (last 6); `force-dynamic`; wrapped in `TournamentLiveWrapper`
 
 ### Route Groups
 
 - `src/app/(app)/` — app pages with SiteHeader (tournaments, clubs, login)
-- `src/app/(public)/` — public pages without SiteHeader (`/t/[token]`)
+- `src/app/(public)/` — public pages without SiteHeader (`/t/[token]`, `/t/[token]/tv`)
 
 ### Scoring Rules
 

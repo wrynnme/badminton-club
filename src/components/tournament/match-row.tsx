@@ -75,6 +75,7 @@ export function MatchRow({
           <div className="flex gap-1">
             {match.status === "completed" ? (
               <Button variant="ghost" size="icon" className="h-6 w-6"
+                aria-label="รีเซ็ตผลแมตช์"
                 onClick={() => startReset(async () => {
                   const res = await resetMatchScoreAction(match.id, tournamentId);
                   if (res?.error) toast.error(res.error);

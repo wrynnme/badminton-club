@@ -13,6 +13,7 @@
 - All writes → server actions (`src/lib/actions/`)
 - DB queries use `createAdminClient()` (service role key)
 - Revalidation via `revalidatePath()` after every write
+- Atomic multi-row writes go through Postgres RPCs (single transaction): `record_match_score`, `replace_tournament_matches`, `regenerate_tournament_groups` — granted to `service_role` only
 
 ---
 
@@ -174,7 +175,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - `generateShareTokenAction` / `revokeShareTokenAction`
 - `share-controls.tsx` — owner-only generate/copy/revoke
 - `/t/[token]` — public read-only page, fetches by share_token, no auth
-- `TournamentLiveWrapper` — Supabase Realtime `postgres_changes` on matches → `router.refresh()`; green LIVE badge
+- `TournamentLiveWrapper` — Supabase Realtime `postgres_changes` (event `*`) on `matches` + `tournaments` → debounced `router.refresh()` (400ms trailing); green LIVE badge
 - `share-controls.tsx` — QR Code button (icon-only, outline) beside copy/revoke when share link exists; opens Dialog with `react-qr-code` SVG (240x240, white bg) + URL below; `react-qr-code@2.0.21`
 
 ### Phase 7b — Co-admin + Audit Log
@@ -294,6 +295,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
   - **Standings** sidebar: top 8 by `computeStandings()`; shown only when `played > 0`
   - **จบล่าสุด** sidebar: latest 6 completed matches by `match_number` desc
   - Wraps in `TournamentLiveWrapper` — Realtime updates on match changes
+  - Mounts `TvAutoRefresh` ("use client", `src/components/tournament/tv-auto-refresh.tsx`) — `router.refresh()` every 60s as fallback when Realtime is off (status ≠ `ongoing`)
   - "ออก TV" link back to `/t/[token]`
 - **`TvMatchCard`** (`src/components/tournament/tv-match-card.tsx`):
   - Large-format card: text-2xl/4xl; status pill; court badge

@@ -102,6 +102,7 @@ function PairItem({ pair, isOwner, color }: {
       </div>
       {isOwner && (
         <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"
+          aria-label="ลบคู่"
           onClick={() => startDel(async () => {
             const res = await deletePairAction(pair.id);
             if (res?.error) toast.error(res.error);

@@ -30,12 +30,16 @@ export function ScoreForm({
   const [pending, setPending] = useState(false);
 
   const updateGame = (i: number, side: "a" | "b", value: number) => {
-    setGames((g) => g.map((gm, idx) => (idx === i ? { ...gm, [side]: Math.max(0, value) } : gm)));
+    setGames((g) => g.map((gm, idx) => (idx === i ? { ...gm, [side]: Math.max(0, Math.min(99, value)) } : gm)));
   };
   const addGame = () => setGames((g) => [...g, { a: 0, b: 0 }]);
   const removeGame = (i: number) => setGames((g) => g.filter((_, idx) => idx !== i));
 
+  const allZero = games.every((g) => g.a === 0 && g.b === 0);
+  const canSubmit = !allZero && !pending;
+
   const submit = async () => {
+    if (!canSubmit) return;
     setPending(true);
     const res = await recordMatchScoreAction({ matchId, tournamentId, games });
     setPending(false);
@@ -55,13 +59,13 @@ export function ScoreForm({
           <div key={i} className="flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground w-10">เกม {i + 1}</span>
             <Input
-              type="number" min={0} value={g.a}
+              type="number" min={0} max={99} value={g.a}
               onChange={(e) => updateGame(i, "a", Number(e.target.value))}
               className="w-14 text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <span className="text-muted-foreground">:</span>
             <Input
-              type="number" min={0} value={g.b}
+              type="number" min={0} max={99} value={g.b}
               onChange={(e) => updateGame(i, "b", Number(e.target.value))}
               className="w-14 text-center [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
@@ -73,13 +77,16 @@ export function ScoreForm({
           </div>
         ))}
       </div>
+      {allZero && (
+        <p className="text-xs text-destructive">ต้องกรอกอย่างน้อย 1 เกม</p>
+      )}
       <div className="flex gap-2">
         <Button type="button" size="sm" variant="outline" onClick={addGame} className="h-7 text-xs">
           <Plus className="h-3 w-3 mr-1" />เพิ่มเกม
         </Button>
         <div className="flex-1" />
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>ยกเลิก</Button>
-        <Button type="button" size="sm" onClick={submit} disabled={pending}>
+        <Button type="button" size="sm" onClick={submit} disabled={!canSubmit}>
           {pending && <Loader2 className="h-4 w-4 animate-spin" />}
           {pending ? "บันทึก..." : "บันทึกผล"}
         </Button>

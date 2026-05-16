@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -90,12 +91,12 @@ export function ManualMatchDialog({
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">คู่ A</label>
+            <Label htmlFor="manual-match-pair-a">คู่ A</Label>
             <Select
               value={pairAId}
               onValueChange={(v) => { setPairAId(v ?? ""); setPairBId(""); }}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="manual-match-pair-a" className="w-full">
                 <span className={pairAId ? "" : "text-muted-foreground"}>
                   {pairAId ? pairLabel(pairs.find((p) => p.id === pairAId)!) : "เลือกคู่ A"}
                 </span>
@@ -116,13 +117,13 @@ export function ManualMatchDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">คู่ B</label>
+            <Label htmlFor="manual-match-pair-b">คู่ B</Label>
             <Select
               value={pairBId}
               onValueChange={(v) => setPairBId(v ?? "")}
               disabled={!pairAId}
             >
-              <SelectTrigger className="w-full">
+              <SelectTrigger id="manual-match-pair-b" className="w-full">
                 <span className={pairBId ? "" : "text-muted-foreground"}>
                   {pairBId
                     ? pairLabel(pairBOptions.find((p) => p.id === pairBId)!)

@@ -138,8 +138,10 @@ function FilePicker<T>({
     reader.onload = (ev) => {
       const { rows: parsed, error: err } = parseRow(ev.target?.result as string);
       setError(err);
-      setRows(parsed);
-      onParsed(parsed);
+      // Clear any stale preview if the new parse failed
+      const next = err ? [] : parsed;
+      setRows(next);
+      onParsed(next);
     };
     reader.readAsText(file, "utf-8");
   };

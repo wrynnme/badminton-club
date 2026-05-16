@@ -102,35 +102,38 @@ export function CoAdminControls({
       <CardContent className="pt-4 space-y-3">
         <p className="text-sm font-semibold">ผู้ช่วยดูแล (Co-admin)</p>
 
-        {admins.length === 0 ? (
+        {admins.filter((a) => a.user_id).length === 0 ? (
           <p className="text-sm text-muted-foreground">ยังไม่มีผู้ช่วยดูแล</p>
         ) : (
           <ul className="space-y-1">
-            {admins.map((admin) => (
-              <li
-                key={admin.user_id || admin.line_user_id}
-                className="flex items-center justify-between gap-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium truncate">
-                    {admin.display_name ?? "(ไม่มีชื่อ)"}
-                  </p>
-                  <p className="text-xs font-mono text-muted-foreground truncate">
-                    {admin.line_user_id ?? admin.user_id}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:text-destructive shrink-0"
-                  disabled={isPending || !admin.user_id}
-                  onClick={() => handleRemove(admin.user_id)}
+            {admins
+              .filter((a) => a.user_id)
+              .map((admin) => (
+                <li
+                  key={admin.user_id}
+                  className="flex items-center justify-between gap-2"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </li>
-            ))}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium truncate">
+                      {admin.display_name ?? "(ไม่มีชื่อ)"}
+                    </p>
+                    <p className="text-xs font-mono text-muted-foreground truncate">
+                      {admin.line_user_id ?? admin.user_id}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label="ลบผู้ช่วยดูแล"
+                    className="text-destructive hover:text-destructive shrink-0"
+                    disabled={isPending}
+                    onClick={() => handleRemove(admin.user_id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </li>
+              ))}
           </ul>
         )}
 

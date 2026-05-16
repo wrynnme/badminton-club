@@ -25,6 +25,9 @@ export type BracketMatchDef = {
 
 // Standard bracket slot arrangement: seed 1 meets seed 2 only in the final.
 function bracketSlots(n: number): number[] {
+  if (n < 1 || (n & (n - 1)) !== 0) {
+    throw new Error("bracketSlots requires power-of-2 input");
+  }
   if (n === 1) return [0];
   const half = n / 2;
   const upper = bracketSlots(half);

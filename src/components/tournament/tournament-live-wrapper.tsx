@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
+
+const REFRESH_DEBOUNCE_MS = 400;
 
 export function TournamentLiveWrapper({
   tournamentId,
@@ -16,28 +18,37 @@ export function TournamentLiveWrapper({
 }) {
   const router = useRouter();
   const [live, setLive] = useState(false);
+  const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!isOngoing) return;
+
+    const scheduleRefresh = () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      refreshTimer.current = setTimeout(() => router.refresh(), REFRESH_DEBOUNCE_MS);
+    };
 
     const sb = createClient();
     const channel = sb
       .channel(`tournament:${tournamentId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "matches", filter: `tournament_id=eq.${tournamentId}` },
-        () => router.refresh()
+        { event: "*", schema: "public", table: "matches", filter: `tournament_id=eq.${tournamentId}` },
+        scheduleRefresh
       )
       .on(
         "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "matches", filter: `tournament_id=eq.${tournamentId}` },
-        () => router.refresh()
+        { event: "*", schema: "public", table: "tournaments", filter: `id=eq.${tournamentId}` },
+        scheduleRefresh
       )
       .subscribe((status) => {
         setLive(status === "SUBSCRIBED");
       });
 
-    return () => { sb.removeChannel(channel); };
+    return () => {
+      if (refreshTimer.current) clearTimeout(refreshTimer.current);
+      sb.removeChannel(channel);
+    };
   }, [tournamentId, isOngoing, router]);
 
   return (

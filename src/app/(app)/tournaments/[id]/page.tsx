@@ -232,7 +232,7 @@ export default async function TournamentDetailPage({
                 <>
                   <ShareControls tournamentId={t.id} shareToken={t.share_token} appUrl={appUrl} />
                   <CoAdminControls tournamentId={t.id} initialAdmins={coAdmins} />
-                  <EditTournamentForm tournament={t} />
+                  <EditTournamentForm tournament={t} existingTeamCount={teams.length} />
                 </>
               )}
               {canEdit && <AuditLogPanel tournamentId={t.id} />}
