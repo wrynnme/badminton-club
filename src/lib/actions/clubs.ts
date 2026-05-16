@@ -277,10 +277,12 @@ export async function kickPlayerAction(formData: FormData) {
   const playerId = formData.get("player_id") as string;
 
   const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return;
+  if (!(await assertCanManageClub(sb, clubId, session.profileId)))
+    return { error: "ไม่มีสิทธิ์" };
 
   await sb.from("club_players").delete().eq("id", playerId).eq("club_id", clubId);
   revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
 }
 
 export async function toggleCheckInAction(input: { club_id: string; player_id: string }) {
@@ -289,18 +291,17 @@ export async function toggleCheckInAction(input: { club_id: string; player_id: s
 
   const sb = await createAdminClient();
 
-  // Fetch player row
+  if (!(await assertCanManageClub(sb, input.club_id, session.profileId)))
+    return { error: "ไม่มีสิทธิ์" };
+
   const { data: player } = await sb
     .from("club_players")
-    .select("profile_id, checked_in_at, club_id")
+    .select("checked_in_at")
     .eq("id", input.player_id)
     .eq("club_id", input.club_id)
     .single();
 
   if (!player) return { error: "ไม่พบผู้เล่น" };
-
-  if (!(await assertCanManageClub(sb, input.club_id, session.profileId)))
-    return { error: "ไม่มีสิทธิ์" };
 
   const next = player.checked_in_at ? null : new Date().toISOString();
   const { error } = await sb

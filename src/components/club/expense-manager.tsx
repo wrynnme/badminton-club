@@ -16,36 +16,26 @@ const expenseSchema = z.object({
   amount: z.number().min(0, "จำนวนเงินไม่ถูกต้อง"),
 });
 
-// ─── Add row ──────────────────────────────────────────────────────────────────
+// ─── Shared form ──────────────────────────────────────────────────────────────
 
-function AddRow({
-  clubId,
-  onDone,
+function ExpenseForm({
+  defaultValues,
+  onSubmit,
+  onCancel,
 }: {
-  clubId: string;
-  onDone: () => void;
+  defaultValues: { label: string; amount: number };
+  onSubmit: (value: { label: string; amount: number }) => Promise<void>;
+  onCancel: () => void;
 }) {
-  const router = useRouter();
   const form = useForm({
-    defaultValues: { label: "", amount: 0 },
+    defaultValues,
     validators: { onSubmit: expenseSchema },
-    onSubmit: async ({ value }) => {
-      const res = await addExpenseAction({ club_id: clubId, label: value.label, amount: value.amount });
-      if (res && "error" in res) {
-        toast.error(res.error);
-      } else {
-        router.refresh();
-        onDone();
-      }
-    },
+    onSubmit: async ({ value }) => { await onSubmit(value); },
   });
 
   return (
     <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        form.handleSubmit();
-      }}
+      onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }}
       className="flex items-center gap-2"
     >
       <form.Field name="label">
@@ -88,92 +78,7 @@ function AddRow({
             <Button type="submit" size="icon-sm" variant="ghost" disabled={!canSubmit || isSubmitting}>
               {isSubmitting ? <Loader2 className="animate-spin" /> : <Check className="text-green-600" />}
             </Button>
-            <Button type="button" size="icon-sm" variant="ghost" onClick={onDone}>
-              <X className="text-muted-foreground" />
-            </Button>
-          </>
-        )}
-      </form.Subscribe>
-    </form>
-  );
-}
-
-// ─── Edit row ─────────────────────────────────────────────────────────────────
-
-function EditRow({
-  expense,
-  onDone,
-}: {
-  expense: ClubExpense;
-  onDone: () => void;
-}) {
-  const router = useRouter();
-  const form = useForm({
-    defaultValues: { label: expense.label, amount: expense.amount },
-    validators: { onSubmit: expenseSchema },
-    onSubmit: async ({ value }) => {
-      const res = await updateExpenseAction({
-        id: expense.id,
-        club_id: expense.club_id,
-        label: value.label,
-        amount: value.amount,
-      });
-      if (res && "error" in res) {
-        toast.error(res.error);
-      } else {
-        router.refresh();
-        onDone();
-      }
-    },
-  });
-
-  return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        form.handleSubmit();
-      }}
-      className="flex items-center gap-2"
-    >
-      <form.Field name="label">
-        {(field) => (
-          <Input
-            value={field.state.value}
-            onChange={(e) => field.handleChange(e.target.value)}
-            onBlur={field.handleBlur}
-            className="flex-1 h-8 text-sm"
-            aria-invalid={field.state.meta.isTouched && !field.state.meta.isValid}
-          />
-        )}
-      </form.Field>
-
-      <form.Field name="amount">
-        {(field) => (
-          <div className="relative w-28 shrink-0">
-            <Input
-              type="number"
-              min={0}
-              step={1}
-              value={field.state.value}
-              onChange={(e) => field.handleChange(Number(e.target.value))}
-              onBlur={field.handleBlur}
-              className="h-8 text-sm pr-8 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-              aria-invalid={field.state.meta.isTouched && !field.state.meta.isValid}
-            />
-            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
-              ฿
-            </span>
-          </div>
-        )}
-      </form.Field>
-
-      <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
-        {([canSubmit, isSubmitting]) => (
-          <>
-            <Button type="submit" size="icon-sm" variant="ghost" disabled={!canSubmit || isSubmitting}>
-              {isSubmitting ? <Loader2 className="animate-spin" /> : <Check className="text-green-600" />}
-            </Button>
-            <Button type="button" size="icon-sm" variant="ghost" onClick={onDone}>
+            <Button type="button" size="icon-sm" variant="ghost" onClick={onCancel}>
               <X className="text-muted-foreground" />
             </Button>
           </>
@@ -215,17 +120,25 @@ export function ExpenseManager({
 
   return (
     <div className="space-y-2">
-      {/* Expense rows */}
       {expenses.length === 0 && !showAdd && (
         <p className="text-sm text-muted-foreground">ยังไม่มีรายการค่าใช้จ่าย</p>
       )}
 
       {expenses.map((expense) =>
         editingId === expense.id ? (
-          <EditRow
+          <ExpenseForm
             key={expense.id}
-            expense={expense}
-            onDone={() => setEditingId(null)}
+            defaultValues={{ label: expense.label, amount: expense.amount }}
+            onSubmit={async (value) => {
+              const res = await updateExpenseAction({
+                id: expense.id,
+                club_id: expense.club_id,
+                ...value,
+              });
+              if (res && "error" in res) toast.error(res.error);
+              else { router.refresh(); setEditingId(null); }
+            }}
+            onCancel={() => setEditingId(null)}
           />
         ) : (
           <div key={expense.id} className="flex items-center gap-2 group">
@@ -236,6 +149,7 @@ export function ExpenseManager({
             <Button
               size="icon-sm"
               variant="ghost"
+              aria-label={`แก้ไข ${expense.label}`}
               className="opacity-0 group-hover:opacity-100 transition-opacity"
               onClick={() => { setEditingId(expense.id); setShowAdd(false); }}
             >
@@ -244,6 +158,7 @@ export function ExpenseManager({
             <Button
               size="icon-sm"
               variant="ghost"
+              aria-label={`ลบ ${expense.label}`}
               className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
               disabled={deletingId === expense.id}
               onClick={() => handleDelete(expense)}
@@ -254,15 +169,18 @@ export function ExpenseManager({
         )
       )}
 
-      {/* Add row */}
       {showAdd && (
-        <AddRow
-          clubId={clubId}
-          onDone={() => setShowAdd(false)}
+        <ExpenseForm
+          defaultValues={{ label: "", amount: 0 }}
+          onSubmit={async (value) => {
+            const res = await addExpenseAction({ club_id: clubId, ...value });
+            if (res && "error" in res) toast.error(res.error);
+            else { router.refresh(); setShowAdd(false); }
+          }}
+          onCancel={() => setShowAdd(false)}
         />
       )}
 
-      {/* Total + actions */}
       <div className="flex items-center justify-between gap-2 pt-1">
         {!showAdd && (
           <Button

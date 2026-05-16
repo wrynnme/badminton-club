@@ -113,7 +113,6 @@ function SortableItem({
   };
 
   const isSelf = sessionProfileId === player.profile_id;
-  const canToggleCheckIn = canManage;
   const isCheckedIn = !!player.checked_in_at;
 
   return (
@@ -143,7 +142,7 @@ function SortableItem({
       )}
 
       <span className="ml-auto flex items-center gap-1.5">
-        <CheckInButton player={player} clubId={clubId} canToggle={canToggleCheckIn} />
+        <CheckInButton player={player} clubId={clubId} canToggle={canManage} />
         {isSelf && <LeaveButton clubId={clubId} />}
         {canManage && !isSelf && <KickButton clubId={clubId} playerId={player.id} />}
       </span>

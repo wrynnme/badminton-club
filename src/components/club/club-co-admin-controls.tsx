@@ -115,6 +115,7 @@ export function ClubCoAdminControls({
                   type="button"
                   variant="ghost"
                   size="sm"
+                  aria-label={`ลบ ${admin.display_name ?? "co-admin"}`}
                   className="text-destructive hover:text-destructive shrink-0"
                   disabled={isPending}
                   onClick={() => handleRemove(admin.user_id)}
