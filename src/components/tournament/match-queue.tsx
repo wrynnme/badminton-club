@@ -32,6 +32,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ScoreForm } from "@/components/tournament/score-form";
 import {
   reorderMatchQueueAction,
@@ -190,20 +195,27 @@ export function MatchQueue({
             {reorderPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
           </CardTitle>
           {canEdit && pending.length >= 2 && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs gap-1"
-              disabled={autoPending}
-              onClick={() => startAuto(async () => {
-                const res = await autoRotateQueueAction(tournamentId);
-                if (res && "error" in res) toast.error(res.error);
-                else toast.success("จัดคิวใหม่ — หลีกเลี่ยงแข่งซ้อน");
-              })}
-            >
-              {autoPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shuffle className="h-3 w-3" />}
-              จัดคิวอัตโนมัติ
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs gap-1"
+                    disabled={autoPending}
+                    onClick={() => startAuto(async () => {
+                      const res = await autoRotateQueueAction(tournamentId);
+                      if (res && "error" in res) toast.error(res.error);
+                      else toast.success("จัดคิวใหม่ — หลีกเลี่ยงแข่งซ้อน");
+                    })}
+                  >
+                    {autoPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shuffle className="h-3 w-3" />}
+                    จัดคิวอัตโนมัติ
+                  </Button>
+                }
+              />
+              <TooltipContent>สลับลำดับเพื่อไม่ให้ผู้เล่นแข่งติดต่อกัน</TooltipContent>
+            </Tooltip>
           )}
         </CardHeader>
         <CardContent className="pt-0 space-y-2">
@@ -468,14 +480,21 @@ function QueueRowBody({
     <div className="rounded-lg border bg-card">
       <div className="flex items-center gap-2 p-2.5">
         {dragHandleProps && (
-          <button
-            type="button"
-            {...dragHandleProps}
-            aria-label="ลากเพื่อจัดลำดับ"
-            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  {...dragHandleProps}
+                  aria-label="ลากเพื่อจัดลำดับ"
+                  className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+                >
+                  <GripVertical className="h-4 w-4" />
+                </button>
+              }
+            />
+            <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
+          </Tooltip>
         )}
 
         <div className="text-xs font-mono text-muted-foreground w-12 shrink-0">
@@ -518,7 +537,7 @@ function QueueRowBody({
                     <SelectValue placeholder="—" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none">— ไม่ระบุ —</SelectItem>
+                    <SelectItem value="__none">ว่าง</SelectItem>
                     {courts.map((c) => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
                     ))}
@@ -545,48 +564,69 @@ function QueueRowBody({
           <StatusBadge status={match.status} />
 
           {canEdit && match.status === "pending" && (
-            <Button
-              size="sm"
-              variant="default"
-              className="h-7 text-xs px-2 gap-1"
-              disabled={startPending}
-              onClick={() => startStart(async () => {
-                const res = await startMatchAction(match.id, tournamentId);
-                if (res && "error" in res) toast.error(res.error);
-                else toast.success(`เริ่มแมตช์ #${match.match_number}`);
-              })}
-            >
-              {startPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-              เริ่ม
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs px-2 gap-1"
+                    disabled={startPending}
+                    onClick={() => startStart(async () => {
+                      const res = await startMatchAction(match.id, tournamentId);
+                      if (res && "error" in res) toast.error(res.error);
+                      else toast.success(`เริ่มแมตช์ #${match.match_number}`);
+                    })}
+                  >
+                    {startPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    เริ่ม
+                  </Button>
+                }
+              />
+              <TooltipContent>เริ่มแมตช์ #{match.match_number} + แจ้งเตือน LINE</TooltipContent>
+            </Tooltip>
           )}
 
           {canEdit && match.status === "in_progress" && (
-            <Button
-              size="sm"
-              variant="default"
-              className="h-7 text-xs px-2 gap-1"
-              onClick={() => setEditing(true)}
-            >
-              <ClipboardEdit className="h-3 w-3" />จบแข่ง
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs px-2 gap-1"
+                    onClick={() => setEditing(true)}
+                  >
+                    <ClipboardEdit className="h-3 w-3" />จบแข่ง
+                  </Button>
+                }
+              />
+              <TooltipContent>กรอกผลแมตช์ #{match.match_number}</TooltipContent>
+            </Tooltip>
           )}
 
           {canEdit && match.status === "completed" && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs px-2 gap-1"
-              aria-label="รีเซ็ตผล"
-              disabled={resetPending}
-              onClick={() => startReset(async () => {
-                const res = await resetMatchScoreAction(match.id, tournamentId);
-                if (res && "error" in res) toast.error(res.error);
-                else toast.success("รีเซ็ตผลแมตช์แล้ว");
-              })}
-            >
-              {resetPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs px-2 gap-1"
+                    aria-label="รีเซ็ตผล"
+                    disabled={resetPending}
+                    onClick={() => startReset(async () => {
+                      const res = await resetMatchScoreAction(match.id, tournamentId);
+                      if (res && "error" in res) toast.error(res.error);
+                      else toast.success("รีเซ็ตผลแมตช์แล้ว");
+                    })}
+                  >
+                    {resetPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                  </Button>
+                }
+              />
+              <TooltipContent>รีเซ็ตผลแมตช์ #{match.match_number}</TooltipContent>
+            </Tooltip>
           )}
         </div>
       </div>

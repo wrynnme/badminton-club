@@ -24,6 +24,11 @@ import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { updateCourtsAction } from "@/lib/actions/tournaments";
 
 type Props = {
@@ -141,9 +146,16 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
             className="h-8 text-sm"
             disabled={savePending}
           />
-          <Button size="sm" onClick={add} disabled={savePending || !newName.trim()}>
-            <Plus className="h-3.5 w-3.5 mr-1" />เพิ่ม
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button size="sm" onClick={add} disabled={savePending || !newName.trim()}>
+                  <Plus className="h-3.5 w-3.5 mr-1" />เพิ่ม
+                </Button>
+              }
+            />
+            <TooltipContent>เพิ่มสนามใหม่ในรายการ</TooltipContent>
+          </Tooltip>
         </div>
       </CardContent>
     </Card>
@@ -172,26 +184,40 @@ function SortableCourtRow({
       style={style}
       className="flex items-center gap-2 px-2 py-1.5 rounded-md border bg-card touch-none"
     >
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        aria-label="ลากเพื่อจัดลำดับ"
-        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <button
+              type="button"
+              {...attributes}
+              {...listeners}
+              aria-label="ลากเพื่อจัดลำดับ"
+              className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          }
+        />
+        <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
+      </Tooltip>
       <span className="flex-1 text-sm">{name}</span>
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        aria-label={`ลบ ${name}`}
-        className="text-destructive hover:text-destructive"
-        onClick={onRemove}
-        disabled={disabled}
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label={`ลบ ${name}`}
+              className="text-destructive hover:text-destructive"
+              onClick={onRemove}
+              disabled={disabled}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          }
+        />
+        <TooltipContent>ลบสนาม &quot;{name}&quot;</TooltipContent>
+      </Tooltip>
     </li>
   );
 }
