@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo } from "react";
 import { toast } from "sonner";
 import { RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -44,7 +44,7 @@ function buildColorSummary(groups: GroupWithTeams[], teams: Team[]): ColorEntry[
 }
 
 function ColorSummary({ groups, teams }: { groups: GroupWithTeams[]; teams: Team[] }) {
-  const colors = buildColorSummary(groups, teams);
+  const colors = useMemo(() => buildColorSummary(groups, teams), [groups, teams]);
   if (colors.length === 0) return null;
 
   const maxPts = Math.max(...colors.map((c) => c.pts), 1);
@@ -54,47 +54,48 @@ function ColorSummary({ groups, teams }: { groups: GroupWithTeams[]; teams: Team
       {/* Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
         {colors.map((c) => (
-          <div
-            key={c.color}
-            className="rounded-xl border bg-card px-3 py-2.5 flex items-center gap-2.5"
-          >
-            <span
-              className="w-4 h-4 rounded-full shrink-0 ring-2 ring-offset-1 ring-offset-card"
-            style={{ backgroundColor: c.color, outlineColor: c.color }}
-            />
-            <div className="min-w-0">
-              <div className="text-2xl font-bold tabular-nums leading-none">{c.pts}</div>
-              <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
-                {c.names.join(" · ")}
+          <Card key={c.color}>
+            <CardContent className="px-3 py-2.5 flex items-center gap-2.5">
+              <span
+                className="w-4 h-4 rounded-full shrink-0 ring-2 ring-offset-2 ring-offset-card"
+                style={{ backgroundColor: c.color, ["--tw-ring-color" as string]: c.color }}
+              />
+              <div className="min-w-0">
+                <div className="text-2xl font-bold tabular-nums leading-none">{c.pts}</div>
+                <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                  {c.names.join(" · ")}
+                </div>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
 
       {/* Bar chart */}
-      <div className="rounded-xl border bg-card px-4 py-3 space-y-2.5">
-        <p className="text-xs font-medium text-muted-foreground mb-1">คะแนนรวมต่อสี</p>
-        {colors.map((c) => (
-          <div key={c.color} className="flex items-center gap-2.5">
-            <span
-              className="w-2.5 h-2.5 rounded-full shrink-0"
-              style={{ backgroundColor: c.color }}
-            />
-            <div className="flex-1 h-5 rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full rounded-full transition-[width] duration-500"
-                style={{
-                  width: `${(c.pts / maxPts) * 100}%`,
-                  backgroundColor: c.color,
-                  minWidth: c.pts > 0 ? "0.5rem" : 0,
-                }}
+      <Card>
+        <CardContent className="px-4 py-3 space-y-2.5">
+          <p className="text-xs font-medium text-muted-foreground">คะแนนรวมต่อสี</p>
+          {colors.map((c) => (
+            <div key={c.color} className="flex items-center gap-2.5">
+              <span
+                className="w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ backgroundColor: c.color }}
               />
+              <div className="flex-1 h-5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-[width] duration-500"
+                  style={{
+                    width: `${(c.pts / maxPts) * 100}%`,
+                    backgroundColor: c.color,
+                    minWidth: c.pts > 0 ? "0.5rem" : undefined,
+                  }}
+                />
+              </div>
+              <span className="text-sm font-semibold tabular-nums w-8 text-right">{c.pts}</span>
             </div>
-            <span className="text-sm font-semibold tabular-nums w-8 text-right">{c.pts}</span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -123,12 +124,15 @@ function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
         {group.matches.length > 0 && (
           <>
             <Separator />
-            <button
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={() => setShowMatches(!showMatches)}>
               {showMatches ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               แมตช์ ({group.matches.length})
-            </button>
+            </Button>
             {showMatches && (
               <div className="divide-y">
                 {group.matches.map((m) => (

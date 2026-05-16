@@ -47,7 +47,7 @@ export default async function ClubDetailPage({
       .order("created_at", { ascending: true }),
     sb
       .from("club_admins")
-      .select("club_id, user_id, added_by, added_at, profile:profiles!user_id(display_name, line_user_id)")
+      .select("club_id, user_id, added_by, added_at, profile:profiles!club_admins_user_id_fkey(display_name, line_user_id)")
       .eq("club_id", id)
       .order("added_at", { ascending: true }),
   ]);

@@ -59,7 +59,10 @@ export function ClubCoAdminControls({
   }, [query, clubId]);
 
   async function handleAdd() {
-    if (!selected?.line_user_id) return;
+    if (!selected?.line_user_id) {
+      toast.error("ผู้ใช้นี้ไม่มี LINE account");
+      return;
+    }
     setAdding(true);
     const res = await addClubCoAdminAction(clubId, selected.line_user_id);
     setAdding(false);

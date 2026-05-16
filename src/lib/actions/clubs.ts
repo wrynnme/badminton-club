@@ -148,18 +148,20 @@ const ExpenseSchema = z.object({
 });
 
 async function assertClubOwner(sb: Awaited<ReturnType<typeof createAdminClient>>, clubId: string, profileId: string) {
-  const { data } = await sb.from("clubs").select("owner_id").eq("id", clubId).single();
+  const { data, error } = await sb.from("clubs").select("owner_id").eq("id", clubId).maybeSingle();
+  if (error) throw new Error("permission_check_failed");
   if (!data || data.owner_id !== profileId) return false;
   return true;
 }
 
 async function assertCanManageClub(sb: Awaited<ReturnType<typeof createAdminClient>>, clubId: string, profileId: string) {
-  const { data } = await sb
+  const { data, error } = await sb
     .from("clubs")
     .select("owner_id, club_admins!left(user_id)")
     .eq("id", clubId)
     .eq("club_admins.user_id", profileId)
-    .single();
+    .maybeSingle();
+  if (error) throw new Error("permission_check_failed");
   if (!data) return false;
   const admins = (data.club_admins ?? []) as { user_id: string }[];
   return data.owner_id === profileId || admins.length > 0;
@@ -381,7 +383,12 @@ export async function removeClubCoAdminAction(
   const sb = await createAdminClient();
   if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
-  await sb.from("club_admins").delete().eq("club_id", clubId).eq("user_id", userId);
+  const { error: deleteError } = await sb
+    .from("club_admins")
+    .delete()
+    .eq("club_id", clubId)
+    .eq("user_id", userId);
+  if (deleteError) return { error: "ลบผู้ช่วยดูแลไม่สำเร็จ" };
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true };
@@ -398,7 +405,7 @@ export async function searchClubProfilesAction(
   if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const q = query.trim();
-  if (q.length < 1) return { ok: true, results: [] };
+  if (q.length < 2) return { ok: true, results: [] };
 
   const { data: existing } = await sb
     .from("club_admins")
@@ -406,13 +413,15 @@ export async function searchClubProfilesAction(
     .eq("club_id", clubId);
 
   const excludeIds = [session.profileId, ...(existing ?? []).map((r) => r.user_id)];
+  const escapedQ = q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 
+  // excludeIds always has session.profileId — never empty
   const { data, error } = await sb
     .from("profiles")
     .select("id, display_name, line_user_id")
-    .ilike("display_name", `%${q}%`)
-    .not("id", "in", `(${excludeIds.join(",")})`)
+    .ilike("display_name", `%${escapedQ}%`)
     .not("line_user_id", "is", null)
+    .not("id", "in", `(${excludeIds.join(",")})`)
     .limit(20);
 
   if (error) return { error: "ค้นหาไม่สำเร็จ" };
