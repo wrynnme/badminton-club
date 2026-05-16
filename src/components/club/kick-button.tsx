@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { toast } from "sonner";
 import { UserMinus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { kickPlayerAction } from "@/lib/actions/clubs";
@@ -8,7 +9,15 @@ import { kickPlayerAction } from "@/lib/actions/clubs";
 export function KickButton({ clubId, playerId }: { clubId: string; playerId: string }) {
   const [pending, start] = useTransition();
   return (
-    <form action={(fd) => start(async () => { await kickPlayerAction(fd); })}>
+    <form
+      action={(fd) =>
+        start(async () => {
+          const res = await kickPlayerAction(fd);
+          if (res && "error" in res) toast.error(res.error);
+          else toast.success("ลบผู้เล่นออกจากก๊วนแล้ว");
+        })
+      }
+    >
       <input type="hidden" name="club_id" value={clubId} />
       <input type="hidden" name="player_id" value={playerId} />
       <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" type="submit" disabled={pending}>

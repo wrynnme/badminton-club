@@ -79,6 +79,7 @@ export function MatchRow({
                 onClick={() => startReset(async () => {
                   const res = await resetMatchScoreAction(match.id, tournamentId);
                   if (res?.error) toast.error(res.error);
+                  else toast.success("รีเซ็ตผลแมตช์แล้ว");
                 })}>
                 <RotateCcw className="h-3 w-3" />
               </Button>

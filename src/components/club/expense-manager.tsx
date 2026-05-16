@@ -113,7 +113,7 @@ export function ExpenseManager({
     startDelete(async () => {
       const res = await deleteExpenseAction({ id: expense.id, club_id: expense.club_id });
       if (res && "error" in res) toast.error(res.error);
-      else router.refresh();
+      else { toast.success("ลบรายการแล้ว"); router.refresh(); }
       setDeletingId(null);
     });
   };
@@ -136,7 +136,7 @@ export function ExpenseManager({
                 ...value,
               });
               if (res && "error" in res) toast.error(res.error);
-              else { router.refresh(); setEditingId(null); }
+              else { toast.success("บันทึกรายการแล้ว"); router.refresh(); setEditingId(null); }
             }}
             onCancel={() => setEditingId(null)}
           />
@@ -175,7 +175,7 @@ export function ExpenseManager({
           onSubmit={async (value) => {
             const res = await addExpenseAction({ club_id: clubId, ...value });
             if (res && "error" in res) toast.error(res.error);
-            else { router.refresh(); setShowAdd(false); }
+            else { toast.success("เพิ่มรายการแล้ว"); router.refresh(); setShowAdd(false); }
           }}
           onCancel={() => setShowAdd(false)}
         />

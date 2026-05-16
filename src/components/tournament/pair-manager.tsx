@@ -106,6 +106,7 @@ function PairItem({ pair, isOwner, color }: {
           onClick={() => startDel(async () => {
             const res = await deletePairAction(pair.id);
             if (res?.error) toast.error(res.error);
+            else toast.success("ลบคู่แล้ว");
           })}>
           <X className="h-3 w-3" />
         </Button>

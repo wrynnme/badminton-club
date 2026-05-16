@@ -41,6 +41,7 @@ export function TournamentStatusControl({
               start(async () => {
                 const res = await updateTournamentStatusAction(tournamentId, s.value);
                 if (res?.error) toast.error(res.error);
+                else toast.success(`เปลี่ยนสถานะเป็น "${s.label}"`);
                 setPendingStatus(null);
               });
             }}

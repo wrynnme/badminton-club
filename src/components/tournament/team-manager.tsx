@@ -158,6 +158,7 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
   const save = () => startEdit(async () => {
     const res = await updateTeamPlayerAction(p.id, { display_name: name, level: level || null }, tournamentId);
     if (res?.error) { toast.error(res.error); setName(p.display_name); setLevel(p.level ?? ""); }
+    else toast.success("แก้ไขผู้เล่นแล้ว");
     setEditing(false);
   });
 
@@ -190,6 +191,7 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
                 onClick={() => startRemove(async () => {
                   const res = await removeTeamPlayerAction(p.id, tournamentId);
                   if (res?.error) toast.error(res.error);
+                  else toast.success("ลบผู้เล่นแล้ว");
                 })}><UserMinus className="h-3 w-3" /></Button>
             </>
           )}
@@ -226,6 +228,7 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
                 onClick={() => startDel(async () => {
                   const res = await deleteTeamAction(team.id, tournamentId);
                   if (res?.error) toast.error(res.error);
+                  else toast.success("ลบทีมแล้ว");
                 })}>
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
