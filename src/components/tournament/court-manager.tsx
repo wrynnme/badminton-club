@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, GripVertical, Trash2, Loader2 } from "lucide-react";
@@ -38,6 +38,14 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
   const [savePending, startSave] = useTransition();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef<Promise<unknown> | null>(null);
+  // Last known persisted state — used to roll back on save failure.
+  const lastSavedRef = useRef<string[]>(initialCourts);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -59,10 +67,11 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
         inFlightRef.current = null;
         if (res && "error" in res) {
           toast.error(res.error);
-          setCourts(initialCourts);
+          setCourts(lastSavedRef.current);
         } else {
           toast.success("บันทึกรายการสนามแล้ว");
           setCourts(res.courts);
+          lastSavedRef.current = res.courts;
           router.refresh();
         }
       });

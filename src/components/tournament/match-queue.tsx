@@ -435,7 +435,6 @@ function QueueRowBody({
   const { a, b, unknownLabel } = getCompetitorNames(match, unit, competitorById);
   const [court, setCourt] = useState(match.court ?? "");
   const [courtPending, startCourt] = useTransition();
-  const [savingCourt, setSavingCourt] = useState(false);
   const [startPending, startStart] = useTransition();
   const [resetPending, startReset] = useTransition();
   const [editing, setEditing] = useState(false);
@@ -447,22 +446,22 @@ function QueueRowBody({
   const completedWinner = match.status === "completed" ? gameWinner(match.games) : null;
   const totals = match.status === "completed" ? sumGameScores(match.games) : null;
 
-  const saveCourt = async () => {
+  const saveCourt = () => {
     if (!canEdit) return;
     if ((court || null) === (match.court || null)) return;
-    setSavingCourt(true);
-    const res = await setMatchCourtAction({
-      matchId: match.id,
-      tournamentId,
-      court: court || null,
+    startCourt(async () => {
+      const res = await setMatchCourtAction({
+        matchId: match.id,
+        tournamentId,
+        court: court || null,
+      });
+      if (res && "error" in res) {
+        toast.error(res.error);
+        setCourt(match.court ?? "");
+      } else {
+        toast.success("บันทึกสนามแล้ว");
+      }
     });
-    setSavingCourt(false);
-    if (res && "error" in res) {
-      toast.error(res.error);
-      setCourt(match.court ?? "");
-    } else {
-      toast.success("บันทึกสนามแล้ว");
-    }
   };
 
   return (
@@ -513,7 +512,7 @@ function QueueRowBody({
                       }
                     });
                   }}
-                  disabled={courtPending || savingCourt || match.status === "completed"}
+                  disabled={courtPending || match.status === "completed"}
                 >
                   <SelectTrigger className="h-7 w-24 text-xs px-2">
                     <SelectValue placeholder="—" />
@@ -533,11 +532,11 @@ function QueueRowBody({
                   onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                   placeholder="—"
                   maxLength={40}
-                  disabled={savingCourt || match.status === "completed"}
+                  disabled={courtPending || match.status === "completed"}
                   className="h-7 w-16 text-xs px-1.5 text-center"
                 />
               )}
-              {(courtPending || savingCourt) && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              {courtPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
             </div>
           ) : (
             match.court && <Badge variant="outline" className="text-[10px]">สนาม {match.court}</Badge>

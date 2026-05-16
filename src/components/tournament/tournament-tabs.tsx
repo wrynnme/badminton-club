@@ -52,14 +52,15 @@ export function TournamentTabs({
   // If URL points to a tab that doesn't exist for this viewer (e.g.
   // ?tab=settings as a non-admin), strip the param so the canonical URL
   // matches the actually-rendered tab.
+  const searchString = searchParams.toString();
   useEffect(() => {
     if (queryTab && !validTabs.includes(queryTab)) {
-      const params = new URLSearchParams(searchParams.toString());
+      const params = new URLSearchParams(searchString);
       params.delete("tab");
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     }
-  }, [queryTab, validTabs, router, pathname, searchParams]);
+  }, [queryTab, validTabs, router, pathname, searchString]);
 
   const onValueChange = (next: string) => {
     const params = new URLSearchParams(searchParams.toString());

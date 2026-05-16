@@ -779,11 +779,15 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
 
 async function revalidateTournamentPaths(sb: Awaited<ReturnType<typeof createAdminClient>>, tournamentId: string) {
   revalidatePath(`/tournaments/${tournamentId}`);
-  const { data } = await sb
+  const { data, error } = await sb
     .from("tournaments")
     .select("share_token")
     .eq("id", tournamentId)
     .maybeSingle();
+  if (error) {
+    console.error("revalidateTournamentPaths share_token lookup:", error);
+    return;
+  }
   if (data?.share_token) {
     revalidatePath(`/t/${data.share_token}`);
     revalidatePath(`/t/${data.share_token}/tv`);
@@ -804,7 +808,11 @@ export async function reorderMatchQueueAction(
     p_ordered_ids: orderedMatchIds,
   });
   if (rpcErr) {
-    if (rpcErr.code === "22023" || /matchId not in tournament/i.test(rpcErr.message ?? "")) {
+    const msg = rpcErr.message ?? "";
+    if (/duplicate matchId/i.test(msg)) {
+      return { error: "พบ matchId ซ้ำในลำดับ" };
+    }
+    if (rpcErr.code === "22023" || /matchId not in tournament/i.test(msg)) {
       return { error: "พบ matchId ที่ไม่อยู่ในทัวร์นาเมนต์นี้" };
     }
     return { error: "บันทึกลำดับไม่สำเร็จ" };
@@ -949,6 +957,10 @@ export async function autoRotateQueueAction(tournamentId: string, restGap = 2) {
 
 const COURT_NAME_MAX = 40;
 
+// Policy: multiple PENDING matches may share the same court (scheduling
+// freely in advance). The DB partial UNIQUE index only enforces one
+// IN_PROGRESS match per court; conflicts surface at start time via
+// startMatchAction, not when assigning the court.
 export async function setMatchCourtAction(input: {
   matchId: string;
   tournamentId: string;

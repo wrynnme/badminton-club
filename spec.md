@@ -13,7 +13,7 @@
 - All writes → server actions (`src/lib/actions/`)
 - DB queries use `createAdminClient()` (service role key)
 - Revalidation via `revalidatePath()` after every write
-- Atomic multi-row writes go through Postgres RPCs (single transaction): `record_match_score`, `replace_tournament_matches`, `regenerate_tournament_groups` — granted to `service_role` only
+- Atomic multi-row writes go through Postgres RPCs (single transaction): `record_match_score`, `replace_tournament_matches`, `regenerate_tournament_groups`, `reorder_tournament_queue` — granted to `service_role` only
 
 ---
 
@@ -23,7 +23,7 @@
 
 `pairs` table: `id, team_id, player_id_1, player_id_2, display_pair_name, pair_level, created_at`
 
-- `pair_level` — auto-computed: `player1.level + player2.level` (sum, numeric) — no manual input
+- `pair_level` — DB type `text`; value = `player1.level + player2.level` (numeric sum, stored as text) — no manual input
 - `pair_code` column **removed** — use `pair.id` (UUID) as stable upsert key instead
 - No junction table — players referenced directly on `pairs`
 
