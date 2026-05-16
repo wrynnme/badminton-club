@@ -811,6 +811,109 @@ export async function reorderMatchQueueAction(
   return { ok: true };
 }
 
+export async function autoRotateQueueAction(tournamentId: string, restGap = 2) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+
+  // Load pending matches in current queue order
+  const { data: pending, error } = await sb
+    .from("matches")
+    .select("id, queue_position, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id")
+    .eq("tournament_id", tournamentId)
+    .eq("status", "pending")
+    .order("queue_position", { ascending: true, nullsFirst: false })
+    .order("match_number");
+  if (error) return { error: "อ่านรายการแมตช์ไม่สำเร็จ" };
+  if (!pending || pending.length < 2) return { ok: true, rotated: 0 };
+
+  // Build player_id set per match
+  const teamIds = new Set<string>();
+  const pairIds = new Set<string>();
+  for (const m of pending) {
+    if (m.team_a_id) teamIds.add(m.team_a_id);
+    if (m.team_b_id) teamIds.add(m.team_b_id);
+    if (m.pair_a_id) pairIds.add(m.pair_a_id);
+    if (m.pair_b_id) pairIds.add(m.pair_b_id);
+  }
+
+  const teamPlayersByTeam = new Map<string, string[]>();
+  if (teamIds.size > 0) {
+    const { data: rows } = await sb
+      .from("team_players")
+      .select("team_id, id")
+      .in("team_id", Array.from(teamIds));
+    for (const r of rows ?? []) {
+      const arr = teamPlayersByTeam.get(r.team_id) ?? [];
+      arr.push(r.id);
+      teamPlayersByTeam.set(r.team_id, arr);
+    }
+  }
+
+  const pairPlayers = new Map<string, string[]>();
+  if (pairIds.size > 0) {
+    const { data: rows } = await sb
+      .from("pairs")
+      .select("id, player_id_1, player_id_2")
+      .in("id", Array.from(pairIds));
+    for (const r of rows ?? []) {
+      pairPlayers.set(r.id, [r.player_id_1, r.player_id_2].filter(Boolean) as string[]);
+    }
+  }
+
+  const playersOf = (m: typeof pending[number]): string[] => {
+    const out: string[] = [];
+    if (m.team_a_id) out.push(...(teamPlayersByTeam.get(m.team_a_id) ?? []));
+    if (m.team_b_id) out.push(...(teamPlayersByTeam.get(m.team_b_id) ?? []));
+    if (m.pair_a_id) out.push(...(pairPlayers.get(m.pair_a_id) ?? []));
+    if (m.pair_b_id) out.push(...(pairPlayers.get(m.pair_b_id) ?? []));
+    return out;
+  };
+
+  // Greedy rotation: pick earliest match whose players don't appear in last `restGap` placed matches
+  const remaining = [...pending];
+  const result: typeof pending = [];
+  while (remaining.length > 0) {
+    const recent = new Set<string>();
+    for (const m of result.slice(-restGap)) {
+      for (const p of playersOf(m)) recent.add(p);
+    }
+
+    let pickIdx = -1;
+    for (let i = 0; i < remaining.length; i++) {
+      const ps = playersOf(remaining[i]);
+      const hasConflict = ps.some((p) => recent.has(p));
+      if (!hasConflict) { pickIdx = i; break; }
+    }
+    if (pickIdx < 0) pickIdx = 0; // unavoidable conflict — keep front
+    result.push(remaining[pickIdx]);
+    remaining.splice(pickIdx, 1);
+  }
+
+  // Persist new queue_position for pending matches; in_progress/completed keep their slots
+  let changed = 0;
+  for (let i = 0; i < result.length; i++) {
+    if (result[i].queue_position !== pending[i].queue_position) changed += 1;
+  }
+
+  for (let i = 0; i < result.length; i++) {
+    const target = pending[i].queue_position ?? i + 1;
+    if (result[i].queue_position !== target) {
+      const { error: updErr } = await sb
+        .from("matches")
+        .update({ queue_position: target })
+        .eq("id", result[i].id)
+        .eq("tournament_id", tournamentId);
+      if (updErr) return { error: "บันทึกลำดับใหม่ไม่สำเร็จ" };
+    }
+  }
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  return { ok: true, rotated: changed };
+}
+
 export async function setMatchCourtAction(input: {
   matchId: string;
   tournamentId: string;
@@ -848,6 +951,21 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
   if (!match) return { error: "ไม่พบแมตช์" };
   if (match.status === "completed") return { error: "แมตช์นี้จบแล้ว" };
   if (match.status === "in_progress") return { error: "แมตช์นี้กำลังแข่งอยู่" };
+
+  // Court occupancy guard — another match in_progress on the same court blocks start.
+  if (match.court) {
+    const { data: occupier } = await sb
+      .from("matches")
+      .select("id, match_number")
+      .eq("tournament_id", tournamentId)
+      .eq("status", "in_progress")
+      .eq("court", match.court)
+      .neq("id", matchId)
+      .maybeSingle();
+    if (occupier) {
+      return { error: `สนาม ${match.court} ถูกใช้แมตช์ #${occupier.match_number} อยู่` };
+    }
+  }
 
   const { error } = await sb
     .from("matches")

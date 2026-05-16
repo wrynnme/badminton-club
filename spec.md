@@ -388,6 +388,24 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **Permission**: Owner + co-admin = drag/court/start/end/reset + settings tab; public viewer = read-only, no settings tab
 - **Loading UX**: all action buttons (queue reorder/start/reset, gen groups, gen matches, gen knockout, delete team/player/pair, status change) capture `useTransition` pending flag → `<Loader2 animate-spin />` swap + `disabled={pending}`
 
+## Phase 10 — Smart Scheduling (courts, auto-rotate)
+
+- **DB**: `tournaments.courts text[] default '{}'` — ordered list of court names
+- migration: `add_tournaments_courts`
+- **Types**: `Tournament.courts: string[]`
+- **Server actions**:
+  - `updateCourtsAction(tournamentId, names[])` (`tournaments.ts`) — owner only; trim + dedupe; revalidatePath + writeAuditLog `courts_updated`
+  - `autoRotateQueueAction(tournamentId, restGap=2)` (`matches.ts`) — greedy reorder pending matches to avoid same player in last `restGap` placed matches; fetches `team_players` for team matches and `pairs.player_id_1/2` for pair matches; preserves the existing `queue_position` slot numbers (assigns new id ordering onto old slots)
+  - `startMatchAction` updated — court occupancy guard: if `match.court` set and another match in_progress on same court, return `{ error: "สนาม X ถูกใช้แมตช์ #N อยู่" }`
+- **Components**:
+  - `src/components/tournament/court-manager.tsx` — DnD list (add/remove/reorder) of court names; mounted in Settings tab (owner-only); `updateCourtsAction` on every change
+  - `match-queue.tsx` updates:
+    - `courts: string[]` prop passed from page + threaded through Sortable/NonDraggable/ReadOnly rows
+    - "สถานะสนาม" card above pending list — color-coded grid of all courts; green = ว่าง, amber = ถูกใช้ (shows match # + competitors)
+    - Court field: `<Select>` from `courts` list when `courts.length > 0`, else fallback `<Input>` (free-text); `__none` sentinel value for "ไม่ระบุ"
+    - "จัดคิวอัตโนมัติ" button (canEdit + pending.length >= 2) → calls `autoRotateQueueAction`; spinner via `useTransition`
+- **Page wiring**: `tournament-detail` + `/t/[token]` pass `courts={t.courts ?? []}` to `MatchQueue`; settings tab includes `<CourtManager />` (owner-only)
+
 ## Todo
 
-- Phase 10 — (TBD)
+- Phase 11 — (TBD)

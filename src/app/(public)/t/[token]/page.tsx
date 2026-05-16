@@ -165,6 +165,7 @@ export default async function PublicTournamentPage({
                 tournamentId={t.id}
                 unit={t.match_unit}
                 canEdit={false}
+                courts={t.courts ?? []}
               />
             ) : undefined
           }

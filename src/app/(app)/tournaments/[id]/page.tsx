@@ -18,6 +18,7 @@ import { AuditLogPanel } from "@/components/tournament/audit-log-panel";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import { TournamentTabs } from "@/components/tournament/tournament-tabs";
 import { MatchQueue } from "@/components/tournament/match-queue";
+import { CourtManager } from "@/components/tournament/court-manager";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { EditTournamentForm } from "@/components/tournament/edit-tournament-form";
 import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match } from "@/lib/types";
@@ -224,6 +225,7 @@ export default async function TournamentDetailPage({
               tournamentId={t.id}
               unit={t.match_unit}
               canEdit={canEdit}
+              courts={t.courts ?? []}
             />
           }
           settingsTab={
@@ -246,6 +248,7 @@ export default async function TournamentDetailPage({
               {isOwner && (
                 <>
                   <ShareControls tournamentId={t.id} shareToken={t.share_token} appUrl={appUrl} />
+                  <CourtManager tournamentId={t.id} initialCourts={t.courts ?? []} />
                   <CoAdminControls tournamentId={t.id} initialAdmins={coAdmins} />
                   <EditTournamentForm tournament={t} existingTeamCount={teams.length} />
                 </>

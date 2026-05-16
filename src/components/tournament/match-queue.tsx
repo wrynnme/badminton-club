@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GripVertical, Loader2, Play, ClipboardEdit, RotateCcw } from "lucide-react";
+import { GripVertical, Loader2, Play, ClipboardEdit, RotateCcw, Shuffle, CheckCircle2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -25,12 +25,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ScoreForm } from "@/components/tournament/score-form";
 import {
   reorderMatchQueueAction,
   setMatchCourtAction,
   startMatchAction,
   resetMatchScoreAction,
+  autoRotateQueueAction,
 } from "@/lib/actions/matches";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import type { Match, MatchUnit } from "@/lib/types";
@@ -62,16 +70,19 @@ export function MatchQueue({
   tournamentId,
   unit,
   canEdit,
+  courts = [],
 }: {
   matches: Match[];
   competitorById: Map<string, Competitor>;
   tournamentId: string;
   unit: MatchUnit;
   canEdit: boolean;
+  courts?: string[];
 }) {
   const router = useRouter();
   const [items, setItems] = useState<Match[]>([]);
   const [reorderPending, startReorder] = useTransition();
+  const [autoPending, startAuto] = useTransition();
 
   // keep local state in sync with server-side `matches`
   useEffect(() => {
@@ -121,14 +132,79 @@ export function MatchQueue({
     );
   }
 
+  // Map court name → in_progress match using it
+  const courtOccupier = new Map<string, Match>();
+  for (const m of inProgress) {
+    if (m.court) courtOccupier.set(m.court, m);
+  }
+
   return (
     <div className="space-y-4">
+      {courts.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">สถานะสนาม</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+              {courts.map((courtName) => {
+                const occ = courtOccupier.get(courtName);
+                const a = occ
+                  ? (unit === "team" ? occ.team_a_id : occ.pair_a_id)
+                  : null;
+                const b = occ
+                  ? (unit === "team" ? occ.team_b_id : occ.pair_b_id)
+                  : null;
+                const aName = a ? competitorById.get(a)?.name ?? "—" : "";
+                const bName = b ? competitorById.get(b)?.name ?? "—" : "";
+                return (
+                  <div
+                    key={courtName}
+                    className={`rounded-md border p-2 text-xs ${
+                      occ ? "border-amber-500/40 bg-amber-50/40 dark:bg-amber-950/20" : "border-green-500/30 bg-green-50/40 dark:bg-green-950/20"
+                    }`}
+                  >
+                    <div className="font-medium flex items-center justify-between gap-1">
+                      <span className="truncate">{courtName}</span>
+                      {occ ? (
+                        <Badge variant="outline" className="text-[10px] px-1 py-0">#{occ.match_number}</Badge>
+                      ) : (
+                        <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0" />
+                      )}
+                    </div>
+                    <div className="mt-0.5 truncate text-muted-foreground">
+                      {occ ? `${aName} vs ${bName}` : "ว่าง"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
           <CardTitle className="text-sm flex items-center gap-2">
             รอแข่ง <Badge variant="outline" className="text-xs">{pending.length}</Badge>
             {reorderPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
           </CardTitle>
+          {canEdit && pending.length >= 2 && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1"
+              disabled={autoPending}
+              onClick={() => startAuto(async () => {
+                const res = await autoRotateQueueAction(tournamentId);
+                if (res && "error" in res) toast.error(res.error);
+                else toast.success("จัดคิวใหม่ — หลีกเลี่ยงแข่งซ้อน");
+              })}
+            >
+              {autoPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shuffle className="h-3 w-3" />}
+              จัดคิวอัตโนมัติ
+            </Button>
+          )}
         </CardHeader>
         <CardContent className="pt-0 space-y-2">
           {pending.length === 0 ? (
@@ -146,6 +222,7 @@ export function MatchQueue({
                       tournamentId={tournamentId}
                       unit={unit}
                       canEdit
+                      courts={courts}
                     />
                   ))}
                 </ul>
@@ -160,6 +237,7 @@ export function MatchQueue({
                   index={i + 1}
                   competitorById={competitorById}
                   unit={unit}
+                  courts={courts}
                 />
               ))}
             </ul>
@@ -184,6 +262,7 @@ export function MatchQueue({
                   tournamentId={tournamentId}
                   unit={unit}
                   canEdit={canEdit}
+                  courts={courts}
                 />
               ))}
             </ul>
@@ -208,6 +287,7 @@ export function MatchQueue({
                   tournamentId={tournamentId}
                   unit={unit}
                   canEdit={canEdit}
+                  courts={courts}
                 />
               ))}
             </ul>
@@ -258,6 +338,7 @@ function SortableQueueRow(props: {
   tournamentId: string;
   unit: MatchUnit;
   canEdit: true;
+  courts: string[];
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.match.id,
@@ -279,6 +360,7 @@ function SortableQueueRow(props: {
         unit={props.unit}
         canEdit={props.canEdit}
         dragHandleProps={{ ...attributes, ...listeners }}
+        courts={props.courts}
       />
     </li>
   );
@@ -290,6 +372,7 @@ function NonDraggableRow(props: {
   tournamentId: string;
   unit: MatchUnit;
   canEdit: boolean;
+  courts: string[];
 }) {
   return (
     <li>
@@ -301,6 +384,7 @@ function NonDraggableRow(props: {
         unit={props.unit}
         canEdit={props.canEdit}
         dragHandleProps={null}
+        courts={props.courts}
       />
     </li>
   );
@@ -311,6 +395,7 @@ function QueueRowReadOnly(props: {
   index: number;
   competitorById: Map<string, Competitor>;
   unit: MatchUnit;
+  courts: string[];
 }) {
   return (
     <li>
@@ -322,6 +407,7 @@ function QueueRowReadOnly(props: {
         unit={props.unit}
         canEdit={false}
         dragHandleProps={null}
+        courts={props.courts}
       />
     </li>
   );
@@ -335,6 +421,7 @@ function QueueRowBody({
   unit,
   canEdit,
   dragHandleProps,
+  courts,
 }: {
   match: Match;
   index: number | null;
@@ -343,6 +430,7 @@ function QueueRowBody({
   unit: MatchUnit;
   canEdit: boolean;
   dragHandleProps: Record<string, unknown> | null;
+  courts: string[];
 }) {
   const { a, b, unknownLabel } = getCompetitorNames(match, unit, competitorById);
   const [court, setCourt] = useState(match.court ?? "");
@@ -404,15 +492,49 @@ function QueueRowBody({
           {canEdit ? (
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-muted-foreground">สนาม</span>
-              <Input
-                value={court}
-                onChange={(e) => setCourt(e.target.value)}
-                onBlur={saveCourt}
-                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                placeholder="—"
-                disabled={savingCourt || match.status === "completed"}
-                className="h-7 w-16 text-xs px-1.5 text-center"
-              />
+              {courts.length > 0 ? (
+                <Select
+                  value={court || "__none"}
+                  onValueChange={async (v) => {
+                    const next = !v || v === "__none" ? "" : String(v);
+                    setCourt(next);
+                    setSavingCourt(true);
+                    const res = await setMatchCourtAction({
+                      matchId: match.id,
+                      tournamentId,
+                      court: next || null,
+                    });
+                    setSavingCourt(false);
+                    if (res && "error" in res) {
+                      toast.error(res.error);
+                      setCourt(match.court ?? "");
+                    } else {
+                      toast.success("บันทึกสนามแล้ว");
+                    }
+                  }}
+                  disabled={savingCourt || match.status === "completed"}
+                >
+                  <SelectTrigger className="h-7 w-24 text-xs px-2">
+                    <SelectValue placeholder="—" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none">— ไม่ระบุ —</SelectItem>
+                    {courts.map((c) => (
+                      <SelectItem key={c} value={c}>{c}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  value={court}
+                  onChange={(e) => setCourt(e.target.value)}
+                  onBlur={saveCourt}
+                  onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                  placeholder="—"
+                  disabled={savingCourt || match.status === "completed"}
+                  className="h-7 w-16 text-xs px-1.5 text-center"
+                />
+              )}
               {savingCourt && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
             </div>
           ) : (

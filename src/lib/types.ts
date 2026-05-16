@@ -59,6 +59,7 @@ export type Tournament = {
   advance_count: number;
   pair_division_threshold: number | null;
   share_token: string | null;
+  courts: string[];
   notes: string | null;
   created_at: string;
 };
