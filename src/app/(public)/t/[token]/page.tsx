@@ -8,6 +8,8 @@ import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-w
 import { PublicHero } from "@/components/tournament/public/public-hero";
 import { PublicOverview } from "@/components/tournament/public/public-overview";
 import { PublicTournamentShell } from "@/components/tournament/public/public-tournament-shell";
+import { MatchQueue } from "@/components/tournament/match-queue";
+import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import type {
   Tournament,
   TeamWithPlayers,
@@ -63,6 +65,7 @@ export default async function PublicTournamentPage({
       .from("matches")
       .select("*")
       .eq("tournament_id", t.id)
+      .order("queue_position", { ascending: true, nullsFirst: false })
       .order("match_number"),
   ]);
 
@@ -78,6 +81,8 @@ export default async function PublicTournamentPage({
   const showPairStage = t.match_unit === "pair";
   const showKnockoutStage =
     t.format === "group_knockout" || t.format === "knockout_only";
+  const showQueueStage = allMatches.length > 0;
+  const competitorById = buildCompetitorMap(t.match_unit, flatTeams, pairs);
   const knockoutMatches = allMatches.filter((m) => m.round_type === "knockout");
 
   return (
@@ -103,6 +108,7 @@ export default async function PublicTournamentPage({
           showGroups={showGroupStage}
           showPairs={showPairStage}
           showKnockout={showKnockoutStage}
+          showQueue={showQueueStage}
           overview={
             <PublicOverview
               tournament={t}
@@ -148,6 +154,18 @@ export default async function PublicTournamentPage({
                 isOwner={false}
                 format={t.format}
                 matchRowSize="comfortable"
+              />
+            ) : undefined
+          }
+          queue={
+            showQueueStage ? (
+              <MatchQueue
+                matches={allMatches}
+                competitorById={competitorById}
+                tournamentId={t.id}
+                unit={t.match_unit}
+                canEdit={false}
+                courts={t.courts ?? []}
               />
             ) : undefined
           }

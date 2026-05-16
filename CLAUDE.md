@@ -79,7 +79,7 @@ Every agent responds in this format:
 - `SortablePlayerList` uses `@dnd-kit` with `activationConstraint: { distance: 8 }` for mobile compat
 - Theme stored in `theme` cookie — `layout.tsx` reads it server-side to add `dark` class on `<html>` (no next-themes)
 
-## Tournament System (Phase 0–8 done)
+## Tournament System (Phase 0–10 done)
 
 ### Architecture
 
@@ -92,18 +92,19 @@ Every agent responds in this format:
 
 ### Schema Tables
 
-- `tournaments` — id, owner_id, name, mode (`sports_day`|`competition`), status, format, match_unit (`team`|`pair`), has_lower_bracket, allow_drop_to_lower (default false), seeding_method (`random`|`by_group_score`), advance_count (default 2), team_count, pair_division_threshold (numeric, nullable), share_token (text, unique, nullable), scoring_rules jsonb
+- `tournaments` — id, owner_id, name, mode (`sports_day`|`competition`), status, format, match_unit (`team`|`pair`), has_lower_bracket, allow_drop_to_lower (default false), seeding_method (`random`|`by_group_score`), advance_count (default 2), team_count, pair_division_threshold (numeric, nullable), share_token (text, unique, nullable), courts (text[] default `'{}'`), scoring_rules jsonb
 - `teams` — id, tournament_id, name, color, seed
 - `team_players` — id, team_id, profile_id?, display_name, role (`captain`|`member`), level text, csv_id text, created_at
 - `groups` — id, tournament_id, name
 - `group_teams` — group_id, team_id, position, wins, draws, losses, points_for, points_against
 - `pairs` — id, team_id, player_id_1 (FK team_players), player_id_2 (FK team_players), display_pair_name (optional), pair_level text (auto-computed = sum of player levels), created_at
-- `matches` — id, tournament_id, round_type (`group`|`knockout`), round_number, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id, games jsonb (`[{a,b}]`), winner_id, status, next_match_id (self-ref), next_match_slot (`a`|`b`), loser_next_match_id (self-ref), loser_next_match_slot (`a`|`b`), bracket (`upper`|`lower`|`grand_final`), division (`upper`|`lower`|null), court?, scheduled_at?
+- `matches` — id, tournament_id, round_type (`group`|`knockout`), round_number, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id, games jsonb (`[{a,b}]`), winner_id, status, next_match_id (self-ref), next_match_slot (`a`|`b`), loser_next_match_id (self-ref), loser_next_match_slot (`a`|`b`), bracket (`upper`|`lower`|`grand_final`), division (`upper`|`lower`|null), court?, queue_position?, scheduled_at?
+  - partial UNIQUE index `(tournament_id, court) WHERE status='in_progress' AND court IS NOT NULL` — DB-level court occupancy guarantee
 
 ### Server Actions
 
-- `src/lib/actions/tournaments.ts` — `createTournamentAction`, `updateTournamentStatusAction`, `addTeamPlayerAction` (incl. level), `updateTeamPlayerAction({display_name?, level?})`, `importPlayersCsvAction(tournamentId, PlayerCsvRow[])`, `importPairsCsvAction(tournamentId, PairCsvRow[])`, `generateShareTokenAction`, `revokeShareTokenAction`
-- `src/lib/actions/matches.ts` — `generateGroupsAction`, `generateGroupMatchesAction`, `generatePairMatchesAction` (division-aware, reads `pair_division_threshold`), `generateKnockoutAction`, `recordMatchScoreAction({ matchId, tournamentId, games })`, `resetMatchScoreAction`, `createManualMatchAction({ tournamentId, pairAId, pairBId })` (pair mode, same division)
+- `src/lib/actions/tournaments.ts` — `createTournamentAction`, `updateTournamentStatusAction`, `addTeamPlayerAction` (incl. level), `updateTeamPlayerAction({display_name?, level?})`, `importPlayersCsvAction(tournamentId, PlayerCsvRow[])`, `importPairsCsvAction(tournamentId, PairCsvRow[])`, `generateShareTokenAction`, `revokeShareTokenAction`, `updateCourtsAction(tournamentId, names[])` (owner-only; trim+slice 40 chars/name, cap 50 entries)
+- `src/lib/actions/matches.ts` — `generateGroupsAction`, `generateGroupMatchesAction`, `generatePairMatchesAction` (division-aware, reads `pair_division_threshold`), `generateKnockoutAction`, `recordMatchScoreAction({ matchId, tournamentId, games })`, `resetMatchScoreAction`, `createManualMatchAction({ tournamentId, pairAId, pairBId })` (pair mode, same division), `reorderMatchQueueAction(tournamentId, orderedIds[])` (RPC), `setMatchCourtAction({ matchId, tournamentId, court })` (court occupancy guard), `startMatchAction(matchId, tournamentId)`, `autoRotateQueueAction(tournamentId, restGap=2)` (anti back-to-back via RPC); helper `revalidateTournamentPaths` refreshes owner page + `/t/[token]` + `/t/[token]/tv`
 - `src/lib/actions/pairs.ts` — `createPairAction({ teamId, playerIds: [id1,id2], name? })` — pair_level auto-computed (sum), no pair_code; `deletePairAction`
 - `src/lib/actions/admins.ts` — `addCoAdminAction`, `removeCoAdminAction` (owner-only), `getCoAdminsAction`, `getAuditLogsAction`
 
@@ -122,7 +123,9 @@ Every agent responds in this format:
 - `co-admin-controls.tsx` — owner-only: add/remove co-admins by LINE user_id
 - `audit-log-panel.tsx` — collapsible panel; owner + co-admin; newest-first, limit 50
 - `manual-match-dialog.tsx` — Dialog to create manual pair match; filters pair B by same division as pair A
-- `tournament-tabs.tsx` — client Tab wrapper: ทีม · กลุ่ม* · คู่* · Knockout* · ตั้งค่า (* = conditional per format)
+- `tournament-tabs.tsx` — client Tab wrapper: ทีม · กลุ่ม* · คู่* · Knockout* · ตารางคิว* · ตั้งค่า** (* conditional per format/state, ** owner+co-admin only via `showSettings`)
+- `match-queue.tsx` — drag-drop schedule queue: pending (sortable) · in_progress · completed; per-row court Select (or free-text) + ปุ่ม เริ่ม/จบแข่ง/รีเซ็ต + ปุ่ม จัดคิวอัตโนมัติ + court status banner (Phase 9–10)
+- `court-manager.tsx` — DnD list of court names in Settings tab; calls `updateCourtsAction` (Phase 10)
 - `tournament-live-wrapper.tsx` — Supabase Realtime client component; subscribes to match UPDATE → `router.refresh()`; shows green LIVE badge
 - `bracket-match-card.tsx` — compact card: competitors + game score + winner highlight
 - `bracket-view.tsx` — flex-column rounds + CSS horizontal/vertical connector lines; horizontal scroll

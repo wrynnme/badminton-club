@@ -365,6 +365,63 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ---
 
+## Phase 9 — Match Schedule/Queue
+
+- **DB**: `matches.queue_position int` (nullable; backfilled per tournament from `match_number` via `ROW_NUMBER() OVER (PARTITION BY tournament_id ORDER BY match_number)`); index `idx_matches_tournament_queue_position` on `(tournament_id, queue_position)`
+- migration: `add_match_queue_position`
+- **Types**: `Match.queue_position: number | null`
+- **Server actions** (`src/lib/actions/matches.ts`):
+  - `reorderMatchQueueAction(tournamentId, orderedMatchIds[])` — `assertCanEdit`; validates all IDs belong to tournament; bulk UPDATE `queue_position` per id; revalidatePath
+  - `setMatchCourtAction({ matchId, tournamentId, court })` — trim empty → null; revalidatePath
+  - `startMatchAction(matchId, tournamentId)` — set `status='in_progress'`; reject if completed/in_progress; LINE notify `🏸 เรียกแมตช์ #N (สนาม X)\n A vs B`; writeAuditLog `match_started`
+- **Page query order**: `.order("queue_position", { ascending: true, nullsFirst: false }).order("match_number")` on both `/tournaments/[id]` and `/t/[token]`
+- **Component**: `src/components/tournament/match-queue.tsx`
+  - 3 sections: รอแข่ง (`pending`, draggable when `canEdit`) · กำลังแข่ง (`in_progress`) · จบแล้ว (`completed`)
+  - DnD: `@dnd-kit/sortable` with `PointerSensor` `activationConstraint: { distance: 8 }`; only pending list is sortable
+  - per-row: queue index `#N` · color dot + name vs name · court `<Input>` (onBlur save) · status badge · action button
+  - actions: "เริ่ม" (pending → in_progress) · "จบแข่ง" (in_progress → opens `ScoreForm` inline) · "↺" reset (completed)
+  - public share: `canEdit=false` → view-only (no drag, no court input, no buttons)
+- **Wiring**:
+  - `tournament-tabs.tsx` — `queueTab` prop + `showQueue` flag (TabId added `"queue"`); tab `ตารางคิว`; also `showSettings` flag — `ตั้งค่า` tab hidden when viewer is not owner/co-admin
+  - `public-tournament-shell.tsx` — same `queue` slot + `showQueue` flag
+  - tournament detail page + `/t/[token]/page.tsx` — `showQueue = allMatches.length > 0`; pass `competitorById = buildCompetitorMap(...)`; detail page passes `showSettings={canEdit}`
+- **Permission**: Owner + co-admin = drag/court/start/end/reset + settings tab; public viewer = read-only, no settings tab
+- **Loading UX**: all action buttons (queue reorder/start/reset, gen groups, gen matches, gen knockout, delete team/player/pair, status change) capture `useTransition` pending flag → `<Loader2 animate-spin />` swap + `disabled={pending}`
+
+## Phase 10 — Smart Scheduling (courts, auto-rotate)
+
+- **DB**: `tournaments.courts text[] default '{}'` — ordered list of court names
+- migration: `add_tournaments_courts`
+- **Types**: `Tournament.courts: string[]`
+- **Server actions**:
+  - `updateCourtsAction(tournamentId, names[])` (`tournaments.ts`) — owner only; trim + dedupe; revalidatePath + writeAuditLog `courts_updated`
+  - `autoRotateQueueAction(tournamentId, restGap=2)` (`matches.ts`) — greedy reorder pending matches to avoid same player in last `restGap` placed matches; fetches `team_players` for team matches and `pairs.player_id_1/2` for pair matches; preserves the existing `queue_position` slot numbers (assigns new id ordering onto old slots)
+  - `startMatchAction` updated — court occupancy guard: if `match.court` set and another match in_progress on same court, return `{ error: "สนาม X ถูกใช้แมตช์ #N อยู่" }`
+- **Components**:
+  - `src/components/tournament/court-manager.tsx` — DnD list (add/remove/reorder) of court names; mounted in Settings tab (owner-only); `updateCourtsAction` on every change
+  - `match-queue.tsx` updates:
+    - `courts: string[]` prop passed from page + threaded through Sortable/NonDraggable/ReadOnly rows
+    - "สถานะสนาม" card above pending list — color-coded grid of all courts; green = ว่าง, amber = ถูกใช้ (shows match # + competitors)
+    - Court field: `<Select>` from `courts` list when `courts.length > 0`, else fallback `<Input>` (free-text); `__none` sentinel value for "ไม่ระบุ"
+    - "จัดคิวอัตโนมัติ" button (canEdit + pending.length >= 2) → calls `autoRotateQueueAction`; spinner via `useTransition`
+- **Page wiring**: `tournament-detail` + `/t/[token]` pass `courts={t.courts ?? []}` to `MatchQueue`; settings tab includes `<CourtManager />` (owner-only)
+
+### Phase 10 hardening (2026-05-17 review fixes)
+
+- **C2/H1 — Atomic queue + court uniqueness**:
+  - migration `add_matches_unique_court_in_progress` — partial UNIQUE index `(tournament_id, court) WHERE status='in_progress' AND court IS NOT NULL` — DB-level guarantee no two in-progress matches share a court
+  - migration `rpc_reorder_tournament_queue` — `reorder_tournament_queue(p_tournament_id uuid, p_ordered_ids uuid[])` `SECURITY INVOKER` + `search_path = ''`, executable by `service_role` only; locks rows `FOR UPDATE`, two-pass write (NULL → 1..N) to dodge any future UNIQUE constraint on queue_position
+  - `reorderMatchQueueAction` + `autoRotateQueueAction` switched to the RPC (single transaction); concurrent reorders now serialize
+  - `startMatchAction` catches `code === '23505'` → `"สนาม X ถูกใช้อยู่ — เลือกสนามอื่นแล้วลองใหม่"`
+- **H2 — `setMatchCourtAction` court guard**: pre-check rejects setting `court` to a value where another in-progress match holds it
+- **H3 — Audit log coverage**: `reorderMatchQueueAction` (`queue_reordered`), `setMatchCourtAction` (`match_court_set`), `autoRotateQueueAction` (`queue_auto_rotated`) all write audit entries
+- **H4 — auto-rotate seeds in-progress players**: when the result list is empty, `recent` is seeded with all players currently on court so the next pick rests them
+- **H5 — Court name length cap**: client `maxLength={40}` on both `match-queue.tsx` and `court-manager.tsx`; server `setMatchCourtAction` slices to 40; `updateCourtsAction` trims+slices to 40 per name and caps the array at 50
+- **Share-path revalidation**: new helper `revalidateTournamentPaths(sb, tournamentId)` looks up `share_token` and revalidates `/t/[token]` + `/t/[token]/tv` alongside the owner page; used by all queue/court actions
+- **M1 — Deep-link tab redirect**: `tournament-tabs.tsx` `useEffect` strips `?tab=X` from URL when the tab isn't in `validTabs` for this viewer (e.g. `?tab=settings` as non-admin)
+- **M2 — Court Select uses `useTransition`**: `match-queue.tsx` `courtPending` flag disables Select while in flight and prevents rapid interleaved writes
+- **M3 — `CourtManager` debounce + serialize**: 250ms debounce on every edit; new save waits for the previous via `inFlightRef`; rapid drag/add/remove now coalesces to one server write
+
 ## Todo
 
-- Phase 9 — (TBD)
+- Phase 11 — (TBD)

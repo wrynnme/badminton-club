@@ -123,6 +123,36 @@ export async function updateTournamentAction(input: CreateTournamentInput & { id
   return { ok: true };
 }
 
+export async function updateCourtsAction(tournamentId: string, courts: string[]) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const COURT_NAME_MAX = 40;
+  const COURTS_MAX = 50;
+  const cleaned = courts
+    .map((c) => c.trim().slice(0, COURT_NAME_MAX))
+    .filter((c) => c.length > 0);
+  const deduped = Array.from(new Set(cleaned)).slice(0, COURTS_MAX);
+
+  const sb = await createAdminClient();
+  const { error } = await sb.from("tournaments").update({ courts: deduped }).eq("id", tournamentId);
+  if (error) return { error: "บันทึกสนามไม่สำเร็จ" };
+
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "courts_updated",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: `อัปเดตรายการสนาม: ${deduped.length} สนาม`,
+  });
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  return { ok: true, courts: deduped };
+}
+
 export async function updateTournamentStatusAction(id: string, status: "draft" | "registering" | "ongoing" | "completed") {
   const session = await getSession();
   if (!session) return await loginRedirect();

@@ -59,6 +59,7 @@ export type Tournament = {
   advance_count: number;
   pair_division_threshold: number | null;
   share_token: string | null;
+  courts: string[];
   notes: string | null;
   created_at: string;
 };
@@ -132,6 +133,7 @@ export type Match = {
   loser_next_match_slot: "a" | "b" | null;
   bracket: BracketType | null;
   division: "upper" | "lower" | null;
+  queue_position: number | null;
   created_at: string;
 };
 

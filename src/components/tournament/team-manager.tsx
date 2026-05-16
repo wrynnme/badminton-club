@@ -153,7 +153,7 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(p.display_name);
   const [level, setLevel] = useState(p.level ?? "");
-  const [, startEdit] = useTransition();
+  const [editPending, startEdit] = useTransition();
 
   const save = () => startEdit(async () => {
     const res = await updateTeamPlayerAction(p.id, { display_name: name, level: level || null }, tournamentId);
@@ -174,8 +174,10 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
             className="h-6 text-xs flex-1 px-1.5 min-w-0" autoFocus />
           <Input type="number" step="0.5" value={level} onChange={(e) => setLevel(e.target.value)}
             placeholder="Level" className="h-6 text-xs w-16 px-1.5" />
-          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label="บันทึก" onClick={save}><Check className="h-3 w-3" /></Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label="ยกเลิก" onClick={cancel}><X className="h-3 w-3" /></Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label="บันทึก" disabled={editPending} onClick={save}>
+            {editPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+          </Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label="ยกเลิก" disabled={editPending} onClick={cancel}><X className="h-3 w-3" /></Button>
         </>
       ) : (
         <>
@@ -204,8 +206,8 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
 function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tournamentId: string; isOwner: boolean }) {
   const [open, setOpen] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
-  const [, startDel] = useTransition();
-  const [, startRemove] = useTransition();
+  const [delPending, startDel] = useTransition();
+  const [removePending, startRemove] = useTransition();
 
   return (
     <Card>
@@ -225,12 +227,13 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
             {isOwner && (
               <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
                 aria-label="ลบทีม"
+                disabled={delPending}
                 onClick={() => startDel(async () => {
                   const res = await deleteTeamAction(team.id, tournamentId);
                   if (res?.error) toast.error(res.error);
                   else toast.success("ลบทีมแล้ว");
                 })}>
-                <Trash2 className="h-3.5 w-3.5" />
+                {delPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
               </Button>
             )}
           </div>

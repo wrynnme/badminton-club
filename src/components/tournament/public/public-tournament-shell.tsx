@@ -8,17 +8,21 @@ export function PublicTournamentShell({
   groups,
   pairs,
   knockout,
+  queue,
   showGroups,
   showPairs,
   showKnockout,
+  showQueue,
 }: {
   overview: ReactNode;
   groups?: ReactNode;
   pairs?: ReactNode;
   knockout?: ReactNode;
+  queue?: ReactNode;
   showGroups: boolean;
   showPairs: boolean;
   showKnockout: boolean;
+  showQueue: boolean;
 }) {
   return (
     <Tabs defaultValue="overview" className="w-full">
@@ -44,6 +48,11 @@ export function PublicTournamentShell({
             สาย
           </TabsTrigger>
         )}
+        {showQueue && (
+          <TabsTrigger value="queue" className="px-4 pb-3 pt-1 rounded-none text-sm sm:text-base">
+            ตารางคิว
+          </TabsTrigger>
+        )}
       </TabsList>
 
       <TabsContent value="overview" className="mt-6">
@@ -62,6 +71,11 @@ export function PublicTournamentShell({
       {showKnockout && (
         <TabsContent value="knockout" className="mt-6">
           {knockout}
+        </TabsContent>
+      )}
+      {showQueue && (
+        <TabsContent value="queue" className="mt-6">
+          {queue}
         </TabsContent>
       )}
     </Tabs>

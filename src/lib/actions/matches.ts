@@ -775,6 +775,322 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
   return { ok: true };
 }
 
+// ============ QUEUE / SCHEDULE ============
+
+async function revalidateTournamentPaths(sb: Awaited<ReturnType<typeof createAdminClient>>, tournamentId: string) {
+  revalidatePath(`/tournaments/${tournamentId}`);
+  const { data } = await sb
+    .from("tournaments")
+    .select("share_token")
+    .eq("id", tournamentId)
+    .maybeSingle();
+  if (data?.share_token) {
+    revalidatePath(`/t/${data.share_token}`);
+    revalidatePath(`/t/${data.share_token}/tv`);
+  }
+}
+
+export async function reorderMatchQueueAction(
+  tournamentId: string,
+  orderedMatchIds: string[],
+) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+  const { error: rpcErr } = await sb.rpc("reorder_tournament_queue", {
+    p_tournament_id: tournamentId,
+    p_ordered_ids: orderedMatchIds,
+  });
+  if (rpcErr) {
+    if (rpcErr.code === "22023" || /matchId not in tournament/i.test(rpcErr.message ?? "")) {
+      return { error: "พบ matchId ที่ไม่อยู่ในทัวร์นาเมนต์นี้" };
+    }
+    return { error: "บันทึกลำดับไม่สำเร็จ" };
+  }
+
+  await revalidateTournamentPaths(sb, tournamentId);
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "queue_reordered",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: `จัดลำดับคิว ${orderedMatchIds.length} แมตช์`,
+  });
+  return { ok: true };
+}
+
+export async function autoRotateQueueAction(tournamentId: string, restGap = 2) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+
+  // Pending matches in current queue order
+  const { data: pending, error } = await sb
+    .from("matches")
+    .select("id, queue_position, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id")
+    .eq("tournament_id", tournamentId)
+    .eq("status", "pending")
+    .order("queue_position", { ascending: true, nullsFirst: false })
+    .order("match_number");
+  if (error) return { error: "อ่านรายการแมตช์ไม่สำเร็จ" };
+  if (!pending || pending.length < 2) return { ok: true, rotated: 0 };
+
+  // In-progress matches — players currently on court count as "just played"
+  const { data: inProgress } = await sb
+    .from("matches")
+    .select("team_a_id, team_b_id, pair_a_id, pair_b_id")
+    .eq("tournament_id", tournamentId)
+    .eq("status", "in_progress");
+
+  // Build player_id sets per match
+  type SlotRow = { team_a_id: string | null; team_b_id: string | null; pair_a_id: string | null; pair_b_id: string | null };
+  const allRows: SlotRow[] = [...(pending as SlotRow[]), ...((inProgress as SlotRow[]) ?? [])];
+  const teamIds = new Set<string>();
+  const pairIds = new Set<string>();
+  for (const m of allRows) {
+    if (m.team_a_id) teamIds.add(m.team_a_id);
+    if (m.team_b_id) teamIds.add(m.team_b_id);
+    if (m.pair_a_id) pairIds.add(m.pair_a_id);
+    if (m.pair_b_id) pairIds.add(m.pair_b_id);
+  }
+
+  const teamPlayersByTeam = new Map<string, string[]>();
+  if (teamIds.size > 0) {
+    const { data: rows } = await sb
+      .from("team_players")
+      .select("team_id, id")
+      .in("team_id", Array.from(teamIds));
+    for (const r of rows ?? []) {
+      const arr = teamPlayersByTeam.get(r.team_id) ?? [];
+      arr.push(r.id);
+      teamPlayersByTeam.set(r.team_id, arr);
+    }
+  }
+
+  const pairPlayers = new Map<string, string[]>();
+  if (pairIds.size > 0) {
+    const { data: rows } = await sb
+      .from("pairs")
+      .select("id, player_id_1, player_id_2")
+      .in("id", Array.from(pairIds));
+    for (const r of rows ?? []) {
+      pairPlayers.set(r.id, [r.player_id_1, r.player_id_2].filter(Boolean) as string[]);
+    }
+  }
+
+  const playersOf = (m: SlotRow): string[] => {
+    const out: string[] = [];
+    if (m.team_a_id) out.push(...(teamPlayersByTeam.get(m.team_a_id) ?? []));
+    if (m.team_b_id) out.push(...(teamPlayersByTeam.get(m.team_b_id) ?? []));
+    if (m.pair_a_id) out.push(...(pairPlayers.get(m.pair_a_id) ?? []));
+    if (m.pair_b_id) out.push(...(pairPlayers.get(m.pair_b_id) ?? []));
+    return out;
+  };
+
+  // Seed "recent" with in-progress players so the next pick rests them.
+  const inProgressPlayers = new Set<string>();
+  for (const m of (inProgress as SlotRow[]) ?? []) {
+    for (const p of playersOf(m)) inProgressPlayers.add(p);
+  }
+
+  // Greedy: pick earliest match whose players don't appear in last `restGap` placed
+  // matches (and aren't currently on court if result is still empty).
+  const remaining = [...pending];
+  const result: typeof pending = [];
+  while (remaining.length > 0) {
+    const recent = new Set<string>(result.length === 0 ? inProgressPlayers : []);
+    for (const m of result.slice(-restGap)) {
+      for (const p of playersOf(m)) recent.add(p);
+    }
+
+    let pickIdx = -1;
+    for (let i = 0; i < remaining.length; i++) {
+      const ps = playersOf(remaining[i]);
+      const hasConflict = ps.some((p) => recent.has(p));
+      if (!hasConflict) { pickIdx = i; break; }
+    }
+    if (pickIdx < 0) pickIdx = 0;
+    result.push(remaining[pickIdx]);
+    remaining.splice(pickIdx, 1);
+  }
+
+  let changed = 0;
+  for (let i = 0; i < result.length; i++) {
+    if (result[i].id !== pending[i].id) changed += 1;
+  }
+  if (changed === 0) return { ok: true, rotated: 0 };
+
+  // Atomic re-assignment via RPC (matches existing replace_tournament_matches pattern)
+  const orderedIds = result.map((m) => m.id);
+  const { error: rpcErr } = await sb.rpc("reorder_tournament_queue", {
+    p_tournament_id: tournamentId,
+    p_ordered_ids: orderedIds,
+  });
+  if (rpcErr) return { error: "บันทึกลำดับใหม่ไม่สำเร็จ" };
+
+  await revalidateTournamentPaths(sb, tournamentId);
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "queue_auto_rotated",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: `จัดคิวอัตโนมัติ — สลับ ${changed} แมตช์`,
+  });
+  return { ok: true, rotated: changed };
+}
+
+const COURT_NAME_MAX = 40;
+
+export async function setMatchCourtAction(input: {
+  matchId: string;
+  tournamentId: string;
+  court: string | null;
+}) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+  const rawCourt = input.court?.trim() ?? "";
+  const court = rawCourt.length > 0 ? rawCourt.slice(0, COURT_NAME_MAX) : null;
+
+  if (court) {
+    const { data: occupier } = await sb
+      .from("matches")
+      .select("id, match_number")
+      .eq("tournament_id", input.tournamentId)
+      .eq("status", "in_progress")
+      .eq("court", court)
+      .neq("id", input.matchId)
+      .maybeSingle();
+    if (occupier) {
+      return { error: `สนาม ${court} ถูกใช้แมตช์ #${occupier.match_number} อยู่` };
+    }
+  }
+
+  const { error } = await sb
+    .from("matches")
+    .update({ court })
+    .eq("id", input.matchId)
+    .eq("tournament_id", input.tournamentId);
+  if (error) return { error: "บันทึกสนามไม่สำเร็จ" };
+
+  await revalidateTournamentPaths(sb, input.tournamentId);
+  await writeAuditLog({
+    tournament_id: input.tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "match_court_set",
+    entity_type: "match",
+    entity_id: input.matchId,
+    description: court ? `ตั้งสนาม "${court}"` : "ล้างสนาม",
+  });
+  return { ok: true };
+}
+
+export async function startMatchAction(matchId: string, tournamentId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+  const { data: match } = await sb
+    .from("matches")
+    .select("id, status, court, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id")
+    .eq("id", matchId)
+    .eq("tournament_id", tournamentId)
+    .maybeSingle();
+  if (!match) return { error: "ไม่พบแมตช์" };
+  if (match.status === "completed") return { error: "แมตช์นี้จบแล้ว" };
+  if (match.status === "in_progress") return { error: "แมตช์นี้กำลังแข่งอยู่" };
+
+  // Court occupancy: best-effort pre-check (UX). The DB partial unique index
+  // `uniq_matches_inprogress_court` is the source of truth — TOCTOU between
+  // two concurrent starts is caught by the index below.
+  if (match.court) {
+    const { data: occupier } = await sb
+      .from("matches")
+      .select("id, match_number")
+      .eq("tournament_id", tournamentId)
+      .eq("status", "in_progress")
+      .eq("court", match.court)
+      .neq("id", matchId)
+      .maybeSingle();
+    if (occupier) {
+      return { error: `สนาม ${match.court} ถูกใช้แมตช์ #${occupier.match_number} อยู่` };
+    }
+  }
+
+  const { error } = await sb
+    .from("matches")
+    .update({ status: "in_progress" })
+    .eq("id", matchId);
+  if (error) {
+    if (error.code === "23505") {
+      return { error: `สนาม ${match.court ?? "—"} ถูกใช้อยู่ — เลือกสนามอื่นแล้วลองใหม่` };
+    }
+    return { error: "อัปเดตสถานะไม่สำเร็จ" };
+  }
+
+  await revalidateTournamentPaths(sb, tournamentId);
+
+  // LINE notify — call players to court
+  (async () => {
+    try {
+      const isPair = !!(match.pair_a_id || match.pair_b_id);
+      let nameA = "—";
+      let nameB = "—";
+      if (isPair) {
+        const { data: pairs } = await sb
+          .from("pairs")
+          .select("id, display_pair_name, player1:team_players!player_id_1(display_name), player2:team_players!player_id_2(display_name)")
+          .in("id", [match.pair_a_id, match.pair_b_id].filter(Boolean) as string[]);
+        const byId = new Map((pairs ?? []).map((p) => [p.id, p]));
+        const formatPair = (p: { display_pair_name: string | null; player1: { display_name: string } | { display_name: string }[] | null; player2: { display_name: string } | { display_name: string }[] | null } | undefined) => {
+          if (!p) return "—";
+          if (p.display_pair_name) return p.display_pair_name;
+          const p1 = Array.isArray(p.player1) ? p.player1[0] : p.player1;
+          const p2 = Array.isArray(p.player2) ? p.player2[0] : p.player2;
+          return `${p1?.display_name ?? "?"} / ${p2?.display_name ?? "?"}`;
+        };
+        nameA = formatPair(match.pair_a_id ? byId.get(match.pair_a_id) : undefined);
+        nameB = formatPair(match.pair_b_id ? byId.get(match.pair_b_id) : undefined);
+      } else {
+        const { data: teams } = await sb
+          .from("teams")
+          .select("id, name")
+          .in("id", [match.team_a_id, match.team_b_id].filter(Boolean) as string[]);
+        const byId = new Map((teams ?? []).map((t) => [t.id, t.name]));
+        nameA = match.team_a_id ? byId.get(match.team_a_id) ?? "—" : "—";
+        nameB = match.team_b_id ? byId.get(match.team_b_id) ?? "—" : "—";
+      }
+      const courtPart = match.court ? ` (สนาม ${match.court})` : "";
+      const msg = `🏸 เรียกแมตช์ #${match.match_number}${courtPart}\n${nameA} vs ${nameB}`;
+      await notifyTournamentAdmins(tournamentId, msg);
+    } catch {}
+  })();
+
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "match_started",
+    entity_type: "match",
+    entity_id: matchId,
+    description: `เริ่มแมตช์ #${match.match_number}${match.court ? ` (สนาม ${match.court})` : ""}`,
+  });
+
+  return { ok: true };
+}
+
 // ============ Internal helpers ============
 
 async function updateGroupTeamStandings(

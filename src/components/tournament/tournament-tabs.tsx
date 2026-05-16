@@ -1,29 +1,35 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type TabId = "teams" | "groups" | "pairs" | "knockout" | "settings";
+type TabId = "teams" | "groups" | "pairs" | "knockout" | "queue" | "settings";
 
 export function TournamentTabs({
   teamsTab,
   groupsTab,
   pairsTab,
   knockoutTab,
+  queueTab,
   settingsTab,
   showGroups,
   showPairs,
   showKnockout,
+  showQueue,
+  showSettings,
 }: {
   teamsTab: ReactNode;
   groupsTab?: ReactNode;
   pairsTab?: ReactNode;
   knockoutTab?: ReactNode;
-  settingsTab: ReactNode;
+  queueTab?: ReactNode;
+  settingsTab?: ReactNode;
   showGroups: boolean;
   showPairs: boolean;
   showKnockout: boolean;
+  showQueue: boolean;
+  showSettings: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -34,13 +40,26 @@ export function TournamentTabs({
     if (showGroups) list.push("groups");
     if (showPairs) list.push("pairs");
     if (showKnockout) list.push("knockout");
-    list.push("settings");
+    if (showQueue) list.push("queue");
+    if (showSettings) list.push("settings");
     return list;
-  }, [showGroups, showPairs, showKnockout]);
+  }, [showGroups, showPairs, showKnockout, showQueue, showSettings]);
 
   const queryTab = searchParams.get("tab") as TabId | null;
   const activeTab: TabId =
     queryTab && validTabs.includes(queryTab) ? queryTab : "teams";
+
+  // If URL points to a tab that doesn't exist for this viewer (e.g.
+  // ?tab=settings as a non-admin), strip the param so the canonical URL
+  // matches the actually-rendered tab.
+  useEffect(() => {
+    if (queryTab && !validTabs.includes(queryTab)) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("tab");
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }
+  }, [queryTab, validTabs, router, pathname, searchParams]);
 
   const onValueChange = (next: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -57,7 +76,8 @@ export function TournamentTabs({
         {showGroups && <TabsTrigger value="groups">กลุ่ม</TabsTrigger>}
         {showPairs && <TabsTrigger value="pairs">คู่</TabsTrigger>}
         {showKnockout && <TabsTrigger value="knockout">Knockout</TabsTrigger>}
-        <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>
+        {showQueue && <TabsTrigger value="queue">ตารางคิว</TabsTrigger>}
+        {showSettings && <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>}
       </TabsList>
 
       <TabsContent value="teams" className="mt-6">
@@ -82,9 +102,17 @@ export function TournamentTabs({
         </TabsContent>
       )}
 
-      <TabsContent value="settings" className="mt-6 space-y-6">
-        {settingsTab}
-      </TabsContent>
+      {showQueue && (
+        <TabsContent value="queue" className="mt-6">
+          {queueTab}
+        </TabsContent>
+      )}
+
+      {showSettings && (
+        <TabsContent value="settings" className="mt-6 space-y-6">
+          {settingsTab}
+        </TabsContent>
+      )}
     </Tabs>
   );
 }

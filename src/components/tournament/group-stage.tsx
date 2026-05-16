@@ -2,7 +2,7 @@
 
 import { useState, useTransition, useMemo } from "react";
 import { toast } from "sonner";
-import { RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { RefreshCw, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -161,8 +161,8 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize 
   matchRowSize?: "compact" | "comfortable";
 }) {
   const [groupCount, setGroupCount] = useState(2);
-  const [, startGen] = useTransition();
-  const [, startMatch] = useTransition();
+  const [genPending, startGen] = useTransition();
+  const [matchPending, startMatch] = useTransition();
 
   const hasGroups = groups.length > 0;
   const totalMatches = groups.reduce((s, g) => s + g.matches.length, 0);
@@ -194,21 +194,24 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize 
                 </InputGroup>
               </Field>
               <Button size="sm" variant="outline"
+                disabled={genPending}
                 onClick={() => startGen(async () => {
                   const res = await generateGroupsAction(tournamentId, groupCount);
                   if (res?.error) toast.error(res.error);
                   else toast.success("แบ่งกลุ่มแล้ว");
                 })}>
-                <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                {genPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
                 {hasGroups ? "สุ่มใหม่" : "แบ่งกลุ่ม"}
               </Button>
               {hasGroups && totalMatches === 0 && (
                 <Button size="sm"
+                  disabled={matchPending}
                   onClick={() => startMatch(async () => {
                     const res = await generateGroupMatchesAction(tournamentId);
                     if (res?.error) toast.error(res.error);
                     else toast.success(`สร้าง ${res.count} แมตช์แล้ว`);
                   })}>
+                  {matchPending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
                   สร้างตารางแข่ง
                 </Button>
               )}
