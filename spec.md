@@ -425,3 +425,4 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 ## Todo
 
 - Phase 11 — (TBD)
+- **Queue bracket preference (knockout double-elim)**: เมื่อจัดคิว/auto-rotate ในทัวร์นาเมนต์ที่มีสายบน+สายล่าง, ให้ owner ตั้งค่าได้ว่า "สายบนแข่งก่อน" / "สายล่างแข่งก่อน" / interleaved. เก็บที่ `tournaments.queue_bracket_preference` (`upper_first` | `lower_first` | `interleaved`, default `interleaved`); ใช้ใน `autoRotateQueueAction` (sort key) + section labels ใน MatchQueue UI
