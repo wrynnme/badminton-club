@@ -4,6 +4,10 @@
 
 **Stack**: Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1 · Supabase · LINE Login · Anuphan font
 
+**Deployed**:
+- Production: https://kuanbad.vercel.app (main branch)
+- Dev/Test: https://kuanbad-dev.vercel.app (develop branch — auto-update on push)
+
 ---
 
 ## ติดตั้ง
@@ -128,23 +132,28 @@ src/
 │   │   └── tournaments/
 │   │       ├── page.tsx                    # Tournament list
 │   │       ├── new/page.tsx                # Create
-│   │       └── [id]/page.tsx               # Detail — tabs (ทีม/กลุ่ม/คู่/Knockout/ตั้งค่า)
-│   ├── (public)/t/[token]/page.tsx         # Public share page (no auth)
+│   │       └── [id]/page.tsx               # Detail — tabs (ทีม/กลุ่ม/คู่/Knockout/ตารางคิว/ตั้งค่า*)
+│   ├── (public)/
+│   │   ├── t/[token]/page.tsx              # Public share page (no auth)
+│   │   └── t/[token]/tv/page.tsx           # TV display mode
 │   └── api/auth/                           # LINE OAuth + guest + logout
 ├── components/tournament/
-│   ├── tournament-tabs.tsx             # Tab wrapper (client)
+│   ├── tournament-tabs.tsx             # Tab wrapper (client) — settings tab gated by canEdit
 │   ├── team-manager.tsx                # Teams + members
 │   ├── pair-manager.tsx                # Create/delete pairs (auto pair_level)
 │   ├── pair-stage.tsx                  # Pair matches + division standings
 │   ├── manual-match-dialog.tsx         # Manual pair match creation
 │   ├── group-stage.tsx                 # Team mode group stage
 │   ├── knockout-stage.tsx              # Upper / lower / grand_final
+│   ├── match-queue.tsx                 # Drag-drop queue + court + start/end (Phase 9)
 │   ├── csv-import-dialog.tsx           # 2-step CSV import
 │   ├── export-buttons.tsx              # Export + templates
 │   ├── share-controls.tsx              # Share link (owner)
 │   ├── co-admin-controls.tsx           # Co-admin management (owner)
 │   ├── audit-log-panel.tsx             # Audit log (owner + co-admin)
 │   ├── tournament-live-wrapper.tsx     # Supabase Realtime
+│   ├── tv-match-card.tsx · tv-auto-refresh.tsx  # TV display
+│   ├── public/                         # Public share page components (hero/overview/shell)
 │   ├── match-row.tsx · score-form.tsx · standings-table.tsx
 │   └── bracket-view.tsx · bracket-match-card.tsx
 └── lib/
@@ -171,15 +180,20 @@ src/
 - ✅ Phase 0–4 — CRUD · group stage · pair mode · double elimination · CSV import/export · player/pair level · configurable division threshold
 - ✅ Phase 5 — Bracket visualization (`/tournaments/[id]/bracket`)
 - ✅ Phase 6 — Realtime + public share link (`/t/[token]`)
+- ✅ Phase 7a — LINE notification + Print/PDF
 - ✅ Phase 7b — Co-admin · audit log · tournament tabs · manual match creation · UI improvements
-- [ ] Phase 7a — LINE notification + PDF export
+- ✅ Phase 8 — TV display mode (`/t/[token]/tv`)
+- ✅ Phase 9 — Match Schedule/Queue tab (drag-drop ordering, court, start/end buttons)
+- [ ] Phase 10 — TBD
 
 ### ก๊วนแบด
 
+- ✅ Co-admin
+- ✅ Player check-in
+- ✅ Itemized expenses
 - [ ] Waiting list
 - [ ] LINE notification
 - [ ] Recurring session
-- [ ] Payment status
 
 ---
 

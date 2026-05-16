@@ -79,7 +79,7 @@ Every agent responds in this format:
 - `SortablePlayerList` uses `@dnd-kit` with `activationConstraint: { distance: 8 }` for mobile compat
 - Theme stored in `theme` cookie — `layout.tsx` reads it server-side to add `dark` class on `<html>` (no next-themes)
 
-## Tournament System (Phase 0–8 done)
+## Tournament System (Phase 0–9 done)
 
 ### Architecture
 
@@ -122,7 +122,8 @@ Every agent responds in this format:
 - `co-admin-controls.tsx` — owner-only: add/remove co-admins by LINE user_id
 - `audit-log-panel.tsx` — collapsible panel; owner + co-admin; newest-first, limit 50
 - `manual-match-dialog.tsx` — Dialog to create manual pair match; filters pair B by same division as pair A
-- `tournament-tabs.tsx` — client Tab wrapper: ทีม · กลุ่ม* · คู่* · Knockout* · ตั้งค่า (* = conditional per format)
+- `tournament-tabs.tsx` — client Tab wrapper: ทีม · กลุ่ม* · คู่* · Knockout* · ตารางคิว* · ตั้งค่า** (* conditional per format/state, ** owner+co-admin only via `showSettings`)
+- `match-queue.tsx` — drag-drop schedule queue: pending (sortable) · in_progress · completed; per-row court input + ปุ่ม เริ่ม/จบแข่ง/รีเซ็ต (Phase 9)
 - `tournament-live-wrapper.tsx` — Supabase Realtime client component; subscribes to match UPDATE → `router.refresh()`; shows green LIVE badge
 - `bracket-match-card.tsx` — compact card: competitors + game score + winner highlight
 - `bracket-view.tsx` — flex-column rounds + CSS horizontal/vertical connector lines; horizontal scroll
