@@ -128,8 +128,12 @@ export async function updateCourtsAction(tournamentId: string, courts: string[])
   if (!session) return await loginRedirect();
   if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
-  const cleaned = courts.map((c) => c.trim()).filter((c) => c.length > 0);
-  const deduped = Array.from(new Set(cleaned));
+  const COURT_NAME_MAX = 40;
+  const COURTS_MAX = 50;
+  const cleaned = courts
+    .map((c) => c.trim().slice(0, COURT_NAME_MAX))
+    .filter((c) => c.length > 0);
+  const deduped = Array.from(new Set(cleaned)).slice(0, COURTS_MAX);
 
   const sb = await createAdminClient();
   const { error } = await sb.from("tournaments").update({ courts: deduped }).eq("id", tournamentId);

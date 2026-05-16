@@ -434,6 +434,7 @@ function QueueRowBody({
 }) {
   const { a, b, unknownLabel } = getCompetitorNames(match, unit, competitorById);
   const [court, setCourt] = useState(match.court ?? "");
+  const [courtPending, startCourt] = useTransition();
   const [savingCourt, setSavingCourt] = useState(false);
   const [startPending, startStart] = useTransition();
   const [resetPending, startReset] = useTransition();
@@ -495,24 +496,24 @@ function QueueRowBody({
               {courts.length > 0 ? (
                 <Select
                   value={court || "__none"}
-                  onValueChange={async (v) => {
+                  onValueChange={(v) => {
                     const next = !v || v === "__none" ? "" : String(v);
                     setCourt(next);
-                    setSavingCourt(true);
-                    const res = await setMatchCourtAction({
-                      matchId: match.id,
-                      tournamentId,
-                      court: next || null,
+                    startCourt(async () => {
+                      const res = await setMatchCourtAction({
+                        matchId: match.id,
+                        tournamentId,
+                        court: next || null,
+                      });
+                      if (res && "error" in res) {
+                        toast.error(res.error);
+                        setCourt(match.court ?? "");
+                      } else {
+                        toast.success("บันทึกสนามแล้ว");
+                      }
                     });
-                    setSavingCourt(false);
-                    if (res && "error" in res) {
-                      toast.error(res.error);
-                      setCourt(match.court ?? "");
-                    } else {
-                      toast.success("บันทึกสนามแล้ว");
-                    }
                   }}
-                  disabled={savingCourt || match.status === "completed"}
+                  disabled={courtPending || savingCourt || match.status === "completed"}
                 >
                   <SelectTrigger className="h-7 w-24 text-xs px-2">
                     <SelectValue placeholder="—" />
@@ -531,11 +532,12 @@ function QueueRowBody({
                   onBlur={saveCourt}
                   onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
                   placeholder="—"
+                  maxLength={40}
                   disabled={savingCourt || match.status === "completed"}
                   className="h-7 w-16 text-xs px-1.5 text-center"
                 />
               )}
-              {savingCourt && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+              {(courtPending || savingCourt) && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
             </div>
           ) : (
             match.court && <Badge variant="outline" className="text-[10px]">สนาม {match.court}</Badge>

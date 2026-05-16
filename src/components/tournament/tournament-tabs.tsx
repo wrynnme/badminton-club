@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -48,6 +48,18 @@ export function TournamentTabs({
   const queryTab = searchParams.get("tab") as TabId | null;
   const activeTab: TabId =
     queryTab && validTabs.includes(queryTab) ? queryTab : "teams";
+
+  // If URL points to a tab that doesn't exist for this viewer (e.g.
+  // ?tab=settings as a non-admin), strip the param so the canonical URL
+  // matches the actually-rendered tab.
+  useEffect(() => {
+    if (queryTab && !validTabs.includes(queryTab)) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("tab");
+      const qs = params.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    }
+  }, [queryTab, validTabs, router, pathname, searchParams]);
 
   const onValueChange = (next: string) => {
     const params = new URLSearchParams(searchParams.toString());

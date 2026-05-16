@@ -406,6 +406,22 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
     - "จัดคิวอัตโนมัติ" button (canEdit + pending.length >= 2) → calls `autoRotateQueueAction`; spinner via `useTransition`
 - **Page wiring**: `tournament-detail` + `/t/[token]` pass `courts={t.courts ?? []}` to `MatchQueue`; settings tab includes `<CourtManager />` (owner-only)
 
+### Phase 10 hardening (2026-05-17 review fixes)
+
+- **C2/H1 — Atomic queue + court uniqueness**:
+  - migration `add_matches_unique_court_in_progress` — partial UNIQUE index `(tournament_id, court) WHERE status='in_progress' AND court IS NOT NULL` — DB-level guarantee no two in-progress matches share a court
+  - migration `rpc_reorder_tournament_queue` — `reorder_tournament_queue(p_tournament_id uuid, p_ordered_ids uuid[])` `SECURITY INVOKER` + `search_path = ''`, executable by `service_role` only; locks rows `FOR UPDATE`, two-pass write (NULL → 1..N) to dodge any future UNIQUE constraint on queue_position
+  - `reorderMatchQueueAction` + `autoRotateQueueAction` switched to the RPC (single transaction); concurrent reorders now serialize
+  - `startMatchAction` catches `code === '23505'` → `"สนาม X ถูกใช้อยู่ — เลือกสนามอื่นแล้วลองใหม่"`
+- **H2 — `setMatchCourtAction` court guard**: pre-check rejects setting `court` to a value where another in-progress match holds it
+- **H3 — Audit log coverage**: `reorderMatchQueueAction` (`queue_reordered`), `setMatchCourtAction` (`match_court_set`), `autoRotateQueueAction` (`queue_auto_rotated`) all write audit entries
+- **H4 — auto-rotate seeds in-progress players**: when the result list is empty, `recent` is seeded with all players currently on court so the next pick rests them
+- **H5 — Court name length cap**: client `maxLength={40}` on both `match-queue.tsx` and `court-manager.tsx`; server `setMatchCourtAction` slices to 40; `updateCourtsAction` trims+slices to 40 per name and caps the array at 50
+- **Share-path revalidation**: new helper `revalidateTournamentPaths(sb, tournamentId)` looks up `share_token` and revalidates `/t/[token]` + `/t/[token]/tv` alongside the owner page; used by all queue/court actions
+- **M1 — Deep-link tab redirect**: `tournament-tabs.tsx` `useEffect` strips `?tab=X` from URL when the tab isn't in `validTabs` for this viewer (e.g. `?tab=settings` as non-admin)
+- **M2 — Court Select uses `useTransition`**: `match-queue.tsx` `courtPending` flag disables Select while in flight and prevents rapid interleaved writes
+- **M3 — `CourtManager` debounce + serialize**: 250ms debounce on every edit; new save waits for the previous via `inFlightRef`; rapid drag/add/remove now coalesces to one server write
+
 ## Todo
 
 - Phase 11 — (TBD)

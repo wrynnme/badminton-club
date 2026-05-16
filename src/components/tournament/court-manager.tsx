@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, GripVertical, Trash2, Loader2 } from "lucide-react";
@@ -36,24 +36,37 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
   const [courts, setCourts] = useState<string[]>(initialCourts);
   const [newName, setNewName] = useState("");
   const [savePending, startSave] = useTransition();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightRef = useRef<Promise<unknown> | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // Debounce + serialize: rapid edits collapse into one save, and a new save
+  // waits for the previous to finish so writes can't overtake each other.
   const save = (next: string[]) => {
-    startSave(async () => {
-      const res = await updateCourtsAction(tournamentId, next);
-      if (res && "error" in res) {
-        toast.error(res.error);
-        setCourts(initialCourts);
-      } else {
-        toast.success("บันทึกรายการสนามแล้ว");
-        setCourts(res.courts);
-        router.refresh();
-      }
-    });
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      startSave(async () => {
+        if (inFlightRef.current) {
+          try { await inFlightRef.current; } catch {}
+        }
+        const p = updateCourtsAction(tournamentId, next);
+        inFlightRef.current = p;
+        const res = await p;
+        inFlightRef.current = null;
+        if (res && "error" in res) {
+          toast.error(res.error);
+          setCourts(initialCourts);
+        } else {
+          toast.success("บันทึกรายการสนามแล้ว");
+          setCourts(res.courts);
+          router.refresh();
+        }
+      });
+    }, 250);
   };
 
   const add = () => {
@@ -115,6 +128,7 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
             placeholder="ชื่อสนาม เช่น สนาม 1"
+            maxLength={40}
             className="h-8 text-sm"
             disabled={savePending}
           />
