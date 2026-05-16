@@ -16,7 +16,88 @@ import {
   generateGroupMatchesAction,
 } from "@/lib/actions/matches";
 import { teamToCompetitor } from "@/lib/tournament/competitor";
+import { computeStandings } from "@/lib/tournament/scoring";
 import type { GroupWithTeams, Team } from "@/lib/types";
+
+// ─── Color summary ────────────────────────────────────────────────────────────
+
+type ColorEntry = { color: string; pts: number; names: string[] };
+
+function buildColorSummary(groups: GroupWithTeams[], teams: Team[]): ColorEntry[] {
+  const teamById = new Map(teams.map((t) => [t.id, t]));
+  const map = new Map<string, ColorEntry>();
+
+  for (const group of groups) {
+    const teamIds = group.group_teams.map((gt) => gt.team_id);
+    const rows = computeStandings(group.matches, "team", teamIds);
+    for (const row of rows) {
+      const team = teamById.get(row.competitorId);
+      if (!team?.color) continue;
+      const entry = map.get(team.color) ?? { color: team.color, pts: 0, names: [] };
+      entry.pts += row.leaguePoints;
+      if (!entry.names.includes(team.name)) entry.names.push(team.name);
+      map.set(team.color, entry);
+    }
+  }
+
+  return [...map.values()].sort((a, b) => b.pts - a.pts);
+}
+
+function ColorSummary({ groups, teams }: { groups: GroupWithTeams[]; teams: Team[] }) {
+  const colors = buildColorSummary(groups, teams);
+  if (colors.length === 0) return null;
+
+  const maxPts = Math.max(...colors.map((c) => c.pts), 1);
+
+  return (
+    <div className="space-y-3">
+      {/* Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {colors.map((c) => (
+          <div
+            key={c.color}
+            className="rounded-xl border bg-card px-3 py-2.5 flex items-center gap-2.5"
+          >
+            <span
+              className="w-4 h-4 rounded-full shrink-0 ring-2 ring-offset-1 ring-offset-card"
+            style={{ backgroundColor: c.color, outlineColor: c.color }}
+            />
+            <div className="min-w-0">
+              <div className="text-2xl font-bold tabular-nums leading-none">{c.pts}</div>
+              <div className="text-[10px] text-muted-foreground mt-0.5 truncate">
+                {c.names.join(" · ")}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Bar chart */}
+      <div className="rounded-xl border bg-card px-4 py-3 space-y-2.5">
+        <p className="text-xs font-medium text-muted-foreground mb-1">คะแนนรวมต่อสี</p>
+        {colors.map((c) => (
+          <div key={c.color} className="flex items-center gap-2.5">
+            <span
+              className="w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ backgroundColor: c.color }}
+            />
+            <div className="flex-1 h-5 rounded-full bg-muted overflow-hidden">
+              <div
+                className="h-full rounded-full transition-[width] duration-500"
+                style={{
+                  width: `${(c.pts / maxPts) * 100}%`,
+                  backgroundColor: c.color,
+                  minWidth: c.pts > 0 ? "0.5rem" : 0,
+                }}
+              />
+            </div>
+            <span className="text-sm font-semibold tabular-nums w-8 text-right">{c.pts}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
   group: GroupWithTeams;
@@ -133,6 +214,10 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize 
             )}
           </CardContent>
         </Card>
+      )}
+
+      {hasGroups && completedMatches > 0 && (
+        <ColorSummary groups={groups} teams={teams} />
       )}
 
       {hasGroups ? (
