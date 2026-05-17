@@ -490,6 +490,132 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 - Phase 12 — `require_checkin` flag + `team_players.checked_in_at` + UI check-in flow
 
+### Phase 13 — Competition mode (multi-class, team-aware grouping)
+
+**Context.** `tournaments.mode = "competition"` is currently dormant — every new tournament is hard-coded to `"sports_day"` and no code path branches on `mode`. Real Thai pair tournaments (see วีนฉ่ำ Excel reference) require structure the current `sports_day` flow cannot express: classes (NB/BG/N/S/P-), per-class capacity, team-aware group assignment, and per-class brackets — all sharing one tournament's courts + queue. This Phase opens the `competition` mode and adds the missing primitives.
+
+**Architectural rule** (per user): *class is event-scoped, not player/pair attribute.* A player's "class" is whatever event they joined; pairs are linked to a class only for that tournament. Player/team master data is not touched.
+
+#### DB schema
+
+- migration `add_tournament_classes`:
+  ```sql
+  CREATE TABLE tournament_classes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tournament_id uuid NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    code text NOT NULL,                 -- "NB", "BG", "N", "S", "P-"
+    name text NOT NULL,                 -- "มือใหม่"
+    pair_capacity int,                  -- nullable = unlimited; soft cap on registration
+    pairs_per_group int NOT NULL DEFAULT 4,
+    format tournament_format NOT NULL DEFAULT 'group_knockout',
+    advance_count int NOT NULL DEFAULT 2,
+    has_lower_bracket bool NOT NULL DEFAULT false,
+    allow_drop_to_lower bool NOT NULL DEFAULT false,
+    match_format text NOT NULL DEFAULT 'best_of_3',  -- 'fixed_2' | 'best_of_3' | 'best_of_5'
+    position int NOT NULL DEFAULT 0,    -- display order
+    created_at timestamptz DEFAULT now(),
+    UNIQUE (tournament_id, code)
+  );
+  CREATE INDEX idx_tournament_classes_tournament ON tournament_classes(tournament_id);
+  ```
+- migration `add_class_id_to_pairs_groups_matches`:
+  ```sql
+  ALTER TABLE pairs   ADD COLUMN class_id uuid REFERENCES tournament_classes(id) ON DELETE SET NULL;
+  ALTER TABLE groups  ADD COLUMN class_id uuid REFERENCES tournament_classes(id) ON DELETE CASCADE;
+  ALTER TABLE matches ADD COLUMN class_id uuid REFERENCES tournament_classes(id) ON DELETE CASCADE;
+  CREATE INDEX idx_pairs_class    ON pairs(class_id)   WHERE class_id IS NOT NULL;
+  CREATE INDEX idx_groups_class   ON groups(class_id)  WHERE class_id IS NOT NULL;
+  CREATE INDEX idx_matches_class  ON matches(class_id) WHERE class_id IS NOT NULL;
+  ```
+- All three `class_id` columns are nullable so existing `sports_day` data stays valid. For `competition` mode tournaments, app logic enforces non-null.
+
+#### Server actions
+
+- `createClassAction(tournamentId, input)` — owner-only; insert into `tournament_classes`; audit `class_created`.
+- `updateClassAction(classId, patch)` — owner-only; partial update; audit `class_updated` with diff keys.
+- `deleteClassAction(classId)` — owner-only; cascades to groups/matches via FK; refuse when any related `matches.status='completed'` exists; audit `class_deleted`.
+- `reorderClassesAction(tournamentId, orderedIds[])` — owner-only; bulk update `position`.
+- `generateGroupsForClassAction(classId)` — replaces single-class generate flow. Reads `tournament_classes.pairs_per_group`, computes `group_count = ceil(pairs / pairs_per_group)`, calls **`balancedTeamGroupAssignment`** (see Algorithm), inserts into `groups` scoped to `class_id`, then triggers `generatePairMatchesForClassAction`.
+- `generatePairMatchesForClassAction(classId)` — round-robin within each group; matches inserted with `class_id` + `group_id` set.
+- `generateKnockoutForClassAction(classId)` — current `generateKnockoutAction` logic but seeded only from this class's group standings.
+
+#### Algorithm — `balancedTeamGroupAssignment(pairs, pairsPerGroup) -> Group[] | InfeasibilityError`
+
+Input: array of `{ pairId, teamId }` for one class. Output: `groups[i].pairs[]` with the **cross-team rule**: no two pairs from the same team end up in the same group, while keeping groups as balanced in size as possible.
+
+```
+1. Group pairs by teamId → teamBuckets
+2. group_count = ceil(total_pairs / pairs_per_group)
+3. Feasibility: for every team, pairs[team] <= group_count
+   (else error: "ทีม X ส่งเกินจำนวนกลุ่ม — เพิ่ม group_count หรือลดคู่")
+4. Sort teams by bucket size DESC
+5. Initialize empty groups[0..group_count-1]
+6. For each team in order:
+   - Build a list of groups sorted ASC by current pair count
+   - Assign team's pairs one at a time to the next-emptiest groups,
+     skipping any group that already contains a pair from this team
+7. Return groups
+```
+
+Edge cases:
+- **Single team submits all pairs in a class** → infeasibility error. UI suggests "ลด pairs_per_group" or "ลดคู่ทีม X".
+- **`pair_capacity` exceeded** → reject pair insert at registration; group gen never sees overflow.
+- **Uneven distribution acceptable** when class total isn't a multiple of `pairs_per_group`: last group gets fewer pairs (no synthetic BYE). Standings already handle uneven groups.
+
+#### CSV import — add `class_code`
+
+`PairCsvRow` gains `class_code: string` (required when tournament has classes; tolerated empty when `sports_day`). Server action resolves `class_code` → `class_id` via `tournament_classes.code`. Unknown code → row-level error.
+
+#### UI
+
+- **Mode selector** on `new-tournament-form.tsx` + `edit-tournament-form.tsx`: radio `sports_day` / `competition`. Default = `sports_day`.
+- **Class manager** in Settings tab (competition only): `ClassManager` component with table (code · name · capacity · pairs_per_group · format · advance · actions) + "เพิ่ม class" dialog. Drag handles for reorder.
+- **Pair tab** (competition only): top filter `Class: [All | NB | BG | N | S | P-]`. Add-pair form: `class_id` Select (required), shows progress "X/cap". Cross-class disabled if cap reached.
+- **Group/Knockout tabs**: top tabs per class (e.g. `BG · N · S · P-`); each tab is the existing single-class view scoped to that class_id.
+- **Queue tab**: stays flat (shared courts). Each row prefix `[BG]` `[N]` color-coded by class.
+- **TV / public**: standings + brackets grouped under class headers.
+- **Generate buttons** per class — owner clicks "สร้างกลุ่ม" inside the BG tab and only BG is regenerated.
+
+#### Settings flag integration
+
+- Add `default_match_format` to `TournamentSettings` (replaces individual class default).
+- Per-class `match_format` overrides tournament-level default.
+- `gameWinner(games, format)` branches: `fixed_2` returns `"a" | "b" | "draw"` based on the 2-game outcome; `best_of_3` / `best_of_5` majority logic.
+
+#### Backward compat
+
+- Existing tournaments stay `sports_day` with `class_id = NULL` everywhere — current flows untouched.
+- "Upgrade to competition mode" action: owner can convert; system creates a single default class (`code = "MAIN"`, all existing pairs/groups/matches assigned to it). Audit logged. One-way for safety.
+
+#### Permission matrix (additions)
+
+| Action | isOwner | isCoAdmin |
+|---|---|---|
+| Create/edit/delete classes | ✓ | ✗ |
+| Reorder classes | ✓ | ✗ |
+| Generate groups/bracket per class | ✓ | ✓ |
+| Assign pair to class | ✓ | ✓ |
+
+#### Estimated effort
+
+- DB + types + `TournamentClass` type: 1 h
+- Server actions (5 class CRUDs + 3 generate replacements): 3 h
+- `balancedTeamGroupAssignment` + unit edge cases: 2 h
+- `ClassManager` UI + reorder + dialog: 2 h
+- Pair tab class filter + selector: 1 h
+- Group/Knockout per-class tabs wiring: 2 h
+- CSV import `class_code`: 1 h
+- `match_format` branching in `gameWinner` + ScoreForm clamp: 1 h
+- Mode selector + upgrade action: 1 h
+- Spec update + manual test: 1 h
+- **Total ~15 h (2 working days)**
+
+#### Open questions
+
+- Should knockout brackets cross classes (a "Tournament of Champions" cross-class final)? Default: **no** — each class is fully self-contained, no cross-class matches. Add later as Phase 14 if requested.
+- Manual match in pair mode — restrict to same class? Default: **yes**.
+- Cross-team rule: when truly infeasible (one team dominates a class), allow override flag `allow_intra_team_group: true` in `tournament_classes`? Default: **off**; document workaround as "ลด pairs_per_group" first.
+
 ### From real-world reference (วีนฉ่ำ #2 xlsx)
 
 Excel `/Users/x/Desktop/กำหนดการแข่งขันและผลคะแนน รายการวีนฉ่ำ ครั้งที่ 2.xlsx` (130 pairs, 5 classes NB/BG/N/S/P-, 6 courts, sheets: รายชื่อรวม/กติกา/ตารางเวลา/RunMatch/Class _/KO-_/สรุปรายการรางวัล) — patterns to adopt:
