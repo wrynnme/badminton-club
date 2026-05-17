@@ -537,7 +537,9 @@ function QueueRowBody({
                   disabled={courtPending || match.status === "completed"}
                 >
                   <SelectTrigger className="h-7 w-24 text-xs px-2">
-                    <SelectValue placeholder="—" />
+                    <SelectValue placeholder="ว่าง">
+                      {court || "ว่าง"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none">ว่าง</SelectItem>
