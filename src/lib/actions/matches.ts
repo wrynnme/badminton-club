@@ -273,6 +273,15 @@ function buildIndependentDoubleBracket(upperSeeds: Seed[], lowerSeeds: Seed[]): 
   return [...upperMatches, ...lowerMatches, grandFinal];
 }
 
+// BYE walkover convention (Thai pair tournaments / วีนฉ่ำ): winner gets 21-15 in both sets.
+// Stored so standings tiebreak (point diff, points-for) reflects real walkover scoring,
+// instead of 0-0 which makes BYE wins look identical to a no-show.
+function byeWalkoverGames(winnerIs: "a" | "b"): { games: { a: number; b: number }[]; teamAScore: number; teamBScore: number } {
+  return winnerIs === "a"
+    ? { games: [{ a: 21, b: 15 }, { a: 21, b: 15 }], teamAScore: 2, teamBScore: 0 }
+    : { games: [{ a: 15, b: 21 }, { a: 15, b: 21 }], teamAScore: 0, teamBScore: 2 };
+}
+
 async function insertAndResolveByes(
   sb: Awaited<ReturnType<typeof createAdminClient>>,
   tournamentId: string,
@@ -312,8 +321,16 @@ async function insertAndResolveByes(
     // Upper BYEs — advance winner only; BYE has no real loser, so loserNextMatch slot is left null
     if (pass === 0) {
       for (const m of byeMatches) {
+        const winnerIs: "a" | "b" = m.teamAId ? "a" : "b";
         const winner = m.teamAId ?? m.teamBId;
-        await sb.from("matches").update({ status: "completed", winner_id: winner }).eq("id", m.id);
+        const walkover = byeWalkoverGames(winnerIs);
+        await sb.from("matches").update({
+          status: "completed",
+          winner_id: winner,
+          games: walkover.games,
+          team_a_score: walkover.teamAScore,
+          team_b_score: walkover.teamBScore,
+        }).eq("id", m.id);
         if (m.nextMatchId && m.nextMatchSlot && winner) {
           const slot = m.nextMatchSlot === "a" ? colA : colB;
           await sb.from("matches").update({ [slot]: winner }).eq("id", m.nextMatchId);
@@ -335,8 +352,16 @@ async function insertAndResolveByes(
         const aId = (isPair ? m.pair_a_id : m.team_a_id) as string | null;
         const bId = (isPair ? m.pair_b_id : m.team_b_id) as string | null;
         if ((aId === null) === (bId === null)) continue; // both null or both real
+        const winnerIs: "a" | "b" = aId ? "a" : "b";
         const winner = aId ?? bId;
-        await sb.from("matches").update({ status: "completed", winner_id: winner }).eq("id", m.id);
+        const walkover = byeWalkoverGames(winnerIs);
+        await sb.from("matches").update({
+          status: "completed",
+          winner_id: winner,
+          games: walkover.games,
+          team_a_score: walkover.teamAScore,
+          team_b_score: walkover.teamBScore,
+        }).eq("id", m.id);
         if (m.next_match_id && m.next_match_slot && winner) {
           const slot = m.next_match_slot === "a" ? colA : colB;
           await sb.from("matches").update({ [slot]: winner }).eq("id", m.next_match_id);
