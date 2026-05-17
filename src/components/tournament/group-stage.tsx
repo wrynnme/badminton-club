@@ -153,12 +153,13 @@ function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
   );
 }
 
-export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize }: {
+export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize, showColorSummary = true }: {
   tournamentId: string;
   groups: GroupWithTeams[];
   teams: Team[];
   isOwner: boolean;
   matchRowSize?: "compact" | "comfortable";
+  showColorSummary?: boolean;
 }) {
   const [groupCount, setGroupCount] = useState(2);
   const [genPending, startGen] = useTransition();
@@ -223,7 +224,7 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize 
         </Card>
       )}
 
-      {hasGroups && completedMatches > 0 && (
+      {hasGroups && completedMatches > 0 && showColorSummary && (
         <ColorSummary groups={groups} teams={teams} />
       )}
 

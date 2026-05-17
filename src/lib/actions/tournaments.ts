@@ -8,7 +8,12 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { assertIsOwner, assertCanEdit } from "@/lib/tournament/permissions";
 import { writeAuditLog } from "@/lib/tournament/audit";
-import { notifyTournamentAdmins } from "@/lib/notification/line";
+import { notifyTournamentEvent } from "@/lib/notification/line";
+import {
+  TournamentSettingsSchema,
+  parseSettings,
+  type TournamentSettings,
+} from "@/lib/tournament/settings";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
@@ -177,8 +182,64 @@ export async function updateTournamentStatusAction(id: string, status: "draft" |
     ongoing: "กำลังแข่งขัน",
     completed: "จบการแข่งขัน",
   };
-  notifyTournamentAdmins(id, `สถานะเปลี่ยนเป็น: ${statusLabel[status] ?? status}`).catch(() => {});
+  notifyTournamentEvent(id, "status", `สถานะเปลี่ยนเป็น: ${statusLabel[status] ?? status}`).catch(() => {});
   return { ok: true };
+}
+
+export async function updateTournamentSettingsAction(
+  tournamentId: string,
+  patch: Partial<TournamentSettings>,
+) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+  const { data: row, error: readErr } = await sb
+    .from("tournaments")
+    .select("settings, share_token")
+    .eq("id", tournamentId)
+    .maybeSingle();
+  if (readErr || !row) return { error: "ไม่พบทัวร์นาเมนต์" };
+
+  const current = parseSettings(row.settings);
+  const merged = TournamentSettingsSchema.parse({
+    ...current,
+    ...patch,
+    line_notify: { ...current.line_notify, ...(patch.line_notify ?? {}) },
+  });
+
+  const changedKeys: string[] = [];
+  for (const key of Object.keys(merged) as Array<keyof TournamentSettings>) {
+    if (JSON.stringify(current[key]) !== JSON.stringify(merged[key])) {
+      changedKeys.push(key);
+    }
+  }
+
+  const { error: writeErr } = await sb
+    .from("tournaments")
+    .update({ settings: merged })
+    .eq("id", tournamentId);
+  if (writeErr) return { error: "บันทึก settings ไม่สำเร็จ" };
+
+  if (changedKeys.length > 0) {
+    await writeAuditLog({
+      tournament_id: tournamentId,
+      actor_id: session.profileId,
+      actor_name: session.displayName,
+      event_type: "settings_updated",
+      entity_type: "tournament",
+      entity_id: tournamentId,
+      description: `อัปเดต settings: ${changedKeys.join(", ")}`,
+    });
+  }
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  if (row.share_token) {
+    revalidatePath(`/t/${row.share_token}`);
+    revalidatePath(`/t/${row.share_token}/tv`);
+  }
+  return { ok: true, settings: merged };
 }
 
 const TeamSchema = z.object({
