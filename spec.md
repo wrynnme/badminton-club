@@ -425,5 +425,18 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 ## Todo
 
 - Phase 11 — (TBD)
+- **Pre-tournament settings (toggleable features)**: เพิ่ม `tournaments.settings jsonb default '{}'` เก็บ feature flag ต่อทัวร์นาเมนต์ — owner ตั้งค่าใน Settings tab ก่อนเริ่มแข่ง. ครอบคลุม:
+  - `line_notify`: `{ start: bool, score: bool, bracket: bool, status: bool }` — เลือกเปิด/ปิดแต่ละ event
+  - `auto_rotate_rest_gap`: 0-5 (default 2)
+  - `court_strict`: bool (default true) — ปิดเพื่อให้ใช้ court ซ้อนได้
+  - `color_summary`: bool (default true) — group stage color cards
+  - `export_visible`: bool (default true) — แสดง print/export buttons
+  - `allow_force_bracket_reset`: bool (default false) — bypass guard ตอน reset
+  - `allow_manual_match_after_bracket`: bool (default true, pair mode)
+  - `auto_advance_next`: bool (default false) — completed → next pending → in_progress (inherit court)
+  - `realtime_enabled`: bool (default true) — ลด DB cost ถ้าไม่ต้องการ live
+  - `audit_log_enabled`: bool (default true) — privacy mode
+  - `match_cooldown_minutes`: 0-30 (delay ก่อนเรียกแมตช์ถัดไป)
+  - `require_checkin`: bool (default false) — ผู้เล่นต้อง check-in ก่อนเข้า queue
 - **Queue bracket preference (knockout double-elim)**: เมื่อจัดคิว/auto-rotate ในทัวร์นาเมนต์ที่มีสายบน+สายล่าง, ให้ owner ตั้งค่าได้ว่า "สายบนแข่งก่อน" / "สายล่างแข่งก่อน" / interleaved. เก็บที่ `tournaments.queue_bracket_preference` (`upper_first` | `lower_first` | `interleaved`, default `interleaved`); ใช้ใน `autoRotateQueueAction` (sort key) + section labels ใน MatchQueue UI
 - **Court Select placeholder bug**: ใน `match-queue.tsx` row, SelectTrigger ของช่อง "สนาม" แสดงค่าดิบ `__none` แทนคำว่า "ว่าง" เมื่อยังไม่เลือกสนาม (`court === ""`). สาเหตุ: SelectValue ไม่ resolve label จาก SelectItem ที่ value `__none`. Fix: ใช้ `SelectValue placeholder="—"` + value `undefined` แทน sentinel (ไม่ select item), หรือ render label ผ่าน children function ของ SelectValue
