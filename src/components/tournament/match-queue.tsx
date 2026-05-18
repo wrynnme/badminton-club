@@ -554,7 +554,7 @@ function QueueRowBody({
                   onChange={(e) => setCourt(e.target.value)}
                   onBlur={saveCourt}
                   onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                  placeholder="—"
+                  placeholder="ว่าง"
                   maxLength={40}
                   disabled={courtPending || match.status === "completed"}
                   className="h-7 w-16 text-xs px-1.5 text-center"
