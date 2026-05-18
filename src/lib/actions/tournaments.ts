@@ -28,11 +28,16 @@ async function loginRedirect(): Promise<never> {
   redirect(`/?auth_error=login_required&redirectTo=${encodeURIComponent(redirectTo)}`);
 }
 
+const emptyToNull = z
+  .string()
+  .optional()
+  .transform((s) => (s && s.length > 0 ? s : null));
+
 const TournamentSchema = z.object({
   name: z.string().min(2, "ชื่อทัวร์นาเมนต์สั้นไป"),
-  venue: z.string().optional(),
-  start_date: z.string().optional(),
-  end_date: z.string().optional(),
+  venue: emptyToNull,
+  start_date: emptyToNull,
+  end_date: emptyToNull,
   format: z.enum(["group_only", "group_knockout", "knockout_only"]),
   match_unit: z.enum(["team", "pair"]).default("team"),
   has_lower_bracket: z.boolean().default(false),
