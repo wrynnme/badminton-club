@@ -12,7 +12,8 @@ import type { BracketEntry, BracketMatchDef } from "@/lib/tournament/bracket";
 import type { Game, Match } from "@/lib/types";
 import { assertCanEdit } from "@/lib/tournament/permissions";
 import { writeAuditLog } from "@/lib/tournament/audit";
-import { notifyTournamentAdmins } from "@/lib/notification/line";
+import { notifyTournamentEvent } from "@/lib/notification/line";
+import { getTournamentSettings } from "@/lib/tournament/settings.server";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
@@ -272,6 +273,15 @@ function buildIndependentDoubleBracket(upperSeeds: Seed[], lowerSeeds: Seed[]): 
   return [...upperMatches, ...lowerMatches, grandFinal];
 }
 
+// BYE walkover convention (Thai pair tournaments / วีนฉ่ำ): winner gets 21-15 in both sets.
+// Stored so standings tiebreak (point diff, points-for) reflects real walkover scoring,
+// instead of 0-0 which makes BYE wins look identical to a no-show.
+function byeWalkoverGames(winnerIs: "a" | "b"): { games: { a: number; b: number }[]; teamAScore: number; teamBScore: number } {
+  return winnerIs === "a"
+    ? { games: [{ a: 21, b: 15 }, { a: 21, b: 15 }], teamAScore: 2, teamBScore: 0 }
+    : { games: [{ a: 15, b: 21 }, { a: 15, b: 21 }], teamAScore: 0, teamBScore: 2 };
+}
+
 async function insertAndResolveByes(
   sb: Awaited<ReturnType<typeof createAdminClient>>,
   tournamentId: string,
@@ -311,8 +321,16 @@ async function insertAndResolveByes(
     // Upper BYEs — advance winner only; BYE has no real loser, so loserNextMatch slot is left null
     if (pass === 0) {
       for (const m of byeMatches) {
+        const winnerIs: "a" | "b" = m.teamAId ? "a" : "b";
         const winner = m.teamAId ?? m.teamBId;
-        await sb.from("matches").update({ status: "completed", winner_id: winner }).eq("id", m.id);
+        const walkover = byeWalkoverGames(winnerIs);
+        await sb.from("matches").update({
+          status: "completed",
+          winner_id: winner,
+          games: walkover.games,
+          team_a_score: walkover.teamAScore,
+          team_b_score: walkover.teamBScore,
+        }).eq("id", m.id);
         if (m.nextMatchId && m.nextMatchSlot && winner) {
           const slot = m.nextMatchSlot === "a" ? colA : colB;
           await sb.from("matches").update({ [slot]: winner }).eq("id", m.nextMatchId);
@@ -334,8 +352,16 @@ async function insertAndResolveByes(
         const aId = (isPair ? m.pair_a_id : m.team_a_id) as string | null;
         const bId = (isPair ? m.pair_b_id : m.team_b_id) as string | null;
         if ((aId === null) === (bId === null)) continue; // both null or both real
+        const winnerIs: "a" | "b" = aId ? "a" : "b";
         const winner = aId ?? bId;
-        await sb.from("matches").update({ status: "completed", winner_id: winner }).eq("id", m.id);
+        const walkover = byeWalkoverGames(winnerIs);
+        await sb.from("matches").update({
+          status: "completed",
+          winner_id: winner,
+          games: walkover.games,
+          team_a_score: walkover.teamAScore,
+          team_b_score: walkover.teamBScore,
+        }).eq("id", m.id);
         if (m.next_match_id && m.next_match_slot && winner) {
           const slot = m.next_match_slot === "a" ? colA : colB;
           await sb.from("matches").update({ [slot]: winner }).eq("id", m.next_match_id);
@@ -456,7 +482,7 @@ export async function generateKnockoutAction(tournamentId: string) {
       entity_id: tournamentId,
       description: "สร้างสายน็อกเอาต์",
     });
-    notifyTournamentAdmins(tournamentId, "สร้างสายน็อกเอาต์แล้ว").catch(() => {});
+    notifyTournamentEvent(tournamentId, "bracket", "สร้างสายน็อกเอาต์แล้ว").catch(() => {});
     return { ok: true, count: allMatches.filter((m) => !m.isBye).length };
   }
 
@@ -532,7 +558,7 @@ export async function generateKnockoutAction(tournamentId: string) {
     entity_id: tournamentId,
     description: `สร้างสายน็อกเอาต์`,
   });
-  notifyTournamentAdmins(tournamentId, "สร้างสายน็อกเอาต์แล้ว").catch(() => {});
+  notifyTournamentEvent(tournamentId, "bracket", "สร้างสายน็อกเอาต์แล้ว").catch(() => {});
   return { ok: true, count: allMatches.filter((m) => !m.isBye && m.bracket !== "grand_final").length };
 }
 
@@ -549,6 +575,19 @@ export async function createManualMatchAction(input: {
   if (input.pairAId === input.pairBId) return { error: "ต้องเลือกคู่ที่ต่างกัน" };
 
   const sb = await createAdminClient();
+
+  // Phase 11 — owner can disable manual match creation once bracket exists
+  const settings = await getTournamentSettings(input.tournamentId);
+  if (!settings.allow_manual_match_after_bracket) {
+    const { data: hasKo } = await sb
+      .from("matches")
+      .select("id")
+      .eq("tournament_id", input.tournamentId)
+      .eq("round_type", "knockout")
+      .limit(1)
+      .maybeSingle();
+    if (hasKo) return { error: "ปิดการสร้างแมตช์ manual หลังสร้างสายแล้ว (settings)" };
+  }
 
   const { data: pairsData } = await sb
     .from("pairs")
@@ -714,9 +753,64 @@ export async function recordMatchScoreAction(input: {
 
       const gameDetail = input.games.map((g) => `${g.a}-${g.b}`).join(", ");
       const msg = `🏸 ${nameA} vs ${nameB}\nเกมที่ชนะ: ${gamesWonA}:${gamesWonB} (${gameDetail})\nผู้ชนะ: ${winnerName}`;
-      await notifyTournamentAdmins(input.tournamentId, msg);
+      await notifyTournamentEvent(input.tournamentId, "score", msg);
     } catch {}
   })();
+
+  // Phase 11 — auto_advance_next: when enabled, promote the first pending match
+  // in queue order to in_progress and inherit the just-finished court.
+  // Writes a `match_started` audit row so the cooldown gate counts this promotion
+  // and the user-facing queue revalidates. LINE notify is intentionally skipped
+  // (separate code path — re-add later if needed).
+  try {
+    const settings = await getTournamentSettings(input.tournamentId);
+    if (settings.auto_advance_next) {
+      const inheritedCourt = match.court ?? null;
+      // Skip pending matches with TBD slots (e.g. KO match awaiting prior round winner).
+      // Pull a small queue window and pick the first fully-populated one — done in JS
+      // because Supabase JS filter cannot express "(team_a AND team_b) OR (pair_a AND pair_b)".
+      const { data: candidates } = await sb
+        .from("matches")
+        .select("id, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id")
+        .eq("tournament_id", input.tournamentId)
+        .eq("status", "pending")
+        .order("queue_position", { ascending: true, nullsFirst: false })
+        .order("match_number")
+        .limit(20);
+      const nextPending = (candidates ?? []).find((m) => {
+        const isPairMatch = !!(m.pair_a_id || m.pair_b_id);
+        return isPairMatch
+          ? !!m.pair_a_id && !!m.pair_b_id
+          : !!m.team_a_id && !!m.team_b_id;
+      });
+      if (nextPending?.id) {
+        // Best-effort: respect court_strict via the DB unique index. On 23505 we silently skip.
+        const { error: advanceErr } = await sb
+          .from("matches")
+          .update({ status: "in_progress", court: inheritedCourt, started_at: new Date().toISOString() })
+          .eq("id", nextPending.id);
+        if (advanceErr) {
+          if (advanceErr.code !== "23505") {
+            console.error("[auto_advance_next] update failed:", advanceErr.message);
+          }
+        } else {
+          await revalidateTournamentPaths(sb, input.tournamentId);
+          await writeAuditLog({
+            tournament_id: input.tournamentId,
+            actor_id: session.profileId,
+            actor_name: session.displayName,
+            event_type: "match_started",
+            entity_type: "match",
+            entity_id: nextPending.id,
+            description: `เริ่มแมตช์ #${nextPending.match_number} (auto-advance)${inheritedCourt ? ` (สนาม ${inheritedCourt})` : ""}`,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[auto_advance_next] exception:", err);
+  }
+
   return { ok: true };
 }
 
@@ -738,20 +832,41 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
   const isPair = !!(match.pair_a_id || match.pair_b_id);
   const colPrefix = isPair ? "pair" : "team";
 
-  // Knockout: block reset if winner's next match already completed; clear winner slot
+  // Phase 11 — allow_force_bracket_reset bypasses the "next match completed" guard
+  const forceReset = (await getTournamentSettings(tournamentId)).allow_force_bracket_reset;
+
+  // Knockout: when next match is completed, force-reset cascades the reset into next_match
+  // (clear slot AND reset that match's score/winner/status) so the bracket stays consistent.
+  // Without force, block the operation.
   if (match.round_type === "knockout" && match.next_match_id && match.next_match_slot) {
     const { data: nextMatch } = await sb.from("matches").select("status").eq("id", match.next_match_id).single();
-    if (nextMatch?.status === "completed") return { error: "รีเซ็ตไม่ได้ — รอบถัดไปเล่นไปแล้ว" };
+    if (nextMatch?.status === "completed" && !forceReset) return { error: "รีเซ็ตไม่ได้ — รอบถัดไปเล่นไปแล้ว" };
     const slot = `${colPrefix}_${match.next_match_slot}_id`;
-    await sb.from("matches").update({ [slot]: null }).eq("id", match.next_match_id);
+    const updates: Record<string, unknown> = { [slot]: null };
+    if (nextMatch?.status === "completed") {
+      updates.games = [];
+      updates.team_a_score = null;
+      updates.team_b_score = null;
+      updates.winner_id = null;
+      updates.status = "pending";
+    }
+    await sb.from("matches").update(updates).eq("id", match.next_match_id);
   }
 
-  // Knockout: block reset if loser's next match already completed; clear loser slot
+  // Knockout: same cascade for loser's next match (double-elim drop-down).
   if (match.round_type === "knockout" && match.loser_next_match_id && match.loser_next_match_slot) {
     const { data: loserNext } = await sb.from("matches").select("status").eq("id", match.loser_next_match_id).single();
-    if (loserNext?.status === "completed") return { error: "รีเซ็ตไม่ได้ — แมตช์สายล่างถัดไปเล่นไปแล้ว" };
+    if (loserNext?.status === "completed" && !forceReset) return { error: "รีเซ็ตไม่ได้ — แมตช์สายล่างถัดไปเล่นไปแล้ว" };
     const slot = `${colPrefix}_${match.loser_next_match_slot}_id`;
-    await sb.from("matches").update({ [slot]: null }).eq("id", match.loser_next_match_id);
+    const updates: Record<string, unknown> = { [slot]: null };
+    if (loserNext?.status === "completed") {
+      updates.games = [];
+      updates.team_a_score = null;
+      updates.team_b_score = null;
+      updates.winner_id = null;
+      updates.status = "pending";
+    }
+    await sb.from("matches").update(updates).eq("id", match.loser_next_match_id);
   }
 
   await sb.from("matches").update({
@@ -831,12 +946,18 @@ export async function reorderMatchQueueAction(
   return { ok: true };
 }
 
-export async function autoRotateQueueAction(tournamentId: string, restGap = 2) {
+export async function autoRotateQueueAction(tournamentId: string, restGap?: number) {
   const session = await getSession();
   if (!session) return await loginRedirect();
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
+
+  // Phase 11 — when caller omits restGap, fall back to per-tournament setting
+  if (restGap === undefined) {
+    const settings = await getTournamentSettings(tournamentId);
+    restGap = settings.auto_rotate_rest_gap;
+  }
 
   // Pending matches in current queue order
   const { data: pending, error } = await sb
@@ -1024,6 +1145,29 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
   if (match.status === "completed") return { error: "แมตช์นี้จบแล้ว" };
   if (match.status === "in_progress") return { error: "แมตช์นี้กำลังแข่งอยู่" };
 
+  // Phase 11 — cooldown gate: read from matches.started_at (decoupled from audit_log_enabled).
+  // Backfill on migration ensures pre-existing in_progress rows count.
+  const settings = await getTournamentSettings(tournamentId);
+  if (settings.match_cooldown_minutes > 0) {
+    const { data: lastStarted } = await sb
+      .from("matches")
+      .select("started_at")
+      .eq("tournament_id", tournamentId)
+      .not("started_at", "is", null)
+      .order("started_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lastStarted?.started_at) {
+      const elapsedMs = Date.now() - new Date(lastStarted.started_at).getTime();
+      const requiredMs = settings.match_cooldown_minutes * 60_000;
+      if (elapsedMs < requiredMs) {
+        const remainSec = Math.ceil((requiredMs - elapsedMs) / 1000);
+        const remainMin = Math.ceil(remainSec / 60);
+        return { error: `ต้องรออีก ${remainMin} นาที (cooldown ${settings.match_cooldown_minutes} นาที)` };
+      }
+    }
+  }
+
   // Court occupancy: best-effort pre-check (UX). The DB partial unique index
   // `uniq_matches_inprogress_court` is the source of truth — TOCTOU between
   // two concurrent starts is caught by the index below.
@@ -1043,7 +1187,7 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
 
   const { error } = await sb
     .from("matches")
-    .update({ status: "in_progress" })
+    .update({ status: "in_progress", started_at: new Date().toISOString() })
     .eq("id", matchId);
   if (error) {
     if (error.code === "23505") {
@@ -1086,7 +1230,7 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
       }
       const courtPart = match.court ? ` (สนาม ${match.court})` : "";
       const msg = `🏸 เรียกแมตช์ #${match.match_number}${courtPart}\n${nameA} vs ${nameB}`;
-      await notifyTournamentAdmins(tournamentId, msg);
+      await notifyTournamentEvent(tournamentId, "start", msg);
     } catch {}
   })();
 

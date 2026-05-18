@@ -65,6 +65,7 @@ Every agent responds in this format:
 - **Server actions**: accept plain typed objects (not FormData) — export types in `clubs.ts`
 - **Validation**: two layers — client-side TanStack validators + server-side zod
 - **DB writes**: through server actions using service role key (bypasses RLS)
+- **Tooltips**: every action button (icon-only AND text+icon) wraps in `<Tooltip><TooltipTrigger render={<Button .../>}/><TooltipContent>...</TooltipContent></Tooltip>` — tooltip text describes side-effect or context that isn't visible in the label (e.g. "เริ่มแมตช์ #N + แจ้งเตือน LINE"). `<TooltipProvider delay={300}>` lives in root layout.
 
 ## Key Conventions
 

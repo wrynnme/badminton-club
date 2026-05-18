@@ -60,6 +60,7 @@ export type Tournament = {
   pair_division_threshold: number | null;
   share_token: string | null;
   courts: string[];
+  settings: Record<string, unknown>;
   notes: string | null;
   created_at: string;
 };
@@ -134,6 +135,7 @@ export type Match = {
   bracket: BracketType | null;
   division: "upper" | "lower" | null;
   queue_position: number | null;
+  started_at: string | null;
   created_at: string;
 };
 

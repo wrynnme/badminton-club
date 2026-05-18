@@ -7,6 +7,7 @@ import { TvAutoRefresh } from "@/components/tournament/tv-auto-refresh";
 import { TvMatchCard } from "@/components/tournament/tv-match-card";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { computeStandings } from "@/lib/tournament/scoring";
+import { parseSettings } from "@/lib/tournament/settings";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -78,9 +79,10 @@ export default async function TvDisplayPage({
   const standings = computeStandings(allMatches, unit, competitorIds).slice(0, 8);
 
   const showStandings = standings.some((s) => s.played > 0);
+  const settings = parseSettings(t.settings);
 
   return (
-    <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"}>
+    <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"} realtimeEnabled={settings.realtime_enabled}>
       <TvAutoRefresh intervalMs={60_000} />
       <div className="min-h-screen w-full bg-background text-foreground p-4 sm:p-6 lg:p-10 space-y-6 lg:space-y-8">
         {/* Hero */}

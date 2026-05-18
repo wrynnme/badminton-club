@@ -59,6 +59,7 @@ export function PublicHero({
   pairs,
   allMatches,
   showBracketLink,
+  showExport = true,
 }: {
   tournament: Tournament;
   token: string;
@@ -66,6 +67,7 @@ export function PublicHero({
   pairs: PairWithPlayers[];
   allMatches: Match[];
   showBracketLink: boolean;
+  showExport?: boolean;
 }) {
   const status = STATUS_STYLE[t.status] ?? STATUS_STYLE.draft;
   const totalMatches = allMatches.length;
@@ -148,14 +150,16 @@ export function PublicHero({
 
         {/* Action row */}
         <div className="flex items-center gap-2 flex-wrap pt-1">
-          <ExportButtons
-            tournamentName={t.name}
-            tournamentId={t.id}
-            matches={allMatches}
-            teams={teams}
-            pairs={pairs}
-            matchUnit={t.match_unit}
-          />
+          {showExport && (
+            <ExportButtons
+              tournamentName={t.name}
+              tournamentId={t.id}
+              matches={allMatches}
+              teams={teams}
+              pairs={pairs}
+              matchUnit={t.match_unit}
+            />
+          )}
           {showBracketLink && (
             <Button
               render={<Link href={`/tournaments/${t.id}/bracket`} />}

@@ -10,6 +10,7 @@ import { PublicOverview } from "@/components/tournament/public/public-overview";
 import { PublicTournamentShell } from "@/components/tournament/public/public-tournament-shell";
 import { MatchQueue } from "@/components/tournament/match-queue";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
+import { parseSettings } from "@/lib/tournament/settings";
 import type {
   Tournament,
   TeamWithPlayers,
@@ -75,6 +76,7 @@ export default async function PublicTournamentPage({
   const pairs: PairWithPlayers[] = (pairsRes.data ?? []) as unknown as PairWithPlayers[];
   const flatTeams: Team[] = teams.map(({ players: _p, ...x }) => x as Team);
 
+  const settings = parseSettings(t.settings);
   const showGroupStage =
     t.match_unit === "team" &&
     (t.format === "group_only" || t.format === "group_knockout");
@@ -86,7 +88,7 @@ export default async function PublicTournamentPage({
   const knockoutMatches = allMatches.filter((m) => m.round_type === "knockout");
 
   return (
-    <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"}>
+    <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"} realtimeEnabled={settings.realtime_enabled}>
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
         <PublicHero
           tournament={t}
@@ -95,6 +97,7 @@ export default async function PublicTournamentPage({
           pairs={pairs}
           allMatches={allMatches}
           showBracketLink={knockoutMatches.length > 0}
+          showExport={settings.export_visible}
         />
 
         {t.notes && (
@@ -126,6 +129,7 @@ export default async function PublicTournamentPage({
                 teams={flatTeams}
                 isOwner={false}
                 matchRowSize="comfortable"
+                showColorSummary={settings.color_summary}
               />
             ) : undefined
           }

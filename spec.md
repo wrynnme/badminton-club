@@ -78,11 +78,11 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ```ts
 {
-  team: string;        // informational only
-  pair_id: string;     // optional — UUID for upsert; empty = new pair
+  team: string; // informational only
+  pair_id: string; // optional — UUID for upsert; empty = new pair
   id_player_1: string; // required — csv_id of player 1
   id_player_2: string; // required — csv_id of player 2
-  pair_name: string;   // optional
+  pair_name: string; // optional
   // pair_level omitted — auto-computed from player levels (sum)
 }
 ```
@@ -91,12 +91,12 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ```ts
 {
-  team: string;         // required
-  color: string;        // optional
-  csv_id: string;       // required — stable upsert key (id_player column)
+  team: string; // required
+  color: string; // optional
+  csv_id: string; // required — stable upsert key (id_player column)
   display_name: string; // required
   role: "captain" | "member";
-  level: string;        // optional
+  level: string; // optional
 }
 ```
 
@@ -196,17 +196,17 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 #### Permission Matrix
 
-| Action | isOwner | isCoAdmin |
-|---|---|---|
-| Record/reset scores | ✓ | ✓ |
-| Add/edit/remove players | ✓ | ✓ |
-| Manage teams/groups/bracket | ✓ | ✓ |
-| Change tournament status | ✓ | ✓ |
-| CSV export | ✓ | ✓ |
-| Create/revoke share link | ✓ | ✗ |
-| Add/remove co-admins | ✓ | ✗ |
-| Update tournament settings | ✓ | ✗ |
-| View audit log | ✓ | ✓ |
+| Action                      | isOwner | isCoAdmin |
+| --------------------------- | ------- | --------- |
+| Record/reset scores         | ✓       | ✓         |
+| Add/edit/remove players     | ✓       | ✓         |
+| Manage teams/groups/bracket | ✓       | ✓         |
+| Change tournament status    | ✓       | ✓         |
+| CSV export                  | ✓       | ✓         |
+| Create/revoke share link    | ✓       | ✗         |
+| Add/remove co-admins        | ✓       | ✗         |
+| Update tournament settings  | ✓       | ✗         |
+| View audit log              | ✓       | ✓         |
 
 ### Manual Match Creation (pair mode)
 
@@ -229,7 +229,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ### UI Improvements
 
-- Tournament detail page split into tabs: **ทีม · กลุ่ม* · คู่* · Knockout* · ตั้งค่า** (* conditional per format)
+- Tournament detail page split into tabs: **ทีม · กลุ่ม* · คู่* · Knockout\* · ตั้งค่า** (\* conditional per format)
 - `Loader2` spinner on all pending/loading buttons
 - Error messages — Thai-friendly throughout; no raw `error.message` from DB exposed to UI
 - Settings tab (owner-only): `edit-tournament-form.tsx` — TanStack Form pre-populated with current tournament data, calls `updateTournamentAction`
@@ -317,11 +317,11 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **`assertClubOwner(sb, clubId, profileId)`** — owner-only check; `maybeSingle()`, throws on DB error
 - **`assertCanManageClub(sb, clubId, profileId)`** — owner OR co-admin; LEFT JOIN query `clubs ← club_admins[user_id=profileId]`; `maybeSingle()`, throws on DB error
 
-| Action | Owner | Co-Admin | Player |
-|---|---|---|---|
-| เช็คอิน / Kick / Reorder | ✓ | ✓ | ✗ |
-| Edit club / Expenses | ✓ | ✗ | ✗ |
-| Add/remove co-admins | ✓ | ✗ | ✗ |
+| Action                   | Owner | Co-Admin | Player |
+| ------------------------ | ----- | -------- | ------ |
+| เช็คอิน / Kick / Reorder | ✓     | ✓        | ✗      |
+| Edit club / Expenses     | ✓     | ✗        | ✗      |
+| Add/remove co-admins     | ✓     | ✗        | ✗      |
 
 ### Co-Admin
 
@@ -376,7 +376,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
   - `startMatchAction(matchId, tournamentId)` — set `status='in_progress'`; reject if completed/in_progress; LINE notify `🏸 เรียกแมตช์ #N (สนาม X)\n A vs B`; writeAuditLog `match_started`
 - **Page query order**: `.order("queue_position", { ascending: true, nullsFirst: false }).order("match_number")` on both `/tournaments/[id]` and `/t/[token]`
 - **Component**: `src/components/tournament/match-queue.tsx`
-  - 3 sections: รอแข่ง (`pending`, draggable when `canEdit`) · กำลังแข่ง (`in_progress`) · จบแล้ว (`completed`)
+  - Sub-tabs (shadcn `Tabs`, default `pending`): รอแข่ง (`pending`, draggable when `canEdit`) · กำลังแข่ง (`in_progress`) · จบแล้ว (`completed`); each `TabsTrigger` shows a count `Badge`; "สถานะสนาม" card + "จัดคิวอัตโนมัติ" button stay attached to the รอแข่ง panel
   - DnD: `@dnd-kit/sortable` with `PointerSensor` `activationConstraint: { distance: 8 }`; only pending list is sortable
   - per-row: queue index `#N` · color dot + name vs name · court `<Input>` (onBlur save) · status badge · action button
   - actions: "เริ่ม" (pending → in_progress) · "จบแข่ง" (in_progress → opens `ScoreForm` inline) · "↺" reset (completed)
@@ -422,6 +422,241 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **M2 — Court Select uses `useTransition`**: `match-queue.tsx` `courtPending` flag disables Select while in flight and prevents rapid interleaved writes
 - **M3 — `CourtManager` debounce + serialize**: 250ms debounce on every edit; new save waits for the previous via `inFlightRef`; rapid drag/add/remove now coalesces to one server write
 
+## Phase 11 — Pre-tournament Settings (feature flags)
+
+- **DB**: `tournaments.settings jsonb NOT NULL DEFAULT '{}'`
+- migration: `add_tournaments_settings`
+- **Schema** (`src/lib/tournament/settings.ts`): zod `TournamentSettingsSchema`, `parseSettings(raw)`, `DEFAULT_SETTINGS`, `getTournamentSettings(tournamentId)` helper (fetches + parses; returns DEFAULT_SETTINGS on miss)
+- **Types**: `Tournament.settings: Record<string, unknown>` (validated at parse boundary, not on the type)
+- **Server action**: `updateTournamentSettingsAction(tournamentId, patch)` (`tournaments.ts`) — owner-only; deep-merges `line_notify`, `safeParse` via `TournamentSettingsSchema`, audit log `settings_updated` with diff keys, revalidates owner + share + TV paths
+
+### Wired flags (11)
+
+| Flag                               | Default | Wire point                                                                                                                                                    |
+| ---------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `line_notify.start`                | `true`  | `startMatchAction` → `notifyTournamentEvent("start", …)`                                                                                                      |
+| `line_notify.score`                | `true`  | `recordMatchScoreAction` (background)                                                                                                                         |
+| `line_notify.bracket`              | `true`  | `generateKnockoutAction` (2 paths)                                                                                                                            |
+| `line_notify.status`               | `true`  | `updateTournamentStatusAction`                                                                                                                                |
+| `auto_rotate_rest_gap` (0-5)       | `2`     | `autoRotateQueueAction(tournamentId, restGap?)` — when caller omits, reads setting                                                                            |
+| `court_strict`                     | `true`  | UI hint only — DB partial unique index `uniq_matches_inprogress_court` always enforces. Flag exists for future loosening                                      |
+| `color_summary`                    | `true`  | `GroupStage` prop `showColorSummary`; owner page + `/t/[token]`                                                                                               |
+| `export_visible`                   | `true`  | Owner Settings tab wraps `ExportButtons`; `PublicHero` prop `showExport`                                                                                      |
+| `allow_force_bracket_reset`        | `false` | `resetMatchScoreAction` — bypasses "next match completed" guard for upper + lower                                                                             |
+| `allow_manual_match_after_bracket` | `true`  | `createManualMatchAction` — rejects when `false` AND knockout matches exist                                                                                   |
+| `auto_advance_next`                | `false` | `recordMatchScoreAction` post-RPC — picks first pending by `queue_position`, sets `in_progress` + inherits `court`; 23505 on court collision silently skipped |
+| `realtime_enabled`                 | `true`  | `TournamentLiveWrapper` prop `realtimeEnabled`; skips Supabase subscribe                                                                                      |
+| `audit_log_enabled`                | `true`  | `writeAuditLog` fetches settings + early-returns when `false` (1 extra column read per write — acceptable for the current write volume)                       |
+| `match_cooldown_minutes` (0-30)    | `0`     | `startMatchAction` reads latest `audit_logs` row with `event_type='match_started'` for this tournament; rejects if `now - created_at < cooldown`              |
+
+**Cut from Phase 11**: `require_checkin` — needs new `team_players.checked_in_at` column + check-in flow → Phase 12.
+
+### Notifier helper
+
+- `src/lib/notification/line.ts` — new `notifyTournamentEvent(tournamentId, event, text)` reads settings + short-circuits when `line_notify[event] === false`, otherwise delegates to `notifyTournamentAdmins`
+- All 5 previous call sites swapped (`notifyTournamentAdmins` → `notifyTournamentEvent` + event key)
+
+### UI
+
+- **`SettingsManager`** (`src/components/tournament/settings-manager.tsx`) — owner-only Card, mounted in Settings tab between `CoAdminControls` and `EditTournamentForm`
+- 3 sections: การแจ้งเตือน LINE · การจัดคิว · การแสดงผล + Privacy (icons: `Bell`, `ListOrdered`, `EyeOff`)
+- `ToggleRow` (Checkbox + Label + description) and `NumberRow` (Input type=number, clamped to schema bounds)
+- Auto-save: 500ms debounce + `inFlightRef` serializes concurrent saves; `Loader2` in header during pending; toast.error on failure
+- `commit(patch, next)` keeps client state optimistic; deep-merges `line_notify` via dedicated `updateNotify(key, value)`
+- Unmount-flush: cleanup callback fires any pending debounced patch via `pendingPatchRef` so navigating away mid-debounce doesn't drop the toggle
+
+### Phase 11 hardening (review fixes)
+
+- **B-1** `audit.ts` `writeAuditLog` — wrap full body in `try/catch`; the new `getTournamentSettings` pre-flight could throw on DB error and crash callers. Best-effort logging restored.
+- **B-2** `matches.ts` `resetMatchScoreAction` — when `allow_force_bracket_reset` lets the operation through and `next_match` (or `loser_next_match`) is already `completed`, also reset that row (`games=[]`, scores null, `winner_id=null`, `status=pending`) — not just clear the slot — so the bracket doesn't keep an orphaned winner pointing at an empty slot. Single-level cascade; deeper rounds still need a manual second reset.
+- **B-3** `matches.ts` `recordMatchScoreAction` auto-advance — after a successful promote update, call `revalidateTournamentPaths` and `writeAuditLog({ event_type: "match_started", description: "เริ่มแมตช์ #N (auto-advance) ..." })` so the cooldown gate counts the auto-promoted match and the queue UI refreshes. LINE notify still skipped (Caveat).
+- **B-4** `settings-manager.tsx` — track `pendingPatchRef` alongside the debounce timer; cleanup callback flushes any queued patch fire-and-forget. Also coalesces multiple debounced toggles into one final write.
+- **M-3 / N-1** `match-queue.tsx` — drop the per-tab `Card` wrapper inside each `TabsContent`; tab labels carry the count badge already. Pending tab gets a slim header row (drag hint + auto-rotate button); the three lists render flat inside `TabsContent`.
+
+### Caveats
+
+- **`court_strict`**: flag is currently UI-only. DB index always enforces single-occupancy. Tooltip documents this. Future: drop the unique index to let the flag truly toggle behavior (trade DB integrity for UX flexibility — not done in Phase 11).
+- **`audit_log_enabled`**: caller pays one extra read per write. Acceptable now; cache later if write volume grows.
+- **`auto_advance_next`**: no LINE notify on the auto-promoted match (different code path); add later if needed.
+- **`allow_force_bracket_reset`**: single-level cascade only — resets `next_match` / `loser_next_match` one hop. If that row's downstream rounds are also completed, a second manual reset is required. A recursive cascade would need a Postgres RPC.
+
+### Phase 11 review fixes (2026-05-17)
+
+- **A — auto_advance TBD filter**: `recordMatchScoreAction` auto-advance previously picked any pending match by `queue_position`. KO matches awaiting a prior round's winner have `team_a_id=null` or `pair_a_id=null` and were getting promoted to in_progress with `— vs Team B` shown in UI. Fix: pull a 20-row queue window, filter in JS for fully-populated competitor slots (`(pair_a && pair_b) OR (team_a && team_b)`), promote the first one. Supabase JS filter cannot express the OR-pair, hence the JS pass.
+- **B — cooldown source decoupled from audit_log**: `match_cooldown_minutes` previously read `audit_logs` rows with `event_type='match_started'`. When `audit_log_enabled=false`, no row was written, so cooldown silently never triggered. Fix: new column `matches.started_at timestamptz` (migration `add_matches_started_at`); set in `startMatchAction` + `auto_advance_next`; cooldown reads `matches.started_at` desc. Backfill ran `UPDATE matches SET started_at=NOW() WHERE status='in_progress'` so pre-existing in-progress rows count.
+- **D — parseSettings per-field fallback**: schema-level `safeParse` previously dropped every valid field if one was invalid (e.g. manual DB edit corrupting a single key). Fix: try whole-object parse first (fast path); on failure, walk `TournamentSettingsSchema.shape`, run `safeParse` per field, keep the parsed value if it succeeds, fall back to `DEFAULT_SETTINGS` per key.
+
 ## Todo
 
-- Phase 11 — (TBD)
+- Phase 12 — `require_checkin` flag + `team_players.checked_in_at` + UI check-in flow
+
+### Phase 13 — Competition mode (multi-class, team-aware grouping)
+
+**Context.** `tournaments.mode = "competition"` is currently dormant — every new tournament is hard-coded to `"sports_day"` and no code path branches on `mode`. Real Thai pair tournaments (see วีนฉ่ำ Excel reference) require structure the current `sports_day` flow cannot express: classes (NB/BG/N/S/P-), per-class capacity, team-aware group assignment, and per-class brackets — all sharing one tournament's courts + queue. This Phase opens the `competition` mode and adds the missing primitives.
+
+**Architectural rule** (per user): *class is event-scoped, not player/pair attribute.* A player's "class" is whatever event they joined; pairs are linked to a class only for that tournament. Player/team master data is not touched.
+
+#### DB schema
+
+- migration `add_tournament_classes`:
+  ```sql
+  CREATE TABLE tournament_classes (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tournament_id uuid NOT NULL REFERENCES tournaments(id) ON DELETE CASCADE,
+    code text NOT NULL,                 -- "NB", "BG", "N", "S", "P-"
+    name text NOT NULL,                 -- "มือใหม่"
+    pair_capacity int,                  -- nullable = unlimited; soft cap on registration
+    pairs_per_group int NOT NULL DEFAULT 4,
+    format tournament_format NOT NULL DEFAULT 'group_knockout',
+    advance_count int NOT NULL DEFAULT 2,
+    has_lower_bracket bool NOT NULL DEFAULT false,
+    allow_drop_to_lower bool NOT NULL DEFAULT false,
+    match_format text NOT NULL DEFAULT 'best_of_3',  -- 'fixed_2' | 'best_of_3' | 'best_of_5'
+    position int NOT NULL DEFAULT 0,    -- display order
+    created_at timestamptz DEFAULT now(),
+    UNIQUE (tournament_id, code)
+  );
+  CREATE INDEX idx_tournament_classes_tournament ON tournament_classes(tournament_id);
+  ```
+- migration `add_class_id_to_pairs_groups_matches`:
+  ```sql
+  ALTER TABLE pairs   ADD COLUMN class_id uuid REFERENCES tournament_classes(id) ON DELETE SET NULL;
+  ALTER TABLE groups  ADD COLUMN class_id uuid REFERENCES tournament_classes(id) ON DELETE CASCADE;
+  ALTER TABLE matches ADD COLUMN class_id uuid REFERENCES tournament_classes(id) ON DELETE CASCADE;
+  CREATE INDEX idx_pairs_class    ON pairs(class_id)   WHERE class_id IS NOT NULL;
+  CREATE INDEX idx_groups_class   ON groups(class_id)  WHERE class_id IS NOT NULL;
+  CREATE INDEX idx_matches_class  ON matches(class_id) WHERE class_id IS NOT NULL;
+  ```
+- All three `class_id` columns are nullable so existing `sports_day` data stays valid. For `competition` mode tournaments, app logic enforces non-null.
+
+#### Server actions
+
+- `createClassAction(tournamentId, input)` — owner-only; insert into `tournament_classes`; audit `class_created`.
+- `updateClassAction(classId, patch)` — owner-only; partial update; audit `class_updated` with diff keys.
+- `deleteClassAction(classId)` — owner-only; cascades to groups/matches via FK; refuse when any related `matches.status='completed'` exists; audit `class_deleted`.
+- `reorderClassesAction(tournamentId, orderedIds[])` — owner-only; bulk update `position`.
+- `generateGroupsForClassAction(classId)` — replaces single-class generate flow. Reads `tournament_classes.pairs_per_group`, computes `group_count = ceil(pairs / pairs_per_group)`, calls **`balancedTeamGroupAssignment`** (see Algorithm), inserts into `groups` scoped to `class_id`, then triggers `generatePairMatchesForClassAction`.
+- `generatePairMatchesForClassAction(classId)` — round-robin within each group; matches inserted with `class_id` + `group_id` set.
+- `generateKnockoutForClassAction(classId)` — current `generateKnockoutAction` logic but seeded only from this class's group standings.
+
+#### Algorithm — `balancedTeamGroupAssignment(pairs, pairsPerGroup) -> Group[] | InfeasibilityError`
+
+Input: array of `{ pairId, teamId }` for one class. Output: `groups[i].pairs[]` with the **cross-team rule**: no two pairs from the same team end up in the same group, while keeping groups as balanced in size as possible.
+
+```
+1. Group pairs by teamId → teamBuckets
+2. group_count = ceil(total_pairs / pairs_per_group)
+3. Feasibility: for every team, pairs[team] <= group_count
+   (else error: "ทีม X ส่งเกินจำนวนกลุ่ม — เพิ่ม group_count หรือลดคู่")
+4. Sort teams by bucket size DESC
+5. Initialize empty groups[0..group_count-1]
+6. For each team in order:
+   - Build a list of groups sorted ASC by current pair count
+   - Assign team's pairs one at a time to the next-emptiest groups,
+     skipping any group that already contains a pair from this team
+7. Return groups
+```
+
+Edge cases:
+- **Single team submits all pairs in a class** → infeasibility error. UI suggests "ลด pairs_per_group" or "ลดคู่ทีม X".
+- **`pair_capacity` exceeded** → reject pair insert at registration; group gen never sees overflow.
+- **Uneven distribution acceptable** when class total isn't a multiple of `pairs_per_group`: last group gets fewer pairs (no synthetic BYE). Standings already handle uneven groups.
+
+#### CSV import — add `class_code`
+
+`PairCsvRow` gains `class_code: string` (required when tournament has classes; tolerated empty when `sports_day`). Server action resolves `class_code` → `class_id` via `tournament_classes.code`. Unknown code → row-level error.
+
+#### UI
+
+- **Mode selector** on `new-tournament-form.tsx` + `edit-tournament-form.tsx`: radio `sports_day` / `competition`. Default = `sports_day`.
+- **Class manager** in Settings tab (competition only): `ClassManager` component with table (code · name · capacity · pairs_per_group · format · advance · actions) + "เพิ่ม class" dialog. Drag handles for reorder.
+- **Pair tab** (competition only): top filter `Class: [All | NB | BG | N | S | P-]`. Add-pair form: `class_id` Select (required), shows progress "X/cap". Cross-class disabled if cap reached.
+- **Group/Knockout tabs**: top tabs per class (e.g. `BG · N · S · P-`); each tab is the existing single-class view scoped to that class_id.
+- **Queue tab**: stays flat (shared courts). Each row prefix `[BG]` `[N]` color-coded by class.
+- **TV / public**: standings + brackets grouped under class headers.
+- **Generate buttons** per class — owner clicks "สร้างกลุ่ม" inside the BG tab and only BG is regenerated.
+
+#### Settings flag integration
+
+- Add `default_match_format` to `TournamentSettings` (replaces individual class default).
+- Per-class `match_format` overrides tournament-level default.
+- `gameWinner(games, format)` branches: `fixed_2` returns `"a" | "b" | "draw"` based on the 2-game outcome; `best_of_3` / `best_of_5` majority logic.
+
+#### Backward compat
+
+- Existing tournaments stay `sports_day` with `class_id = NULL` everywhere — current flows untouched.
+- "Upgrade to competition mode" action: owner can convert; system creates a single default class (`code = "MAIN"`, all existing pairs/groups/matches assigned to it). Audit logged. One-way for safety.
+
+#### Permission matrix (additions)
+
+| Action | isOwner | isCoAdmin |
+|---|---|---|
+| Create/edit/delete classes | ✓ | ✗ |
+| Reorder classes | ✓ | ✗ |
+| Generate groups/bracket per class | ✓ | ✓ |
+| Assign pair to class | ✓ | ✓ |
+
+#### Estimated effort
+
+- DB + types + `TournamentClass` type: 1 h
+- Server actions (5 class CRUDs + 3 generate replacements): 3 h
+- `balancedTeamGroupAssignment` + unit edge cases: 2 h
+- `ClassManager` UI + reorder + dialog: 2 h
+- Pair tab class filter + selector: 1 h
+- Group/Knockout per-class tabs wiring: 2 h
+- CSV import `class_code`: 1 h
+- `match_format` branching in `gameWinner` + ScoreForm clamp: 1 h
+- Mode selector + upgrade action: 1 h
+- Spec update + manual test: 1 h
+- **Total ~15 h (2 working days)**
+
+#### Open questions
+
+- Should knockout brackets cross classes (a "Tournament of Champions" cross-class final)? Default: **no** — each class is fully self-contained, no cross-class matches. Add later as Phase 14 if requested.
+- Manual match in pair mode — restrict to same class? Default: **yes**.
+- Cross-team rule: when truly infeasible (one team dominates a class), allow override flag `allow_intra_team_group: true` in `tournament_classes`? Default: **off**; document workaround as "ลด pairs_per_group" first.
+
+### From real-world reference (วีนฉ่ำ #2 xlsx)
+
+Excel `/Users/x/Desktop/กำหนดการแข่งขันและผลคะแนน รายการวีนฉ่ำ ครั้งที่ 2.xlsx` (130 pairs, 5 classes NB/BG/N/S/P-, 6 courts, sheets: รายชื่อรวม/กติกา/ตารางเวลา/RunMatch/Class _/KO-_/สรุปรายการรางวัล) — patterns to adopt:
+
+**Quick wins** (small effort, do anytime):
+
+- **BYE preset score** — `insertAndResolveByes` currently inserts `games: []`. Set `games: [{a:21,b:15},{a:21,b:15}]` (winner side) so standings tiebreak (point diff / points-for) reflects real walkover convention. Fix in `src/lib/actions/matches.ts`.
+- **Fixed-2-game group format** — add `settings.group_match_format: "fixed_2" | "best_of_3" | "best_of_5"` (default `best_of_3`). Branch in `gameWinner` so `fixed_2` returns `"a"|"b"|"draw"` based on 2-game outcome; `ScoreForm` clamps to 2 rows when active. Common in Thai pair tournaments.
+- **Pair CODE auto-gen** — add `pairs.code text` (nullable). After `generateGroupsAction` for pair mode, assign `<class_code><group_letter><seed>` (e.g. `NBA1`). Display in queue / bracket / TV / CSV export. Sortable + speakable for organizers ("คู่ NBA1 มาคอร์ท 3").
+
+**Medium features**:
+
+- **Time-slot schedule grid** — currently we have queue order but no real timestamps. Add `tournaments.start_time time`, `tournaments.slot_minutes int default 30`. Auto-fill `matches.scheduled_at` during auto-rotate: `start_time + floor((queue_position-1) / court_count) * slot_minutes`. New page `/tournaments/[id]/schedule` renders HTML table time × court grid; A4 landscape print-optimized. Organizers will print and pin at venue.
+- **Per-court referee view** — `/t/[token]/court/[n]` — filters matches by `court=n`, shows in_progress + 2 next pending. Designed for referee phone. Auto-refresh + minimal UI.
+- **Prize summary page** — new field `tournaments.prize_template jsonb` = `[{rank:1, label:"ชนะเลิศ", cash:10000, trophy:true}, …]` per tournament. Page `/tournaments/[id]/prizes` auto-computes champion + runner-up + semifinalists from KO bracket per class. Print-friendly for award ceremony.
+
+**Big feature** (gated on user demand):
+
+- **Multi-class tournament** — Excel splits 5 classes (NB/BG/N/S/P-) in one event, sharing courts + queue but with independent groups/KO/standings/prizes. Currently 1 tournament = 1 format. Refactor:
+  - New `tournament_classes` table: `(id, tournament_id, code, name, format, has_lower_bracket, advance_count, settings jsonb)`
+  - Move `groups.class_id`, `pairs.class_id` (nullable for back-compat), `matches.class_id`
+  - Queue stays at tournament level (shared courts)
+  - Standings + KO + prize aggregate per class
+  - Big refactor — do only when user organizes a real multi-class event
+
+**Already aligned** (no change needed):
+
+- Match number grand serial — `matches.match_number` already global per tournament ✓
+- Master roster CSV — current roster export covers `รายชื่อรวม` (just add `code` column after CODE auto-gen ships)
+- Per-court status banner — Phase 10 `MatchQueue` "สถานะสนาม" card already does this
+
+### From Class NB/BG/N/S/P- sheets (group-stage patterns)
+
+130 pairs split across 35 groups (4 pairs/group, fixed). Each class sheet has identical round-robin layout — patterns:
+
+- **Round-robin score matrix view** — each pair row shows score (Set 1 / Set 2) vs the other 3 pairs in the group, in one compact grid (4×3 cells). Organizers read entire group standings in one glance vs scrolling a match list. **TODO**: add toggle "Matrix" button on each `GroupCard` next to existing match list — render 4×4 matrix (diagonal = self, off-diagonal = score vs that opponent).
+- **My matches view (R1/R2/R3 column)** — each pair sees the 3 match_numbers it plays in that group. Lets a player look up "when do I play next" without scanning queue. **TODO**: add `/t/[token]/pair/[code]` page (also `/team/[id]`) — shows all matches for this pair/team with court + scheduled_at + opponent. Linked from standings row "ดูแมตช์".
+- **Tiebreak criteria printed next to table** — every class sheet repeats "คะแนนผล → ผลต่างแต้ม → H2H → จับฉลาก". Standings table here hides this. **TODO**: tooltip on `Pts` column header in `StandingsTable` + footer line beneath standings ("เกณฑ์: pts → diff → points-for → H2H").
+- **Group size enforcement (4 pairs/group fixed)** — Excel always uses 4. Current `groupCount` slider auto-distributes, but uneven groups (e.g. 14 pairs ÷ 3 groups = 5+5+4) common in real events. Already supported; document recommended group size = 4 in tooltip.
+- **Advance rule supports "best of Nth place"** — NB rule: top 2 + best 4 third-placed teams across all groups → KO 16. Currently `advance_count` = top N per group only. **TODO** (Phase 12+): new field `tournaments.advance_rule jsonb` shape `{ top_per_group: 2, plus_best_nth: { rank: 3, count: 4 } }`. `seedsFromStandings` reads this and aggregates the best-of-rank pool across groups using existing tiebreak.
+- **Sequential CODE per class** (NB1..NB24) is separate from master CODE (NBA1..NBF4). Skip — adopting master CODE alone is enough.
+
+- **Queue bracket preference (knockout double-elim)**: เมื่อจัดคิว/auto-rotate ในทัวร์นาเมนต์ที่มีสายบน+สายล่าง, ให้ owner ตั้งค่าได้ว่า "สายบนแข่งก่อน" / "สายล่างแข่งก่อน" / interleaved. เก็บที่ `tournaments.queue_bracket_preference` (`upper_first` | `lower_first` | `interleaved`, default `interleaved`); ใช้ใน `autoRotateQueueAction` (sort key) + section labels ใน MatchQueue UI
+- **Court Select placeholder bug**: ใน `match-queue.tsx` row, SelectTrigger ของช่อง "สนาม" แสดงค่าดิบ `__none` ใช้คำว่า "ว่าง" แทนค่าดิบ เมื่อยังไม่เลือกสนาม (`court === ""`). สาเหตุ: SelectValue ไม่ resolve label จาก SelectItem ที่ value `__none`. Fix: ใช้ `SelectValue placeholder="—"` + value `undefined` แทน sentinel (ไม่ select item), หรือ render label ผ่าน children function ของ SelectValue

@@ -21,8 +21,10 @@ import { MatchQueue } from "@/components/tournament/match-queue";
 import { CourtManager } from "@/components/tournament/court-manager";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { EditTournamentForm } from "@/components/tournament/edit-tournament-form";
+import { SettingsManager } from "@/components/tournament/settings-manager";
 import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match } from "@/lib/types";
 import type { TournamentAdmin } from "@/lib/actions/admins";
+import { parseSettings } from "@/lib/tournament/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -112,6 +114,7 @@ export default async function TournamentDetailPage({
     : [];
 
   const s = statusLabel[t.status];
+  const settings = parseSettings(t.settings);
   const showGroups = t.match_unit === "team" && (t.format === "group_only" || t.format === "group_knockout");
   const showPairs = t.match_unit === "pair";
   const showKnockout = t.format === "group_knockout" || t.format === "knockout_only";
@@ -123,7 +126,7 @@ export default async function TournamentDetailPage({
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   return (
-    <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"}>
+    <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"} realtimeEnabled={settings.realtime_enabled}>
       <div className="space-y-6 max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
@@ -191,7 +194,7 @@ export default async function TournamentDetailPage({
             />
           }
           groupsTab={
-            <GroupStage tournamentId={t.id} groups={groups} teams={flatTeams} isOwner={canEdit} />
+            <GroupStage tournamentId={t.id} groups={groups} teams={flatTeams} isOwner={canEdit} showColorSummary={settings.color_summary} />
           }
           pairsTab={
             <PairStage
@@ -236,20 +239,23 @@ export default async function TournamentDetailPage({
                   <CardContent className="pt-4 text-sm whitespace-pre-wrap">{t.notes}</CardContent>
                 </Card>
               )}
-              <ExportButtons
-                tournamentName={t.name}
-                tournamentId={t.id}
-                matches={allMatches}
-                teams={teams}
-                pairs={pairs}
-                matchUnit={t.match_unit}
-                isOwner={canEdit}
-              />
+              {settings.export_visible && (
+                <ExportButtons
+                  tournamentName={t.name}
+                  tournamentId={t.id}
+                  matches={allMatches}
+                  teams={teams}
+                  pairs={pairs}
+                  matchUnit={t.match_unit}
+                  isOwner={canEdit}
+                />
+              )}
               {isOwner && (
                 <>
                   <ShareControls tournamentId={t.id} shareToken={t.share_token} appUrl={appUrl} />
                   <CourtManager tournamentId={t.id} initialCourts={t.courts ?? []} />
                   <CoAdminControls tournamentId={t.id} initialAdmins={coAdmins} />
+                  <SettingsManager tournamentId={t.id} initialSettings={t.settings} />
                   <EditTournamentForm tournament={t} existingTeamCount={teams.length} />
                 </>
               )}

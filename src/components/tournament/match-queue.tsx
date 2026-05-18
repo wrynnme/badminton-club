@@ -32,6 +32,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScoreForm } from "@/components/tournament/score-form";
 import {
   reorderMatchQueueAction,
@@ -183,32 +189,51 @@ export function MatchQueue({
         </Card>
       )}
 
-      <Card>
-        <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
-          <CardTitle className="text-sm flex items-center gap-2">
-            รอแข่ง <Badge variant="outline" className="text-xs">{pending.length}</Badge>
-            {reorderPending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-          </CardTitle>
+      <Tabs defaultValue="pending" className="space-y-3">
+        <TabsList className="w-full flex-wrap h-auto">
+          <TabsTrigger value="pending" className="gap-1.5">
+            รอแข่ง <Badge variant="outline" className="text-[10px] px-1 py-0">{pending.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="in_progress" className="gap-1.5">
+            กำลังแข่ง <Badge variant="outline" className="text-[10px] px-1 py-0">{inProgress.length}</Badge>
+          </TabsTrigger>
+          <TabsTrigger value="completed" className="gap-1.5">
+            จบแล้ว <Badge variant="outline" className="text-[10px] px-1 py-0">{completed.length}</Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="pending" className="space-y-2">
           {canEdit && pending.length >= 2 && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs gap-1"
-              disabled={autoPending}
-              onClick={() => startAuto(async () => {
-                const res = await autoRotateQueueAction(tournamentId);
-                if (res && "error" in res) toast.error(res.error);
-                else toast.success("จัดคิวใหม่ — หลีกเลี่ยงแข่งซ้อน");
-              })}
-            >
-              {autoPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shuffle className="h-3 w-3" />}
-              จัดคิวอัตโนมัติ
-            </Button>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                {reorderPending && <Loader2 className="h-3 w-3 animate-spin" />}
+                ลากเพื่อจัดลำดับ
+              </span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      disabled={autoPending}
+                      onClick={() => startAuto(async () => {
+                        const res = await autoRotateQueueAction(tournamentId);
+                        if (res && "error" in res) toast.error(res.error);
+                        else toast.success("จัดคิวใหม่ — หลีกเลี่ยงแข่งซ้อน");
+                      })}
+                    >
+                      {autoPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shuffle className="h-3 w-3" />}
+                      จัดคิวอัตโนมัติ
+                    </Button>
+                  }
+                />
+                <TooltipContent>สลับลำดับเพื่อไม่ให้ผู้เล่นแข่งติดต่อกัน</TooltipContent>
+              </Tooltip>
+            </div>
           )}
-        </CardHeader>
-        <CardContent className="pt-0 space-y-2">
           {pending.length === 0 ? (
-            <p className="text-sm text-muted-foreground">ไม่มีแมตช์รอแข่ง</p>
+            <p className="text-sm text-muted-foreground py-6 text-center">ไม่มีแมตช์รอแข่ง</p>
           ) : canEdit ? (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={pending.map((m) => m.id)} strategy={verticalListSortingStrategy}>
@@ -242,17 +267,12 @@ export function MatchQueue({
               ))}
             </ul>
           )}
-        </CardContent>
-      </Card>
+        </TabsContent>
 
-      {inProgress.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              กำลังแข่ง <Badge variant="outline" className="text-xs">{inProgress.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 space-y-2">
+        <TabsContent value="in_progress" className="space-y-2">
+          {inProgress.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">ไม่มีแมตช์ที่กำลังแข่ง</p>
+          ) : (
             <ul className="space-y-2">
               {inProgress.map((m) => (
                 <NonDraggableRow
@@ -266,18 +286,13 @@ export function MatchQueue({
                 />
               ))}
             </ul>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </TabsContent>
 
-      {completed.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              จบแล้ว <Badge variant="outline" className="text-xs">{completed.length}</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 space-y-2">
+        <TabsContent value="completed" className="space-y-2">
+          {completed.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-6 text-center">ยังไม่มีแมตช์ที่จบ</p>
+          ) : (
             <ul className="space-y-2">
               {completed.map((m) => (
                 <NonDraggableRow
@@ -291,9 +306,9 @@ export function MatchQueue({
                 />
               ))}
             </ul>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -468,14 +483,21 @@ function QueueRowBody({
     <div className="rounded-lg border bg-card">
       <div className="flex items-center gap-2 p-2.5">
         {dragHandleProps && (
-          <button
-            type="button"
-            {...dragHandleProps}
-            aria-label="ลากเพื่อจัดลำดับ"
-            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  {...dragHandleProps}
+                  aria-label="ลากเพื่อจัดลำดับ"
+                  className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+                >
+                  <GripVertical className="h-4 w-4" />
+                </button>
+              }
+            />
+            <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
+          </Tooltip>
         )}
 
         <div className="text-xs font-mono text-muted-foreground w-12 shrink-0">
@@ -515,10 +537,12 @@ function QueueRowBody({
                   disabled={courtPending || match.status === "completed"}
                 >
                   <SelectTrigger className="h-7 w-24 text-xs px-2">
-                    <SelectValue placeholder="—" />
+                    <SelectValue placeholder="ว่าง">
+                      {court || "ว่าง"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none">— ไม่ระบุ —</SelectItem>
+                    <SelectItem value="__none">ว่าง</SelectItem>
                     {courts.map((c) => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
                     ))}
@@ -545,48 +569,69 @@ function QueueRowBody({
           <StatusBadge status={match.status} />
 
           {canEdit && match.status === "pending" && (
-            <Button
-              size="sm"
-              variant="default"
-              className="h-7 text-xs px-2 gap-1"
-              disabled={startPending}
-              onClick={() => startStart(async () => {
-                const res = await startMatchAction(match.id, tournamentId);
-                if (res && "error" in res) toast.error(res.error);
-                else toast.success(`เริ่มแมตช์ #${match.match_number}`);
-              })}
-            >
-              {startPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-              เริ่ม
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs px-2 gap-1"
+                    disabled={startPending}
+                    onClick={() => startStart(async () => {
+                      const res = await startMatchAction(match.id, tournamentId);
+                      if (res && "error" in res) toast.error(res.error);
+                      else toast.success(`เริ่มแมตช์ #${match.match_number}`);
+                    })}
+                  >
+                    {startPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+                    เริ่ม
+                  </Button>
+                }
+              />
+              <TooltipContent>เริ่มแมตช์ #{match.match_number} + แจ้งเตือน LINE</TooltipContent>
+            </Tooltip>
           )}
 
           {canEdit && match.status === "in_progress" && (
-            <Button
-              size="sm"
-              variant="default"
-              className="h-7 text-xs px-2 gap-1"
-              onClick={() => setEditing(true)}
-            >
-              <ClipboardEdit className="h-3 w-3" />จบแข่ง
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs px-2 gap-1"
+                    onClick={() => setEditing(true)}
+                  >
+                    <ClipboardEdit className="h-3 w-3" />จบแข่ง
+                  </Button>
+                }
+              />
+              <TooltipContent>กรอกผลแมตช์ #{match.match_number}</TooltipContent>
+            </Tooltip>
           )}
 
           {canEdit && match.status === "completed" && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs px-2 gap-1"
-              aria-label="รีเซ็ตผล"
-              disabled={resetPending}
-              onClick={() => startReset(async () => {
-                const res = await resetMatchScoreAction(match.id, tournamentId);
-                if (res && "error" in res) toast.error(res.error);
-                else toast.success("รีเซ็ตผลแมตช์แล้ว");
-              })}
-            >
-              {resetPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs px-2 gap-1"
+                    aria-label="รีเซ็ตผล"
+                    disabled={resetPending}
+                    onClick={() => startReset(async () => {
+                      const res = await resetMatchScoreAction(match.id, tournamentId);
+                      if (res && "error" in res) toast.error(res.error);
+                      else toast.success("รีเซ็ตผลแมตช์แล้ว");
+                    })}
+                  >
+                    {resetPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+                  </Button>
+                }
+              />
+              <TooltipContent>รีเซ็ตผลแมตช์ #{match.match_number}</TooltipContent>
+            </Tooltip>
           )}
         </div>
       </div>
