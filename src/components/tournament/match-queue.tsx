@@ -246,11 +246,10 @@ export function MatchQueue({
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={pending.map((m) => m.id)} strategy={verticalListSortingStrategy}>
                 <ul className="space-y-2">
-                  {pending.map((m, i) => (
+                  {pending.map((m) => (
                     <SortableQueueRow
                       key={m.id}
                       match={m}
-                      index={i + 1}
                       competitorById={competitorById}
                       tournamentId={tournamentId}
                       unit={unit}
@@ -263,11 +262,10 @@ export function MatchQueue({
             </DndContext>
           ) : (
             <ul className="space-y-2">
-              {pending.map((m, i) => (
+              {pending.map((m) => (
                 <QueueRowReadOnly
                   key={m.id}
                   match={m}
-                  index={i + 1}
                   competitorById={competitorById}
                   unit={unit}
                   courts={courts}
@@ -380,7 +378,6 @@ function CompetitorLine({ c, unknownLabel, align = "left" }: { c?: Competitor; u
 
 function SortableQueueRow(props: {
   match: Match;
-  index: number;
   competitorById: Map<string, Competitor>;
   tournamentId: string;
   unit: MatchUnit;
@@ -401,7 +398,6 @@ function SortableQueueRow(props: {
     <li ref={setNodeRef} style={style} className="touch-none">
       <QueueRowBody
         match={props.match}
-        index={props.index}
         competitorById={props.competitorById}
         tournamentId={props.tournamentId}
         unit={props.unit}
@@ -425,7 +421,6 @@ function NonDraggableRow(props: {
     <li>
       <QueueRowBody
         match={props.match}
-        index={null}
         competitorById={props.competitorById}
         tournamentId={props.tournamentId}
         unit={props.unit}
@@ -439,7 +434,6 @@ function NonDraggableRow(props: {
 
 function QueueRowReadOnly(props: {
   match: Match;
-  index: number;
   competitorById: Map<string, Competitor>;
   unit: MatchUnit;
   courts: string[];
@@ -448,7 +442,6 @@ function QueueRowReadOnly(props: {
     <li>
       <QueueRowBody
         match={props.match}
-        index={props.index}
         competitorById={props.competitorById}
         tournamentId=""
         unit={props.unit}
@@ -462,7 +455,6 @@ function QueueRowReadOnly(props: {
 
 function QueueRowBody({
   match,
-  index,
   competitorById,
   tournamentId,
   unit,
@@ -471,7 +463,6 @@ function QueueRowBody({
   courts,
 }: {
   match: Match;
-  index: number | null;
   competitorById: Map<string, Competitor>;
   tournamentId: string;
   unit: MatchUnit;
@@ -534,7 +525,7 @@ function QueueRowBody({
         )}
 
         <div className="text-xs font-mono text-muted-foreground w-12 shrink-0">
-          #{index ?? match.match_number}
+          #{match.queue_position ?? match.match_number}
         </div>
 
         <DivisionBadge match={match} />

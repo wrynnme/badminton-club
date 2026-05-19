@@ -1,12 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
 import { MatchRow } from "@/components/tournament/match-row";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
-
-const VIRTUALIZE_THRESHOLD = 50;
 
 type Props = {
   matches: Match[];
@@ -17,28 +13,11 @@ type Props = {
   size?: "compact" | "comfortable";
 };
 
-export function MatchList(props: Props) {
-  if (props.matches.length <= VIRTUALIZE_THRESHOLD) {
-    return (
-      <div className="divide-y">
-        {props.matches.map((m) => (
-          <MatchRow
-            key={m.id}
-            match={m}
-            competitorById={props.competitorById}
-            tournamentId={props.tournamentId}
-            isOwner={props.isOwner}
-            unit={props.unit}
-            size={props.size}
-          />
-        ))}
-      </div>
-    );
-  }
-  return <VirtualMatchList {...props} />;
-}
-
-function VirtualMatchList({
+// Full DOM (Ctrl+F + print friendly) + `content-visibility: auto` so the
+// browser skips paint/layout for rows outside the viewport. Each row gets
+// a `contain-intrinsic-size` hint matching the estimated row height to
+// prevent scroll-jank when off-screen rows hydrate.
+export function MatchList({
   matches,
   competitorById,
   tournamentId,
@@ -46,60 +25,27 @@ function VirtualMatchList({
   unit,
   size,
 }: Props) {
-  const parentRef = useRef<HTMLDivElement>(null);
-  // Force re-render after first paint so virtualizer sees parentRef.current.
-  // Without this, getVirtualItems() returns [] on the initial render.
-  const [, setReady] = useState(false);
-  useEffect(() => {
-    setReady(true);
-  }, []);
-
-  const estimate = size === "comfortable" ? 76 : 60;
-
-  const virtualizer = useVirtualizer({
-    count: matches.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => estimate,
-    overscan: 8,
-  });
-
-  const items = virtualizer.getVirtualItems();
-  const totalSize = virtualizer.getTotalSize();
-
+  const intrinsicH = size === "comfortable" ? 76 : 60;
   return (
-    <div
-      ref={parentRef}
-      className="max-h-[600px] overflow-auto"
-    >
-      <div style={{ height: totalSize, position: "relative", width: "100%" }}>
-        {items.map((vi) => {
-          const m = matches[vi.index];
-          return (
-            <div
-              key={m.id}
-              data-index={vi.index}
-              ref={virtualizer.measureElement}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${vi.start}px)`,
-              }}
-              className="border-b last:border-b-0"
-            >
-              <MatchRow
-                match={m}
-                competitorById={competitorById}
-                tournamentId={tournamentId}
-                isOwner={isOwner}
-                unit={unit}
-                size={size}
-              />
-            </div>
-          );
-        })}
-      </div>
+    <div className="divide-y">
+      {matches.map((m) => (
+        <div
+          key={m.id}
+          style={{
+            contentVisibility: "auto",
+            containIntrinsicSize: `auto ${intrinsicH}px`,
+          }}
+        >
+          <MatchRow
+            match={m}
+            competitorById={competitorById}
+            tournamentId={tournamentId}
+            isOwner={isOwner}
+            unit={unit}
+            size={size}
+          />
+        </div>
+      ))}
     </div>
   );
 }

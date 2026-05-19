@@ -220,7 +220,7 @@ export function CreateTournamentForm() {
                     <input type="checkbox" id="has_lower_bracket" checked={field.state.value}
                       onChange={(e) => field.handleChange(e.target.checked)} className="mt-0.5" />
                     <div>
-                      <FieldLabel htmlFor="has_lower_bracket">มีสายล่าง (Lower bracket)</FieldLabel>
+                      <FieldLabel htmlFor="has_lower_bracket">มีสายล่าง</FieldLabel>
                       <FieldDescription>3rd-A vs 4th-B, 3rd-B vs 4th-C ...</FieldDescription>
                     </div>
                   </Field>

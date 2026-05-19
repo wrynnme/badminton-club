@@ -1,21 +1,21 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { toast } from "sonner";
-import { ChevronDown, ChevronUp, Swords, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
+import { ManualMatchDialog } from "@/components/tournament/manual-match-dialog";
+import { MatchList } from "@/components/tournament/match-list";
+import { PairManager } from "@/components/tournament/pair-manager";
+import { StandingsTable } from "@/components/tournament/standings-table";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PairManager } from "@/components/tournament/pair-manager";
-import { MatchList } from "@/components/tournament/match-list";
-import { StandingsTable } from "@/components/tournament/standings-table";
 import { generatePairMatchesAction } from "@/lib/actions/matches";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { computeStandings } from "@/lib/tournament/scoring";
-import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
-import { ManualMatchDialog } from "@/components/tournament/manual-match-dialog";
-import type { TeamWithPlayers, PairWithPlayers, Match, Team } from "@/lib/types";
+import type { Match, PairWithPlayers, Team, TeamWithPlayers } from "@/lib/types";
+import { ChevronDown, ChevronUp, Loader2, Swords } from "lucide-react";
+import { useMemo, useState, useTransition } from "react";
+import { toast } from "sonner";
 
 export function PairStage({
   tournamentId,
@@ -82,9 +82,9 @@ export function PairStage({
   return (
     <Tabs defaultValue="pairs" className="space-y-4">
       <TabsList className="w-full flex-wrap h-auto">
-        <TabsTrigger value="pairs">คู่</TabsTrigger>
+        <TabsTrigger value="pairs">จับคู่</TabsTrigger>
         <TabsTrigger value="matches">แข่งขัน</TabsTrigger>
-        <TabsTrigger value="standings" disabled={!showStandings}>คะแนนกลุ่ม</TabsTrigger>
+        <TabsTrigger value="standings" disabled={!showStandings}>คะแนน</TabsTrigger>
       </TabsList>
 
       {/* Pair manager per team */}
@@ -161,40 +161,40 @@ export function PairStage({
           };
           const displayGroups: { id: GroupId; matchList: typeof matches }[] = hasDivisions
             ? [
-                ...(upperMatches.length > 0 ? [{ id: "upper" as const, matchList: upperMatches }] : []),
-                ...(lowerMatches.length > 0 ? [{ id: "lower" as const, matchList: lowerMatches }] : []),
-              ]
+              ...(upperMatches.length > 0 ? [{ id: "upper" as const, matchList: upperMatches }] : []),
+              ...(lowerMatches.length > 0 ? [{ id: "lower" as const, matchList: lowerMatches }] : []),
+            ]
             : [{ id: "all" as const, matchList: undividedMatches.length > 0 ? undividedMatches : matches }];
 
           return (
             <div className="space-y-3">
               {displayGroups.map(({ id, matchList }) => {
-                const isOpen = openGroups[id] !== false;
+                const isOpen = openGroups[id] === true;
                 return (
-                <Card key={id}>
-                  <CardContent className="pt-4 space-y-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => setOpenGroups(prev => ({ ...prev, [id]: !isOpen }))}>
-                      {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                      {GROUP_LABEL[id]}
-                      <span className="ml-1">({matchList.filter(m => m.status === "completed").length}/{matchList.length})</span>
-                    </Button>
-                    {isOpen && (
-                      <MatchList
-                        matches={matchList}
-                        competitorById={pairCompetitorMap}
-                        tournamentId={tournamentId}
-                        isOwner={isOwner}
-                        unit="pair"
-                        size={matchRowSize}
-                      />
-                    )}
-                  </CardContent>
-                </Card>
+                  <Card key={id}>
+                    <CardContent className="space-y-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
+                        onClick={() => setOpenGroups(prev => ({ ...prev, [id]: !isOpen }))}>
+                        {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                        {GROUP_LABEL[id]}
+                        <span className="ml-1">({matchList.filter(m => m.status === "completed").length}/{matchList.length})</span>
+                      </Button>
+                      {isOpen && (
+                        <MatchList
+                          matches={matchList}
+                          competitorById={pairCompetitorMap}
+                          tournamentId={tournamentId}
+                          isOwner={isOwner}
+                          unit="pair"
+                          size={matchRowSize}
+                        />
+                      )}
+                    </CardContent>
+                  </Card>
                 );
               })}
             </div>

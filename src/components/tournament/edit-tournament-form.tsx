@@ -207,7 +207,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tour
                         <Checkbox id="edit_has_lower_bracket" checked={field.state.value}
                           onCheckedChange={(v) => field.handleChange(Boolean(v))} />
                         <div>
-                          <FieldLabel htmlFor="edit_has_lower_bracket">มีสายล่าง (Lower bracket)</FieldLabel>
+                          <FieldLabel htmlFor="edit_has_lower_bracket">มีสายล่าง</FieldLabel>
                         </div>
                       </Field>
                     )}

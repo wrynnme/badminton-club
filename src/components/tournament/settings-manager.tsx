@@ -339,8 +339,8 @@ export function SettingsManager({
           />
           <ToggleRow
             id="force-reset"
-            label="Allow force reset bracket"
-            description="อนุญาต reset KO match ที่รอบถัดไปจบแล้ว พร้อม cascade 1 ขั้น (ใช้กรณีพลาดบันทึกผลแล้วต้องแก้)"
+            label="บังคับรีเซ็ตสายได้"
+            description="อนุญาตรีเซ็ตแมตช์น็อคเอ้าที่รอบถัดไปจบแล้ว พร้อม cascade 1 ขั้น (ใช้กรณีพลาดบันทึกผลแล้วต้องแก้)"
             checked={settings.allow_force_bracket_reset}
             onChange={(v) => update("allow_force_bracket_reset", v)}
           />

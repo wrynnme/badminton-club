@@ -1,45 +1,62 @@
 @AGENTS.md
-@spec.md
+@.claude/agent-operating-rules.md
 
 # Project Operating Rules
 
-## Agent Communication
+## Rules
 
-- All agent outputs must be valid JSON with: trace_id, agent, status, output, assumptions
-- Agents do not communicate directly — route everything through the Orchestrator
-- Only Orchestrator speaks to the user
+Universal agent rules — envelope, hard prohibitions, human-in-the-loop gates (7 gates), handoff contract, observability, security, anti-hallucination, loop prevention, cost discipline, testing/deployment — ถูกโหลด auto จาก `@.claude/agent-operating-rules.md`.
 
-## Hard Prohibitions (all agents)
+กฎด้านล่างคือ **project-specific** ที่ extend universal rules. ถ้าขัดแย้ง: project-specific ชนะ universal ในขอบเขต project นี้.
 
-- Never write secrets, tokens, or passwords in any output or file
-- Never run destructive DB commands (DROP, DELETE without WHERE) without explicit user approval
-- Never deploy to production without QA + Security sign-off
-- Never fabricate file paths, function names, or library versions
-- Fail fast on errors — never guess through incomplete inputs
+## Delegation Rules (Claude Code)
 
-## Output Envelope
+**Default: delegate. Don't do work yourself if a specialized agent fits.**
 
-Every agent responds in this format:
+Main thread acts as Orchestrator — plans, routes, reports. Coding/search/test work goes to subagents via `Agent` tool.
 
-```json
-{
-  "trace_id": "<inherited>",
-  "agent": "<name>@<version>",
-  "status": "success | needs_clarification | out_of_scope | error",
-  "confidence": "high | medium | low",
-  "output": {},
-  "assumptions": [],
-  "warnings": [],
-  "handoff_to": "<agent or null>"
-}
-```
+### Routing matrix
 
-## Human Approval Required
+| Task                                                    | Agent (`subagent_type`) |
+| ------------------------------------------------------- | ----------------------- |
+| New API / server action / business logic                | `backend`               |
+| UI component / page / form / client logic               | `frontend`              |
+| SQL schema / migration / query optimization             | `database`              |
+| 3rd-party integration (LINE / Stripe / OAuth / webhook) | `integration`           |
+| Write/run tests, verify acceptance, find bugs           | `qa`                    |
+| Codebase exploration > 3 queries / "where is X"         | `Explore`               |
+| Design implementation strategy / architectural plan     | `Plan`                  |
+| Requirements gathering / user stories                   | `requirements`          |
+| Fits no specialized agent                               | `general-purpose`       |
+| Unsure which agent / multi-domain coordination          | `orchestrator`          |
 
-- After requirements finalized
-- After design + architecture are finalized
-- Before any production deployment
-- Before any destructive database operation
+### When to do it yourself (no agent)
+
+- Single-file edit ≤ 30 lines + you already know the exact location
+- Reading 1–2 known files (use `Read` directly)
+- Running 1 known shell command (use `Bash` directly)
+- Direct git operations (status / diff / log / commit)
+- Sync-style chat (Q&A, explanations, decisions)
+
+### Parallelize
+
+Independent work → single message, multiple `Agent` tool calls. Example: backend action + frontend component for the same feature → spawn both in parallel.
+
+### Brief like a colleague
+
+Subagent has no conversation history. Prompt must be self-contained: goal, file paths/line numbers, what's been tried, expected output format. Never write "based on findings, implement it" — name the change.
+
+### After delegating
+
+Trust but verify. Read the actual diff/changes before reporting done. Subagent summary describes intent, not result.
+
+## Project-specific overrides
+
+- **Destructive DB**: ห้าม `DROP` / `DELETE without WHERE` ทุกกรณี เว้นมี explicit user approval (ไม่ใช่แค่ Gate 4 acknowledgment — ต้อง user พิมพ์ยืนยันใน conversation)
+- **Deploy**: production deploy ต้อง QA + Security sign-off (Gate 3 บังคับ)
+- **No fabrication**: ห้ามแต่ง file paths / function names / library versions — verify ผ่าน `Read` / `grep` / `Explore` ก่อน
+- **Fail fast**: error ไม่ครบ input → return `needs_clarification` ห้าม guess (Universal rule A1.3 บังคับอยู่แล้ว — ย้ำไว้)
+- **spec.md update**: หลังทำเสร็จทุก task ต้อง update `spec.md` (ดู `## After completing any task`)
 
 ---
 
@@ -80,7 +97,7 @@ Every agent responds in this format:
 - `SortablePlayerList` uses `@dnd-kit` with `activationConstraint: { distance: 8 }` for mobile compat
 - Theme stored in `theme` cookie — `layout.tsx` reads it server-side to add `dark` class on `<html>` (no next-themes)
 
-## Tournament System (Phase 0–10 done)
+## Tournament System (Phase 0–11 done; Phase 12 require_checkin + Phase 13 competition mode planned — see `spec.md`)
 
 ### Architecture
 
@@ -89,17 +106,19 @@ Every agent responds in this format:
 - `src/lib/tournament/scoring.ts` — `computeStandings(matches, unit, ids)` returns `StandingRow[]`; `gameWinner(games)`, `leaguePoints(wins, draws)`; Win=3, Draw=1, Loss=0
 - `src/lib/tournament/bracket.ts` — `buildBracket(entries)` generates single-elimination bracket with pre-assigned UUIDs + `next_match_id` links; `buildDoubleBracket(entries)` for full double-elimination; `nextPowerOf2(n)`, `roundLabel`, `lowerRoundLabel`
 - `src/lib/tournament/bracket-visual.ts` — `buildVisualBracket(matches, section)` → `VisualRound[]`; `CARD_H`, `CONNECTOR_W` constants
+- `src/lib/tournament/settings.ts` — zod `TournamentSettingsSchema`, `parseSettings(raw)` (per-field fallback), `DEFAULT_SETTINGS` (line_notify, queue_bracket_preference, auto_advance_next, court_strict, allow_force_bracket_reset, match_cooldown_minutes, audit_log_enabled, realtime_enabled, etc.)
+- `src/lib/tournament/settings.server.ts` — `getTournamentSettings(tournamentId)` server helper
 - `src/lib/export/csv.ts` — `generateMatchesCsv`, `generateRosterCsv`, `generatePlayerImportTemplate`, `generatePairImportTemplate`, `downloadCsv`
 
 ### Schema Tables
 
-- `tournaments` — id, owner_id, name, venue?, start_date?, end_date?, notes?, mode (`sports_day`|`competition`), status, format, match_unit (`team`|`pair`), has_lower_bracket, allow_drop_to_lower (default false), seeding_method (`random`|`by_group_score`), advance_count (default 2), team_count, pair_division_threshold (numeric, nullable), share_token (text, unique, nullable), courts (text[] default `'{}'`)
+- `tournaments` — id, owner_id, name, venue?, start_date?, end_date?, notes?, mode (`sports_day`|`competition`), status, format, match_unit (`team`|`pair`), has_lower_bracket, allow_drop_to_lower (default false), seeding_method (`random`|`by_group_score`), advance_count (default 2), team_count, pair_division_threshold (numeric, nullable), share_token (text, unique, nullable), courts (text[] default `'{}'`), settings (jsonb NOT NULL default `'{}'`)
 - `teams` — id, tournament_id, name, color, seed
 - `team_players` — id, team_id, profile_id?, display_name, role (`captain`|`member`), level text, csv_id text, created_at
 - `groups` — id, tournament_id, name
 - `group_teams` — group_id, team_id, position, wins, draws, losses, points_for, points_against
 - `pairs` — id, team_id, player_id_1 (FK team_players), player_id_2 (FK team_players), display_pair_name (optional), pair_level text (stored as text; value = numeric sum of player levels), created_at
-- `matches` — id, tournament_id, group_id (nullable, FK groups), round_type (`group`|`knockout`), round_number, match_number, team_a_id, team_b_id, team_a_score (int, games-won count by side A; denormalized from `games` for fast display), team_b_score (int, games-won count by side B), pair_a_id, pair_b_id, games jsonb (`[{a,b}]`), winner_id (no FK — accepts team OR pair UUID), status, next_match_id (self-ref), next_match_slot (`a`|`b`), loser_next_match_id (self-ref), loser_next_match_slot (`a`|`b`), bracket (`upper`|`lower`|`grand_final`), division (`upper`|`lower`|null), court?, queue_position?, scheduled_at?
+- `matches` — id, tournament_id, group_id (nullable, FK groups), round_type (`group`|`knockout`), round_number, match_number, team_a_id, team_b_id, team_a_score (int, games-won count by side A; denormalized from `games` for fast display), team_b_score (int, games-won count by side B), pair_a_id, pair_b_id, games jsonb (`[{a,b}]`), winner_id (no FK — accepts team OR pair UUID), status, next_match_id (self-ref), next_match_slot (`a`|`b`), loser_next_match_id (self-ref), loser_next_match_slot (`a`|`b`), bracket (`upper`|`lower`|`grand_final`), division (`upper`|`lower`|null), court?, queue_position?, scheduled_at?, started_at?
   - partial UNIQUE index `uniq_matches_inprogress_court` on `(tournament_id, court) WHERE status='in_progress' AND court IS NOT NULL` — DB-level court occupancy guarantee
   - index `idx_matches_tournament_queue_position` on `(tournament_id, queue_position)`
 - `audit_logs` — id, tournament_id, actor_id text (LINE id or guest id; not uuid), actor_name, event_type, entity_type?, entity_id?, description, created_at
@@ -107,8 +126,8 @@ Every agent responds in this format:
 
 ### Server Actions
 
-- `src/lib/actions/tournaments.ts` — `createTournamentAction`, `updateTournamentStatusAction`, `addTeamPlayerAction` (incl. level), `updateTeamPlayerAction({display_name?, level?})`, `importPlayersCsvAction(tournamentId, PlayerCsvRow[])`, `importPairsCsvAction(tournamentId, PairCsvRow[])`, `generateShareTokenAction`, `revokeShareTokenAction`, `updateCourtsAction(tournamentId, names[])` (owner-only; trim+slice 40 chars/name, cap 50 entries)
-- `src/lib/actions/matches.ts` — `generateGroupsAction`, `generateGroupMatchesAction`, `generatePairMatchesAction` (division-aware, reads `pair_division_threshold`), `generateKnockoutAction`, `recordMatchScoreAction({ matchId, tournamentId, games })`, `resetMatchScoreAction`, `createManualMatchAction({ tournamentId, pairAId, pairBId })` (pair mode, same division), `reorderMatchQueueAction(tournamentId, orderedIds[])` (via RPC `reorder_tournament_queue`), `setMatchCourtAction({ matchId, tournamentId, court })` (court occupancy guard), `startMatchAction(matchId, tournamentId)`, `autoRotateQueueAction(tournamentId, restGap=2)` (anti back-to-back; TS-side greedy reorder, persists via RPC `reorder_tournament_queue`); helper `revalidateTournamentPaths` refreshes owner page + `/t/[token]` + `/t/[token]/tv`
+- `src/lib/actions/tournaments.ts` — `createTournamentAction`, `updateTournamentAction`, `updateTournamentStatusAction`, `updateTournamentSettingsAction(tournamentId, patch)` (owner-only, deep-merges `line_notify`), `addTeamPlayerAction` (incl. level), `updateTeamPlayerAction({display_name?, level?})`, `importPlayersCsvAction(tournamentId, PlayerCsvRow[])`, `importPairsCsvAction(tournamentId, PairCsvRow[])`, `generateShareTokenAction`, `revokeShareTokenAction`, `updateCourtsAction(tournamentId, names[])` (owner-only; trim+slice 40 chars/name, cap 50 entries)
+- `src/lib/actions/matches.ts` — `generateGroupsAction`, `generateGroupMatchesAction`, `generatePairMatchesAction` (division-aware, reads `pair_division_threshold`), `generateKnockoutAction`, `recordMatchScoreAction({ matchId, tournamentId, games })` (via RPC `record_match_score`; respects `auto_advance_next` flag; auto-advance promote calls `renumberPendingQueue` to collapse the gap), `resetMatchScoreAction` (respects `allow_force_bracket_reset` — single-level cascade; appends `queue_position = nextPendingTailPosition` so reset row joins queue tail), `cancelMatchAction(matchId, tournamentId)` (in_progress → pending; sets `queue_position = nextPendingTailPosition` in same update so row goes to queue tail), `createManualMatchAction({ tournamentId, pairAId, pairBId })` (pair mode, same division; respects `allow_manual_match_after_bracket`; insert payload includes `queue_position = nextPendingTailPosition`), `reorderMatchQueueAction(tournamentId, orderedIds[])` (via RPC `reorder_tournament_queue`), `setMatchCourtAction({ matchId, tournamentId, court })` (court occupancy guard), `startMatchAction(matchId, tournamentId)` (KO R1 blocked until same-division group matches `completed`; sets `started_at`; respects `match_cooldown_minutes`; calls `renumberPendingQueue` after audit so remaining pending get `1..N` while started match keeps its `queue_position` as the "lock number"), `autoRotateQueueAction(tournamentId, restGap?)` (reads `auto_rotate_rest_gap` + `queue_bracket_preference` + `queue_chunk_size`; persists via RPC `reorder_tournament_queue`); internal helpers `nextPendingTailPosition(sb, tournamentId)` (returns `max(queue_position)+1` of pending; `1` when empty), `renumberPendingQueue(sb, tournamentId)` (fetches pending IDs in current order and calls `reorder_tournament_queue` RPC to assign `1..N`), `revalidateTournamentPaths`
 - `src/lib/actions/pairs.ts` — `createPairAction({ teamId, playerIds: [id1,id2], name? })` — pair_level auto-computed (sum), no pair_code; `deletePairAction`
 - `src/lib/actions/admins.ts` — `addCoAdminAction`, `removeCoAdminAction` (owner-only), `getCoAdminsAction`, `getAuditLogsAction`
 
@@ -127,21 +146,24 @@ Every agent responds in this format:
 - `co-admin-controls.tsx` — owner-only: add/remove co-admins by LINE user_id
 - `audit-log-panel.tsx` — collapsible panel; owner + co-admin; newest-first, limit 50
 - `manual-match-dialog.tsx` — Dialog to create manual pair match; filters pair B by same division as pair A
-- `tournament-tabs.tsx` — client Tab wrapper: ทีม · กลุ่ม* · คู่* · Knockout* · ตารางคิว* · ตั้งค่า** (* conditional per format/state, ** owner+co-admin only via `showSettings`)
-- `match-queue.tsx` — drag-drop schedule queue: pending (sortable) · in_progress · completed; per-row court Select (or free-text) + ปุ่ม เริ่ม/จบแข่ง/รีเซ็ต + ปุ่ม จัดคิวอัตโนมัติ + court status banner (Phase 9–10)
-- `court-manager.tsx` — DnD list of court names in Settings tab; calls `updateCourtsAction` (Phase 10)
-- `tournament-live-wrapper.tsx` — Supabase Realtime client component; subscribes to match UPDATE → `router.refresh()`; shows green LIVE badge
+- `tournament-tabs.tsx` — client Tab wrapper: ทีม · กลุ่ม* · จับคู่* · น็อคเอ้า* · ตารางคิว* · ตั้งค่า** (\* conditional per format/state, ** owner+co-admin only via `showSettings`); lazy-mount per tab (`mounted: Set<TabId>`); active tab synced to `?tab=` via `useSearchParams`
+- `match-queue.tsx` — sub-tabs `รอแข่ง` (sortable) / `กำลังแข่ง` / `จบแล้ว` with count badges; per-row court Select (or free-text) + `เริ่ม` / `จบแข่ง` / `ยกเลิก` / `รีเซ็ต` + `จัดคิวอัตโนมัติ` + court status banner; row number shows `queue_position ?? match_number` (lock on start); division badge ("บน" / "ล่าง")
+- `match-list.tsx` — wraps `MatchRow` array; uses `content-visibility:auto` + `contain-intrinsic-size` for off-screen rows
+- `court-manager.tsx` — DnD list of court names in Settings tab; 250ms debounce + serialized writes; calls `updateCourtsAction`
+- `settings-manager.tsx` — owner-only Settings tab Card; toggles + numeric inputs for `TournamentSettings` flags; 500ms debounce auto-save; unmount-flush
+- `tournament-live-wrapper.tsx` — Supabase Realtime; subscribes to match + tournaments UPDATE/INSERT/DELETE → debounced `router.refresh()` (400ms trailing); respects `realtime_enabled`; green LIVE badge
+- `tv-auto-refresh.tsx` — `router.refresh()` every 60s (TV fallback when Realtime off)
 - `bracket-match-card.tsx` — compact card: competitors + game score + winner highlight
 - `bracket-view.tsx` — flex-column rounds + CSS horizontal/vertical connector lines; horizontal scroll
-- `match-row.tsx` — competitor names + game score (e.g. "2:0") + point totals; "TBD" for unassigned slots; reset (↺) or score entry; `matchRowSize` prop `"compact"` (default) | `"comfortable"` (larger text/score/dot) — propagated through `GroupStage`/`PairStage`/`KnockoutStage`/`BracketSection`
-- `score-form.tsx` — games array UI (add/remove rows of score A : score B)
+- `match-row.tsx` — memoized (custom comparator); names + game score + point totals; "TBD" for unassigned; `matchRowSize` `"compact"` (default) | `"comfortable"` — propagated through `GroupStage` / `PairStage` / `KnockoutStage` / `BracketSection`
+- `score-form.tsx` — games array UI (add/remove rows of score A : score B); clamps 0–99
 - `standings-table.tsx` — P/W/D/L/+−/Pts; Trophy icon for leader; shows pair subtitle (player names)
 
 ### Pages
 
 - `/tournaments` — list
 - `/tournaments/new` — create form (mode, format, match_unit, pair_division_threshold, advance_count, team_count …)
-- `/tournaments/[id]` — detail page with tabs (ทีม · กลุ่ม · คู่ · Knockout · ตั้งค่า); `canEdit = isOwner || isCoAdmin`
+- `/tournaments/[id]` — detail page with tabs (ทีม · กลุ่ม · จับคู่ · น็อคเอ้า · ตารางคิว · ตั้งค่า); `canEdit = isOwner || isCoAdmin`; `showSettings = canEdit`
 - `/tournaments/[id]/bracket` — visual bracket page (no auth required)
 - `/t/[token]` — public read-only share page (no auth, fetched by share_token); passes `matchRowSize="comfortable"` to all stages; `max-w-4xl` layout
 - `/t/[token]/tv` — full-screen TV display: upcoming/in-progress (top 8) + standings sidebar (top 8) + จบล่าสุด (last 6); `force-dynamic`; wrapped in `TournamentLiveWrapper`
@@ -207,8 +229,19 @@ Every agent responds in this format:
 
 - `share_token` (UUID, unique nullable) on tournaments
 - `/t/[token]` fetches tournament by share_token (service role, no auth)
-- `TournamentLiveWrapper`: Supabase Realtime `postgres_changes` on matches → `router.refresh()`
+- `matches` + `tournaments` have `REPLICA IDENTITY FULL` so `postgres_changes` payloads include filter columns
+- `TournamentLiveWrapper`: Supabase Realtime `postgres_changes` event `*` → debounced `router.refresh()` (400ms trailing); subscribes regardless of status; respects `realtime_enabled` setting
 - Owner can generate/revoke token via `share-controls.tsx`
+
+### Pre-tournament Settings (Phase 11)
+
+- `tournaments.settings jsonb` validated by `TournamentSettingsSchema`
+- Flags wired: `line_notify.{start,score,bracket,status}`, `auto_rotate_rest_gap` (0-5), `queue_bracket_preference` (`upper_first` | `lower_first` | `interleaved` | `chunk_upper_first` | `chunk_lower_first`), `queue_chunk_size` (1-50), `court_strict` (UI hint only — DB index always enforces), `color_summary`, `export_visible`, `allow_force_bracket_reset` (single-level cascade), `allow_manual_match_after_bracket`, `auto_advance_next` (filters out TBD matches), `realtime_enabled`, `audit_log_enabled`, `match_cooldown_minutes` (0-30, reads `matches.started_at`)
+- `notifyTournamentEvent(tournamentId, event, text)` in `src/lib/notification/line.ts` — reads settings, short-circuits when `line_notify[event]=false`
+
+### Thai labels
+
+- `น็อคเอ้า` (not "Knockout"), `จับคู่` (not "คู่"), `แบ่งกลุ่ม + น็อคเอ้า` (`group_knockout`), `ชิงชนะเลิศ` (Grand Final). DB enums + URL params unchanged.
 
 ## MCP Servers
 

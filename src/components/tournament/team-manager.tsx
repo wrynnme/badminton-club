@@ -1,19 +1,19 @@
 "use client";
 
-import { fieldErrors } from "@/lib/form-errors";
-import * as z from "zod";
-import { useState, useTransition } from "react";
-import { useForm } from "@tanstack/react-form";
-import { toast } from "sonner";
-import { Plus, Trash2, ChevronDown, ChevronUp, UserMinus, Pencil, Check, X, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { createTeamAction, deleteTeamAction, addTeamPlayerAction, removeTeamPlayerAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
-import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
+import { Input } from "@/components/ui/input";
+import { addTeamPlayerAction, createTeamAction, deleteTeamAction, removeTeamPlayerAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
+import { fieldErrors } from "@/lib/form-errors";
 import type { TeamWithPlayers } from "@/lib/types";
+import { useForm } from "@tanstack/react-form";
+import { Check, ChevronDown, ChevronUp, Loader2, Pencil, Plus, Trash2, UserMinus, X } from "lucide-react";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
+import * as z from "zod";
 
 const teamSchema = z.object({
   name: z.string().min(1, "ระบุชื่อทีม"),
@@ -241,7 +241,7 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
         </div>
       </CardHeader>
       {open && (
-        <CardContent className="pt-0 space-y-2">
+        <CardContent className="space-y-2">
           {team.players.length === 0 ? (
             <p className="text-xs text-muted-foreground">ยังไม่มีสมาชิก</p>
           ) : (
