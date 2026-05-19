@@ -117,8 +117,8 @@ export function CreateTournamentForm() {
               <div className="flex flex-wrap gap-2">
                 {([
                   { value: "group_only", label: "แบ่งกลุ่ม" },
-                  { value: "group_knockout", label: "แบ่งกลุ่ม + Knockout" },
-                  { value: "knockout_only", label: "Knockout" },
+                  { value: "group_knockout", label: "แบ่งกลุ่ม + น็อคเอ้า" },
+                  { value: "knockout_only", label: "น็อคเอ้า" },
                 ] as const).map((opt) => (
                   <Button key={opt.value} type="button" size="sm"
                     variant={field.state.value === opt.value ? "default" : "outline"}
@@ -203,7 +203,7 @@ export function CreateTournamentForm() {
                       </Button>
                     ))}
                   </div>
-                  <FieldDescription>จำนวนทีมที่เข้ารอบ knockout จากแต่ละกลุ่ม</FieldDescription>
+                  <FieldDescription>จำนวนทีมที่เข้ารอบน็อคเอ้าจากแต่ละกลุ่ม</FieldDescription>
                 </Field>
               )}
             </form.Field>

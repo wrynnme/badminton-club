@@ -83,7 +83,7 @@ export function TournamentTabs({
         <TabsTrigger value="teams">ทีม</TabsTrigger>
         {showGroups && <TabsTrigger value="groups">กลุ่ม</TabsTrigger>}
         {showPairs && <TabsTrigger value="pairs">คู่</TabsTrigger>}
-        {showKnockout && <TabsTrigger value="knockout">Knockout</TabsTrigger>}
+        {showKnockout && <TabsTrigger value="knockout">น็อคเอ้า</TabsTrigger>}
         {showQueue && <TabsTrigger value="queue">ตารางคิว</TabsTrigger>}
         {showSettings && <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>}
       </TabsList>

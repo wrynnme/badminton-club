@@ -183,7 +183,7 @@ export function KnockoutStage({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold">รอบ Knockout</h2>
+          <h2 className="font-semibold">รอบน็อคเอ้า</h2>
           {hasMatches && totalPlayable > 0 && (
             <Badge variant="outline" className="text-xs">{completedPlayable}/{totalPlayable} แมตช์</Badge>
           )}

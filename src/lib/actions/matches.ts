@@ -1044,13 +1044,15 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
     | "ko_upper"
     | "ko_lower"
     | "ko_other";
+  const isChunkMode =
+    bracketPref === "chunk_upper_first" || bracketPref === "chunk_lower_first";
   const bucketOf = (m: {
     round_type: string | null;
     bracket: string | null;
     division: string | null;
   }): Bucket => {
     const isKo = m.round_type === "knockout";
-    if (bracketPref === "interleaved") return isKo ? "ko_other" : "group_other";
+    if (bracketPref === "interleaved" || isChunkMode) return isKo ? "ko_other" : "group_other";
     const side = isKo ? m.bracket : m.division;
     if (side === "upper") return isKo ? "ko_upper" : "group_upper";
     if (side === "lower") return isKo ? "ko_lower" : "group_lower";
@@ -1070,10 +1072,12 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
     buckets.get(b)?.push(m);
   }
 
-  // For "interleaved", literally zip upper/lower side-by-side (U L U L) within
-  // each round_type bucket so toggling from upper_first/lower_first visibly
+  // For "interleaved" and chunked modes, re-zip upper/lower within each
+  // round_type bucket so toggling from upper_first/lower_first visibly
   // rebalances the queue. Sort by match_number first to undo prior reorders.
-  if (bracketPref === "interleaved") {
+  if (bracketPref === "interleaved" || isChunkMode) {
+    const chunkSize = isChunkMode ? settingsForRotate.queue_chunk_size : 1;
+    const leadIsLower = bracketPref === "chunk_lower_first";
     const byMatchNum = (a: { match_number: number | null }, b: { match_number: number | null }) =>
       (a.match_number ?? 0) - (b.match_number ?? 0);
     for (const key of ["group_other", "ko_other"] as const) {
@@ -1088,11 +1092,15 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
         const s = side(m as { bracket: string | null; division: string | null });
         return s !== "upper" && s !== "lower";
       }).sort(byMatchNum);
+
       const zipped: typeof pending = [];
-      const n = Math.max(upper.length, lower.length);
-      for (let i = 0; i < n; i++) {
-        if (upper[i]) zipped.push(upper[i]);
-        if (lower[i]) zipped.push(lower[i]);
+      const lead = leadIsLower ? lower : upper;
+      const trail = leadIsLower ? upper : lower;
+      let li = 0;
+      let ti = 0;
+      while (li < lead.length || ti < trail.length) {
+        for (let k = 0; k < chunkSize && li < lead.length; k++) zipped.push(lead[li++]);
+        for (let k = 0; k < chunkSize && ti < trail.length; k++) zipped.push(trail[ti++]);
       }
       zipped.push(...rest);
       buckets.set(key, zipped);
@@ -1297,7 +1305,7 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
         match.division === "upper" ? "แมตช์รอบกลุ่มสายบน"
         : match.division === "lower" ? "แมตช์รอบกลุ่มสายล่าง"
         : "แมตช์รอบกลุ่ม";
-      return { error: `ต้องรอ${label}จบทุกคู่ก่อนจึงเริ่ม knockout ได้` };
+      return { error: `ต้องรอ${label}จบทุกคู่ก่อนจึงเริ่มน็อคเอ้าได้` };
     }
   }
 

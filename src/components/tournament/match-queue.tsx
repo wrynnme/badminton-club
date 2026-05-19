@@ -337,6 +337,28 @@ function getCompetitorNames(
   };
 }
 
+function DivisionBadge({ match }: { match: Match }) {
+  // Group rounds use `division`; knockout uses `bracket`. "upper"/"lower" only.
+  const side =
+    match.round_type === "knockout" ? match.bracket : match.division;
+  if (side !== "upper" && side !== "lower") return null;
+  const isUpper = side === "upper";
+  const isKo = match.round_type === "knockout";
+  const label = isUpper ? "บน" : "ล่าง";
+  const title = `${isKo ? "สาย" : "กลุ่ม"}${label}`;
+  const tone = isUpper
+    ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+    : "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+  return (
+    <span
+      title={title}
+      className={`text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${tone}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 function StatusBadge({ status }: { status: Match["status"] }) {
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_TONE[status]}`}>
@@ -345,11 +367,13 @@ function StatusBadge({ status }: { status: Match["status"] }) {
   );
 }
 
-function CompetitorLine({ c, unknownLabel }: { c?: Competitor; unknownLabel: string }) {
+function CompetitorLine({ c, unknownLabel, align = "left" }: { c?: Competitor; unknownLabel: string; align?: "left" | "right" }) {
+  const isRight = align === "right";
   return (
-    <div className="flex items-center gap-1.5 text-sm truncate">
-      {c?.color && <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
+    <div className={`flex items-center gap-1.5 text-sm truncate ${isRight ? "justify-end" : ""}`}>
+      {!isRight && c?.color && <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
       <span className="truncate">{c?.name ?? unknownLabel}</span>
+      {isRight && c?.color && <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
     </div>
   );
 }
@@ -513,10 +537,12 @@ function QueueRowBody({
           #{index ?? match.match_number}
         </div>
 
-        <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] sm:items-center gap-x-2 gap-y-0.5">
-          <CompetitorLine c={a} unknownLabel={unknownLabel} />
-          <span className="hidden sm:inline text-muted-foreground text-xs px-1">vs</span>
-          <CompetitorLine c={b} unknownLabel={unknownLabel} />
+        <DivisionBadge match={match} />
+
+        <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] sm:items-center gap-x-1 gap-y-0.5">
+          <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" />
+          <span className="hidden sm:inline text-muted-foreground text-xs">vs</span>
+          <CompetitorLine c={b} unknownLabel={unknownLabel} align="left" />
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">

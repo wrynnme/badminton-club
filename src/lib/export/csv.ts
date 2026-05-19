@@ -12,8 +12,8 @@ function row(...cols: (string | number | null | undefined)[]): string {
 
 function roundLabel(m: Match): string {
   if (m.round_type === "group") return "กลุ่ม";
-  const bracketMap: Record<string, string> = { upper: "สายบน", lower: "สายล่าง", grand_final: "Grand Final" };
-  return bracketMap[m.bracket ?? "upper"] ?? "Knockout";
+  const bracketMap: Record<string, string> = { upper: "สายบน", lower: "สายล่าง", grand_final: "ชิงชนะเลิศ" };
+  return bracketMap[m.bracket ?? "upper"] ?? "น็อคเอ้า";
 }
 
 // ── Matches CSV ───────────────────────────────────────────────────────────────

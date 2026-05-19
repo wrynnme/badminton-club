@@ -18,9 +18,11 @@ import {
 const DEBOUNCE_MS = 500;
 
 const BRACKET_PREF_LABEL: Record<NonNullable<TournamentSettings["queue_bracket_preference"]>, string> = {
-  interleaved: "สลับ (default)",
-  upper_first: "สายบนก่อน",
-  lower_first: "สายล่างก่อน",
+  interleaved: "สลับ 1:1 (default)",
+  upper_first: "บนก่อนทั้งหมด",
+  lower_first: "ล่างก่อนทั้งหมด",
+  chunk_upper_first: "บน N : ล่าง N",
+  chunk_lower_first: "ล่าง N : บน N",
 };
 
 function ToggleRow({
@@ -205,7 +207,7 @@ export function SettingsManager({
             <ToggleRow
               id="line-bracket"
               label="สร้างสาย"
-              description="เมื่อสร้าง knockout bracket"
+              description="เมื่อสร้างสายน็อคเอ้า"
               checked={settings.line_notify.bracket}
               onChange={(v) => updateNotify("bracket", v)}
             />
@@ -274,16 +276,30 @@ export function SettingsManager({
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="interleaved">สลับ (default)</SelectItem>
-                <SelectItem value="upper_first">สายบนก่อน</SelectItem>
-                <SelectItem value="lower_first">สายล่างก่อน</SelectItem>
+                <SelectItem value="interleaved">สลับ 1:1 (default)</SelectItem>
+                <SelectItem value="upper_first">บนก่อนทั้งหมด</SelectItem>
+                <SelectItem value="lower_first">ล่างก่อนทั้งหมด</SelectItem>
+                <SelectItem value="chunk_upper_first">บน N : ล่าง N</SelectItem>
+                <SelectItem value="chunk_lower_first">ล่าง N : บน N</SelectItem>
               </SelectContent>
             </Select>
           </div>
+          {(settings.queue_bracket_preference === "chunk_upper_first" ||
+            settings.queue_bracket_preference === "chunk_lower_first") && (
+            <NumberRow
+              id="chunk-size"
+              label="ขนาด chunk (N)"
+              description="แมตช์ต่อชุดเมื่อสลับ chunk"
+              value={settings.queue_chunk_size}
+              min={1}
+              max={50}
+              onChange={(v) => update("queue_chunk_size", v)}
+            />
+          )}
           <ToggleRow
             id="manual-after-bracket"
             label="Manual match หลังสร้างสาย (pair mode)"
-            description="ปิดเพื่อล็อกตารางหลังเข้า knockout"
+            description="ปิดเพื่อล็อกตารางหลังเข้าน็อคเอ้า"
             checked={settings.allow_manual_match_after_bracket}
             onChange={(v) => update("allow_manual_match_after_bracket", v)}
           />
