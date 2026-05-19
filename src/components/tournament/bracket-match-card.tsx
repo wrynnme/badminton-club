@@ -45,7 +45,9 @@ export function BracketMatchCard({
   competitorA: Competitor | null;
   competitorB: Competitor | null;
 }) {
-  const style = { height: CARD_H, width: 192 };
+  // Subtract 6px to create a visual gap between adjacent cards within a round
+  // (3px top + 3px bottom; slot height stays at CARD_H so connector math is unchanged).
+  const style = { height: CARD_H - 6, width: 192 };
 
   if (!match) {
     return (

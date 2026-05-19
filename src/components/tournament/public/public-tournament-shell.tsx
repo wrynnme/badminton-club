@@ -1,7 +1,9 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+type TabId = "overview" | "groups" | "pairs" | "knockout" | "queue";
 
 export function PublicTournamentShell({
   overview,
@@ -24,8 +26,17 @@ export function PublicTournamentShell({
   showKnockout: boolean;
   showQueue: boolean;
 }) {
+  const [active, setActive] = useState<TabId>("overview");
+  const [mounted, setMounted] = useState<Set<TabId>>(() => new Set<TabId>(["overview"]));
+
+  const onChange = (v: string) => {
+    const next = v as TabId;
+    setActive(next);
+    setMounted((prev) => (prev.has(next) ? prev : new Set([...prev, next])));
+  };
+
   return (
-    <Tabs defaultValue="overview" className="w-full">
+    <Tabs value={active} onValueChange={onChange} className="w-full">
       <TabsList
         variant="line"
         className="w-full justify-start gap-0 rounded-none border-b bg-transparent pb-0 h-auto overflow-x-auto"
@@ -56,26 +67,26 @@ export function PublicTournamentShell({
       </TabsList>
 
       <TabsContent value="overview" className="mt-6">
-        {overview}
+        {mounted.has("overview") ? overview : null}
       </TabsContent>
       {showGroups && (
         <TabsContent value="groups" className="mt-6">
-          {groups}
+          {mounted.has("groups") ? groups : null}
         </TabsContent>
       )}
       {showPairs && (
         <TabsContent value="pairs" className="mt-6">
-          {pairs}
+          {mounted.has("pairs") ? pairs : null}
         </TabsContent>
       )}
       {showKnockout && (
         <TabsContent value="knockout" className="mt-6">
-          {knockout}
+          {mounted.has("knockout") ? knockout : null}
         </TabsContent>
       )}
       {showQueue && (
         <TabsContent value="queue" className="mt-6">
-          {queue}
+          {mounted.has("queue") ? queue : null}
         </TabsContent>
       )}
     </Tabs>

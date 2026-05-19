@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GripVertical, Loader2, Play, ClipboardEdit, RotateCcw, Shuffle, CheckCircle2 } from "lucide-react";
+import { GripVertical, Loader2, Play, ClipboardEdit, RotateCcw, Shuffle, CheckCircle2, Undo2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -45,6 +45,7 @@ import {
   startMatchAction,
   resetMatchScoreAction,
   autoRotateQueueAction,
+  cancelMatchAction,
 } from "@/lib/actions/matches";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import type { Match, MatchUnit } from "@/lib/types";
@@ -66,8 +67,15 @@ function matchKey(m: Match) {
   return m.queue_position ?? m.match_number;
 }
 
+// Sort: group matches before knockout (round_type alphabetical 'group' < 'knockout'),
+// then by queue_position falling back to match_number. Mirrors server-side
+// `.order("round_type")` in tournament page queries so client re-sort does not undo it.
 function sortMatches(list: Match[]) {
-  return [...list].sort((x, y) => matchKey(x) - matchKey(y));
+  return [...list].sort((x, y) => {
+    const r = (x.round_type ?? "").localeCompare(y.round_type ?? "");
+    if (r !== 0) return r;
+    return matchKey(x) - matchKey(y);
+  });
 }
 
 export function MatchQueue({
@@ -452,6 +460,7 @@ function QueueRowBody({
   const [courtPending, startCourt] = useTransition();
   const [startPending, startStart] = useTransition();
   const [resetPending, startReset] = useTransition();
+  const [cancelPending, startCancel] = useTransition();
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
@@ -538,7 +547,7 @@ function QueueRowBody({
                 >
                   <SelectTrigger className="h-7 w-24 text-xs px-2">
                     <SelectValue placeholder="ว่าง">
-                      {court || "ว่าง"}
+                      {(v: string | null) => (v && v !== "__none" ? v : "ว่าง")}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
@@ -593,21 +602,44 @@ function QueueRowBody({
           )}
 
           {canEdit && match.status === "in_progress" && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="sm"
-                    variant="default"
-                    className="h-7 text-xs px-2 gap-1"
-                    onClick={() => setEditing(true)}
-                  >
-                    <ClipboardEdit className="h-3 w-3" />จบแข่ง
-                  </Button>
-                }
-              />
-              <TooltipContent>กรอกผลแมตช์ #{match.match_number}</TooltipContent>
-            </Tooltip>
+            <>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs px-2 gap-1"
+                      disabled={cancelPending}
+                      onClick={() => startCancel(async () => {
+                        const res = await cancelMatchAction(match.id, tournamentId);
+                        if (res && "error" in res) toast.error(res.error);
+                        else toast.success(`ยกเลิกการแข่งแมตช์ #${match.match_number}`);
+                      })}
+                    >
+                      {cancelPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+                      ยกเลิก
+                    </Button>
+                  }
+                />
+                <TooltipContent>ยกเลิกการแข่งแมตช์ #{match.match_number} → กลับเป็นรอแข่ง</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-7 text-xs px-2 gap-1"
+                      onClick={() => setEditing(true)}
+                    >
+                      <ClipboardEdit className="h-3 w-3" />จบแข่ง
+                    </Button>
+                  }
+                />
+                <TooltipContent>กรอกผลแมตช์ #{match.match_number}</TooltipContent>
+              </Tooltip>
+            </>
           )}
 
           {canEdit && match.status === "completed" && (

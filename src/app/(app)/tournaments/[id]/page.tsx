@@ -67,7 +67,7 @@ export default async function TournamentDetailPage({
     teamIdList.length
       ? sb.from("pairs").select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)").in("team_id", teamIdList).order("created_at")
       : Promise.resolve({ data: [] }),
-    sb.from("matches").select("*").eq("tournament_id", id).order("queue_position", { ascending: true, nullsFirst: false }).order("match_number"),
+    sb.from("matches").select("*").eq("tournament_id", id).order("round_type", { ascending: true }).order("queue_position", { ascending: true, nullsFirst: false }).order("match_number"),
   ]);
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];

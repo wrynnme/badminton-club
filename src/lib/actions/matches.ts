@@ -53,6 +53,9 @@ export async function generateGroupsAction(tournamentId: string, groupCount: num
   });
   if (rpcError) return { error: "สร้างกลุ่มไม่สำเร็จ กรุณาลองใหม่" };
 
+  // Knockout bracket is seeded from group standings — regenerating groups invalidates it.
+  const koCleared = await clearKnockoutMatches(sb, tournamentId);
+
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
     tournament_id: tournamentId,
@@ -61,9 +64,48 @@ export async function generateGroupsAction(tournamentId: string, groupCount: num
     event_type: "bracket_generated",
     entity_type: "tournament",
     entity_id: tournamentId,
-    description: `สร้างกลุ่ม ${groupCount} กลุ่ม`,
+    description: `สร้างกลุ่ม ${groupCount} กลุ่ม${koCleared ? " (รีเซ็ตสาย knockout)" : ""}`,
   });
-  return { ok: true };
+  return { ok: true, knockoutCleared: koCleared };
+}
+
+async function resetGroupTeamStandings(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  tournamentId: string,
+): Promise<void> {
+  const { data: groups } = await sb
+    .from("groups")
+    .select("id")
+    .eq("tournament_id", tournamentId);
+  const groupIds = (groups ?? []).map((g) => g.id);
+  if (!groupIds.length) return;
+  const { error } = await sb
+    .from("group_teams")
+    .update({ wins: 0, draws: 0, losses: 0, points_for: 0, points_against: 0 })
+    .in("group_id", groupIds);
+  if (error) console.error("[resetGroupTeamStandings]", error);
+}
+
+async function clearKnockoutMatches(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  tournamentId: string,
+): Promise<boolean> {
+  const { count } = await sb
+    .from("matches")
+    .select("id", { count: "exact", head: true })
+    .eq("tournament_id", tournamentId)
+    .eq("round_type", "knockout");
+  if (!count) return false;
+  const { error } = await sb
+    .from("matches")
+    .delete()
+    .eq("tournament_id", tournamentId)
+    .eq("round_type", "knockout");
+  if (error) {
+    console.error("[clearKnockoutMatches]", error);
+    return false;
+  }
+  return true;
 }
 
 export async function generateGroupMatchesAction(tournamentId: string) {
@@ -104,6 +146,13 @@ export async function generateGroupMatchesAction(tournamentId: string) {
   });
   if (rpcError) return { error: "สร้างแมตช์กลุ่มไม่สำเร็จ" };
 
+  // Reset group_teams denormalized standings (wins/draws/losses/points_*) — scores in
+  // matches table got wiped by the RPC above but standings were not touched.
+  await resetGroupTeamStandings(sb, tournamentId);
+
+  // Regenerating group matches resets all scores → KO bracket seeded from standings is invalid.
+  const koCleared = await clearKnockoutMatches(sb, tournamentId);
+
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
     tournament_id: tournamentId,
@@ -112,9 +161,9 @@ export async function generateGroupMatchesAction(tournamentId: string) {
     event_type: "bracket_generated",
     entity_type: "tournament",
     entity_id: tournamentId,
-    description: `สร้างแมตช์กลุ่ม ${inserts.length} นัด`,
+    description: `สร้างแมตช์กลุ่ม ${inserts.length} นัด${koCleared ? " (รีเซ็ตสาย knockout)" : ""}`,
   });
-  return { ok: true, count: inserts.length };
+  return { ok: true, count: inserts.length, knockoutCleared: koCleared };
 }
 
 // ============ PAIR MODE ============
@@ -195,6 +244,9 @@ export async function generatePairMatchesAction(tournamentId: string) {
   });
   if (rpcError) return { error: "สร้างแมตช์คู่ไม่สำเร็จ" };
 
+  // Regenerating pair matches resets all scores → KO bracket seeded from standings is invalid.
+  const koCleared = await clearKnockoutMatches(sb, tournamentId);
+
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
     tournament_id: tournamentId,
@@ -203,9 +255,9 @@ export async function generatePairMatchesAction(tournamentId: string) {
     event_type: "bracket_generated",
     entity_type: "tournament",
     entity_id: tournamentId,
-    description: `สร้างแมตช์คู่ ${allMatchInserts.length} นัด`,
+    description: `สร้างแมตช์คู่ ${allMatchInserts.length} นัด${koCleared ? " (รีเซ็ตสาย knockout)" : ""}`,
   });
-  return { ok: true, count: allMatchInserts.length, upper: upperCount, lower: lowerCount };
+  return { ok: true, count: allMatchInserts.length, upper: upperCount, lower: lowerCount, knockoutCleared: koCleared };
 }
 
 // ============ KNOCKOUT ============
@@ -774,6 +826,7 @@ export async function recordMatchScoreAction(input: {
         .select("id, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id")
         .eq("tournament_id", input.tournamentId)
         .eq("status", "pending")
+        .order("round_type", { ascending: true })
         .order("queue_position", { ascending: true, nullsFirst: false })
         .order("match_number")
         .limit(20);
@@ -953,22 +1006,98 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
 
   const sb = await createAdminClient();
 
-  // Phase 11 — when caller omits restGap, fall back to per-tournament setting
+  // Phase 11 — per-tournament settings drive restGap (when caller omits) + bracket pref
+  const settingsForRotate = await getTournamentSettings(tournamentId);
   if (restGap === undefined) {
-    const settings = await getTournamentSettings(tournamentId);
-    restGap = settings.auto_rotate_rest_gap;
+    restGap = settingsForRotate.auto_rotate_rest_gap;
   }
 
-  // Pending matches in current queue order
+  // Pending matches in current queue order. We also need `division` (upper/lower
+  // for pair group matches split by pair_division_threshold) to honor the
+  // bracket-pref bucketing for group rounds.
+  const bracketPref = settingsForRotate.queue_bracket_preference;
   const { data: pending, error } = await sb
     .from("matches")
-    .select("id, queue_position, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id")
+    .select("id, queue_position, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id, bracket, division, round_type")
     .eq("tournament_id", tournamentId)
     .eq("status", "pending")
+    .order("round_type", { ascending: true })
     .order("queue_position", { ascending: true, nullsFirst: false })
     .order("match_number");
   if (error) return { error: "อ่านรายการแมตช์ไม่สำเร็จ" };
   if (!pending || pending.length < 2) return { ok: true, rotated: 0 };
+
+  // Snapshot current queue order BEFORE applying bracket preference so the
+  // post-greedy `changed` check detects sort-only reshuffles (no player swap)
+  // and still writes back.
+  const originalIds = pending.map((m) => m.id);
+
+  // Bucket pending matches by division priority. Within each round_type (group
+  // vs knockout), pair tournaments split matches into `division=upper/lower`
+  // (via pair_division_threshold) and double-elim knockouts split into
+  // `bracket=upper/lower`. queue_bracket_preference governs which side runs
+  // first; "interleaved" keeps them mixed for the greedy step to shuffle.
+  type Bucket =
+    | "group_upper"
+    | "group_lower"
+    | "group_other"
+    | "ko_upper"
+    | "ko_lower"
+    | "ko_other";
+  const bucketOf = (m: {
+    round_type: string | null;
+    bracket: string | null;
+    division: string | null;
+  }): Bucket => {
+    const isKo = m.round_type === "knockout";
+    if (bracketPref === "interleaved") return isKo ? "ko_other" : "group_other";
+    const side = isKo ? m.bracket : m.division;
+    if (side === "upper") return isKo ? "ko_upper" : "group_upper";
+    if (side === "lower") return isKo ? "ko_lower" : "group_lower";
+    return isKo ? "ko_other" : "group_other";
+  };
+  const bucketOrder: Bucket[] =
+    bracketPref === "upper_first"
+      ? ["group_upper", "group_lower", "group_other", "ko_upper", "ko_lower", "ko_other"]
+      : bracketPref === "lower_first"
+      ? ["group_lower", "group_upper", "group_other", "ko_lower", "ko_upper", "ko_other"]
+      : ["group_other", "ko_other"];
+
+  const buckets = new Map<Bucket, typeof pending>();
+  for (const b of bucketOrder) buckets.set(b, []);
+  for (const m of pending) {
+    const b = bucketOf(m as { round_type: string | null; bracket: string | null; division: string | null });
+    buckets.get(b)?.push(m);
+  }
+
+  // For "interleaved", literally zip upper/lower side-by-side (U L U L) within
+  // each round_type bucket so toggling from upper_first/lower_first visibly
+  // rebalances the queue. Sort by match_number first to undo prior reorders.
+  if (bracketPref === "interleaved") {
+    const byMatchNum = (a: { match_number: number | null }, b: { match_number: number | null }) =>
+      (a.match_number ?? 0) - (b.match_number ?? 0);
+    for (const key of ["group_other", "ko_other"] as const) {
+      const arr = buckets.get(key);
+      if (!arr) continue;
+      const isKo = key === "ko_other";
+      const side = (m: { bracket: string | null; division: string | null }) =>
+        isKo ? m.bracket : m.division;
+      const upper = arr.filter((m) => side(m as { bracket: string | null; division: string | null }) === "upper").sort(byMatchNum);
+      const lower = arr.filter((m) => side(m as { bracket: string | null; division: string | null }) === "lower").sort(byMatchNum);
+      const rest = arr.filter((m) => {
+        const s = side(m as { bracket: string | null; division: string | null });
+        return s !== "upper" && s !== "lower";
+      }).sort(byMatchNum);
+      const zipped: typeof pending = [];
+      const n = Math.max(upper.length, lower.length);
+      for (let i = 0; i < n; i++) {
+        if (upper[i]) zipped.push(upper[i]);
+        if (lower[i]) zipped.push(lower[i]);
+      }
+      zipped.push(...rest);
+      buckets.set(key, zipped);
+    }
+  }
 
   // In-progress matches — players currently on court count as "just played"
   const { data: inProgress } = await sb
@@ -1028,30 +1157,35 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
     for (const p of playersOf(m)) inProgressPlayers.add(p);
   }
 
-  // Greedy: pick earliest match whose players don't appear in last `restGap` placed
-  // matches (and aren't currently on court if result is still empty).
-  const remaining = [...pending];
+  // Greedy per bucket so bracket priority is strict: never schedule a lower-bracket
+  // match while an upper-bracket match is still waiting (when upper_first), and
+  // vice versa. Within a bucket, pick the earliest match whose players don't
+  // appear in the last `restGap` placed matches.
   const result: typeof pending = [];
-  while (remaining.length > 0) {
-    const recent = new Set<string>(result.length === 0 ? inProgressPlayers : []);
-    for (const m of result.slice(-restGap)) {
-      for (const p of playersOf(m)) recent.add(p);
+  for (const bucket of bucketOrder) {
+    const remaining = buckets.get(bucket) ?? [];
+    while (remaining.length > 0) {
+      const recent = new Set<string>(result.length === 0 ? inProgressPlayers : []);
+      for (const m of result.slice(-restGap)) {
+        for (const p of playersOf(m)) recent.add(p);
+      }
+      let pickIdx = -1;
+      for (let i = 0; i < remaining.length; i++) {
+        const ps = playersOf(remaining[i]);
+        const hasConflict = ps.some((p) => recent.has(p));
+        if (!hasConflict) { pickIdx = i; break; }
+      }
+      if (pickIdx < 0) pickIdx = 0;
+      result.push(remaining[pickIdx]);
+      remaining.splice(pickIdx, 1);
     }
-
-    let pickIdx = -1;
-    for (let i = 0; i < remaining.length; i++) {
-      const ps = playersOf(remaining[i]);
-      const hasConflict = ps.some((p) => recent.has(p));
-      if (!hasConflict) { pickIdx = i; break; }
-    }
-    if (pickIdx < 0) pickIdx = 0;
-    result.push(remaining[pickIdx]);
-    remaining.splice(pickIdx, 1);
   }
 
+  // Compare against ORIGINAL (pre-sort) queue order so bracket-pref reshuffles
+  // are detected even when greedy doesn't swap anything.
   let changed = 0;
   for (let i = 0; i < result.length; i++) {
-    if (result[i].id !== pending[i].id) changed += 1;
+    if (result[i].id !== originalIds[i]) changed += 1;
   }
   if (changed === 0) return { ok: true, rotated: 0 };
 
@@ -1137,13 +1271,35 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
   const sb = await createAdminClient();
   const { data: match } = await sb
     .from("matches")
-    .select("id, status, court, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id")
+    .select("id, status, court, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id, round_type, round_number, division")
     .eq("id", matchId)
     .eq("tournament_id", tournamentId)
     .maybeSingle();
   if (!match) return { error: "ไม่พบแมตช์" };
   if (match.status === "completed") return { error: "แมตช์นี้จบแล้ว" };
   if (match.status === "in_progress") return { error: "แมตช์นี้กำลังแข่งอยู่" };
+
+  // Knockout R1 cannot start until all group matches of the same division are completed.
+  // For team mode / undivided pair mode (match.division IS NULL), check ALL group matches.
+  if (match.round_type === "knockout" && match.round_number === 1) {
+    let groupQuery = sb
+      .from("matches")
+      .select("id", { count: "exact", head: true })
+      .eq("tournament_id", tournamentId)
+      .eq("round_type", "group")
+      .neq("status", "completed");
+    if (match.division) {
+      groupQuery = groupQuery.eq("division", match.division);
+    }
+    const { count: pendingGroups } = await groupQuery;
+    if ((pendingGroups ?? 0) > 0) {
+      const label =
+        match.division === "upper" ? "แมตช์รอบกลุ่มสายบน"
+        : match.division === "lower" ? "แมตช์รอบกลุ่มสายล่าง"
+        : "แมตช์รอบกลุ่ม";
+      return { error: `ต้องรอ${label}จบทุกคู่ก่อนจึงเริ่ม knockout ได้` };
+    }
+  }
 
   // Phase 11 — cooldown gate: read from matches.started_at (decoupled from audit_log_enabled).
   // Backfill on migration ensures pre-existing in_progress rows count.
@@ -1242,6 +1398,45 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
     entity_type: "match",
     entity_id: matchId,
     description: `เริ่มแมตช์ #${match.match_number}${match.court ? ` (สนาม ${match.court})` : ""}`,
+  });
+
+  return { ok: true };
+}
+
+export async function cancelMatchAction(matchId: string, tournamentId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+  const { data: match } = await sb
+    .from("matches")
+    .select("id, status, match_number, court")
+    .eq("id", matchId)
+    .eq("tournament_id", tournamentId)
+    .maybeSingle();
+  if (!match) return { error: "ไม่พบแมตช์" };
+  if (match.status !== "in_progress") return { error: "แมตช์นี้ไม่ได้กำลังแข่งอยู่" };
+
+  const { error } = await sb
+    .from("matches")
+    .update({ status: "pending", started_at: null })
+    .eq("id", matchId);
+  if (error) {
+    console.error("[cancelMatchAction]", error);
+    return { error: "ยกเลิกการแข่งไม่สำเร็จ" };
+  }
+
+  await revalidateTournamentPaths(sb, tournamentId);
+
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "match_cancelled",
+    entity_type: "match",
+    entity_id: matchId,
+    description: `ยกเลิกการแข่งแมตช์ #${match.match_number}${match.court ? ` (สนาม ${match.court})` : ""}`,
   });
 
   return { ok: true };

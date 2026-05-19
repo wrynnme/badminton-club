@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { ChevronDown, ChevronUp, Swords, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PairManager } from "@/components/tournament/pair-manager";
-import { MatchRow } from "@/components/tournament/match-row";
+import { MatchList } from "@/components/tournament/match-list";
 import { StandingsTable } from "@/components/tournament/standings-table";
 import { generatePairMatchesAction } from "@/lib/actions/matches";
-import { buildCompetitorMap, pairToCompetitor, teamToCompetitor } from "@/lib/tournament/competitor";
+import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { computeStandings } from "@/lib/tournament/scoring";
 import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
 import { ManualMatchDialog } from "@/components/tournament/manual-match-dialog";
@@ -37,12 +37,17 @@ export function PairStage({
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [genPending, startGen] = useTransition();
 
-  const flatTeams: Team[] = teams.map(({ players: _p, ...t }) => t as Team);
-  const teamById = new Map(flatTeams.map((t) => [t.id, t]));
+  const flatTeams: Team[] = useMemo(
+    () => teams.map(({ players: _p, ...t }) => t as Team),
+    [teams],
+  );
+  const teamById = useMemo(() => new Map(flatTeams.map((t) => [t.id, t])), [flatTeams]);
 
-  const pairCompetitorMap = buildCompetitorMap("pair", flatTeams, pairs);
-  const pairCompetitors = Array.from(pairCompetitorMap.values());
-  const teamCompetitors = flatTeams.map(teamToCompetitor);
+  const pairCompetitorMap = useMemo(
+    () => buildCompetitorMap("pair", flatTeams, pairs),
+    [flatTeams, pairs],
+  );
+  const pairCompetitors = useMemo(() => Array.from(pairCompetitorMap.values()), [pairCompetitorMap]);
 
   const pairsByTeam = new Map<string, PairWithPlayers[]>();
   for (const p of pairs) {
@@ -130,7 +135,8 @@ export function PairStage({
                       const parts = [];
                       if (res.upper) parts.push(`กลุ่มบน ${res.upper}`);
                       if (res.lower) parts.push(`กลุ่มล่าง ${res.lower}`);
-                      toast.success(`สร้าง ${res.count} แมตช์ (${parts.join(", ")})`);
+                      const koNote = res.knockoutCleared ? " — รีเซ็ตสาย knockout" : "";
+                      toast.success(`สร้าง ${res.count} แมตช์ (${parts.join(", ")})${koNote}`);
                     }
                   })}>
                   {genPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Swords className="h-3.5 w-3.5 mr-1" />}
@@ -178,18 +184,14 @@ export function PairStage({
                       <span className="ml-1">({matchList.filter(m => m.status === "completed").length}/{matchList.length})</span>
                     </Button>
                     {isOpen && (
-                      <div className="divide-y">
-                        {matchList.map((m) => (
-                          <MatchRow
-                            key={m.id} match={m}
-                            competitorById={pairCompetitorMap}
-                            tournamentId={tournamentId}
-                            isOwner={isOwner}
-                            unit="pair"
-                            size={matchRowSize}
-                          />
-                        ))}
-                      </div>
+                      <MatchList
+                        matches={matchList}
+                        competitorById={pairCompetitorMap}
+                        tournamentId={tournamentId}
+                        isOwner={isOwner}
+                        unit="pair"
+                        size={matchRowSize}
+                      />
                     )}
                   </CardContent>
                 </Card>

@@ -15,6 +15,11 @@ export const TournamentSettingsSchema = z.object({
     status: true,
   }),
   auto_rotate_rest_gap: z.number().int().min(0).max(5).default(2),
+  // Double-elim bracket priority for auto-rotate / queue sort:
+  //   upper_first = upper bracket matches run before lower
+  //   lower_first = lower bracket matches run before upper
+  //   interleaved = default — mixed by queue_position
+  queue_bracket_preference: z.enum(["upper_first", "lower_first", "interleaved"]).default("interleaved"),
   court_strict: z.boolean().default(true),
   color_summary: z.boolean().default(true),
   export_visible: z.boolean().default(true),

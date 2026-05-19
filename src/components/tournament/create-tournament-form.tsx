@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
 import { createTournamentAction } from "@/lib/actions/tournaments";
 import type { TournamentFormat, SeedingMethod, MatchUnit } from "@/lib/types";
+import { fieldErrors } from "@/lib/form-errors";
 
 const formSchema = z.object({
   name: z.string().min(2, "ชื่อสั้นไป"),
@@ -71,7 +72,7 @@ export function CreateTournamentForm() {
                 <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)} aria-invalid={isInvalid}
                   placeholder="เช่น กีฬาสีประจำปี 2568" />
-                {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+                {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
               </Field>
             );
           }}
@@ -291,7 +292,7 @@ export function CreateTournamentForm() {
                     className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                   <InputGroupAddon align="inline-end"><InputGroupText>ทีม</InputGroupText></InputGroupAddon>
                 </InputGroup>
-                {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+                {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
               </Field>
             );
           }}

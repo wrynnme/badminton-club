@@ -1,5 +1,6 @@
 "use client";
 
+import { fieldErrors } from "@/lib/form-errors";
 import * as React from "react";
 import * as z from "zod";
 import { useState } from "react";
@@ -113,7 +114,7 @@ export function EditClubForm({ club }: { club: Club }) {
                       onChange={(e) => field.handleChange(e.target.value)}
                       aria-invalid={isInvalid}
                     />
-                    {isInvalid && <FieldError errors={field.state.meta.errors.map((e) => ({ message: String(e) }))} />}
+                    {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
                   </Field>
                 );
               }}
@@ -133,7 +134,7 @@ export function EditClubForm({ club }: { club: Club }) {
                       onChange={(e) => field.handleChange(e.target.value)}
                       aria-invalid={isInvalid}
                     />
-                    {isInvalid && <FieldError errors={field.state.meta.errors.map((e) => ({ message: String(e) }))} />}
+                    {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
                   </Field>
                 );
               }}
@@ -154,7 +155,7 @@ export function EditClubForm({ club }: { club: Club }) {
                       onChange={(e) => field.handleChange(e.target.value)}
                       aria-invalid={isInvalid}
                     />
-                    {isInvalid && <FieldError errors={field.state.meta.errors.map((e) => ({ message: String(e) }))} />}
+                    {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
                   </Field>
                 );
               }}
@@ -242,7 +243,7 @@ export function EditClubForm({ club }: { club: Club }) {
                         <InputGroupText>คน</InputGroupText>
                       </InputGroupAddon>
                     </InputGroup>
-                    {isInvalid && <FieldError errors={field.state.meta.errors.map((e) => ({ message: String(e) }))} />}
+                    {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
                   </Field>
                 );
               }}

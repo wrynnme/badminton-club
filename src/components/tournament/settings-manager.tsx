@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { updateTournamentSettingsAction } from "@/lib/actions/tournaments";
 import {
   parseSettings,
@@ -15,6 +16,12 @@ import {
 } from "@/lib/tournament/settings";
 
 const DEBOUNCE_MS = 500;
+
+const BRACKET_PREF_LABEL: Record<NonNullable<TournamentSettings["queue_bracket_preference"]>, string> = {
+  interleaved: "สลับ (default)",
+  upper_first: "สายบนก่อน",
+  lower_first: "สายล่างก่อน",
+};
 
 function ToggleRow({
   id,
@@ -248,6 +255,31 @@ export function SettingsManager({
             checked={settings.auto_advance_next}
             onChange={(v) => update("auto_advance_next", v)}
           />
+          <div className="flex items-center justify-between gap-3 py-1">
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor="queue-bracket-pref" className="text-sm">กลุ่มไหนแข่งก่อน</Label>
+              <p className="text-xs text-muted-foreground">
+                เรียง division บน/ล่าง (กลุ่มคู่ + KO double-elim) ใน auto-rotate
+              </p>
+            </div>
+            <Select
+              value={settings.queue_bracket_preference}
+              onValueChange={(v) => update("queue_bracket_preference", v as TournamentSettings["queue_bracket_preference"])}
+            >
+              <SelectTrigger id="queue-bracket-pref" className="w-36 h-8 text-xs">
+                <SelectValue>
+                  {(v: string | null) =>
+                    BRACKET_PREF_LABEL[(v ?? "interleaved") as keyof typeof BRACKET_PREF_LABEL] ?? "สลับ (default)"
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="interleaved">สลับ (default)</SelectItem>
+                <SelectItem value="upper_first">สายบนก่อน</SelectItem>
+                <SelectItem value="lower_first">สายล่างก่อน</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <ToggleRow
             id="manual-after-bracket"
             label="Manual match หลังสร้างสาย (pair mode)"
@@ -292,7 +324,7 @@ export function SettingsManager({
           <ToggleRow
             id="force-reset"
             label="Allow force reset bracket"
-            description="bypass guard ตอน reset KO ที่รอบถัดไปเล่นแล้ว"
+            description="อนุญาต reset KO match ที่รอบถัดไปจบแล้ว พร้อม cascade 1 ขั้น (ใช้กรณีพลาดบันทึกผลแล้วต้องแก้)"
             checked={settings.allow_force_bracket_reset}
             onChange={(v) => update("allow_force_bracket_reset", v)}
           />

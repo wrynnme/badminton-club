@@ -1,5 +1,6 @@
 "use client";
 
+import { fieldErrors } from "@/lib/form-errors";
 import * as z from "zod";
 import { useState, useTransition } from "react";
 import { useForm } from "@tanstack/react-form";
@@ -49,7 +50,7 @@ function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: (
               <FieldLabel htmlFor={field.name}>ชื่อทีม *</FieldLabel>
               <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)} placeholder="เช่น ทีมแดง" />
-              {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+              {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
             </Field>
           );
         }} />
@@ -102,7 +103,7 @@ function AddMemberForm({ teamId, tournamentId, onDone }: { teamId: string; tourn
               <FieldLabel htmlFor={field.name}>ชื่อสมาชิก *</FieldLabel>
               <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)} placeholder="ชื่อ-นามสกุล" autoFocus />
-              {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+              {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
             </Field>
           );
         }} />
