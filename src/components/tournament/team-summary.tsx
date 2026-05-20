@@ -51,9 +51,10 @@ function buildTeamSummary(
   const pairIds = pairList.map((p) => p.id);
   const rows = computeStandings(matches, "pair", pairIds);
 
+  const pairById = new Map(pairList.map((p) => [p.id, p]));
   const ptsPerTeam = new Map<string, number>();
   for (const row of rows) {
-    const pair = pairList.find((p) => p.id === row.competitorId);
+    const pair = pairById.get(row.competitorId);
     if (!pair) continue;
     ptsPerTeam.set(pair.team_id, (ptsPerTeam.get(pair.team_id) ?? 0) + row.leaguePoints);
   }

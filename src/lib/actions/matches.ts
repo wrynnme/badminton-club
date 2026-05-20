@@ -699,7 +699,6 @@ export async function createManualMatchAction(input: {
     console.error("[createManualMatchAction]", error);
     return { error: "สร้างแมตช์ไม่สำเร็จ" };
   }
-  void newMatchId;
 
   revalidatePath(`/tournaments/${input.tournamentId}`);
   await writeAuditLog({
@@ -708,6 +707,7 @@ export async function createManualMatchAction(input: {
     actor_name: session.displayName,
     event_type: "match_created",
     entity_type: "match",
+    entity_id: (newMatchId as string | null) ?? undefined,
     description: "สร้างแมตช์ manual",
   });
   return { ok: true };
