@@ -34,7 +34,12 @@ BEGIN
     RAISE EXCEPTION 'invalid_col_prefix' USING ERRCODE = '22023';
   END IF;
 
-  -- Lock subject row first.
+  -- Acquire advisory lock FIRST (matches sibling RPCs' order to avoid deadlock
+  -- with cancel_match_to_queue_tail / reset_match_to_queue_tail / create_manual_match
+  -- under concurrent reset + cancel on the same tournament).
+  PERFORM pg_advisory_xact_lock(hashtext(p_tournament_id::text));
+
+  -- Lock subject row.
   SELECT id, status, round_type,
          next_match_id, next_match_slot,
          loser_next_match_id, loser_next_match_slot
@@ -117,9 +122,7 @@ BEGIN
     END IF;
   END IF;
 
-  -- ── tail position (advisory lock for per-tournament serialisation) ─────────
-  PERFORM pg_advisory_xact_lock(hashtext(p_tournament_id::text));
-
+  -- ── tail position (advisory lock already held since function entry) ──────
   SELECT COALESCE(MAX(queue_position), 0) + 1
     INTO v_tail
     FROM public.matches
