@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupInput } from "@/components/ui/input-group";
-import { MatchRow } from "@/components/tournament/match-row";
+import { MatchList } from "@/components/tournament/match-list";
 import { StandingsTable } from "@/components/tournament/standings-table";
 import {
   generateGroupsAction,
@@ -109,9 +109,11 @@ function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
 }) {
   const [showMatches, setShowMatches] = useState(true);
 
-  const groupTeamIds = group.group_teams.map((gt) => gt.team_id);
-  const competitors = teams.filter((t) => groupTeamIds.includes(t.id)).map(teamToCompetitor);
-  const competitorMap = new Map(competitors.map((c) => [c.id, c]));
+  const competitors = useMemo(() => {
+    const groupTeamIds = group.group_teams.map((gt) => gt.team_id);
+    return teams.filter((t) => groupTeamIds.includes(t.id)).map(teamToCompetitor);
+  }, [group.group_teams, teams]);
+  const competitorMap = useMemo(() => new Map(competitors.map((c) => [c.id, c])), [competitors]);
 
   return (
     <Card>
@@ -134,17 +136,14 @@ function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
               แมตช์ ({group.matches.length})
             </Button>
             {showMatches && (
-              <div className="divide-y">
-                {group.matches.map((m) => (
-                  <MatchRow
-                    key={m.id} match={m}
-                    competitorById={competitorMap}
-                    tournamentId={tournamentId}
-                    isOwner={isOwner} unit="team"
-                    size={matchRowSize}
-                  />
-                ))}
-              </div>
+              <MatchList
+                matches={group.matches}
+                competitorById={competitorMap}
+                tournamentId={tournamentId}
+                isOwner={isOwner}
+                unit="team"
+                size={matchRowSize}
+              />
             )}
           </>
         )}
@@ -199,7 +198,7 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize,
                 onClick={() => startGen(async () => {
                   const res = await generateGroupsAction(tournamentId, groupCount);
                   if (res?.error) toast.error(res.error);
-                  else toast.success("แบ่งกลุ่มแล้ว");
+                  else toast.success(res?.knockoutCleared ? "แบ่งกลุ่มแล้ว — รีเซ็ตสาย knockout" : "แบ่งกลุ่มแล้ว");
                 })}>
                 {genPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
                 {hasGroups ? "สุ่มใหม่" : "แบ่งกลุ่ม"}
@@ -210,7 +209,7 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize,
                   onClick={() => startMatch(async () => {
                     const res = await generateGroupMatchesAction(tournamentId);
                     if (res?.error) toast.error(res.error);
-                    else toast.success(`สร้าง ${res.count} แมตช์แล้ว`);
+                    else toast.success(`สร้าง ${res.count} แมตช์แล้ว${res?.knockoutCleared ? " — รีเซ็ตสาย knockout" : ""}`);
                   })}>
                   {matchPending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
                   สร้างตารางแข่ง

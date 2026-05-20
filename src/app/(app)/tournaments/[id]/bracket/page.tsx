@@ -85,7 +85,7 @@ export default async function BracketPage({
       </div>
 
       {!hasBracket && (
-        <p className="text-sm text-muted-foreground">ยังไม่มีสาย knockout — กลับไปสร้างตารางก่อน</p>
+        <p className="text-sm text-muted-foreground">ยังไม่มีสายน็อคเอ้า — กลับไปสร้างตารางก่อน</p>
       )}
 
       {hasBracket && (

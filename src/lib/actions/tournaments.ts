@@ -28,11 +28,16 @@ async function loginRedirect(): Promise<never> {
   redirect(`/?auth_error=login_required&redirectTo=${encodeURIComponent(redirectTo)}`);
 }
 
+const emptyToNull = z
+  .string()
+  .optional()
+  .transform((s) => (s && s.length > 0 ? s : null));
+
 const TournamentSchema = z.object({
   name: z.string().min(2, "ชื่อทัวร์นาเมนต์สั้นไป"),
-  venue: z.string().optional(),
-  start_date: z.string().optional(),
-  end_date: z.string().optional(),
+  venue: emptyToNull,
+  start_date: emptyToNull,
+  end_date: emptyToNull,
   format: z.enum(["group_only", "group_knockout", "knockout_only"]),
   match_unit: z.enum(["team", "pair"]).default("team"),
   has_lower_bracket: z.boolean().default(false),
@@ -62,7 +67,10 @@ export async function createTournamentAction(input: CreateTournamentInput) {
     .select("id")
     .single();
 
-  if (error || !data) return { error: "สร้างทัวร์นาเมนต์ไม่สำเร็จ" };
+  if (error || !data) {
+    console.error("[createTournamentAction]", error);
+    return { error: "สร้างทัวร์นาเมนต์ไม่สำเร็จ" };
+  }
 
   await writeAuditLog({
     tournament_id: data.id,
@@ -100,7 +108,10 @@ export async function updateTournamentAction(input: CreateTournamentInput & { id
     .maybeSingle();
 
   const { error } = await sb.from("tournaments").update(parsed.data).eq("id", id);
-  if (error) return { error: "บันทึกการตั้งค่าไม่สำเร็จ" };
+  if (error) {
+    console.error("[updateTournamentAction]", error);
+    return { error: "บันทึกการตั้งค่าไม่สำเร็จ" };
+  }
 
   const changedFields: string[] = [];
   if (before) {
@@ -142,7 +153,10 @@ export async function updateCourtsAction(tournamentId: string, courts: string[])
 
   const sb = await createAdminClient();
   const { error } = await sb.from("tournaments").update({ courts: deduped }).eq("id", tournamentId);
-  if (error) return { error: "บันทึกสนามไม่สำเร็จ" };
+  if (error) {
+    console.error("[updateCourtsAction]", error);
+    return { error: "บันทึกสนามไม่สำเร็จ" };
+  }
 
   await writeAuditLog({
     tournament_id: tournamentId,
@@ -166,7 +180,10 @@ export async function updateTournamentStatusAction(id: string, status: "draft" |
 
   const sb = await createAdminClient();
   const { error } = await sb.from("tournaments").update({ status }).eq("id", id);
-  if (error) return { error: "บันทึกการตั้งค่าไม่สำเร็จ" };
+  if (error) {
+    console.error("[updateTournamentStatusAction]", error);
+    return { error: "บันทึกสถานะไม่สำเร็จ" };
+  }
 
   revalidatePath(`/tournaments/${id}`);
   await writeAuditLog({
@@ -220,7 +237,10 @@ export async function updateTournamentSettingsAction(
     .from("tournaments")
     .update({ settings: merged })
     .eq("id", tournamentId);
-  if (writeErr) return { error: "บันทึก settings ไม่สำเร็จ" };
+  if (writeErr) {
+    console.error("[updateTournamentSettingsAction]", writeErr);
+    return { error: "บันทึก settings ไม่สำเร็จ" };
+  }
 
   if (changedKeys.length > 0) {
     await writeAuditLog({
@@ -261,7 +281,10 @@ export async function createTeamAction(input: CreateTeamInput) {
 
   const sb = await createAdminClient();
   const { error } = await sb.from("teams").insert(parsed.data);
-  if (error) return { error: "เพิ่มทีมไม่สำเร็จ" };
+  if (error) {
+    console.error("[createTeamAction]", error);
+    return { error: "เพิ่มทีมไม่สำเร็จ" };
+  }
 
   revalidatePath(`/tournaments/${parsed.data.tournament_id}`);
   await writeAuditLog({
@@ -311,7 +334,10 @@ export async function addTeamPlayerAction(input: { team_id: string; display_name
     level: input.level || null,
     profile_id: session.profileId,
   });
-  if (error) return { error: "เพิ่มผู้เล่นไม่สำเร็จ" };
+  if (error) {
+    console.error("[addTeamPlayerAction]", error);
+    return { error: "เพิ่มผู้เล่นไม่สำเร็จ" };
+  }
 
   revalidatePath(`/tournaments/${input.tournament_id}`);
   await writeAuditLog({
@@ -570,7 +596,10 @@ export async function updateTeamPlayerAction(
   const sb = await createAdminClient();
   const { error } = await sb
     .from("team_players").update(update).eq("id", playerId);
-  if (error) return { error: "บันทึกข้อมูลผู้เล่นไม่สำเร็จ" };
+  if (error) {
+    console.error("[updateTeamPlayerAction]", error);
+    return { error: "บันทึกข้อมูลผู้เล่นไม่สำเร็จ" };
+  }
 
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
@@ -596,7 +625,10 @@ export async function generateShareTokenAction(tournamentId: string) {
   const sb = await createAdminClient();
   const token = crypto.randomUUID();
   const { error } = await sb.from("tournaments").update({ share_token: token }).eq("id", tournamentId);
-  if (error) return { error: "สร้างลิงก์ไม่สำเร็จ" };
+  if (error) {
+    console.error("[generateShareTokenAction]", error);
+    return { error: "สร้างลิงก์ไม่สำเร็จ" };
+  }
 
   await writeAuditLog({
     tournament_id: tournamentId,
@@ -620,7 +652,10 @@ export async function revokeShareTokenAction(tournamentId: string) {
 
   const sb = await createAdminClient();
   const { error } = await sb.from("tournaments").update({ share_token: null }).eq("id", tournamentId);
-  if (error) return { error: "ยกเลิกลิงก์ไม่สำเร็จ" };
+  if (error) {
+    console.error("[revokeShareTokenAction]", error);
+    return { error: "ยกเลิกลิงก์ไม่สำเร็จ" };
+  }
 
   await writeAuditLog({
     tournament_id: tournamentId,

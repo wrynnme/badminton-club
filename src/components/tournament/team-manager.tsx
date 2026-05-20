@@ -1,18 +1,20 @@
 "use client";
 
-import * as z from "zod";
-import { useState, useTransition } from "react";
-import { useForm } from "@tanstack/react-form";
-import { toast } from "sonner";
-import { Plus, Trash2, ChevronDown, ChevronUp, UserMinus, Pencil, Check, X, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { createTeamAction, deleteTeamAction, addTeamPlayerAction, removeTeamPlayerAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
-import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
-import type { TeamWithPlayers } from "@/lib/types";
+import { Input } from "@/components/ui/input";
+import { addTeamPlayerAction, createTeamAction, deleteTeamAction, removeTeamPlayerAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
+import { fieldErrors } from "@/lib/form-errors";
+import type { Match, MatchUnit, Pair, TeamWithPlayers } from "@/lib/types";
+import { useForm } from "@tanstack/react-form";
+import { Check, ChevronDown, ChevronUp, Loader2, Pencil, Plus, Trash2, UserMinus, X } from "lucide-react";
+import { useState, useTransition } from "react";
+import { toast } from "sonner";
+import { TeamSummary } from "@/components/tournament/team-summary";
+import * as z from "zod";
 
 const teamSchema = z.object({
   name: z.string().min(1, "ระบุชื่อทีม"),
@@ -49,7 +51,7 @@ function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: (
               <FieldLabel htmlFor={field.name}>ชื่อทีม *</FieldLabel>
               <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)} placeholder="เช่น ทีมแดง" />
-              {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+              {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
             </Field>
           );
         }} />
@@ -102,7 +104,7 @@ function AddMemberForm({ teamId, tournamentId, onDone }: { teamId: string; tourn
               <FieldLabel htmlFor={field.name}>ชื่อสมาชิก *</FieldLabel>
               <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
                 onChange={(e) => field.handleChange(e.target.value)} placeholder="ชื่อ-นามสกุล" autoFocus />
-              {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+              {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
             </Field>
           );
         }} />
@@ -240,7 +242,7 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
         </div>
       </CardHeader>
       {open && (
-        <CardContent className="pt-0 space-y-2">
+        <CardContent className="space-y-2">
           {team.players.length === 0 ? (
             <p className="text-xs text-muted-foreground">ยังไม่มีสมาชิก</p>
           ) : (
@@ -271,17 +273,29 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
   );
 }
 
-export function TeamManager({ tournamentId, teams, isOwner, teamCount }: {
+export function TeamManager({ tournamentId, teams, isOwner, teamCount, matches, pairs, matchUnit }: {
   tournamentId: string;
   teams: TeamWithPlayers[];
   isOwner: boolean;
   teamCount: number;
+  matches?: Match[];
+  pairs?: Pair[];
+  matchUnit?: MatchUnit;
 }) {
   const [adding, setAdding] = useState(false);
   const remaining = teamCount - teams.length;
+  const flatTeams = teams.map(({ players: _p, ...x }) => x);
 
   return (
     <div className="space-y-3">
+      {matches && matchUnit && (
+        <TeamSummary
+          teams={flatTeams}
+          matches={matches}
+          pairs={pairs}
+          matchUnit={matchUnit}
+        />
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="font-semibold">ทีม</h2>

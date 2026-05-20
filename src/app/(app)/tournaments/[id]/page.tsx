@@ -37,8 +37,8 @@ const statusLabel: Record<string, { label: string; variant: "default" | "seconda
 
 const formatLabel: Record<string, string> = {
   group_only: "แบ่งกลุ่ม",
-  group_knockout: "แบ่งกลุ่ม + Knockout",
-  knockout_only: "Knockout",
+  group_knockout: "แบ่งกลุ่ม + น็อคเอ้า",
+  knockout_only: "น็อคเอ้า",
 };
 
 export default async function TournamentDetailPage({
@@ -67,7 +67,7 @@ export default async function TournamentDetailPage({
     teamIdList.length
       ? sb.from("pairs").select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)").in("team_id", teamIdList).order("created_at")
       : Promise.resolve({ data: [] }),
-    sb.from("matches").select("*").eq("tournament_id", id).order("queue_position", { ascending: true, nullsFirst: false }).order("match_number"),
+    sb.from("matches").select("*").eq("tournament_id", id).order("round_type", { ascending: true }).order("queue_position", { ascending: true, nullsFirst: false }).order("match_number"),
   ]);
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];
@@ -191,6 +191,9 @@ export default async function TournamentDetailPage({
               teams={teams}
               isOwner={canEdit}
               teamCount={t.team_count}
+              matches={allMatches}
+              pairs={pairs}
+              matchUnit={t.match_unit}
             />
           }
           groupsTab={

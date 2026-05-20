@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { memo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
-export function MatchRow({
+function MatchRowImpl({
   match,
   competitorById,
   tournamentId,
@@ -106,3 +106,35 @@ export function MatchRow({
     </div>
   );
 }
+
+export const MatchRow = memo(MatchRowImpl, (prev, next) => {
+  if (
+    prev.tournamentId !== next.tournamentId ||
+    prev.isOwner !== next.isOwner ||
+    prev.unit !== next.unit ||
+    prev.size !== next.size ||
+    prev.competitorById !== next.competitorById
+  ) {
+    return false;
+  }
+  const a = prev.match;
+  const b = next.match;
+  if (
+    a.id !== b.id ||
+    a.status !== b.status ||
+    a.team_a_id !== b.team_a_id ||
+    a.team_b_id !== b.team_b_id ||
+    a.pair_a_id !== b.pair_a_id ||
+    a.pair_b_id !== b.pair_b_id ||
+    a.team_a_score !== b.team_a_score ||
+    a.team_b_score !== b.team_b_score ||
+    a.winner_id !== b.winner_id ||
+    a.court !== b.court ||
+    a.queue_position !== b.queue_position
+  ) {
+    return false;
+  }
+  // games is a small array; JSON compare is cheap and accurate
+  if (JSON.stringify(a.games) !== JSON.stringify(b.games)) return false;
+  return true;
+});

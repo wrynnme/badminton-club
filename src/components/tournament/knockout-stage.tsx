@@ -183,7 +183,7 @@ export function KnockoutStage({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold">รอบ Knockout</h2>
+          <h2 className="font-semibold">รอบน็อคเอ้า</h2>
           {hasMatches && totalPlayable > 0 && (
             <Badge variant="outline" className="text-xs">{completedPlayable}/{totalPlayable} แมตช์</Badge>
           )}
@@ -204,12 +204,12 @@ export function KnockoutStage({
                 startGen(async () => {
                   const res = await generateKnockoutAction(tournamentId);
                   if ("error" in res) toast.error(res.error);
-                  else toast.success(`สร้าง bracket ${res.count} แมตช์แล้ว`);
+                  else toast.success(`สร้างสาย ${res.count} แมตช์แล้ว`);
                 })
               }
             >
               {isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
-              {hasMatches ? "สร้าง bracket ใหม่" : "สร้าง bracket"}
+              {hasMatches ? "สร้างสายใหม่" : "สร้างสาย"}
             </Button>
           )}
         </div>
@@ -227,7 +227,7 @@ export function KnockoutStage({
             </div>
           ))}
           {allReqsMet && !hasMatches && (
-            <p className="text-xs text-muted-foreground pt-1">พร้อมสร้าง bracket แล้ว</p>
+            <p className="text-xs text-muted-foreground pt-1">พร้อมสร้างสายแล้ว</p>
           )}
         </div>
       )}

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
 import { createTournamentAction } from "@/lib/actions/tournaments";
 import type { TournamentFormat, SeedingMethod, MatchUnit } from "@/lib/types";
+import { fieldErrors } from "@/lib/form-errors";
 
 const formSchema = z.object({
   name: z.string().min(2, "ชื่อสั้นไป"),
@@ -71,7 +72,7 @@ export function CreateTournamentForm() {
                 <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)} aria-invalid={isInvalid}
                   placeholder="เช่น กีฬาสีประจำปี 2568" />
-                {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+                {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
               </Field>
             );
           }}
@@ -116,8 +117,8 @@ export function CreateTournamentForm() {
               <div className="flex flex-wrap gap-2">
                 {([
                   { value: "group_only", label: "แบ่งกลุ่ม" },
-                  { value: "group_knockout", label: "แบ่งกลุ่ม + Knockout" },
-                  { value: "knockout_only", label: "Knockout" },
+                  { value: "group_knockout", label: "แบ่งกลุ่ม + น็อคเอ้า" },
+                  { value: "knockout_only", label: "น็อคเอ้า" },
                 ] as const).map((opt) => (
                   <Button key={opt.value} type="button" size="sm"
                     variant={field.state.value === opt.value ? "default" : "outline"}
@@ -202,7 +203,7 @@ export function CreateTournamentForm() {
                       </Button>
                     ))}
                   </div>
-                  <FieldDescription>จำนวนทีมที่เข้ารอบ knockout จากแต่ละกลุ่ม</FieldDescription>
+                  <FieldDescription>จำนวนทีมที่เข้ารอบน็อคเอ้าจากแต่ละกลุ่ม</FieldDescription>
                 </Field>
               )}
             </form.Field>
@@ -219,7 +220,7 @@ export function CreateTournamentForm() {
                     <input type="checkbox" id="has_lower_bracket" checked={field.state.value}
                       onChange={(e) => field.handleChange(e.target.checked)} className="mt-0.5" />
                     <div>
-                      <FieldLabel htmlFor="has_lower_bracket">มีสายล่าง (Lower bracket)</FieldLabel>
+                      <FieldLabel htmlFor="has_lower_bracket">มีสายล่าง</FieldLabel>
                       <FieldDescription>3rd-A vs 4th-B, 3rd-B vs 4th-C ...</FieldDescription>
                     </div>
                   </Field>
@@ -291,7 +292,7 @@ export function CreateTournamentForm() {
                     className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                   <InputGroupAddon align="inline-end"><InputGroupText>ทีม</InputGroupText></InputGroupAddon>
                 </InputGroup>
-                {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+                {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
               </Field>
             );
           }}

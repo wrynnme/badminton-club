@@ -21,7 +21,7 @@ export default async function NewTournamentPage() {
               <CardTitle className="text-base">กีฬาสี</CardTitle>
               <Badge>เลือกอยู่</Badge>
             </div>
-            <CardDescription>แบ่งทีม แข่งแบบกลุ่มหรือ knockout</CardDescription>
+            <CardDescription>แบ่งทีม แข่งแบบกลุ่มหรือน็อคเอ้า</CardDescription>
           </CardHeader>
         </Card>
         <Card className="opacity-60 relative overflow-hidden">

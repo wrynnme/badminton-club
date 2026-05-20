@@ -15,6 +15,20 @@ export const TournamentSettingsSchema = z.object({
     status: true,
   }),
   auto_rotate_rest_gap: z.number().int().min(0).max(5).default(2),
+  // Bracket/division priority for auto-rotate / queue sort:
+  //   upper_first        = all upper before any lower
+  //   lower_first        = all lower before any upper
+  //   interleaved        = literal U-L-U-L zip
+  //   chunk_upper_first  = N upper, then N lower, alternate (N = queue_chunk_size)
+  //   chunk_lower_first  = N lower, then N upper, alternate
+  queue_bracket_preference: z.enum([
+    "upper_first",
+    "lower_first",
+    "interleaved",
+    "chunk_upper_first",
+    "chunk_lower_first",
+  ]).default("interleaved"),
+  queue_chunk_size: z.number().int().min(1).max(50).default(10),
   court_strict: z.boolean().default(true),
   color_summary: z.boolean().default(true),
   export_visible: z.boolean().default(true),

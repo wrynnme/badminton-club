@@ -363,6 +363,15 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **Cards grid** `grid-cols-2 sm:grid-cols-4` — แต่ละสี: color ring (`--tw-ring-color` CSS variable) + pts + ชื่อทีม (truncate)
 - **Bar chart** — horizontal bars ความกว้างตาม `pts/maxPts`; `Card`/`CardContent`; `transition-[width] duration-500`
 
+### Team Summary (Teams Tab)
+
+- **Component**: `TeamSummary` ใน `src/components/tournament/team-summary.tsx`
+- Mounted ที่หัวของแท็บ `ทีม` ผ่าน `team-manager.tsx` (รับ props `matches`, `pairs`, `matchUnit`)
+- Team mode: `computeStandings(matches, "team", teamIds)` แล้ว map row.id → team
+- Pair mode: aggregate `leaguePoints` ของทุก pair group by `pair.team_id`
+- แสดงเมื่อ `completedMatches > 0 && teams.length >= 2`
+- รูปแบบ: horizontal bars ตาม ColorSummary pattern; `--tw-ring-color` CSS var, `transition-[width] duration-500`; `useMemo` aggregation
+
 ---
 
 ## Phase 9 — Match Schedule/Queue
@@ -479,6 +488,40 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **`audit_log_enabled`**: caller pays one extra read per write. Acceptable now; cache later if write volume grows.
 - **`auto_advance_next`**: no LINE notify on the auto-promoted match (different code path); add later if needed.
 - **`allow_force_bracket_reset`**: single-level cascade only — resets `next_match` / `loser_next_match` one hop. If that row's downstream rounds are also completed, a second manual reset is required. A recursive cascade would need a Postgres RPC.
+
+### Queue # lock + chunked bracket priority (2026-05-19)
+
+- **Queue # lock on start**: `MatchQueue` rows now display `match.queue_position ?? match.match_number` instead of immutable `match_number`. Pending rows show position-in-queue (`1..N`); in-progress/completed rows show the `queue_position` snapshot from the moment status flipped (RPC `reorder_tournament_queue` only touches rows in the supplied ID list, which is always pending-only).
+  - New helpers in `src/lib/actions/matches.ts` (Internal helpers section):
+    - `nextPendingTailPosition(sb, tournamentId)` — returns `max(queue_position)+1` of pending rows; `1` when empty
+    - `renumberPendingQueue(sb, tournamentId)` — fetches pending IDs in current order and calls `reorder_tournament_queue` RPC so they get `1..N`
+  - `startMatchAction` calls `renumberPendingQueue` after audit + LINE so the gap collapses; started match keeps its old `queue_position` as the lock number
+  - `recordMatchScoreAction` auto-advance path calls `renumberPendingQueue` after promoting next match
+  - `cancelMatchAction` (in_progress → pending) sets `queue_position = nextPendingTailPosition` in the same update payload — match goes to end of queue
+  - `resetMatchScoreAction` (completed → pending) does the same
+  - `createManualMatchAction` includes `queue_position = nextPendingTailPosition` in the insert payload so manual rows append at the tail
+  - `match-queue.tsx`: removed unused `index` prop from `SortableQueueRow` / `NonDraggableRow` / `QueueRowReadOnly` / `QueueRowBody` (no longer needed since display reads from match data)
+- **Chunked bracket priority** (`queue_bracket_preference`):
+  - Schema (`src/lib/tournament/settings.ts`): enum extended with `chunk_upper_first` + `chunk_lower_first`; new field `queue_chunk_size: number (1..50, default 10)`
+  - `autoRotateQueueAction` (`matches.ts`): bucket logic upgraded — `upper_first`/`lower_first` stay strict (process all of one side then the other); `interleaved` literally zips `U-L-U-L`; chunk modes zip in chunks of `N` (e.g. `chunk_lower_first` + `N=10` → `L1..L10 U1..U10 L11..L20 U11..U20`). Greedy rest-gap still applies after the zip. Sort key respects both `m.division` (group rounds) and `m.bracket` (knockout) — group uses pair_division_threshold split, knockout uses double-elim upper/lower.
+  - `settings-manager.tsx`: Select dropdown gets 2 new options + conditional `NumberRow` for chunk size when a chunk mode is selected; label "กลุ่มไหนแข่งก่อน" + Thai descriptions
+- **Match queue UX**:
+  - Division badge ("บน" amber / "ล่าง" sky) shown after `#match_number` in each row — uses `match.bracket` for knockout, `match.division` for group rounds
+  - Competitor names hug `vs` via right-aligned A + left-aligned B with color dot mirrored to the inner side
+- **Perf**:
+  - `MatchRow` wrapped in `React.memo` with custom comparator (compares match id/status/games/scores/winner/court/queue_position + `competitorById` ref)
+  - `pair-stage.tsx` + `group-stage.tsx`: `useMemo` for `pairCompetitorMap`/`competitorMap`/`flatTeams`/`teamById` so memo can actually skip
+  - `TournamentTabs` + `PublicTournamentShell`: lazy-mount — `mounted: Set<TabId>` starts with active tab; other tabs mount on first visit, stay mounted afterwards
+  - `MatchList` (new component, replaces inline MatchRow map in pair/group stages): renders full DOM with `content-visibility: auto` + `contain-intrinsic-size: auto Npx` so off-screen rows skip paint/layout while staying searchable + printable. Virtualization (`@tanstack/react-virtual`) explored then dropped — ResizeObserver/ref-timing made first paint show empty rows; `content-visibility` is the simpler win.
+  - `pair-stage.tsx`: groups default to collapsed (`openGroups[id] === true`); click chevron to expand
+- **KO gate + cascade reset**: `startMatchAction` blocks KO R1 until same-division group matches all `completed`; regenerating groups/group-matches/pair-matches cascades into `clearKnockoutMatches` + `resetGroupTeamStandings` (denormalized standings on `group_teams`)
+- **`cancelMatchAction`** (new): reverts in_progress → pending; UI button "ยกเลิก" in queue row
+- **Thai label sweep**: UI strings "Knockout"/"knockout" → "น็อคเอ้า" across tab label, format options (`group_knockout` label → "แบ่งกลุ่ม + น็อคเอ้า"), headings, descriptions, CSV fallback ("Grand Final" → "ชิงชนะเลิศ"), LINE notify, settings descriptions. DB enums and URL params unchanged. PairStage sub-tabs: "คู่" → "จับคู่", "คะแนนกลุ่ม" → "คะแนน". `Lower bracket` label → "มีสายล่าง". `สร้าง bracket` button → "สร้างสาย".
+- **Realtime fix**: migration `realtime_replica_identity_full` sets `REPLICA IDENTITY FULL` on `matches` + `tournaments` so postgres_changes payloads include the `tournament_id` filter column; `TournamentLiveWrapper` drops the `isOngoing` gate so draft/registering tournaments also subscribe.
+- **Queue position seeding**: migration `replace_tournament_matches_set_queue_position` updates the RPC to seed `queue_position` from `match_number` on bulk insert (so freshly-generated matches sort correctly from the start).
+- **Empty date crash fix**: `createTournamentAction` uses `emptyToNull` zod transform on `venue`/`start_date`/`end_date` (Postgres rejected `""` for date columns).
+- **form-errors helper**: new `src/lib/form-errors.ts` normalizes TanStack Form `ZodIssue[]` → `{ message }` for shadcn `<FieldError>` rendering (was showing `[object Object]`). Applied to 7 forms.
+- **Court Select placeholder**: `match-queue.tsx` `SelectValue` uses children-as-function to render "ว่าง" for the `__none` sentinel (was leaking the raw string).
 
 ### Phase 11 review fixes (2026-05-17)
 

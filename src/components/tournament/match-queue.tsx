@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GripVertical, Loader2, Play, ClipboardEdit, RotateCcw, Shuffle, CheckCircle2 } from "lucide-react";
+import { GripVertical, Loader2, Play, ClipboardEdit, RotateCcw, Shuffle, CheckCircle2, Undo2 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -45,6 +45,7 @@ import {
   startMatchAction,
   resetMatchScoreAction,
   autoRotateQueueAction,
+  cancelMatchAction,
 } from "@/lib/actions/matches";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import type { Match, MatchUnit } from "@/lib/types";
@@ -66,8 +67,15 @@ function matchKey(m: Match) {
   return m.queue_position ?? m.match_number;
 }
 
+// Sort: group matches before knockout (round_type alphabetical 'group' < 'knockout'),
+// then by queue_position falling back to match_number. Mirrors server-side
+// `.order("round_type")` in tournament page queries so client re-sort does not undo it.
 function sortMatches(list: Match[]) {
-  return [...list].sort((x, y) => matchKey(x) - matchKey(y));
+  return [...list].sort((x, y) => {
+    const r = (x.round_type ?? "").localeCompare(y.round_type ?? "");
+    if (r !== 0) return r;
+    return matchKey(x) - matchKey(y);
+  });
 }
 
 export function MatchQueue({
@@ -238,11 +246,10 @@ export function MatchQueue({
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={pending.map((m) => m.id)} strategy={verticalListSortingStrategy}>
                 <ul className="space-y-2">
-                  {pending.map((m, i) => (
+                  {pending.map((m) => (
                     <SortableQueueRow
                       key={m.id}
                       match={m}
-                      index={i + 1}
                       competitorById={competitorById}
                       tournamentId={tournamentId}
                       unit={unit}
@@ -255,11 +262,10 @@ export function MatchQueue({
             </DndContext>
           ) : (
             <ul className="space-y-2">
-              {pending.map((m, i) => (
+              {pending.map((m) => (
                 <QueueRowReadOnly
                   key={m.id}
                   match={m}
-                  index={i + 1}
                   competitorById={competitorById}
                   unit={unit}
                   courts={courts}
@@ -329,6 +335,28 @@ function getCompetitorNames(
   };
 }
 
+function DivisionBadge({ match }: { match: Match }) {
+  // Group rounds use `division`; knockout uses `bracket`. "upper"/"lower" only.
+  const side =
+    match.round_type === "knockout" ? match.bracket : match.division;
+  if (side !== "upper" && side !== "lower") return null;
+  const isUpper = side === "upper";
+  const isKo = match.round_type === "knockout";
+  const label = isUpper ? "บน" : "ล่าง";
+  const title = `${isKo ? "สาย" : "กลุ่ม"}${label}`;
+  const tone = isUpper
+    ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+    : "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+  return (
+    <span
+      title={title}
+      className={`text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${tone}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 function StatusBadge({ status }: { status: Match["status"] }) {
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_TONE[status]}`}>
@@ -337,18 +365,19 @@ function StatusBadge({ status }: { status: Match["status"] }) {
   );
 }
 
-function CompetitorLine({ c, unknownLabel }: { c?: Competitor; unknownLabel: string }) {
+function CompetitorLine({ c, unknownLabel, align = "left" }: { c?: Competitor; unknownLabel: string; align?: "left" | "right" }) {
+  const isRight = align === "right";
   return (
-    <div className="flex items-center gap-1.5 text-sm truncate">
-      {c?.color && <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
+    <div className={`flex items-center gap-1.5 text-sm truncate ${isRight ? "justify-end" : ""}`}>
+      {!isRight && c?.color && <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
       <span className="truncate">{c?.name ?? unknownLabel}</span>
+      {isRight && c?.color && <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
     </div>
   );
 }
 
 function SortableQueueRow(props: {
   match: Match;
-  index: number;
   competitorById: Map<string, Competitor>;
   tournamentId: string;
   unit: MatchUnit;
@@ -369,7 +398,6 @@ function SortableQueueRow(props: {
     <li ref={setNodeRef} style={style} className="touch-none">
       <QueueRowBody
         match={props.match}
-        index={props.index}
         competitorById={props.competitorById}
         tournamentId={props.tournamentId}
         unit={props.unit}
@@ -393,7 +421,6 @@ function NonDraggableRow(props: {
     <li>
       <QueueRowBody
         match={props.match}
-        index={null}
         competitorById={props.competitorById}
         tournamentId={props.tournamentId}
         unit={props.unit}
@@ -407,7 +434,6 @@ function NonDraggableRow(props: {
 
 function QueueRowReadOnly(props: {
   match: Match;
-  index: number;
   competitorById: Map<string, Competitor>;
   unit: MatchUnit;
   courts: string[];
@@ -416,7 +442,6 @@ function QueueRowReadOnly(props: {
     <li>
       <QueueRowBody
         match={props.match}
-        index={props.index}
         competitorById={props.competitorById}
         tournamentId=""
         unit={props.unit}
@@ -430,7 +455,6 @@ function QueueRowReadOnly(props: {
 
 function QueueRowBody({
   match,
-  index,
   competitorById,
   tournamentId,
   unit,
@@ -439,7 +463,6 @@ function QueueRowBody({
   courts,
 }: {
   match: Match;
-  index: number | null;
   competitorById: Map<string, Competitor>;
   tournamentId: string;
   unit: MatchUnit;
@@ -452,6 +475,7 @@ function QueueRowBody({
   const [courtPending, startCourt] = useTransition();
   const [startPending, startStart] = useTransition();
   const [resetPending, startReset] = useTransition();
+  const [cancelPending, startCancel] = useTransition();
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
@@ -501,13 +525,15 @@ function QueueRowBody({
         )}
 
         <div className="text-xs font-mono text-muted-foreground w-12 shrink-0">
-          #{index ?? match.match_number}
+          #{match.queue_position ?? match.match_number}
         </div>
 
-        <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] sm:items-center gap-x-2 gap-y-0.5">
-          <CompetitorLine c={a} unknownLabel={unknownLabel} />
-          <span className="hidden sm:inline text-muted-foreground text-xs px-1">vs</span>
-          <CompetitorLine c={b} unknownLabel={unknownLabel} />
+        <DivisionBadge match={match} />
+
+        <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] sm:items-center gap-x-1 gap-y-0.5">
+          <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" />
+          <span className="hidden sm:inline text-muted-foreground text-xs">vs</span>
+          <CompetitorLine c={b} unknownLabel={unknownLabel} align="left" />
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
@@ -538,7 +564,7 @@ function QueueRowBody({
                 >
                   <SelectTrigger className="h-7 w-24 text-xs px-2">
                     <SelectValue placeholder="ว่าง">
-                      {court || "ว่าง"}
+                      {(v: string | null) => (v && v !== "__none" ? v : "ว่าง")}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
@@ -554,7 +580,7 @@ function QueueRowBody({
                   onChange={(e) => setCourt(e.target.value)}
                   onBlur={saveCourt}
                   onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                  placeholder="—"
+                  placeholder="ว่าง"
                   maxLength={40}
                   disabled={courtPending || match.status === "completed"}
                   className="h-7 w-16 text-xs px-1.5 text-center"
@@ -593,21 +619,44 @@ function QueueRowBody({
           )}
 
           {canEdit && match.status === "in_progress" && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="sm"
-                    variant="default"
-                    className="h-7 text-xs px-2 gap-1"
-                    onClick={() => setEditing(true)}
-                  >
-                    <ClipboardEdit className="h-3 w-3" />จบแข่ง
-                  </Button>
-                }
-              />
-              <TooltipContent>กรอกผลแมตช์ #{match.match_number}</TooltipContent>
-            </Tooltip>
+            <>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs px-2 gap-1"
+                      disabled={cancelPending}
+                      onClick={() => startCancel(async () => {
+                        const res = await cancelMatchAction(match.id, tournamentId);
+                        if (res && "error" in res) toast.error(res.error);
+                        else toast.success(`ยกเลิกการแข่งแมตช์ #${match.match_number}`);
+                      })}
+                    >
+                      {cancelPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
+                      ยกเลิก
+                    </Button>
+                  }
+                />
+                <TooltipContent>ยกเลิกการแข่งแมตช์ #{match.match_number} → กลับเป็นรอแข่ง</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-7 text-xs px-2 gap-1"
+                      onClick={() => setEditing(true)}
+                    >
+                      <ClipboardEdit className="h-3 w-3" />จบแข่ง
+                    </Button>
+                  }
+                />
+                <TooltipContent>กรอกผลแมตช์ #{match.match_number}</TooltipContent>
+              </Tooltip>
+            </>
           )}
 
           {canEdit && match.status === "completed" && (

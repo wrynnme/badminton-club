@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { updateTournamentSettingsAction } from "@/lib/actions/tournaments";
 import {
   parseSettings,
@@ -15,6 +16,14 @@ import {
 } from "@/lib/tournament/settings";
 
 const DEBOUNCE_MS = 500;
+
+const BRACKET_PREF_LABEL: Record<NonNullable<TournamentSettings["queue_bracket_preference"]>, string> = {
+  interleaved: "สลับ 1:1 (default)",
+  upper_first: "บนก่อนทั้งหมด",
+  lower_first: "ล่างก่อนทั้งหมด",
+  chunk_upper_first: "บน N : ล่าง N",
+  chunk_lower_first: "ล่าง N : บน N",
+};
 
 function ToggleRow({
   id,
@@ -198,7 +207,7 @@ export function SettingsManager({
             <ToggleRow
               id="line-bracket"
               label="สร้างสาย"
-              description="เมื่อสร้าง knockout bracket"
+              description="เมื่อสร้างสายน็อคเอ้า"
               checked={settings.line_notify.bracket}
               onChange={(v) => updateNotify("bracket", v)}
             />
@@ -248,10 +257,49 @@ export function SettingsManager({
             checked={settings.auto_advance_next}
             onChange={(v) => update("auto_advance_next", v)}
           />
+          <div className="flex items-center justify-between gap-3 py-1">
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor="queue-bracket-pref" className="text-sm">กลุ่มไหนแข่งก่อน</Label>
+              <p className="text-xs text-muted-foreground">
+                เรียง division บน/ล่าง (กลุ่มคู่ + KO double-elim) ใน auto-rotate
+              </p>
+            </div>
+            <Select
+              value={settings.queue_bracket_preference}
+              onValueChange={(v) => update("queue_bracket_preference", v as TournamentSettings["queue_bracket_preference"])}
+            >
+              <SelectTrigger id="queue-bracket-pref" className="w-36 h-8 text-xs">
+                <SelectValue>
+                  {(v: string | null) =>
+                    BRACKET_PREF_LABEL[(v ?? "interleaved") as keyof typeof BRACKET_PREF_LABEL] ?? "สลับ (default)"
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="interleaved">สลับ 1:1 (default)</SelectItem>
+                <SelectItem value="upper_first">บนก่อนทั้งหมด</SelectItem>
+                <SelectItem value="lower_first">ล่างก่อนทั้งหมด</SelectItem>
+                <SelectItem value="chunk_upper_first">บน N : ล่าง N</SelectItem>
+                <SelectItem value="chunk_lower_first">ล่าง N : บน N</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {(settings.queue_bracket_preference === "chunk_upper_first" ||
+            settings.queue_bracket_preference === "chunk_lower_first") && (
+            <NumberRow
+              id="chunk-size"
+              label="ขนาด chunk (N)"
+              description="แมตช์ต่อชุดเมื่อสลับ chunk"
+              value={settings.queue_chunk_size}
+              min={1}
+              max={50}
+              onChange={(v) => update("queue_chunk_size", v)}
+            />
+          )}
           <ToggleRow
             id="manual-after-bracket"
             label="Manual match หลังสร้างสาย (pair mode)"
-            description="ปิดเพื่อล็อกตารางหลังเข้า knockout"
+            description="ปิดเพื่อล็อกตารางหลังเข้าน็อคเอ้า"
             checked={settings.allow_manual_match_after_bracket}
             onChange={(v) => update("allow_manual_match_after_bracket", v)}
           />
@@ -291,8 +339,8 @@ export function SettingsManager({
           />
           <ToggleRow
             id="force-reset"
-            label="Allow force reset bracket"
-            description="bypass guard ตอน reset KO ที่รอบถัดไปเล่นแล้ว"
+            label="บังคับรีเซ็ตสายได้"
+            description="อนุญาตรีเซ็ตแมตช์น็อคเอ้าที่รอบถัดไปจบแล้ว พร้อม cascade 1 ขั้น (ใช้กรณีพลาดบันทึกผลแล้วต้องแก้)"
             checked={settings.allow_force_bracket_reset}
             onChange={(v) => update("allow_force_bracket_reset", v)}
           />

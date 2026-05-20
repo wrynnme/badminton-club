@@ -1,5 +1,6 @@
 "use client";
 
+import { fieldErrors } from "@/lib/form-errors";
 import * as React from "react";
 import * as z from "zod";
 import { useForm } from "@tanstack/react-form";
@@ -112,7 +113,7 @@ export function CreateClubForm() {
                   placeholder="เช่น ก๊วนรัชดา ทุกพุธ"
                 />
                 {isInvalid && (
-                  <FieldError errors={field.state.meta.errors.map((e) => ({ message: String(e) }))} />
+                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
                 )}
               </Field>
             );
@@ -136,7 +137,7 @@ export function CreateClubForm() {
                   placeholder="ชื่อสนาม / ที่อยู่"
                 />
                 {isInvalid && (
-                  <FieldError errors={field.state.meta.errors.map((e) => ({ message: String(e) }))} />
+                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
                 )}
               </Field>
             );
@@ -175,7 +176,7 @@ export function CreateClubForm() {
                   ))}
                 </div>
                 {isInvalid && (
-                  <FieldError errors={field.state.meta.errors.map((e) => ({ message: String(e) }))} />
+                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
                 )}
               </Field>
             );
@@ -222,7 +223,7 @@ export function CreateClubForm() {
                           aria-invalid={isInvalid}
                         />
                         {isInvalid && (
-                          <FieldError errors={field.state.meta.errors.map((e) => ({ message: String(e) }))} />
+                          <FieldError errors={fieldErrors(field.state.meta.errors)} />
                         )}
                       </Field>
                     );
@@ -245,7 +246,7 @@ export function CreateClubForm() {
                           aria-invalid={isInvalid}
                         />
                         {isInvalid && (
-                          <FieldError errors={field.state.meta.errors.map((e) => ({ message: String(e) }))} />
+                          <FieldError errors={fieldErrors(field.state.meta.errors)} />
                         )}
                       </Field>
                     );
@@ -296,7 +297,7 @@ export function CreateClubForm() {
                   </InputGroupAddon>
                 </InputGroup>
                 {isInvalid && (
-                  <FieldError errors={field.state.meta.errors.map((e) => ({ message: String(e) }))} />
+                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
                 )}
               </Field>
             );

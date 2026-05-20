@@ -13,6 +13,10 @@
 pnpm-lock.yaml
 yarn.lock
 
+# playwright-cli artifacts (snapshots, console logs)
+.playwright-cli/
+/*.yaml
+
 # testing
 /coverage
 

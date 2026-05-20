@@ -20,8 +20,8 @@ const statusLabel: Record<string, { label: string; variant: "default" | "seconda
 
 const formatLabel: Record<string, string> = {
   group_only: "แบ่งกลุ่ม",
-  group_knockout: "แบ่งกลุ่ม + Knockout",
-  knockout_only: "Knockout",
+  group_knockout: "แบ่งกลุ่ม + น็อคเอ้า",
+  knockout_only: "น็อคเอ้า",
 };
 
 export default async function TournamentsPage() {

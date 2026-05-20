@@ -1,5 +1,6 @@
 "use client";
 
+import { fieldErrors } from "@/lib/form-errors";
 import * as z from "zod";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
@@ -74,7 +75,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tour
                     <FieldLabel htmlFor={field.name}>ชื่อทัวร์นาเมนต์ *</FieldLabel>
                     <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)} aria-invalid={isInvalid} />
-                    {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+                    {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
                   </Field>
                 );
               }}
@@ -118,8 +119,8 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tour
                   <div className="flex flex-wrap gap-2">
                     {([
                       { value: "group_only", label: "แบ่งกลุ่ม" },
-                      { value: "group_knockout", label: "แบ่งกลุ่ม + Knockout" },
-                      { value: "knockout_only", label: "Knockout" },
+                      { value: "group_knockout", label: "แบ่งกลุ่ม + น็อคเอ้า" },
+                      { value: "knockout_only", label: "น็อคเอ้า" },
                     ] as const).map((opt) => (
                       <Button key={opt.value} type="button" size="sm"
                         variant={field.state.value === opt.value ? "default" : "outline"}
@@ -206,7 +207,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tour
                         <Checkbox id="edit_has_lower_bracket" checked={field.state.value}
                           onCheckedChange={(v) => field.handleChange(Boolean(v))} />
                         <div>
-                          <FieldLabel htmlFor="edit_has_lower_bracket">มีสายล่าง (Lower bracket)</FieldLabel>
+                          <FieldLabel htmlFor="edit_has_lower_bracket">มีสายล่าง</FieldLabel>
                         </div>
                       </Field>
                     )}
@@ -273,7 +274,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tour
                         className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
                       <InputGroupAddon align="inline-end"><InputGroupText>ทีม</InputGroupText></InputGroupAddon>
                     </InputGroup>
-                    {isInvalid && <FieldError errors={field.state.meta.errors.map(e => ({ message: String(e) }))} />}
+                    {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
                     {belowExisting && (
                       <p className="text-xs text-amber-600 dark:text-amber-400">
                         มีทีมในระบบ {existingTeamCount} ทีม — ลดจำนวนต่ำกว่านี้ทีมเดิมจะไม่ถูกลบอัตโนมัติ

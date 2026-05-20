@@ -144,7 +144,7 @@ export default async function PrintMatchesPage({
 
       {knockoutMatches.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-lg font-semibold mb-3">รอบ Knockout</h2>
+          <h2 className="text-lg font-semibold mb-3">รอบน็อคเอ้า</h2>
           <MatchTable matchList={knockoutMatches} />
         </section>
       )}

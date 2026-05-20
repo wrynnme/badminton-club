@@ -1,5 +1,6 @@
 "use client";
 
+import { fieldErrors } from "@/lib/form-errors";
 import * as React from "react";
 import * as z from "zod";
 import { useForm } from "@tanstack/react-form";
@@ -72,7 +73,7 @@ export function SetTotalCostForm({
                   </InputGroupAddon>
                 </InputGroup>
                 {isInvalid && (
-                  <FieldError errors={field.state.meta.errors.map((e) => ({ message: String(e) }))} />
+                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
                 )}
               </Field>
             );

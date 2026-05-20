@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -49,6 +49,13 @@ export function TournamentTabs({
   const activeTab: TabId =
     queryTab && validTabs.includes(queryTab) ? queryTab : "teams";
 
+  // Lazy-mount: each tab content only renders after first visit. After mount,
+  // it stays mounted so switching back is instant + preserves local state.
+  const [mounted, setMounted] = useState<Set<TabId>>(() => new Set([activeTab]));
+  useEffect(() => {
+    setMounted((prev) => (prev.has(activeTab) ? prev : new Set([...prev, activeTab])));
+  }, [activeTab]);
+
   // If URL points to a tab that doesn't exist for this viewer (e.g.
   // ?tab=settings as a non-admin), strip the param so the canonical URL
   // matches the actually-rendered tab.
@@ -76,42 +83,42 @@ export function TournamentTabs({
         <TabsTrigger value="teams">ทีม</TabsTrigger>
         {showGroups && <TabsTrigger value="groups">กลุ่ม</TabsTrigger>}
         {showPairs && <TabsTrigger value="pairs">คู่</TabsTrigger>}
-        {showKnockout && <TabsTrigger value="knockout">Knockout</TabsTrigger>}
+        {showKnockout && <TabsTrigger value="knockout">น็อคเอ้า</TabsTrigger>}
         {showQueue && <TabsTrigger value="queue">ตารางคิว</TabsTrigger>}
         {showSettings && <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>}
       </TabsList>
 
       <TabsContent value="teams" className="mt-6">
-        {teamsTab}
+        {mounted.has("teams") ? teamsTab : null}
       </TabsContent>
 
       {showGroups && (
         <TabsContent value="groups" className="mt-6">
-          {groupsTab}
+          {mounted.has("groups") ? groupsTab : null}
         </TabsContent>
       )}
 
       {showPairs && (
         <TabsContent value="pairs" className="mt-6">
-          {pairsTab}
+          {mounted.has("pairs") ? pairsTab : null}
         </TabsContent>
       )}
 
       {showKnockout && (
         <TabsContent value="knockout" className="mt-6">
-          {knockoutTab}
+          {mounted.has("knockout") ? knockoutTab : null}
         </TabsContent>
       )}
 
       {showQueue && (
         <TabsContent value="queue" className="mt-6">
-          {queueTab}
+          {mounted.has("queue") ? queueTab : null}
         </TabsContent>
       )}
 
       {showSettings && (
         <TabsContent value="settings" className="mt-6 space-y-6">
-          {settingsTab}
+          {mounted.has("settings") ? settingsTab : null}
         </TabsContent>
       )}
     </Tabs>
