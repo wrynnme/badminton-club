@@ -63,18 +63,14 @@ const STATUS_TONE: Record<Match["status"], string> = {
   completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200",
 };
 
-function matchKey(m: Match) {
-  return m.queue_position ?? m.match_number;
-}
-
 // Sort: group matches before knockout (round_type alphabetical 'group' < 'knockout'),
-// then by queue_position falling back to match_number. Mirrors server-side
-// `.order("round_type")` in tournament page queries so client re-sort does not undo it.
+// then by match_number. Mirrors server-side `.order("round_type").order("match_number")`
+// in tournament page queries so client re-sort does not undo it.
 function sortMatches(list: Match[]) {
   return [...list].sort((x, y) => {
     const r = (x.round_type ?? "").localeCompare(y.round_type ?? "");
     if (r !== 0) return r;
-    return matchKey(x) - matchKey(y);
+    return (x.match_number ?? 0) - (y.match_number ?? 0);
   });
 }
 
@@ -525,7 +521,7 @@ function QueueRowBody({
         )}
 
         <div className="text-xs font-mono text-muted-foreground w-12 shrink-0">
-          #{match.queue_position ?? match.match_number}
+          #{match.match_number}
         </div>
 
         <DivisionBadge match={match} />

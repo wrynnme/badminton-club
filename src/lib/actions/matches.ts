@@ -954,17 +954,26 @@ export async function reorderMatchQueueAction(
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
-  const { error: rpcErr } = await sb.rpc("reorder_tournament_queue", {
+
+  // Filter to pending-only — in_progress/completed must never be swapped.
+  const { data: pendingRows } = await sb
+    .from("matches")
+    .select("id")
+    .eq("tournament_id", tournamentId)
+    .eq("status", "pending")
+    .in("id", orderedMatchIds);
+  const pendingIdSet = new Set((pendingRows ?? []).map((r) => r.id));
+  const pendingOrdered = orderedMatchIds.filter((id) => pendingIdSet.has(id));
+  if (pendingOrdered.length === 0) return { ok: true };
+
+  const { error: rpcErr } = await sb.rpc("swap_pending_match_numbers", {
     p_tournament_id: tournamentId,
-    p_ordered_ids: orderedMatchIds,
+    p_ordered_ids: pendingOrdered,
   });
   if (rpcErr) {
     const msg = rpcErr.message ?? "";
-    if (/duplicate matchId/i.test(msg)) {
-      return { error: "พบ matchId ซ้ำในลำดับ" };
-    }
-    if (rpcErr.code === "22023" || /matchId not in tournament/i.test(msg)) {
-      return { error: "พบ matchId ที่ไม่อยู่ในทัวร์นาเมนต์นี้" };
+    if (/not pending matches/i.test(msg)) {
+      return { error: "พบแมตช์ที่ไม่ใช่สถานะรอแข่งในลำดับ" };
     }
     return { error: "บันทึกลำดับไม่สำเร็จ" };
   }
@@ -977,7 +986,7 @@ export async function reorderMatchQueueAction(
     event_type: "queue_reordered",
     entity_type: "tournament",
     entity_id: tournamentId,
-    description: `จัดลำดับคิว ${orderedMatchIds.length} แมตช์`,
+    description: `จัดลำดับคิว ${pendingOrdered.length} แมตช์`,
   });
   return { ok: true };
 }
@@ -1180,9 +1189,20 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
   }
   if (changed === 0) return { ok: true, rotated: 0 };
 
-  // Atomic re-assignment via RPC (matches existing replace_tournament_matches pattern)
-  const orderedIds = result.map((m) => m.id);
-  const { error: rpcErr } = await sb.rpc("reorder_tournament_queue", {
+  // Atomic re-assignment via swap_pending_match_numbers RPC.
+  // Re-fetch pending ids to guard against any status change during compute.
+  const computedIds = result.map((m) => m.id);
+  const { data: stillPendingRows } = await sb
+    .from("matches")
+    .select("id")
+    .eq("tournament_id", tournamentId)
+    .eq("status", "pending")
+    .in("id", computedIds);
+  const stillPendingSet = new Set((stillPendingRows ?? []).map((r) => r.id));
+  const orderedIds = computedIds.filter((id) => stillPendingSet.has(id));
+  if (orderedIds.length === 0) return { ok: true, rotated: 0 };
+
+  const { error: rpcErr } = await sb.rpc("swap_pending_match_numbers", {
     p_tournament_id: tournamentId,
     p_ordered_ids: orderedIds,
   });
@@ -1458,7 +1478,7 @@ async function renumberPendingQueue(
     .order("match_number");
   const ids = (pending ?? []).map((m) => m.id);
   if (ids.length === 0) return;
-  const { error } = await sb.rpc("reorder_tournament_queue", {
+  const { error } = await sb.rpc("swap_pending_match_numbers", {
     p_tournament_id: tournamentId,
     p_ordered_ids: ids,
   });
