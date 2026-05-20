@@ -8,11 +8,12 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input";
 import { addTeamPlayerAction, createTeamAction, deleteTeamAction, removeTeamPlayerAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
 import { fieldErrors } from "@/lib/form-errors";
-import type { TeamWithPlayers } from "@/lib/types";
+import type { Match, MatchUnit, Pair, TeamWithPlayers } from "@/lib/types";
 import { useForm } from "@tanstack/react-form";
 import { Check, ChevronDown, ChevronUp, Loader2, Pencil, Plus, Trash2, UserMinus, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { TeamSummary } from "@/components/tournament/team-summary";
 import * as z from "zod";
 
 const teamSchema = z.object({
@@ -272,17 +273,29 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
   );
 }
 
-export function TeamManager({ tournamentId, teams, isOwner, teamCount }: {
+export function TeamManager({ tournamentId, teams, isOwner, teamCount, matches, pairs, matchUnit }: {
   tournamentId: string;
   teams: TeamWithPlayers[];
   isOwner: boolean;
   teamCount: number;
+  matches?: Match[];
+  pairs?: Pair[];
+  matchUnit?: MatchUnit;
 }) {
   const [adding, setAdding] = useState(false);
   const remaining = teamCount - teams.length;
+  const flatTeams = teams.map(({ players: _p, ...x }) => x);
 
   return (
     <div className="space-y-3">
+      {matches && matchUnit && (
+        <TeamSummary
+          teams={flatTeams}
+          matches={matches}
+          pairs={pairs}
+          matchUnit={matchUnit}
+        />
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="font-semibold">ทีม</h2>

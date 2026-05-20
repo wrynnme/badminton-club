@@ -363,6 +363,15 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **Cards grid** `grid-cols-2 sm:grid-cols-4` — แต่ละสี: color ring (`--tw-ring-color` CSS variable) + pts + ชื่อทีม (truncate)
 - **Bar chart** — horizontal bars ความกว้างตาม `pts/maxPts`; `Card`/`CardContent`; `transition-[width] duration-500`
 
+### Team Summary (Teams Tab)
+
+- **Component**: `TeamSummary` ใน `src/components/tournament/team-summary.tsx`
+- Mounted ที่หัวของแท็บ `ทีม` ผ่าน `team-manager.tsx` (รับ props `matches`, `pairs`, `matchUnit`)
+- Team mode: `computeStandings(matches, "team", teamIds)` แล้ว map row.id → team
+- Pair mode: aggregate `leaguePoints` ของทุก pair group by `pair.team_id`
+- แสดงเมื่อ `completedMatches > 0 && teams.length >= 2`
+- รูปแบบ: horizontal bars ตาม ColorSummary pattern; `--tw-ring-color` CSS var, `transition-[width] duration-500`; `useMemo` aggregation
+
 ---
 
 ## Phase 9 — Match Schedule/Queue
