@@ -859,9 +859,9 @@ export async function recordMatchScoreAction(input: {
             entity_id: nextPending.id,
             description: `เริ่มแมตช์ #${nextPending.match_number} (auto-advance)${inheritedCourt ? ` (สนาม ${inheritedCourt})` : ""}`,
           });
-          // Collapse the gap so remaining pending become 1..N. Promoted match
-          // keeps its old queue_position as the lock number.
-          await renumberPendingQueue(sb, input.tournamentId);
+          // Pending queue keeps its existing queue_position values (gap left at
+          // promoted match). Renumbering only runs on manual drag-drop or
+          // autoRotateQueueAction in the queue tab.
         }
       }
     }
@@ -1391,9 +1391,9 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
     description: `เริ่มแมตช์ #${match.match_number}${match.court ? ` (สนาม ${match.court})` : ""}`,
   });
 
-  // Collapse the gap: remaining pending rows get queue_position 1..N.
-  // Started match keeps its queue_position as the "lock number".
-  await renumberPendingQueue(sb, tournamentId);
+  // Pending queue keeps its existing queue_position values (gap left at the
+  // started match). Renumbering only runs on manual drag-drop or
+  // autoRotateQueueAction in the queue tab.
 
   return { ok: true };
 }
@@ -1440,30 +1440,6 @@ export async function cancelMatchAction(matchId: string, tournamentId: string) {
 }
 
 // ============ Internal helpers ============
-
-// Renumbers all currently-pending matches to queue_position 1..N in their
-// existing order. Used after a status transition (start / auto-advance) to
-// collapse the gap left by the row that just left "pending".
-// Non-pending rows are untouched (RPC scope = supplied IDs only).
-async function renumberPendingQueue(
-  sb: Awaited<ReturnType<typeof createAdminClient>>,
-  tournamentId: string,
-): Promise<void> {
-  const { data: pending } = await sb
-    .from("matches")
-    .select("id, queue_position, match_number")
-    .eq("tournament_id", tournamentId)
-    .eq("status", "pending")
-    .order("queue_position", { ascending: true, nullsFirst: false })
-    .order("match_number");
-  const ids = (pending ?? []).map((m) => m.id);
-  if (ids.length === 0) return;
-  const { error } = await sb.rpc("reorder_tournament_queue", {
-    p_tournament_id: tournamentId,
-    p_ordered_ids: ids,
-  });
-  if (error) console.error("[renumberPendingQueue]", error);
-}
 
 async function updateGroupTeamStandings(
   groupId: string,
