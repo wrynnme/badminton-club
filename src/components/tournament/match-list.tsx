@@ -33,7 +33,7 @@ export function MatchList({
           key={m.id}
           style={{
             contentVisibility: "auto",
-            containIntrinsicSize: `auto ${intrinsicH}px`,
+            containIntrinsicSize: `100% ${intrinsicH}px`,
           }}
         >
           <MatchRow

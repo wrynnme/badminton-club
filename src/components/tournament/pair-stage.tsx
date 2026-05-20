@@ -168,8 +168,8 @@ export function PairStage({
 
           return (
             <div className="space-y-3">
-              {displayGroups.map(({ id, matchList }) => {
-                const isOpen = openGroups[id] === true;
+              {displayGroups.map(({ id, matchList }, idx) => {
+                const isOpen = openGroups[id] ?? (idx === 0);
                 return (
                   <Card key={id}>
                     <CardContent className="space-y-2">

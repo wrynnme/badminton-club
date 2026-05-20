@@ -683,24 +683,23 @@ export async function createManualMatchAction(input: {
     .limit(1)
     .maybeSingle();
 
-  const tailPos = await nextPendingTailPosition(sb, input.tournamentId);
-
-  const { error } = await sb.from("matches").insert({
-    tournament_id: input.tournamentId,
-    round_type: "group",
-    round_number: 1,
-    match_number: (maxRow?.match_number ?? 0) + 1,
-    pair_a_id: input.pairAId,
-    pair_b_id: input.pairBId,
-    team_a_id: pA.team_id,
-    team_b_id: pB.team_id,
-    division: divA,
-    games: [],
-    status: "pending",
-    queue_position: tailPos,
+  // P1-A fix: INSERT + tail-position assignment are now atomic inside the RPC
+  // so concurrent createManualMatchAction calls cannot produce duplicate queue_position.
+  const { error, data: newMatchId } = await sb.rpc("create_manual_match", {
+    p_tournament_id: input.tournamentId,
+    p_team_a_id: pA.team_id,
+    p_team_b_id: pB.team_id,
+    p_pair_a_id: input.pairAId,
+    p_pair_b_id: input.pairBId,
+    p_match_number: (maxRow?.match_number ?? 0) + 1,
+    p_division: divA ?? null,
   });
 
-  if (error) return { error: "สร้างแมตช์ไม่สำเร็จ" };
+  if (error) {
+    console.error("[createManualMatchAction]", error);
+    return { error: "สร้างแมตช์ไม่สำเร็จ" };
+  }
+  void newMatchId;
 
   revalidatePath(`/tournaments/${input.tournamentId}`);
   await writeAuditLog({
@@ -894,50 +893,25 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
   // Phase 11 — allow_force_bracket_reset bypasses the "next match completed" guard
   const forceReset = (await getTournamentSettings(tournamentId)).allow_force_bracket_reset;
 
-  // Knockout: when next match is completed, force-reset cascades the reset into next_match
-  // (clear slot AND reset that match's score/winner/status) so the bracket stays consistent.
-  // Without force, block the operation.
-  if (match.round_type === "knockout" && match.next_match_id && match.next_match_slot) {
-    const { data: nextMatch } = await sb.from("matches").select("status").eq("id", match.next_match_id).single();
-    if (nextMatch?.status === "completed" && !forceReset) return { error: "รีเซ็ตไม่ได้ — รอบถัดไปเล่นไปแล้ว" };
-    const slot = `${colPrefix}_${match.next_match_slot}_id`;
-    const updates: Record<string, unknown> = { [slot]: null };
-    if (nextMatch?.status === "completed") {
-      updates.games = [];
-      updates.team_a_score = null;
-      updates.team_b_score = null;
-      updates.winner_id = null;
-      updates.status = "pending";
-    }
-    await sb.from("matches").update(updates).eq("id", match.next_match_id);
+  // P1-B fix: all three UPDATEs (next_match slot clear, loser_next_match slot clear,
+  // subject row reset) are now atomic inside the RPC with FOR UPDATE row locks.
+  // The RPC also assigns queue_position = tail+1 atomically (fixes P1-A for reset path).
+  const { error: rpcErr, data: rpcData } = await sb.rpc("reset_match_score", {
+    p_match_id: matchId,
+    p_tournament_id: tournamentId,
+    p_col_prefix: colPrefix,
+    p_allow_force_reset: forceReset,
+  });
+  if (rpcErr) {
+    const msg = rpcErr.message ?? "";
+    if (/next_match_already_completed/i.test(msg)) return { error: "รีเซ็ตไม่ได้ — รอบถัดไปเล่นไปแล้ว" };
+    if (/loser_next_match_already_completed/i.test(msg)) return { error: "รีเซ็ตไม่ได้ — แมตช์สายล่างถัดไปเล่นไปแล้ว" };
+    if (/match_not_found/i.test(msg)) return { error: "ไม่พบแมตช์" };
+    if (/match_not_completed/i.test(msg)) return { error: "แมตช์นี้ยังไม่มีคะแนน" };
+    console.error("[resetMatchScoreAction] rpc error:", rpcErr);
+    return { error: "รีเซ็ตผลไม่สำเร็จ" };
   }
-
-  // Knockout: same cascade for loser's next match (double-elim drop-down).
-  if (match.round_type === "knockout" && match.loser_next_match_id && match.loser_next_match_slot) {
-    const { data: loserNext } = await sb.from("matches").select("status").eq("id", match.loser_next_match_id).single();
-    if (loserNext?.status === "completed" && !forceReset) return { error: "รีเซ็ตไม่ได้ — แมตช์สายล่างถัดไปเล่นไปแล้ว" };
-    const slot = `${colPrefix}_${match.loser_next_match_slot}_id`;
-    const updates: Record<string, unknown> = { [slot]: null };
-    if (loserNext?.status === "completed") {
-      updates.games = [];
-      updates.team_a_score = null;
-      updates.team_b_score = null;
-      updates.winner_id = null;
-      updates.status = "pending";
-    }
-    await sb.from("matches").update(updates).eq("id", match.loser_next_match_id);
-  }
-
-  const tailPos = await nextPendingTailPosition(sb, tournamentId);
-
-  await sb.from("matches").update({
-    games: [],
-    team_a_score: null,
-    team_b_score: null,
-    winner_id: null,
-    status: "pending",
-    queue_position: tailPos,
-  }).eq("id", matchId);
+  void rpcData; // new queue_position returned but not needed by caller
 
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
@@ -1439,14 +1413,12 @@ export async function cancelMatchAction(matchId: string, tournamentId: string) {
   if (!match) return { error: "ไม่พบแมตช์" };
   if (match.status !== "in_progress") return { error: "แมตช์นี้ไม่ได้กำลังแข่งอยู่" };
 
-  // Append to pending tail so the row joins the end of the queue rather than
-  // disrupting numbers of matches that were already waiting.
-  const tailPos = await nextPendingTailPosition(sb, tournamentId);
-
-  const { error } = await sb
-    .from("matches")
-    .update({ status: "pending", started_at: null, queue_position: tailPos })
-    .eq("id", matchId);
+  // Atomic flip + tail-position assignment via RPC (prevents duplicate
+  // queue_position when cancel and createManual run concurrently).
+  const { error } = await sb.rpc("cancel_match_to_queue_tail", {
+    p_match_id: matchId,
+    p_tournament_id: tournamentId,
+  });
   if (error) {
     console.error("[cancelMatchAction]", error);
     return { error: "ยกเลิกการแข่งไม่สำเร็จ" };
@@ -1468,24 +1440,6 @@ export async function cancelMatchAction(matchId: string, tournamentId: string) {
 }
 
 // ============ Internal helpers ============
-
-// Returns the next queue_position for appending a row to the pending tail.
-// Returns 1 when there are no pending rows.
-async function nextPendingTailPosition(
-  sb: Awaited<ReturnType<typeof createAdminClient>>,
-  tournamentId: string,
-): Promise<number> {
-  const { data } = await sb
-    .from("matches")
-    .select("queue_position")
-    .eq("tournament_id", tournamentId)
-    .eq("status", "pending")
-    .not("queue_position", "is", null)
-    .order("queue_position", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (data?.queue_position ?? 0) + 1;
-}
 
 // Renumbers all currently-pending matches to queue_position 1..N in their
 // existing order. Used after a status transition (start / auto-advance) to
