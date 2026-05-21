@@ -186,7 +186,10 @@ src/
 - ✅ Phase 8 — TV display mode (`/t/[token]/tv`)
 - ✅ Phase 9 — Match Schedule/Queue tab (drag-drop ordering, court, start/end buttons)
 - ✅ Phase 10 — Smart Scheduling: court list, court occupancy guard (partial UNIQUE index), auto-rotate queue (anti back-to-back), atomic reorder via `reorder_tournament_queue` RPC
-- [ ] Phase 11 — TBD
+- ✅ Phase 11 — Pre-tournament Settings (feature flags): LINE notify toggles, queue bracket preference + chunk size, auto-advance, manual match guard, force bracket reset, cooldown, realtime, audit log, `require_court_to_start`
+- ✅ Perf pass (2026-05-21) — 14 FK covering indexes via `add_fk_indexes` migration; parallelized page fetches (`/tournaments/[id]`, `/t/[token]`, `/t/[token]/tv`); co-admin can now edit Settings tab
+- [ ] Phase 12 — `require_checkin` flag + check-in flow
+- [ ] Phase 13 — Competition mode (multi-class NB/BG/N/S/P-)
 
 ### ก๊วนแบด
 

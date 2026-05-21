@@ -722,3 +722,18 @@ User intent: queue numbers in รอแข่ง / กำลังแข่ง /
 - Page sort: `tournaments/[id]/page.tsx` + `/t/[token]/page.tsx` queue sort = `.order("match_number")` only (drop `queue_position` secondary)
 - `queue_position` field ใน DB ยังอยู่; writes ใน cancel/reset/createManual/start/auto-advance เป็น dead writes — defer cleanup
 - Migration applied via Supabase MCP เท่านั้น (Supabase CLI ลองแล้ว fail เพราะไม่มี local Docker stack)
+
+### DB performance indexes + parallel page fetches (2026-05-21)
+
+- migration `20260521000100_add_fk_indexes` — 14 covering indexes for unindexed FKs flagged by Supabase performance advisor: `matches.team_a_id` / `team_b_id` / `next_match_id` / `loser_next_match_id`, `pairs.player_id_1` / `player_id_2`, `group_teams.team_id`, `team_players.profile_id`, `clubs.owner_id`, `club_admins.user_id` / `added_by`, `club_players.profile_id`, `club_expenses.club_id`, `tournament_admins.added_by` + replacement `idx_tournament_admins_user_id` (dropped duplicate `tournament_admins_user_id_idx`). Speeds up JOIN embeds + cascade DELETEs; write overhead negligible at current volume; all `CREATE INDEX IF NOT EXISTS` idempotent.
+- **Parallel page fetches**: `tournaments/[id]/page.tsx` (6 sequential awaits → 3 waves: `session+tournament` || `teams+groups+matches` || `pairs`), `/t/[token]/page.tsx` (4 → 3 waves), `/t/[token]/tv/page.tsx` (4 → 3 waves). Cuts page TTFB by ~half on hot path.
+- **Co-admin can use Settings tab**: `updateTournamentAction`, `updateCourtsAction`, `updateTournamentSettingsAction` switched from `assertIsOwner` → `assertCanEdit`. Settings tab content split: `CourtManager` + `SettingsManager` + `EditTournamentForm` gated by `canEdit`; `ShareControls` + `CoAdminControls` still `isOwner`. Permission matrix above already reflects this (rows: "Update tournament settings", "Edit courts / tournament form" → ✓ for co-admin).
+
+### Public dashboard + TV layout rework (2026-05-21)
+
+- `src/components/tournament/public/public-overview.tsx` (Overview tab on `/t/[token]`) — body replaced with 3 stacked sections:
+  1. **คะแนนรวมทีม** — team-mode: `computeStandings(allMatches, 'team', teamIds)` directly; pair-mode: aggregate pair StandingRows by `pairs.team_id` via inline `aggregatePairStandingsToTeams` helper (sums played/W/D/L/PF/PA, recomputes `leaguePoints` + `pointDiff`, sorts pts→diff→PF). Shows W-D-L column. Hidden when no team has `played > 0`.
+  2. **คะแนนตามคู่ แยก Div** (pair mode only) — reads `tournament.pair_division_threshold`; `parseFloat(pairs.pair_level)` → `> threshold` = Division บน, else (incl. NaN/null) = Division ล่าง. 2-col grid on lg+. Threshold null → single "อันดับคู่" card.
+  3. **ตารางคิว** — in-progress rows highlighted (`bg-green-500/5`) + green ping dot in title; then next 6 pending rows sorted by `queue_position ?? match_number`, TBD-only matches filtered out. Uses existing `MatchRow size="comfortable"`. Empty state "ยังไม่มีคิว".
+- Recent results ("ผลล่าสุด", top 5) kept below as 4th card.
+- `src/app/(public)/t/[token]/tv/page.tsx` — landscape no-scroll rework: outer `h-screen w-screen overflow-hidden flex flex-col p-3 lg:p-4`. Header `shrink-0` (tighter padding + smaller hero text). Main `flex-1 min-h-0 grid grid-cols-12 gap-4 lg:gap-6`: left `col-span-8` กำลังเล่น/ถัดไป (limited to 4 TvMatchCards), right `col-span-4 grid grid-rows-2 gap-4` with อันดับ (top 6) on top and จบล่าสุด (top 4) on bottom. Each panel `h-full overflow-hidden flex flex-col` with `shrink-0` header + `flex-1 min-h-0 overflow-hidden` body. `TvMatchCard` untouched. `TournamentLiveWrapper` + `TvAutoRefresh` + `force-dynamic` preserved.
