@@ -177,7 +177,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - `generateShareTokenAction` / `revokeShareTokenAction`
 - `share-controls.tsx` — owner-only generate/copy/revoke
 - `/t/[token]` — public read-only page, fetches by share_token, no auth
-- `TournamentLiveWrapper` — Supabase Realtime `postgres_changes` (event `*`) on `matches` + `tournaments` → debounced `router.refresh()` (400ms trailing); green LIVE badge
+- `TournamentLiveWrapper` — Supabase Realtime `postgres_changes` (event `*`) on `matches` + `tournaments` → debounced `router.refresh()` (800ms trailing, was 400ms; bumped 2026-05-22 to coalesce more rapid score writes); green LIVE badge
 - `share-controls.tsx` — QR Code button (icon-only, outline) beside copy/revoke when share link exists; opens Dialog with `react-qr-code` SVG (240x240, white bg) + URL below; `react-qr-code@2.0.21`
 
 ### Phase 7b — Co-admin + Audit Log
@@ -810,7 +810,7 @@ Major redesign of `/t/[token]/tv` from a 8/4 grid into a fully-configurable 3-co
   - Layout: `grid grid-rows-6 gap-2` — every card occupies 1/6 of column height regardless of how many matches are in the current page, so a single in_progress card has the same visual size as one of six pending cards.
   - Auto-rotates every `intervalMs` when both pages have matches; dot indicators are `<button>` (`onClick={() => setActive(i)}`), `aria-label` + `aria-current`, hover state; `setInterval` cleaned up on unmount.
 - `src/components/tournament/tv-standings-carousel.tsx` — extended with `fontSize?: "sm" | "md" | "lg" | "xl"` prop. `FONT_SIZE_CLASS` constant maps each size to `{table, rowMaxName}` Tailwind class pairs (table text + row name max-width).
-- `src/app/(public)/t/[token]/bracket/page.tsx` — NEW public TV-mode bracket page. Mirrors data-fetch pattern of `/t/[token]/tv/page.tsx`; renders upper / lower / grand_final via `buildVisualBracket` + `<BracketView/>` × 3 sections separated by `<Separator/>`; same header layout as TV page with fullscreen button + "ออก" → `/t/${token}/tv`; `force-dynamic` + `TournamentLiveWrapper` + `TvAutoRefresh`.
+- `src/app/(public)/t/[token]/bracket/page.tsx` — NEW public TV-mode bracket page. Mirrors data-fetch pattern of `/t/[token]/tv/page.tsx`; renders upper / lower / grand_final via `buildVisualBracket` + `<BracketView/>` × 3 sections separated by `<Separator/>`; same header layout as TV page with fullscreen button + "ออก" → `/t/${token}/tv`; `force-dynamic` + `TournamentLiveWrapper` + `TvAutoRefresh`. Updated 2026-05-22 — tournament lookup uses `.maybeSingle()` (was `.single()`, hard-crashed on missing token); honors `settings.tv_refresh_interval_sec`; for pair-mode KO, splits per Division (1..N) via `computePairDivision` and renders one bracket section per division.
 
 **TvMatchCard** (`src/components/tournament/tv-match-card.tsx`) — refactored to compact-only mode:
 - `density` / `comfortable` mode REMOVED; only the previous "compact" variant remains. All call sites simplified.
@@ -854,3 +854,78 @@ Settings UI in "การแสดงผล TV" Card is split into sub-groups: "
 **Files touched**:
 - New: `tv-fullscreen-button.tsx`, `tv-upcoming-carousel.tsx`, `bracket/page.tsx`.
 - Modified: `tv/page.tsx`, `tv-standings-carousel.tsx`, `tv-match-card.tsx`, `team-summary.tsx`, `public-overview.tsx`, `settings-manager.tsx`, `settings.ts`.
+
+### Code review fixes — P0/P1/P2 + dedup refactor (2026-05-22, commit `2f4b14c`)
+
+22 files, +741/-410. Three buckets: correctness bugs, perf, and shared-primitive extraction.
+
+**Correctness fixes**:
+- `tournament-dashboard.tsx` W/D/L per-Division chart — each match now counted exactly once with ฝั่งชนะ / แพ้ / เสมอ labels (previously double-counted by iterating both sides).
+- `tournament-dashboard.tsx` timeline — appended `"เกม X:Y"` + `"รวมแต้ม"` subtitle via existing `sumGameScores` helper.
+- `tournament-dashboard.tsx` `formatHHmm` now uses `new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", hour, minute })` instead of `Date#toLocaleTimeString` — fixes Next 16 hydration mismatch when server TZ ≠ client TZ.
+- `tournament-dashboard.tsx` `selectedDiv` reset `useEffect` — when `showTopDivTabs` flips false (e.g. user removes thresholds mid-session), forces `selectedDiv = "all"` so stale "Div 3" filter doesn't render an empty list.
+- `tournament-dashboard.tsx` `matchesKey` — stable memo (`matches.length + completedCount + statuses join`) replaces the previous identity-only dep so memoized children only re-render on real data change.
+- `tournament-dashboard.tsx` `parseSettings(t.settings)` now memoized once per render (was re-parsing inside two memos).
+- `tournament-dashboard.tsx` court usage chart — court names normalized via `.trim()` before grouping (previously `"Court 1"` and `"Court 1 "` showed as 2 bars).
+- `tv-upcoming-carousel.tsx` — dynamic `gridTemplateRows` to ensure every card occupies its slot; 6-row cap; `setInterval` paused via `visibilitychange` listener; `safeActive` clamps the read-time index when pages shrink between renders (skips an extra render cycle).
+- `tv-fullscreen-button.tsx` — `requestFullscreen()`/`exitFullscreen()` wrapped in `try/catch` with `sonner` toast on failure (browsers without Fullscreen API permission throw).
+- `tv-standings-carousel.tsx` — hex fallback color replaced with `var(--muted-foreground)` so dark mode + theme tokens are respected; standings limit now caps at 50 even when the setting is `0` ("ทั้งหมด").
+- `settings.ts` `normalizeLegacy()` — added `Array.isArray()` guard before legacy-shape coercion (was throwing on the new array-shape thresholds during in-place migration).
+
+**Perf fixes**:
+- Dashboard is no longer the default landing tab — `tournament-tabs.tsx` defaults to `"teams"` and `public-tournament-shell.tsx` defaults to `"overview"`. Dashboard mounts only on explicit click (recharts bundle no longer loads on first visit).
+- 3 pages (`tournaments/[id]/page.tsx`, `t/[token]/page.tsx`, `t/[token]/tv/page.tsx`) — `pairs` fetch now uses `team:teams!inner(tournament_id)` inner-join in the existing `Promise.all` first wave instead of a separate round-trip per page. Saves 1 RTT × 3 pages.
+- TV page (`t/[token]/tv/page.tsx`) — `team_players` projection narrowed to `(id, display_name)` only (previously `*`).
+- `tournament-live-wrapper.tsx` — `REFRESH_DEBOUNCE_MS` bumped 400 → 800.
+
+**NEW shared modules** (consolidating inline copies):
+- `src/lib/tournament/status.ts` — exports `TOURNAMENT_STATUS_LABEL` (`draft` → "ฉบับร่าง", `registering` → "รับสมัคร", `ongoing` → "กำลังแข่ง", `completed` → "จบแล้ว") + `TOURNAMENT_STATUS_BADGE` (Tailwind class map). Replaces 4–5 inline copies across `tournament-status-control.tsx`, `tournament-dashboard.tsx`, `public-hero.tsx`, `tv/page.tsx`, `bracket/page.tsx`.
+- `src/components/tournament/tv-carousel-shell.tsx` — exports `useCarousel(pageCount, intervalMs)` hook + `<TvCarouselDots>` component; consumed by both `tv-standings-carousel.tsx` and `tv-upcoming-carousel.tsx`.
+- `src/components/tournament/charts/orientable-bar.tsx` — exports `OrientableBarAxes` component + `orientableBarLayout(orientation)` helper; consumed by `team-summary.tsx` and all 4 Dashboard bar charts. Single source of truth for `vertical` vs `horizontal` recharts axis wiring.
+
+**NEW helpers**:
+- `src/lib/tournament/divisions.ts` — `parseTournamentThresholds(tournament)` + `buildPairDivisionMap(pairs, thresholds)`; dropped unused `divisionLabel` export.
+- `src/lib/utils.ts` — shared `truncate(s, n=14)` helper (replaces inline truncation in 3+ chart label sites).
+- `src/lib/actions/matches.ts` — private `getNextMatchNumber(sb, tournamentId, opts?)` consolidates 2 prior `select max(match_number)` call sites. Accepts `opts.precomputedMax?: number` to skip the DB query when caller already has the value (used by `generateKnockoutAction` to reuse `groupMax`).
+
+### Collapsible Divisions + Guest restriction (2026-05-22, commit `05fe119`)
+
+10 files, +180/-62.
+
+**Collapsible per-division headers**:
+- `pair-stage.tsx` + `knockout-stage.tsx` — each Division header (Div 1..N) is now a `<Collapsible>` trigger. `ChevronDown` icon rotates 180° when collapsed; count badge stays visible regardless of open/closed state. Default state: OPEN. Collapsing all divisions leaves N collapsed headers visible (so user can re-expand selectively).
+- NEW `src/components/ui/collapsible.tsx` — shadcn-style wrapper around `@base-ui/react/collapsible` exporting `Collapsible`, `CollapsibleTrigger`, `CollapsibleContent`. Matches the existing Base UI pattern used by `Dialog`/`Popover`.
+
+**Guest restriction** (3 enforcement layers):
+- **Server action layer**: `createClubAction` (`src/lib/actions/clubs.ts`) + `createTournamentAction` (`src/lib/actions/tournaments.ts`) early-return `{ error: "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้าง..." }` when `session.isGuest === true`. Action-level guard prevents direct API bypass.
+- **Server page layer**: `(app)/clubs/new/page.tsx` + `(app)/tournaments/new/page.tsx` `redirect("/login?auth_error=line_required&redirectTo=...")` for guest sessions before rendering form. Login page reads `auth_error` query param to surface the gate.
+- **UI layer**: `(app)/clubs/page.tsx` + `(app)/tournaments/page.tsx` hide the "+ สร้าง..." CTAs for guests and render an amber notice "เข้าสู่ระบบด้วย LINE เพื่อสร้าง..." instead. `site-header.tsx` "+ สร้างก๊วน" header button is also hidden for guest sessions.
+
+### P1 review fixes — BYE resolver + chart deps + co-admin guard + chart migration (2026-05-22, commit `d721beb`)
+
+4 files, +114/-44. Closes the 7 P1 findings from the 2026-05-21 review.
+
+- **`matches.ts` BYE cascading resolver** — replaced the 2-pass `for` loop with `while (walkoverable.length > 0)` capped at `Math.ceil(log2(bracketSize)) + 2` iterations. `iter === 0` is treated as the upper-bracket BYE pass; every iteration also sweeps the lower-bracket queue. Migrated both team-mode `insertAndResolveByes` (lines 460-542) and the pair-mode inline resolver (lines 716-829). Previously, deep brackets where one BYE chain triggered another could leave the second chain unresolved until the next score write.
+- **`matches.ts` BYE writes loser slot=null** — when `m.loserNextMatchId && m.loserNextMatchSlot` are present, BYE auto-complete now also writes `loser_next_match.<slot>_id = null` so the downstream lower-bracket row's "single-null filter" catches it and triggers its own walkover when applicable.
+- **`matches.ts` `getNextMatchNumber({ precomputedMax })`** — KO generate path now reuses the `groupMax` value it already queried (one fewer DB round-trip per KO generation).
+- **`tournament-dashboard.tsx` `divisionChartData` deps** — added `divisionThresholds` to the `useMemo` deps so threshold edits mid-tournament correctly recompute the W/D/L per-Division chart.
+- **`tournament-dashboard.tsx` `matchesKey`** — appends `games.length` + last-game scores (`games[games.length-1].a + ":" + .b`) so mid-match game edits refresh `pointTotals` in the timeline.
+- **`admins.ts` `addCoAdminAction`** — fetches `profiles.is_guest` for the target user and rejects with `{ error: "ไม่สามารถเพิ่ม guest เป็น co-admin" }`. Closes the guest-via-coadmin loophole opened by the Phase 7b LINE-only co-admin assumption.
+- **`tv-standings-carousel.tsx`** — `TvStandingsChart` migrated to `<OrientableBarAxes orientation="horizontal" categoryYWidth={72} tickFontSize={11} />` (was inline `XAxis`/`YAxis` — missed in the 2026-05-22 chart migration sweep).
+
+### loading.tsx skeletons + Dashboard lazy-load (2026-05-22, commit `47e7a5e`)
+
+12 files, +259/-4. App Router `loading.tsx` convention + `next/dynamic` code-split for the recharts-heavy Dashboard tab.
+
+**Route-level skeletons** (7 files, each is a pure server component ≤31 LOC rendering an `animate-pulse` skeleton):
+- `(app)/tournaments/loading.tsx` + `(app)/tournaments/[id]/loading.tsx`
+- `(app)/clubs/loading.tsx` + `(app)/clubs/[id]/loading.tsx`
+- `(public)/t/[token]/loading.tsx` + `(public)/t/[token]/tv/loading.tsx` + `(public)/t/[token]/bracket/loading.tsx`
+
+**NEW shared primitives**:
+- `src/components/ui/skeleton.tsx` — `Skeleton` + `SkeletonCard` (Tailwind-only, no extra deps).
+- `src/components/tournament/tournament-dashboard-skeleton.tsx` — 4 summary cards + 2 top-performers cards + 2 chart cards + 1 court-usage card mirroring the real Dashboard layout so the swap-in is seamless.
+- `src/components/tournament/tournament-dashboard-lazy.tsx` — `next/dynamic(() => import("./tournament-dashboard"), { ssr: false, loading: () => <TournamentDashboardSkeleton /> })`. Recharts (~150kb) only loads when the user opens the Dashboard tab.
+
+**Wiring**:
+- `(app)/tournaments/[id]/page.tsx` and `(public)/t/[token]/page.tsx` now mount `<TournamentDashboardLazy />` instead of `<TournamentDashboard />`. The granular skeleton renders during chunk fetch.
