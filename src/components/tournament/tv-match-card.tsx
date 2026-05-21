@@ -12,10 +12,12 @@ export function TvMatchCard({
   match,
   competitorById,
   unit,
+  fillHeight = false,
 }: {
   match: Match;
   competitorById: Map<string, Competitor>;
   unit: "team" | "pair";
+  fillHeight?: boolean;
 }) {
   const aId = unit === "team" ? match.team_a_id : match.pair_a_id;
   const bId = unit === "team" ? match.team_b_id : match.pair_b_id;
@@ -36,15 +38,19 @@ export function TvMatchCard({
         ? "text-muted-foreground line-through"
         : "font-semibold";
 
-  // Scale down very long names so they still fit / wrap nicely on 4K mounts
-  const nameSize = (name?: string) =>
-    (name?.length ?? 0) > 30
-      ? "text-xl lg:text-2xl 2xl:text-3xl"
-      : "text-2xl lg:text-4xl 2xl:text-5xl";
+  // Multi-tier name size: max font when short, shrink progressively to avoid truncation.
+  const nameSize = (name?: string) => {
+    const len = name?.length ?? 0;
+    if (len > 28) return "text-xs lg:text-sm 2xl:text-base";
+    if (len > 22) return "text-sm lg:text-base 2xl:text-lg";
+    if (len > 16) return "text-base lg:text-lg 2xl:text-xl";
+    if (len > 12) return "text-lg lg:text-xl 2xl:text-2xl";
+    return "text-lg lg:text-2xl 2xl:text-3xl"; // max
+  };
 
   return (
-    <div className="rounded-xl border bg-card p-4 lg:p-6 2xl:p-8 space-y-3">
-      <div className="flex items-center justify-between gap-2 text-sm lg:text-base 2xl:text-lg">
+    <div className={`rounded-xl border bg-card p-2 lg:p-3 2xl:p-4 ${fillHeight ? "h-full flex flex-col gap-2" : "space-y-2"}`}>
+      <div className={`${fillHeight ? "shrink-0" : ""} flex items-center justify-between gap-2 text-sm lg:text-base 2xl:text-lg`}>
         <div className="flex items-center gap-2">
           <span className={`px-2 py-0.5 rounded-full border text-xs lg:text-sm 2xl:text-base font-medium ${status.cls}`}>
             {status.text}
@@ -56,45 +62,45 @@ export function TvMatchCard({
         )}
       </div>
 
-      <div className="flex items-center gap-3 lg:gap-6">
+      <div className={`${fillHeight ? "flex-1 min-h-0" : ""} flex items-center gap-3 lg:gap-6`}>
         <div className={`flex-1 min-w-0 ${sideClass(winner === "a", winner === "b")}`}>
           <div className="flex items-start gap-2">
             {a?.color && (
               <span className="inline-block w-3 h-3 lg:w-4 lg:h-4 2xl:w-5 2xl:h-5 rounded-full shrink-0 mt-2" style={{ backgroundColor: a.color }} />
             )}
-            <div className={`${nameSize(a?.name)} break-words leading-tight`}>{a?.name ?? "—"}</div>
+            <div className={`${nameSize(a?.name)} whitespace-nowrap truncate leading-tight min-w-0`}>{a?.name ?? "—"}</div>
           </div>
           {a?.subtitle && (
-            <div className="text-base lg:text-2xl 2xl:text-3xl text-muted-foreground font-normal mt-1 break-words">{a.subtitle}</div>
+            <div className="text-muted-foreground font-normal mt-1 break-words text-xs lg:text-base 2xl:text-lg">{a.subtitle}</div>
           )}
         </div>
 
         <div className="text-center shrink-0 px-2 lg:px-4">
           {match.status === "completed" ? (
             <>
-              <div className="text-3xl lg:text-5xl 2xl:text-6xl font-bold tabular-nums">
+              <div className="font-bold tabular-nums text-xl lg:text-3xl 2xl:text-4xl">
                 {gamesA} : {gamesB}
               </div>
               {totals && (
-                <div className="text-sm lg:text-lg 2xl:text-xl text-muted-foreground tabular-nums mt-1">
+                <div className="text-muted-foreground tabular-nums mt-1 text-xs lg:text-sm 2xl:text-base">
                   ({totals.a}–{totals.b})
                 </div>
               )}
             </>
           ) : (
-            <div className="text-2xl lg:text-4xl 2xl:text-5xl text-muted-foreground font-bold">VS</div>
+            <div className="text-muted-foreground font-bold text-lg lg:text-2xl 2xl:text-3xl">VS</div>
           )}
         </div>
 
         <div className={`flex-1 min-w-0 text-right ${sideClass(winner === "b", winner === "a")}`}>
           <div className="flex items-start justify-end gap-2">
-            <div className={`${nameSize(b?.name)} break-words leading-tight`}>{b?.name ?? "—"}</div>
+            <div className={`${nameSize(b?.name)} whitespace-nowrap truncate leading-tight min-w-0`}>{b?.name ?? "—"}</div>
             {b?.color && (
               <span className="inline-block w-3 h-3 lg:w-4 lg:h-4 2xl:w-5 2xl:h-5 rounded-full shrink-0 mt-2" style={{ backgroundColor: b.color }} />
             )}
           </div>
           {b?.subtitle && (
-            <div className="text-base lg:text-2xl 2xl:text-3xl text-muted-foreground font-normal mt-1 break-words">{b.subtitle}</div>
+            <div className="text-muted-foreground font-normal mt-1 break-words text-xs lg:text-base 2xl:text-lg">{b.subtitle}</div>
           )}
         </div>
       </div>

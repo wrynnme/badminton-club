@@ -6,6 +6,7 @@ import { CreateClubForm } from "@/components/club/create-form";
 export default async function NewClubPage() {
   const session = await getSession();
   if (!session) redirect("/?auth_error=login_required");
+  if (session.isGuest) redirect("/clubs?auth_error=line_required");
 
   return (
     <div className="max-w-2xl mx-auto">

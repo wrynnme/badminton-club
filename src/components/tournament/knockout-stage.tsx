@@ -1,17 +1,19 @@
 "use client";
 
-import { useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { RefreshCw, Trophy, GitBranch, CheckCircle2, XCircle } from "lucide-react";
+import { RefreshCw, Trophy, GitBranch, CheckCircle2, XCircle, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { MatchRow } from "@/components/tournament/match-row";
 import { generateKnockoutAction } from "@/lib/actions/matches";
 import { buildCompetitorMap, teamToCompetitor } from "@/lib/tournament/competitor";
 import { roundLabel, lowerRoundLabel } from "@/lib/tournament/bracket";
+import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
 import type { Match, Team, MatchUnit, PairWithPlayers } from "@/lib/types";
 
 function BracketSection({
@@ -133,7 +135,28 @@ export function KnockoutStage({
 }) {
   const [isPending, startGen] = useTransition();
 
-  const competitorMap = buildCompetitorMap(matchUnit, teams, pairs ?? []);
+  const competitorMap = useMemo(
+    () => buildCompetitorMap(matchUnit, teams, pairs ?? []),
+    [matchUnit, teams, pairs],
+  );
+
+  const matchesByDivision = useMemo(() => {
+    const m = new Map<number | null, Match[]>();
+    for (const x of matches) {
+      const k = parseDivision(x.division);
+      const arr = m.get(k) ?? [];
+      arr.push(x);
+      m.set(k, arr);
+    }
+    return m;
+  }, [matches]);
+
+  const divisionKeysMemo = useMemo(
+    () => Array.from(matchesByDivision.keys()).sort((a, b) =>
+      a === null ? 1 : b === null ? -1 : a - b
+    ),
+    [matchesByDivision],
+  );
 
   // Build requirements checklist
   const reqs: Req[] = [];
@@ -153,17 +176,21 @@ export function KnockoutStage({
   }
   const allReqsMet = reqs.every((r) => r.met);
 
-  const upperMatches = matches.filter((m) => !m.bracket || m.bracket === "upper");
-  const lowerMatches = matches.filter((m) => m.bracket === "lower");
-  const grandFinalMatches = matches.filter((m) => m.bracket === "grand_final");
-  const hasLower = lowerMatches.length > 0;
-  const hasGrandFinal = grandFinalMatches.length > 0;
   const hasMatches = matches.length > 0;
 
-  const maxUpperRound = upperMatches.length > 0 ? Math.max(...upperMatches.map((m) => m.round_number)) : 0;
-  const upperBracketSize = Math.pow(2, maxUpperRound);
-  const totalLowerRounds = lowerMatches.length > 0 ? Math.max(...lowerMatches.map((m) => m.round_number)) : 0;
+  // Collect distinct numeric divisions present in knockout matches (null = no division split)
+  const divisionKeys = divisionKeysMemo;
+  const isMultiDivision = divisionKeys.some((k) => k !== null);
 
+  // Helper: split a set of matches into upper/lower/grand_final sub-sections
+  function splitBrackets(ms: Match[]) {
+    const upper = ms.filter((m) => !m.bracket || m.bracket === "upper");
+    const lower = ms.filter((m) => m.bracket === "lower");
+    const grandFinal = ms.filter((m) => m.bracket === "grand_final");
+    return { upper, lower, grandFinal };
+  }
+
+  // For progress badge
   const completedPlayable = matches.filter(
     (m) => m.status === "completed" && (m.team_a_id || m.pair_a_id) && (m.team_b_id || m.pair_b_id)
   ).length;
@@ -171,13 +198,31 @@ export function KnockoutStage({
     (m) => (m.team_a_id || m.pair_a_id) && (m.team_b_id || m.pair_b_id)
   ).length;
 
-  // Find champion from grand final (or upper final if no lower bracket)
-  const finalMatch = hasGrandFinal
-    ? grandFinalMatches[0]
-    : upperMatches.find((m) => m.round_number === maxUpperRound);
-  const champion = finalMatch?.status === "completed" && finalMatch.winner_id
-    ? competitorMap.get(finalMatch.winner_id)
-    : null;
+  // Per-division collapse state — default OPEN; collapsedSet tracks user-collapsed divisions
+  const [closedSet, setClosedSet] = useState<Set<string>>(() => new Set());
+  const isDivOpen = (k: number | null) => !closedSet.has(String(k));
+  const setDivOpen = (k: number | null, open: boolean) =>
+    setClosedSet((prev) => {
+      const next = new Set(prev);
+      const s = String(k);
+      if (open) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+
+  // Champion(s): one per division (or single when no division split)
+  const champions = divisionKeys.map((divKey) => {
+    const divMatches = matchesByDivision.get(divKey) ?? [];
+    const { upper, grandFinal } = splitBrackets(divMatches);
+    const maxUpperRound = upper.length > 0 ? Math.max(...upper.map((m) => m.round_number)) : 0;
+    const finalMatch = grandFinal.length > 0
+      ? grandFinal[0]
+      : upper.find((m) => m.round_number === maxUpperRound);
+    const champion = finalMatch?.status === "completed" && finalMatch.winner_id
+      ? competitorMap.get(finalMatch.winner_id) ?? null
+      : null;
+    return { divKey, champion };
+  });
 
   return (
     <div className="space-y-4">
@@ -234,76 +279,150 @@ export function KnockoutStage({
 
       {hasMatches && (
         <div className="space-y-6">
-          {/* Upper bracket */}
-          <BracketSection
-            label={hasLower ? "สายบน (Upper)" : ""}
-            matches={upperMatches}
-            maxRound={maxUpperRound}
-            bracketSize={upperBracketSize}
-            competitorMap={competitorMap}
-            tournamentId={tournamentId}
-            isOwner={isOwner}
-            unit={matchUnit}
-            matchRowSize={matchRowSize}
-          />
+          {divisionKeys.map((divKey, dIdx) => {
+            const divMatches = matchesByDivision.get(divKey) ?? [];
+            const { upper, lower, grandFinal } = splitBrackets(divMatches);
+            const hasLower = lower.length > 0;
+            const hasGrandFinal = grandFinal.length > 0;
+            const maxUpperRound = upper.length > 0 ? Math.max(...upper.map((m) => m.round_number)) : 0;
+            const upperBracketSize = Math.pow(2, maxUpperRound);
+            const totalLowerRounds = lower.length > 0 ? Math.max(...lower.map((m) => m.round_number)) : 0;
+            const tone = divKey !== null ? divisionTone(divKey) : null;
+            const { champion } = champions[dIdx];
 
-          {/* Lower bracket */}
-          {hasLower && (
-            <>
-              <Separator />
-              <BracketSection
-                label="สายล่าง (Lower)"
-                matches={lowerMatches}
-                maxRound={totalLowerRounds}
-                bracketSize={0}
-                competitorMap={competitorMap}
-                tournamentId={tournamentId}
-                isOwner={isOwner}
-                unit={matchUnit}
-                isLower
-                totalLowerRounds={totalLowerRounds}
-                matchRowSize={matchRowSize}
-              />
-            </>
-          )}
+            const divPlayableTotal = divMatches.filter(
+              (m) => (m.team_a_id || m.pair_a_id) && (m.team_b_id || m.pair_b_id),
+            ).length;
+            const divPlayableCompleted = divMatches.filter(
+              (m) =>
+                m.status === "completed" &&
+                (m.team_a_id || m.pair_a_id) &&
+                (m.team_b_id || m.pair_b_id),
+            ).length;
+            const divOpen = isMultiDivision ? isDivOpen(divKey) : true;
 
-          {/* Grand final */}
-          {hasGrandFinal && (
-            <>
-              <Separator />
-              <BracketSection
-                label="Grand Final"
-                matches={grandFinalMatches}
-                maxRound={1}
-                bracketSize={2}
-                competitorMap={competitorMap}
-                tournamentId={tournamentId}
-                isOwner={isOwner}
-                unit={matchUnit}
-                isFinalBracket
-                matchRowSize={matchRowSize}
-              />
-            </>
-          )}
+            const sectionsBody = (
+              <>
+                {/* Upper / winner bracket */}
+                <BracketSection
+                  label={hasLower ? "สายชนะ" : ""}
+                  matches={upper}
+                  maxRound={maxUpperRound}
+                  bracketSize={upperBracketSize}
+                  competitorMap={competitorMap}
+                  tournamentId={tournamentId}
+                  isOwner={isOwner}
+                  unit={matchUnit}
+                  matchRowSize={matchRowSize}
+                />
 
-          {/* Champion banner */}
-          {champion && (
-            <>
-              <Separator />
-              <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20 dark:border-yellow-700">
-                <Trophy className="h-6 w-6 text-yellow-500 shrink-0" />
-                <div>
-                  <div className="text-xs text-muted-foreground">แชมป์</div>
-                  <div className="font-bold text-lg flex items-center gap-2">
-                    {champion.color && (
-                      <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: champion.color }} />
-                    )}
-                    {champion.name}
-                  </div>
-                </div>
+                {/* Lower / loser bracket */}
+                {hasLower && (
+                  <>
+                    <Separator />
+                    <BracketSection
+                      label="สายแพ้"
+                      matches={lower}
+                      maxRound={totalLowerRounds}
+                      bracketSize={0}
+                      competitorMap={competitorMap}
+                      tournamentId={tournamentId}
+                      isOwner={isOwner}
+                      unit={matchUnit}
+                      isLower
+                      totalLowerRounds={totalLowerRounds}
+                      matchRowSize={matchRowSize}
+                    />
+                  </>
+                )}
+
+                {/* Grand final */}
+                {hasGrandFinal && (
+                  <>
+                    <Separator />
+                    <BracketSection
+                      label="ชิงชนะเลิศ"
+                      matches={grandFinal}
+                      maxRound={1}
+                      bracketSize={2}
+                      competitorMap={competitorMap}
+                      tournamentId={tournamentId}
+                      isOwner={isOwner}
+                      unit={matchUnit}
+                      isFinalBracket
+                      matchRowSize={matchRowSize}
+                    />
+                  </>
+                )}
+
+                {/* Champion banner */}
+                {champion && (
+                  <>
+                    <Separator />
+                    <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20 dark:border-yellow-700">
+                      <Trophy className="h-6 w-6 text-yellow-500 shrink-0" />
+                      <div>
+                        <div className="text-xs text-muted-foreground">
+                          {isMultiDivision && divKey !== null
+                            ? `แชมป์ ${divisionLabelTh(divKey)}`
+                            : "แชมป์"}
+                        </div>
+                        <div className="font-bold text-lg flex items-center gap-2">
+                          {champion.color && (
+                            <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: champion.color }} />
+                          )}
+                          {champion.name}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </>
+            );
+
+            return (
+              <div key={String(divKey)} className="space-y-4">
+                {isMultiDivision && divKey !== null ? (
+                  <Collapsible
+                    open={divOpen}
+                    onOpenChange={(o) => setDivOpen(divKey, o)}
+                    className="space-y-4"
+                  >
+                    {/* Division heading as trigger */}
+                    <CollapsibleTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className={`w-full justify-start h-auto px-1 py-1 pb-1 border-b rounded-none text-sm font-semibold ${tone?.text ?? ""}`}
+                        />
+                      }
+                    >
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 transition-transform duration-200 ${divOpen ? "" : "-rotate-90"}`}
+                      />
+                      <span className={`inline-block w-2 h-2 rounded-full ${tone?.bg ?? ""} border ${tone?.border ?? ""}`} />
+                      <span>{divisionLabelTh(divKey)}</span>
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                        ({divPlayableCompleted}/{divPlayableTotal})
+                      </span>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-4">
+                      {sectionsBody}
+                    </CollapsibleContent>
+                  </Collapsible>
+                ) : (
+                  sectionsBody
+                )}
+
+                {/* Separator between divisions */}
+                {isMultiDivision && dIdx < divisionKeys.length - 1 && (
+                  <Separator className="mt-2" />
+                )}
               </div>
-            </>
-          )}
+            );
+          })}
         </div>
       )}
     </div>

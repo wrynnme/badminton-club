@@ -1,0 +1,170 @@
+"use client";
+
+import { Bar, BarChart, Cell, LabelList } from "recharts";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
+import { OrientableBarAxes } from "@/components/tournament/charts/orientable-bar";
+import { TvCarouselDots, useCarousel } from "@/components/tournament/tv-carousel-shell";
+
+export type ChartRow = {
+  id: string;
+  name: string;
+  color?: string | null;
+  pts: number;
+};
+
+export type TableRow = {
+  competitorId: string;
+  name: string;
+  color?: string | null;
+  played: number;
+  leaguePoints: number;
+};
+
+export type StandingsPage =
+  | { kind: "table"; id: string; title: string; rows: TableRow[] }
+  | { kind: "chart"; id: string; title: string; rows: ChartRow[] };
+
+type Props = {
+  pages: StandingsPage[];
+  intervalMs?: number;
+  fontSize?: "sm" | "md" | "lg" | "xl";
+};
+
+const chartConfig = { pts: { label: "คะแนน" } } satisfies ChartConfig;
+
+const FONT_SIZE_CLASS: Record<"sm" | "md" | "lg" | "xl", { table: string; rowMaxName: string }> = {
+  sm: { table: "text-sm lg:text-base 2xl:text-lg", rowMaxName: "max-w-[7rem] lg:max-w-[9rem] 2xl:max-w-[12rem]" },
+  md: { table: "text-base lg:text-lg 2xl:text-xl", rowMaxName: "max-w-[8rem] lg:max-w-[10rem] 2xl:max-w-[14rem]" },
+  lg: { table: "text-lg lg:text-xl 2xl:text-2xl", rowMaxName: "max-w-[9rem] lg:max-w-[12rem] 2xl:max-w-[16rem]" },
+  xl: { table: "text-xl lg:text-2xl 2xl:text-3xl", rowMaxName: "max-w-[10rem] lg:max-w-[14rem] 2xl:max-w-[18rem]" },
+};
+
+function TvStandingsChart({ rows }: { rows: ChartRow[] }) {
+  if (rows.length === 0) {
+    return <p className="text-base lg:text-lg text-muted-foreground">ยังไม่มีผล</p>;
+  }
+  const data = rows.map((r) => ({
+    name: r.name,
+    pts: r.pts,
+    // Use theme-aware muted foreground for fallback so dark/light mode stays
+    // consistent. Recharts passes the fill string through to SVG, which
+    // resolves CSS custom properties at paint time.
+    fill: r.color ?? "var(--muted-foreground)",
+  }));
+  const chartHeight = Math.min(rows.length * 28 + 16, 240);
+  return (
+    <div className="w-full h-full flex items-center justify-center overflow-hidden">
+      <ChartContainer
+        config={chartConfig}
+        className="w-full aspect-auto"
+        style={{ aspectRatio: "auto", height: chartHeight }}
+      >
+        <BarChart
+          accessibilityLayer
+          data={data}
+          layout="vertical"
+          margin={{ top: 2, right: 24, bottom: 2, left: 4 }}
+          barCategoryGap={4}
+        >
+          <OrientableBarAxes
+            orientation="horizontal"
+            dataKey="name"
+            categoryYWidth={72}
+            tickFontSize={11}
+          />
+          <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+          <Bar dataKey="pts" radius={3} barSize={16}>
+            {data.map((entry) => (
+              <Cell key={entry.name} fill={entry.fill} />
+            ))}
+            <LabelList
+              dataKey="pts"
+              position="right"
+              offset={4}
+              className="fill-foreground"
+              fontSize={11}
+              fontWeight={700}
+            />
+          </Bar>
+        </BarChart>
+      </ChartContainer>
+    </div>
+  );
+}
+
+export function TvStandingsCarousel({ pages, intervalMs = 8000, fontSize = "md" }: Props) {
+  const { active, setActive } = useCarousel(pages.length, intervalMs);
+
+  if (pages.length === 0) {
+    return (
+      <div className="h-full overflow-hidden flex flex-col">
+        <h2 className="shrink-0 text-xl lg:text-2xl 2xl:text-3xl font-bold pb-2">อันดับ</h2>
+        <div className="flex-1 min-h-0 overflow-hidden rounded-xl border bg-card p-3 lg:p-4">
+          <p className="text-base lg:text-lg text-muted-foreground">ยังไม่มีผล</p>
+        </div>
+      </div>
+    );
+  }
+
+  const current = pages[active];
+
+  return (
+    <div className="h-full overflow-hidden flex flex-col">
+      <div className="shrink-0 flex items-center justify-between pb-2">
+        <h2 className="text-xl lg:text-2xl 2xl:text-3xl font-bold">{current.title}</h2>
+        <TvCarouselDots
+          count={pages.length}
+          active={active}
+          onSelect={setActive}
+          labels={(i) => `ไปหน้า ${pages[i]?.title ?? i + 1}`}
+        />
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border bg-card p-3 lg:p-4">
+        <div key={current.id} className="animate-in fade-in duration-300 h-full">
+          {current.kind === "chart" ? (
+            <TvStandingsChart rows={current.rows} />
+          ) : (
+            <table className={`w-full ${FONT_SIZE_CLASS[fontSize].table}`}>
+              <thead>
+                <tr className="text-left text-muted-foreground border-b">
+                  <th className="py-1 font-normal w-8">#</th>
+                  <th className="py-1 font-normal">ชื่อ</th>
+                  <th className="py-1 font-normal text-center w-10">P</th>
+                  <th className="py-1 font-normal text-center w-12">Pts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {current.rows.map((row, i) => (
+                  <tr
+                    key={row.competitorId}
+                    className={i === 0 ? "font-bold text-green-600 dark:text-green-400" : ""}
+                  >
+                    <td className="py-1 tabular-nums">{i + 1}</td>
+                    <td className={`py-1 truncate ${FONT_SIZE_CLASS[fontSize].rowMaxName}`}>
+                      <div className="flex items-center gap-1.5">
+                        {row.color && (
+                          <span
+                            className="w-2.5 h-2.5 lg:w-3 lg:h-3 rounded-full shrink-0"
+                            style={{ backgroundColor: row.color }}
+                          />
+                        )}
+                        <span className="truncate">{row.name}</span>
+                      </div>
+                    </td>
+                    <td className="py-1 text-center tabular-nums">{row.played}</td>
+                    <td className="py-1 text-center tabular-nums font-semibold">{row.leaguePoints}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

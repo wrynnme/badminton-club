@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Bar, BarChart, Cell, LabelList, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, Cell, LabelList } from "recharts";
 import {
   Card,
   CardContent,
@@ -16,6 +16,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { computeStandings } from "@/lib/tournament/scoring";
+import { OrientableBarAxes, orientableBarLayout } from "@/components/tournament/charts/orientable-bar";
 import type { Match, Pair, Team } from "@/lib/types";
 
 type TeamSummaryProps = {
@@ -23,6 +24,9 @@ type TeamSummaryProps = {
   matches: Match[];
   pairs?: Pair[];
   matchUnit: "team" | "pair";
+  size?: "default" | "tv";
+  orientation?: "vertical" | "horizontal";
+  fillParent?: boolean;
 };
 
 type TeamEntry = { id: string; name: string; color: string | null; pts: number };
@@ -73,11 +77,13 @@ const chartConfig = {
   pts: { label: "คะแนน" },
 } satisfies ChartConfig;
 
-export function TeamSummary({ teams, matches, pairs, matchUnit }: TeamSummaryProps) {
+export function TeamSummary({ teams, matches, pairs, matchUnit, size = "default", orientation = "vertical", fillParent = false }: TeamSummaryProps) {
   const entries = useMemo(
     () => buildTeamSummary(teams, matches, pairs, matchUnit),
     [teams, matches, pairs, matchUnit]
   );
+  const isTv = size === "tv";
+  const barLayout = orientableBarLayout(orientation);
 
   const completedMatches = matches.filter((m) => m.status === "completed").length;
 
@@ -90,35 +96,36 @@ export function TeamSummary({ teams, matches, pairs, matchUnit }: TeamSummaryPro
   }));
 
   // ~32px per row + padding; min 140 so very small lists still look balanced
-  const chartHeight = Math.max(140, entries.length * 36 + 24);
+  const rowH = isTv ? 56 : 36;
+  const chartHeight = Math.max(isTv ? 200 : 140, entries.length * rowH + 24);
+  const yAxisWidth = isTv ? 140 : 88;
+  const tickFontSize = isTv ? 20 : 12;
+  const labelFontSize = isTv ? 24 : 12;
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">คะแนนสะสมแต่ละทีม</CardTitle>
-        <CardDescription className="text-xs">เปรียบเทียบคะแนนระหว่างทีม</CardDescription>
+    <Card className={fillParent ? "h-full flex flex-col" : undefined}>
+      <CardHeader className="pb-2 shrink-0">
+        <CardTitle className={isTv ? "text-2xl lg:text-3xl 2xl:text-4xl" : "text-sm"}>คะแนนสะสมแต่ละทีม</CardTitle>
+        {!isTv && <CardDescription className="text-xs">เปรียบเทียบคะแนนระหว่างทีม</CardDescription>}
       </CardHeader>
-      <CardContent className="px-2 pb-3">
+      <CardContent className={fillParent ? "px-2 pb-3 flex-1 min-h-0 flex flex-col" : "px-2 pb-3"}>
         <ChartContainer
           config={chartConfig}
-          className="w-full"
-          style={{ height: chartHeight }}
+          className={fillParent ? "w-full flex-1 min-h-0 aspect-auto" : "w-full"}
+          style={fillParent ? { aspectRatio: "auto" } : { height: chartHeight }}
         >
           <BarChart
             accessibilityLayer
             data={chartData}
-            layout="vertical"
+            {...(barLayout.layout ? { layout: barLayout.layout } : {})}
             margin={{ top: 4, right: 24, bottom: 4, left: 8 }}
           >
-            <XAxis type="number" hide />
-            <YAxis
-              type="category"
+            <OrientableBarAxes
+              orientation={orientation}
               dataKey="name"
-              tickLine={false}
-              axisLine={false}
-              tickMargin={6}
-              width={88}
-              tick={{ fontSize: 12 }}
+              categoryYWidth={yAxisWidth}
+              tickFontSize={tickFontSize}
+              tickFontWeight={isTv ? 600 : 400}
             />
             <ChartTooltip
               cursor={false}
@@ -130,11 +137,11 @@ export function TeamSummary({ teams, matches, pairs, matchUnit }: TeamSummaryPro
               ))}
               <LabelList
                 dataKey="pts"
-                position="right"
+                position={barLayout.labelPosition}
                 offset={8}
                 className="fill-foreground"
-                fontSize={12}
-                fontWeight={600}
+                fontSize={labelFontSize}
+                fontWeight={isTv ? 800 : 600}
               />
             </Bar>
           </BarChart>

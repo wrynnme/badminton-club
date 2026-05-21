@@ -14,6 +14,7 @@ import {
   parseSettings,
   type TournamentSettings,
 } from "@/lib/tournament/settings";
+import { parseTournamentThresholds } from "@/lib/tournament/divisions";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
@@ -45,7 +46,12 @@ const TournamentSchema = z.object({
   seeding_method: z.enum(["random", "by_group_score"]).default("random"),
   advance_count: z.number().int().min(1).max(8).default(2),
   team_count: z.number().int().min(2).max(64),
-  pair_division_threshold: z.number().nullable().optional(),
+  pair_division_thresholds: z
+    .array(z.number())
+    .default([])
+    .transform((arr) =>
+      Array.from(new Set(arr.filter((n) => Number.isFinite(n)))).sort((a, b) => a - b)
+    ),
   notes: z.string().optional(),
 });
 
@@ -54,6 +60,7 @@ export type CreateTournamentInput = z.infer<typeof TournamentSchema>;
 export async function createTournamentAction(input: CreateTournamentInput) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  if (session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้างทัวร์นาเมนต์" };
 
   const parsed = TournamentSchema.safeParse(input);
   if (!parsed.success) {
@@ -103,9 +110,23 @@ export async function updateTournamentAction(input: CreateTournamentInput & { id
   // Snapshot pre-update fields to compute which fields actually changed
   const { data: before } = await sb
     .from("tournaments")
-    .select("name, venue, start_date, end_date, format, match_unit, has_lower_bracket, allow_drop_to_lower, seeding_method, advance_count, team_count, pair_division_threshold, notes")
+    .select("name, venue, start_date, end_date, format, match_unit, has_lower_bracket, allow_drop_to_lower, seeding_method, advance_count, team_count, pair_division_thresholds, notes")
     .eq("id", id)
     .maybeSingle();
+
+  // Block threshold change when non-pending matches exist
+  const oldThresholds: number[] = parseTournamentThresholds(before?.pair_division_thresholds);
+  const newThresholds: number[] = parseTournamentThresholds(parsed.data.pair_division_thresholds);
+  if (oldThresholds.join(",") !== newThresholds.join(",")) {
+    const { count } = await sb
+      .from("matches")
+      .select("id", { count: "exact", head: true })
+      .eq("tournament_id", id)
+      .neq("status", "pending");
+    if ((count ?? 0) > 0) {
+      return { error: "ห้ามเปลี่ยน threshold หลังเริ่มแมตช์ — รีเซ็ตแมตช์เป็น pending ก่อน" };
+    }
+  }
 
   const { error } = await sb.from("tournaments").update(parsed.data).eq("id", id);
   if (error) {

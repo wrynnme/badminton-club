@@ -73,12 +73,13 @@ export async function addCoAdminAction(
   // Look up profile UUID from LINE user_id
   const { data: profile } = await sb
     .from("profiles")
-    .select("id, display_name")
+    .select("id, display_name, is_guest")
     .eq("line_user_id", trimmed)
     .maybeSingle();
 
   if (!profile) return { error: "ไม่พบผู้ใช้ที่ login ด้วย LINE นี้" };
   if (profile.id === session.profileId) return { error: "ไม่สามารถเพิ่มตัวเองเป็น co-admin" };
+  if (profile.is_guest) return { error: "ไม่สามารถเพิ่ม guest เป็นผู้ดูแลร่วม" };
 
   const { error } = await sb.from("tournament_admins").insert({
     tournament_id: tournamentId,

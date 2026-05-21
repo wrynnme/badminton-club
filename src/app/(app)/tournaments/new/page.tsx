@@ -8,6 +8,7 @@ import { CreateTournamentForm } from "@/components/tournament/create-tournament-
 export default async function NewTournamentPage() {
   const session = await getSession();
   if (!session) redirect("/?auth_error=login_required&redirectTo=/tournaments/new");
+  if (session.isGuest) redirect("/tournaments?auth_error=line_required");
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

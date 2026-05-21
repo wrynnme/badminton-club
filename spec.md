@@ -29,11 +29,13 @@
 
 ### Group Stage Division
 
-- `matches.division` column: `upper | lower | null`
-- `tournaments.pair_division_threshold` — configurable per tournament (numeric, nullable)
-  - `null` = no division; all pairs play together
-  - `pair_level > threshold` → upper; else → lower
+- `matches.division` column: stores division number as text `"1"`, `"2"`, … `"N"` (legacy `"upper"` = `"1"`, `"lower"` = `"2"`)
+- `tournaments.pair_division_thresholds: number[]` — sorted ASC array; replaces singular `pair_division_threshold`
+  - `[]` = no division; all pairs play together
+  - `pair_level > thresholds[N-2]` → Division 1 (top); …; `≤ thresholds[0]` → Division N (bottom)
+  - Division 1 = highest skill tier
 - Cross-division matches only in knockout
+- Helpers: `computePairDivision(level, thresholds[])`, `divisionLabelTh(n)`, `divisionTone(n)`, `divisionCount(thresholds)`, `DIVISION_COLORS` — `src/lib/tournament/divisions.ts`
 
 ### CSV Import (2-step)
 
@@ -175,7 +177,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - `generateShareTokenAction` / `revokeShareTokenAction`
 - `share-controls.tsx` — owner-only generate/copy/revoke
 - `/t/[token]` — public read-only page, fetches by share_token, no auth
-- `TournamentLiveWrapper` — Supabase Realtime `postgres_changes` (event `*`) on `matches` + `tournaments` → debounced `router.refresh()` (400ms trailing); green LIVE badge
+- `TournamentLiveWrapper` — Supabase Realtime `postgres_changes` (event `*`) on `matches` + `tournaments` → debounced `router.refresh()` (800ms trailing, was 400ms; bumped 2026-05-22 to coalesce more rapid score writes); green LIVE badge
 - `share-controls.tsx` — QR Code button (icon-only, outline) beside copy/revoke when share link exists; opens Dialog with `react-qr-code` SVG (240x240, white bg) + URL below; `react-qr-code@2.0.21`
 
 ### Phase 7b — Co-admin + Audit Log
@@ -227,10 +229,11 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - No division: top `advance_count` pairs overall → single bracket
 - With division: top `advance_count` from upper + lower → `buildIndependentDoubleBracket` (upper + lower + grand final)
 - `knockout_only` pair mode: seed all pairs (no standings needed)
+- **KO `match_number` continuous across stages (2026-05-22)**: queries `max(match_number) WHERE round_type='group' AND tournament_id=...` once and passes that offset to all insertion paths. Pair-mode inserts apply `m.matchNumber + groupMax`; team-mode `insertAndResolveByes` helper accepts `matchNumberOffset` (default 0). No UNIQUE constraint on `match_number` → safe to offset; KO matches now numbered after group matches in display.
 
 ### UI Improvements
 
-- Tournament detail page split into tabs: **ทีม · กลุ่ม* · คู่* · Knockout\* · ตั้งค่า** (\* conditional per format)
+- Tournament detail page split into tabs: **แดชบอร์ด · ทีม · กลุ่ม\* · คู่\* · น็อคเอ้า\* · ตารางคิว\* · ตั้งค่า\*\*** (\* conditional per format/state, \*\* owner+co-admin only). `แดชบอร์ด` always shown; `กลุ่ม` only when `match_unit=team` + format includes group stage; `คู่` only when `match_unit=pair`; `น็อคเอ้า` only when format includes knockout; `ตารางคิว` shown once matches exist; `ตั้งค่า` hidden for public viewers.
 - `Loader2` spinner on all pending/loading buttons
 - Error messages — Thai-friendly throughout; no raw `error.message` from DB exposed to UI
 - Settings tab (owner-only): `edit-tournament-form.tsx` — TanStack Form pre-populated with current tournament data, calls `updateTournamentAction`
@@ -364,14 +367,14 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **Cards grid** `grid-cols-2 sm:grid-cols-4` — แต่ละสี: color ring (`--tw-ring-color` CSS variable) + pts + ชื่อทีม (truncate)
 - **Bar chart** — horizontal bars ความกว้างตาม `pts/maxPts`; `Card`/`CardContent`; `transition-[width] duration-500`
 
-### Team Summary (Teams Tab)
+### Team Summary (Dashboard Tab — moved 2026-05-22)
 
 - **Component**: `TeamSummary` ใน `src/components/tournament/team-summary.tsx`
-- Mounted ที่หัวของแท็บ `ทีม` ผ่าน `team-manager.tsx` (รับ props `matches`, `pairs`, `matchUnit`)
+- Mounted ใน Dashboard tab (ไม่ใช่ Teams tab อีกแล้ว) ระหว่าง summary cards กับ Top performers; `TeamManager` ไม่รับ `matches` / `pairs` / `matchUnit` props แล้ว
 - Team mode: `computeStandings(matches, "team", teamIds)` แล้ว map row.id → team
 - Pair mode: aggregate `leaguePoints` ของทุก pair group by `pair.team_id`
 - แสดงเมื่อ `completedMatches > 0 && teams.length >= 2`
-- รูปแบบ: horizontal bars ตาม ColorSummary pattern; `--tw-ring-color` CSS var, `transition-[width] duration-500`; `useMemo` aggregation
+- รูปแบบ: bar chart (recharts) — รับ `orientation: "vertical" | "horizontal"` prop จาก `tournament.settings.chart_orientation` ของ Dashboard parent; TV page passes `orientation={settings.chart_orientation}` ที่ call site เดิม
 
 ---
 
@@ -449,7 +452,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 | `line_notify.bracket`              | `true`  | `generateKnockoutAction` (2 paths)                                                                                                                            |
 | `line_notify.status`               | `true`  | `updateTournamentStatusAction`                                                                                                                                |
 | `auto_rotate_rest_gap` (0-5)       | `2`     | `autoRotateQueueAction(tournamentId, restGap?)` — when caller omits, reads setting                                                                            |
-| `court_strict`                     | `true`  | UI hint only — DB partial unique index `uniq_matches_inprogress_court` always enforces. Flag exists for future loosening                                      |
+| `court_strict`                     | `true`  | `true` = `setMatchCourtAction` blocks assigning an occupied court (error toast). `false` = assignment allowed freely; Start button disabled client-side when court busy; DB index `uniq_matches_inprogress_court` still enforces at start time as defense-in-depth |
 | `color_summary`                    | `true`  | `GroupStage` prop `showColorSummary`; owner page + `/t/[token]`                                                                                               |
 | `export_visible`                   | `true`  | Owner Settings tab wraps `ExportButtons`; `PublicHero` prop `showExport`                                                                                      |
 | `allow_force_bracket_reset`        | `false` | `resetMatchScoreAction` — bypasses "next match completed" guard for upper + lower                                                                             |
@@ -486,7 +489,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ### Caveats
 
-- **`court_strict`**: flag is currently UI-only. DB index always enforces single-occupancy. Tooltip documents this. Future: drop the unique index to let the flag truly toggle behavior (trade DB integrity for UX flexibility — not done in Phase 11).
+- **`court_strict`**: now fully wired — gates `setMatchCourtAction` server-side (strict=true blocks assignment of occupied courts) and disables the Start button client-side (strict=false allows assignment but blocks start when court busy). DB index `uniq_matches_inprogress_court` remains as defense-in-depth at start time regardless of flag value.
 - **`audit_log_enabled`**: caller pays one extra read per write. Acceptable now; cache later if write volume grows.
 - **`auto_advance_next`**: no LINE notify on the auto-promoted match (different code path); add later if needed.
 - **`allow_force_bracket_reset`**: single-level cascade only — resets `next_match` / `loser_next_match` one hop. If that row's downstream rounds are also completed, a second manual reset is required. A recursive cascade would need a Postgres RPC.
@@ -503,10 +506,10 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
   - `resetMatchScoreAction` (completed → pending) does the same
   - `createManualMatchAction` includes `queue_position = nextPendingTailPosition` in the insert payload so manual rows append at the tail
   - `match-queue.tsx`: removed unused `index` prop from `SortableQueueRow` / `NonDraggableRow` / `QueueRowReadOnly` / `QueueRowBody` (no longer needed since display reads from match data)
-- **Chunked bracket priority** (`queue_bracket_preference`):
-  - Schema (`src/lib/tournament/settings.ts`): enum extended with `chunk_upper_first` + `chunk_lower_first`; new field `queue_chunk_size: number (1..50, default 10)`
-  - `autoRotateQueueAction` (`matches.ts`): bucket logic upgraded — `upper_first`/`lower_first` stay strict (process all of one side then the other); `interleaved` literally zips `U-L-U-L`; chunk modes zip in chunks of `N` (e.g. `chunk_lower_first` + `N=10` → `L1..L10 U1..U10 L11..L20 U11..U20`). Greedy rest-gap still applies after the zip. Sort key respects both `m.division` (group rounds) and `m.bracket` (knockout) — group uses pair_division_threshold split, knockout uses double-elim upper/lower.
-  - `settings-manager.tsx`: Select dropdown gets 2 new options + conditional `NumberRow` for chunk size when a chunk mode is selected; label "กลุ่มไหนแข่งก่อน" + Thai descriptions
+- **N-division queue ordering** (`queue_division_order` + `queue_division_priority`):
+  - Schema (`src/lib/tournament/settings.ts`): `queue_division_order: "sequential"|"interleaved"|"chunked"` (default `"interleaved"`); `queue_division_priority: number[]` (1-based div numbers, `[]` = natural 1..N order); `queue_chunk_size: number (1..50, default 10)`. `queue_bracket_preference` removed (legacy values translated by `normalizeLegacy()`).
+  - `autoRotateQueueAction` uses `queue_division_order` + `queue_division_priority` to bucket and sequence matches across N divisions.
+  - `settings-manager.tsx`: Select for `queue_division_order` (สลับ/ตามลำดับ/เป็นชุด) + `DivisionPriorityRow` (comma-separated text input, sanitize on blur) when order ≠ interleaved + `NumberRow` for `queue_chunk_size` when chunked.
 - **Match queue UX**:
   - Division badge ("บน" amber / "ล่าง" sky) shown after `#match_number` in each row — uses `match.bracket` for knockout, `match.division` for group rounds
   - Competitor names hug `vs` via right-aligned A + left-aligned B with color dot mirrored to the inner side
@@ -722,3 +725,242 @@ User intent: queue numbers in รอแข่ง / กำลังแข่ง /
 - Page sort: `tournaments/[id]/page.tsx` + `/t/[token]/page.tsx` queue sort = `.order("match_number")` only (drop `queue_position` secondary)
 - `queue_position` field ใน DB ยังอยู่; writes ใน cancel/reset/createManual/start/auto-advance เป็น dead writes — defer cleanup
 - Migration applied via Supabase MCP เท่านั้น (Supabase CLI ลองแล้ว fail เพราะไม่มี local Docker stack)
+
+### DB performance indexes + parallel page fetches (2026-05-21)
+
+- migration `20260521000100_add_fk_indexes` — 14 covering indexes for unindexed FKs flagged by Supabase performance advisor: `matches.team_a_id` / `team_b_id` / `next_match_id` / `loser_next_match_id`, `pairs.player_id_1` / `player_id_2`, `group_teams.team_id`, `team_players.profile_id`, `clubs.owner_id`, `club_admins.user_id` / `added_by`, `club_players.profile_id`, `club_expenses.club_id`, `tournament_admins.added_by` + replacement `idx_tournament_admins_user_id` (dropped duplicate `tournament_admins_user_id_idx`). Speeds up JOIN embeds + cascade DELETEs; write overhead negligible at current volume; all `CREATE INDEX IF NOT EXISTS` idempotent.
+- **Parallel page fetches**: `tournaments/[id]/page.tsx` (6 sequential awaits → 3 waves: `session+tournament` || `teams+groups+matches` || `pairs`), `/t/[token]/page.tsx` (4 → 3 waves), `/t/[token]/tv/page.tsx` (4 → 3 waves). Cuts page TTFB by ~half on hot path.
+- **Co-admin can use Settings tab**: `updateTournamentAction`, `updateCourtsAction`, `updateTournamentSettingsAction` switched from `assertIsOwner` → `assertCanEdit`. Settings tab content split: `CourtManager` + `SettingsManager` + `EditTournamentForm` gated by `canEdit`; `ShareControls` + `CoAdminControls` still `isOwner`. Permission matrix above already reflects this (rows: "Update tournament settings", "Edit courts / tournament form" → ✓ for co-admin).
+
+### Public dashboard + TV layout rework (2026-05-21)
+
+- `src/components/tournament/public/public-overview.tsx` (Overview tab on `/t/[token]`) — body replaced with 3 stacked sections:
+  1. **คะแนนรวมทีม** — team-mode: `computeStandings(allMatches, 'team', teamIds)` directly; pair-mode: aggregate pair StandingRows by `pairs.team_id` via inline `aggregatePairStandingsToTeams` helper (sums played/W/D/L/PF/PA, recomputes `leaguePoints` + `pointDiff`, sorts pts→diff→PF). Shows W-D-L column. Hidden when no team has `played > 0`.
+  2. **คะแนนตามคู่ แยก Div** (pair mode only) — reads `tournament.pair_division_thresholds[]`; `computePairDivision(pairLevel, thresholds)` → Division 1..N. `md:grid-cols-2` grid, card border+title colored by `divisionTone(n)`. `thresholds=[]` → single "อันดับคู่" card.
+  3. **ตารางคิว** — in-progress rows highlighted (`bg-green-500/5`) + green ping dot in title; then next 6 pending rows sorted by `queue_position ?? match_number`, TBD-only matches filtered out. Uses existing `MatchRow size="comfortable"`. Empty state "ยังไม่มีคิว".
+- Recent results ("ผลล่าสุด", top 5) kept below as 4th card.
+- `src/app/(public)/t/[token]/tv/page.tsx` — landscape no-scroll rework: outer `h-screen w-screen overflow-hidden flex flex-col p-3 lg:p-4`. Header `shrink-0` (tighter padding + smaller hero text). Main `flex-1 min-h-0 grid grid-cols-12 gap-4 lg:gap-6`: left `col-span-8` กำลังเล่น/ถัดไป (limited to 4 TvMatchCards), right `col-span-4 grid grid-rows-2 gap-4` with อันดับ (top 6) on top and จบล่าสุด (top 4) on bottom. Each panel `h-full overflow-hidden flex flex-col` with `shrink-0` header + `flex-1 min-h-0 overflow-hidden` body. `TvMatchCard` untouched. `TournamentLiveWrapper` + `TvAutoRefresh` + `force-dynamic` preserved.
+
+### N-division refactor Wave 3b — UI layer (2026-05-21)
+
+- **`settings-manager.tsx`**: `queue_bracket_preference` Select replaced with `queue_division_order` Select (`sequential`/`interleaved`/`chunked`) + new `DivisionPriorityRow` sub-component (comma-separated text input, sanitize on blur, show when order ≠ interleaved) + `queue_chunk_size` NumberRow (show when chunked only). New `pairDivisionThresholds: number[]` prop (default `[]`) feeds `divisionCount()` for max-N hint. Import: `divisionCount` from `src/lib/tournament/divisions`.
+- **`edit-tournament-form.tsx`**: `pair_division_threshold: z.number().nullable()` → `pair_division_thresholds: z.array(z.number()).default([])`. Default value reads `tournament.pair_division_thresholds`. Old single `<Input type="number">` replaced with `ThresholdChipList` component (chip per threshold, × to remove, "+ เพิ่ม threshold" inline input, preview "→ N Division" count). Imports: `Badge`, `X`, `Plus`, `useState`.
+- **`create-tournament-form.tsx`**: same schema + defaultValues + `ThresholdChipList` changes mirrored from edit form.
+- **`public-overview.tsx`**: removed binary `upperPairStandings` / `lowerPairStandings` arrays; replaced with `divisionBuckets: Map<number, StandingRow[]>` built via `computePairDivision`. JSX renders N cards in `md:grid-cols-2` grid, each card border+title colored by `divisionTone(n)` / `divisionLabelTh(n)`. `thresholds=[]` → single "อันดับคู่" card unchanged. Import: `computePairDivision`, `divisionLabelTh`, `divisionTone`, `divisionCount`.
+- **`tv/page.tsx`**: already N-division-aware from prior work; import `computePairDivision` confirmed present; no structural change needed.
+- **`tv-match-card.tsx`**: no division badge in this component; no change needed.
+- **`tournaments/[id]/page.tsx`**: passes `pairDivisionThresholds={t.pair_division_thresholds ?? []}` to `<SettingsManager>`.
+
+### Dashboard tab + KO badge guard + chart_orientation (2026-05-22)
+
+- **NEW Dashboard tab** — first/default tab "แดชบอร์ด" on tournament detail page (private + public share). Visible to ALL viewers (no `canEdit` gate). Component: `src/components/tournament/tournament-dashboard.tsx`. Sections:
+  1. **Summary cards**: teams/pairs count, total players, total matches with completed/in-progress/pending subtitle, progress % with bar.
+  2. **`TeamSummary`** (moved from Teams tab) — "คะแนนสะสมแต่ละทีม" chart.
+  3. **Top performers** — 2 cards "อันดับสูงสุด" (top 5 by points) + "ผู้ชนะมากสุด" (top 5 by wins), with right-aligned division sub-tabs (ทั้งหมด · Div 1..N) when `match_unit === "pair"` && `pair_division_thresholds.length > 0`.
+  4. **Charts**: "คะแนนรวมต่อทีม/คู่" top-10 bar chart (team color in team mode, accent in pair mode) + "Win/Draw/Loss แยก Division" stacked bar chart (only when divisions configured).
+  5. **Court usage / timeline**: bar chart of matches per court + last 10 completed matches with HH:mm time, names, score.
+- Lazy-mounted via existing `mounted: Set<TabId>` pattern in `tournament-tabs.tsx` + `public-tournament-shell.tsx`. Tab ID = `"dashboard"`.
+- **`TeamManager` simplified** — no longer takes `matches` / `pairs` / `matchUnit` props (TeamSummary moved out of the Teams tab).
+
+- **`match-queue.tsx` DivisionBadge — KO pill + bracket guard (commit 75e4bc3)**:
+  - Renders yellow "KO" pill (tooltip "น็อคเอ้า") for any match where `round_type === "knockout"`.
+  - Shows existing W/L/F bracket badges ONLY for KO matches (previously they leaked into group matches because DB default `bracket='upper'` on every row). Group matches no longer show bogus "Winner bracket" tooltips.
+
+- **Settings UX polish (commit 75e4bc3)** — `settings-manager.tsx`:
+  - Helper text for Division priority field: `"ลำดับ Div ที่จะลงสนามก่อน (เช่น 2,1) — ว่างไว้ = 1..{N}"` (was the older "1=สูงสุด" phrasing).
+  - Base UI `<SelectValue>` for `queue_division_order` now uses an explicit render-function child to map enum value → Thai label (`interleaved → "สลับ"`, `sequential → "ตามลำดับ"`, `chunked → "เป็นชุด"`). Without the render function the trigger displayed the raw enum value.
+
+### New setting `chart_orientation` (2026-05-22)
+
+| Flag                | Default    | Wire point                                                                                          |
+| ------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
+| `chart_orientation` | `vertical` | Affects all 4 bar charts: `TeamSummary`, Dashboard points top-10, Dashboard W/D/L per Division, Dashboard court usage. |
+
+- Schema (`src/lib/tournament/settings.ts`): `chart_orientation: z.enum(["vertical", "horizontal"]).default("vertical")`.
+- `"vertical"` = category on X axis, value on Y, `LabelList position="top"`. `"horizontal"` = recharts `layout="vertical"`, category on Y, value on X, `LabelList position="right"`.
+- `TeamSummary` takes an `orientation` prop; Dashboard reads from `tournament.settings.chart_orientation`; TV page passes `orientation={settings.chart_orientation}` to `TeamSummary` call sites.
+- UI: new toggle under "การแสดงผล + Privacy" section in Settings tab.
+
+### Production DB cleanup (2026-05-22)
+
+- Direct SQL (no migration) — deleted 15 test tournaments via `DELETE FROM tournaments WHERE id <> 'acc3f738-4156-435d-a87b-b2242ed31d31'`. FK cascades dropped 57 teams, 48 players, 8 pairs, 10 groups, 60 matches, 84 audit_logs.
+- Kept only "NOMKONZ TOUNAMENT #2" (id `acc3f738-4156-435d-a87b-b2242ed31d31`).
+- `clubs*` tables untouched.
+
+### TV display rework — 3-column + carousels + settings (2026-05-22)
+
+Major redesign of `/t/[token]/tv` from a 8/4 grid into a fully-configurable 3-column TV scoreboard. All new TV behavior controlled by tournament settings (no DB migration; jsonb).
+
+**Layout** — `src/app/(public)/t/[token]/tv/page.tsx`:
+- Body: `h-screen w-screen overflow-hidden flex flex-col` (locked landscape, no vertical scroll).
+- Header: name + venue + status pill + `<TvFullscreenButton/>` + "ดูสาย" link (only when `knockoutCount > 0`) + "ออก TV" link.
+- Main: `grid grid-cols-12 gap-4`; each section `col-span-4 h-full overflow-hidden flex flex-col`. Empty columns render as placeholder `<div className="col-span-4" />` to keep the 4/4/4 invariant regardless of which toggles are off.
+  - **Left (col-span-4)** — `<TvUpcomingCarousel inProgress={...} pending={...} intervalMs={settings.tv_upcoming_interval_sec*1000} />`
+  - **Middle (col-span-4)** — `<TvStandingsCarousel pages={allStandingsPages} intervalMs={settings.tv_carousel_interval_sec*1000} fontSize={settings.tv_standings_font_size} />`
+  - **Right (col-span-4)** — `<TeamSummary size="tv" orientation="vertical" fillParent />` (gated by `tv_show_team_chart`)
+- `pendingMatches.slice(0, 6)` — fixed cap of 6 (no longer user-configurable; the previous `tv_upcoming_count` setting was removed).
+- The old "จบล่าสุด" section was dropped from rendering entirely; settings keys `tv_show_completed` / `tv_completed_count` still exist in schema but no UI consumes them.
+
+**New components**:
+- `src/components/tournament/tv-fullscreen-button.tsx` — `'use client'`, tracks `document.fullscreenElement` via `fullscreenchange` listener, toggles `requestFullscreen()` / `exitFullscreen()`, `<Maximize/>` ↔ `<Minimize/>` icon.
+- `src/components/tournament/tv-upcoming-carousel.tsx` — 2-page rotating carousel:
+  - **Page 1 "กำลังเล่น"** — all `in_progress` matches sorted by `match_number`.
+  - **Page 2 "ถัดไป"** — top-6 `pending` matches sorted by `match_number`.
+  - Pages with empty match list are filtered out (no blank slide).
+  - Layout: `grid grid-rows-6 gap-2` — every card occupies 1/6 of column height regardless of how many matches are in the current page, so a single in_progress card has the same visual size as one of six pending cards.
+  - Auto-rotates every `intervalMs` when both pages have matches; dot indicators are `<button>` (`onClick={() => setActive(i)}`), `aria-label` + `aria-current`, hover state; `setInterval` cleaned up on unmount.
+- `src/components/tournament/tv-standings-carousel.tsx` — extended with `fontSize?: "sm" | "md" | "lg" | "xl"` prop. `FONT_SIZE_CLASS` constant maps each size to `{table, rowMaxName}` Tailwind class pairs (table text + row name max-width).
+- `src/app/(public)/t/[token]/bracket/page.tsx` — NEW public TV-mode bracket page. Mirrors data-fetch pattern of `/t/[token]/tv/page.tsx`; renders upper / lower / grand_final via `buildVisualBracket` + `<BracketView/>` × 3 sections separated by `<Separator/>`; same header layout as TV page with fullscreen button + "ออก" → `/t/${token}/tv`; `force-dynamic` + `TournamentLiveWrapper` + `TvAutoRefresh`. Updated 2026-05-22 — tournament lookup uses `.maybeSingle()` (was `.single()`, hard-crashed on missing token); honors `settings.tv_refresh_interval_sec`; for pair-mode KO, splits per Division (1..N) via `computePairDivision` and renders one bracket section per division.
+
+**TvMatchCard** (`src/components/tournament/tv-match-card.tsx`) — refactored to compact-only mode:
+- `density` / `comfortable` mode REMOVED; only the previous "compact" variant remains. All call sites simplified.
+- New `fillHeight?: boolean` prop: when true, card uses `h-full flex flex-col gap-2` (with `shrink-0` header + `flex-1 min-h-0` content row) so it fills its parent height; when false, card uses `space-y-2` natural height.
+- Multi-tier `nameSize(name)` — 5 buckets keyed off name length (>28 / >22 / >16 / >12 / else) so common names display at the max size and longer ones step down progressively before triggering the truncate ellipsis.
+- Names use `whitespace-nowrap truncate leading-tight min-w-0` (single-line with ellipsis, never wrap).
+
+**TeamSummary** (`src/components/tournament/team-summary.tsx`) — three new optional props:
+- `size?: "default" | "tv"` (default `"default"`). TV mode applies `text-2xl lg:text-3xl 2xl:text-4xl` title, larger YAxis tick (`fontSize: 20`, `fontWeight: 600`), larger LabelList (`fontSize: 24`, `fontWeight: 800`), wider YAxis (`width: 140`), thicker rows (`rowH: 56`). Drops the "เปรียบเทียบคะแนนระหว่างทีม" CardDescription on TV.
+- `orientation?: "vertical" | "horizontal"` (default `"vertical"`). Default vertical = recharts default layout (XAxis category, YAxis number hidden, vertical bars, `LabelList position="top"`). Horizontal = `layout="vertical"`, XAxis hidden, YAxis category, `LabelList position="right"`.
+- `fillParent?: boolean` (default `false`). Card root → `h-full flex flex-col`; CardHeader → `shrink-0`; CardContent → `flex-1 min-h-0 flex flex-col`; ChartContainer → `flex-1 min-h-0 aspect-auto` + inline `style={{ aspectRatio: "auto" }}` to suppress shadcn's default `aspect-video`. Required because the right TV column needs the chart to stretch to viewport height.
+
+**Public dashboard `/t/[token]`** (`src/components/tournament/public/public-overview.tsx`) — overview tab body restructured into stacked Cards:
+1. **คะแนนรวมทีม** — team-mode reads `computeStandings` directly; pair-mode aggregates pair StandingRows into team totals via inline `aggregatePairStandingsToTeams` helper (sums P/W/D/L/PF/PA, recomputes `leaguePoints` + `pointDiff`, sorts pts→diff→PF). Includes W-D-L column.
+2. **คะแนนตามคู่ แยก Division** (pair mode only) — reads `tournament.pair_division_thresholds`; buckets pair standings by `computePairDivision(parsePairLevel(pair_level), thresholds)`; renders one card per Division 1..N in a `md:grid-cols-2` grid. When thresholds = [] → single "อันดับคู่" card.
+3. **ตารางคิว** — in-progress rows highlighted; top-6 pending rows sorted by `queue_position ?? match_number`, TBD-only matches filtered out. Empty state "ยังไม่มีคิว".
+4. **ผลล่าสุด** — top-5 completed (unchanged).
+
+**Settings** (`src/lib/tournament/settings.ts` + `src/components/tournament/settings-manager.tsx`) — new section "การแสดงผล TV". All fields default-on / sensible defaults; old jsonb rows parse cleanly via `parseSettings` per-field fallback.
+
+| Field                            | Type / Range                        | Default | Purpose                                                            |
+| -------------------------------- | ----------------------------------- | ------- | ------------------------------------------------------------------ |
+| `tv_show_team_chart`             | boolean                             | `true`  | Show right column TeamSummary chart                                |
+| `tv_show_standings_carousel`     | boolean                             | `true`  | Show middle column standings carousel                              |
+| `tv_show_upcoming`               | boolean                             | `true`  | Show left column upcoming carousel                                 |
+| `tv_show_completed`              | boolean                             | `true`  | (dead — UI dropped, retained for forward compat)                   |
+| `tv_show_fullscreen_button`      | boolean                             | `true`  | Show fullscreen icon button in header                              |
+| `tv_show_bracket_link`           | boolean                             | `true`  | Show "ดูสาย" link (when KO matches exist)                          |
+| `tv_completed_count`             | int 1–3                             | `1`     | (dead with completed section)                                      |
+| `tv_standings_rows`              | int 0–50 (sentinel: `0` = ทั้งหมด)  | `6`     | Cap rows per Division standings page                               |
+| `tv_standings_font_size`         | enum `sm` / `md` / `lg` / `xl`      | `md`    | Standings table font + name-column max-width                       |
+| `tv_carousel_interval_sec`       | int 3–30                            | `8`     | Rotation interval for standings carousel                           |
+| `tv_upcoming_interval_sec`       | int 3–30                            | `8`     | Rotation interval for upcoming carousel                            |
+| `tv_refresh_interval_sec`        | int 30–300                          | `60`    | `<TvAutoRefresh intervalMs>` (page-level fallback refresh)         |
+
+Settings UI in "การแสดงผล TV" Card is split into sub-groups: "ส่วนต่างๆ ของหน้า TV" (toggles), "จำนวนรายการ" (counts), "การหมุน / รีเฟรช" (intervals), + standalone "ขนาดฟอนต์" Select.
+
+**Old settings removed** (this session):
+- `tv_upcoming_count` — pending cap is now hardcoded `6`.
+
+**Files touched**:
+- New: `tv-fullscreen-button.tsx`, `tv-upcoming-carousel.tsx`, `bracket/page.tsx`.
+- Modified: `tv/page.tsx`, `tv-standings-carousel.tsx`, `tv-match-card.tsx`, `team-summary.tsx`, `public-overview.tsx`, `settings-manager.tsx`, `settings.ts`.
+
+### Code review fixes — P0/P1/P2 + dedup refactor (2026-05-22, commit `2f4b14c`)
+
+22 files, +741/-410. Three buckets: correctness bugs, perf, and shared-primitive extraction.
+
+**Correctness fixes**:
+- `tournament-dashboard.tsx` W/D/L per-Division chart — each match now counted exactly once with ฝั่งชนะ / แพ้ / เสมอ labels (previously double-counted by iterating both sides).
+- `tournament-dashboard.tsx` timeline — appended `"เกม X:Y"` + `"รวมแต้ม"` subtitle via existing `sumGameScores` helper.
+- `tournament-dashboard.tsx` `formatHHmm` now uses `new Intl.DateTimeFormat("th-TH", { timeZone: "Asia/Bangkok", hour, minute })` instead of `Date#toLocaleTimeString` — fixes Next 16 hydration mismatch when server TZ ≠ client TZ.
+- `tournament-dashboard.tsx` `selectedDiv` reset `useEffect` — when `showTopDivTabs` flips false (e.g. user removes thresholds mid-session), forces `selectedDiv = "all"` so stale "Div 3" filter doesn't render an empty list.
+- `tournament-dashboard.tsx` `matchesKey` — stable memo (`matches.length + completedCount + statuses join`) replaces the previous identity-only dep so memoized children only re-render on real data change.
+- `tournament-dashboard.tsx` `parseSettings(t.settings)` now memoized once per render (was re-parsing inside two memos).
+- `tournament-dashboard.tsx` court usage chart — court names normalized via `.trim()` before grouping (previously `"Court 1"` and `"Court 1 "` showed as 2 bars).
+- `tv-upcoming-carousel.tsx` — dynamic `gridTemplateRows` to ensure every card occupies its slot; 6-row cap; `setInterval` paused via `visibilitychange` listener; `safeActive` clamps the read-time index when pages shrink between renders (skips an extra render cycle).
+- `tv-fullscreen-button.tsx` — `requestFullscreen()`/`exitFullscreen()` wrapped in `try/catch` with `sonner` toast on failure (browsers without Fullscreen API permission throw).
+- `tv-standings-carousel.tsx` — hex fallback color replaced with `var(--muted-foreground)` so dark mode + theme tokens are respected; standings limit now caps at 50 even when the setting is `0` ("ทั้งหมด").
+- `settings.ts` `normalizeLegacy()` — added `Array.isArray()` guard before legacy-shape coercion (was throwing on the new array-shape thresholds during in-place migration).
+
+**Perf fixes**:
+- Dashboard is no longer the default landing tab — `tournament-tabs.tsx` defaults to `"teams"` and `public-tournament-shell.tsx` defaults to `"overview"`. Dashboard mounts only on explicit click (recharts bundle no longer loads on first visit).
+- 3 pages (`tournaments/[id]/page.tsx`, `t/[token]/page.tsx`, `t/[token]/tv/page.tsx`) — `pairs` fetch now uses `team:teams!inner(tournament_id)` inner-join in the existing `Promise.all` first wave instead of a separate round-trip per page. Saves 1 RTT × 3 pages.
+- TV page (`t/[token]/tv/page.tsx`) — `team_players` projection narrowed to `(id, display_name)` only (previously `*`).
+- `tournament-live-wrapper.tsx` — `REFRESH_DEBOUNCE_MS` bumped 400 → 800.
+
+**NEW shared modules** (consolidating inline copies):
+- `src/lib/tournament/status.ts` — exports `TOURNAMENT_STATUS_LABEL` (`draft` → "ฉบับร่าง", `registering` → "รับสมัคร", `ongoing` → "กำลังแข่ง", `completed` → "จบแล้ว") + `TOURNAMENT_STATUS_BADGE` (Tailwind class map). Replaces 4–5 inline copies across `tournament-status-control.tsx`, `tournament-dashboard.tsx`, `public-hero.tsx`, `tv/page.tsx`, `bracket/page.tsx`.
+- `src/components/tournament/tv-carousel-shell.tsx` — exports `useCarousel(pageCount, intervalMs)` hook + `<TvCarouselDots>` component; consumed by both `tv-standings-carousel.tsx` and `tv-upcoming-carousel.tsx`.
+- `src/components/tournament/charts/orientable-bar.tsx` — exports `OrientableBarAxes` component + `orientableBarLayout(orientation)` helper; consumed by `team-summary.tsx` and all 4 Dashboard bar charts. Single source of truth for `vertical` vs `horizontal` recharts axis wiring.
+
+**NEW helpers**:
+- `src/lib/tournament/divisions.ts` — `parseTournamentThresholds(tournament)` + `buildPairDivisionMap(pairs, thresholds)`; dropped unused `divisionLabel` export.
+- `src/lib/utils.ts` — shared `truncate(s, n=14)` helper (replaces inline truncation in 3+ chart label sites).
+- `src/lib/actions/matches.ts` — private `getNextMatchNumber(sb, tournamentId, opts?)` consolidates 2 prior `select max(match_number)` call sites. Accepts `opts.precomputedMax?: number` to skip the DB query when caller already has the value (used by `generateKnockoutAction` to reuse `groupMax`).
+
+### Collapsible Divisions + Guest restriction (2026-05-22, commit `05fe119`)
+
+10 files, +180/-62.
+
+**Collapsible per-division headers**:
+- `pair-stage.tsx` + `knockout-stage.tsx` — each Division header (Div 1..N) is now a `<Collapsible>` trigger. `ChevronDown` icon rotates 180° when collapsed; count badge stays visible regardless of open/closed state. Default state: OPEN. Collapsing all divisions leaves N collapsed headers visible (so user can re-expand selectively).
+- NEW `src/components/ui/collapsible.tsx` — shadcn-style wrapper around `@base-ui/react/collapsible` exporting `Collapsible`, `CollapsibleTrigger`, `CollapsibleContent`. Matches the existing Base UI pattern used by `Dialog`/`Popover`.
+
+**Guest restriction** (3 enforcement layers):
+- **Server action layer**: `createClubAction` (`src/lib/actions/clubs.ts`) + `createTournamentAction` (`src/lib/actions/tournaments.ts`) early-return `{ error: "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้าง..." }` when `session.isGuest === true`. Action-level guard prevents direct API bypass.
+- **Server page layer**: `(app)/clubs/new/page.tsx` + `(app)/tournaments/new/page.tsx` `redirect("/login?auth_error=line_required&redirectTo=...")` for guest sessions before rendering form. Login page reads `auth_error` query param to surface the gate.
+- **UI layer**: `(app)/clubs/page.tsx` + `(app)/tournaments/page.tsx` hide the "+ สร้าง..." CTAs for guests and render an amber notice "เข้าสู่ระบบด้วย LINE เพื่อสร้าง..." instead. `site-header.tsx` "+ สร้างก๊วน" header button is also hidden for guest sessions.
+
+### P1 review fixes — BYE resolver + chart deps + co-admin guard + chart migration (2026-05-22, commit `d721beb`)
+
+4 files, +114/-44. Closes the 7 P1 findings from the 2026-05-21 review.
+
+- **`matches.ts` BYE cascading resolver** — replaced the 2-pass `for` loop with `while (walkoverable.length > 0)` capped at `Math.ceil(log2(bracketSize)) + 2` iterations. `iter === 0` is treated as the upper-bracket BYE pass; every iteration also sweeps the lower-bracket queue. Migrated both team-mode `insertAndResolveByes` (lines 460-542) and the pair-mode inline resolver (lines 716-829). Previously, deep brackets where one BYE chain triggered another could leave the second chain unresolved until the next score write.
+- **`matches.ts` BYE writes loser slot=null** — when `m.loserNextMatchId && m.loserNextMatchSlot` are present, BYE auto-complete now also writes `loser_next_match.<slot>_id = null` so the downstream lower-bracket row's "single-null filter" catches it and triggers its own walkover when applicable.
+- **`matches.ts` `getNextMatchNumber({ precomputedMax })`** — KO generate path now reuses the `groupMax` value it already queried (one fewer DB round-trip per KO generation).
+- **`tournament-dashboard.tsx` `divisionChartData` deps** — added `divisionThresholds` to the `useMemo` deps so threshold edits mid-tournament correctly recompute the W/D/L per-Division chart.
+- **`tournament-dashboard.tsx` `matchesKey`** — appends `games.length` + last-game scores (`games[games.length-1].a + ":" + .b`) so mid-match game edits refresh `pointTotals` in the timeline.
+- **`admins.ts` `addCoAdminAction`** — fetches `profiles.is_guest` for the target user and rejects with `{ error: "ไม่สามารถเพิ่ม guest เป็น co-admin" }`. Closes the guest-via-coadmin loophole opened by the Phase 7b LINE-only co-admin assumption.
+- **`tv-standings-carousel.tsx`** — `TvStandingsChart` migrated to `<OrientableBarAxes orientation="horizontal" categoryYWidth={72} tickFontSize={11} />` (was inline `XAxis`/`YAxis` — missed in the 2026-05-22 chart migration sweep).
+
+### loading.tsx skeletons + Dashboard lazy-load (2026-05-22, commit `47e7a5e`)
+
+12 files, +259/-4. App Router `loading.tsx` convention + `next/dynamic` code-split for the recharts-heavy Dashboard tab.
+
+**Route-level skeletons** (7 files, each is a pure server component ≤31 LOC rendering an `animate-pulse` skeleton):
+- `(app)/tournaments/loading.tsx` + `(app)/tournaments/[id]/loading.tsx`
+- `(app)/clubs/loading.tsx` + `(app)/clubs/[id]/loading.tsx`
+- `(public)/t/[token]/loading.tsx` + `(public)/t/[token]/tv/loading.tsx` + `(public)/t/[token]/bracket/loading.tsx`
+
+**NEW shared primitives**:
+- `src/components/ui/skeleton.tsx` — `Skeleton` + `SkeletonCard` (Tailwind-only, no extra deps).
+- `src/components/tournament/tournament-dashboard-skeleton.tsx` — 4 summary cards + 2 top-performers cards + 2 chart cards + 1 court-usage card mirroring the real Dashboard layout so the swap-in is seamless.
+- `src/components/tournament/tournament-dashboard-lazy.tsx` — `next/dynamic(() => import("./tournament-dashboard"), { ssr: false, loading: () => <TournamentDashboardSkeleton /> })`. Recharts (~150kb) only loads when the user opens the Dashboard tab.
+
+**Wiring**:
+- `(app)/tournaments/[id]/page.tsx` and `(public)/t/[token]/page.tsx` now mount `<TournamentDashboardLazy />` instead of `<TournamentDashboard />`. The granular skeleton renders during chunk fetch.
+
+### Test infrastructure — vitest unit suite (2026-05-22, commit `4d53912`)
+
+- `vitest` + `@vitest/coverage-v8` installed as devDependencies; `vitest.config.ts` at project root with `@` alias → `./src`, `environment: 'node'`, `globals: true`.
+- npm scripts: `test` (`vitest run`), `test:watch`, `test:coverage`.
+- 6 test files under `src/lib/tournament/__tests__/` covering pure functions only — **222 passing**:
+  - `scoring.test.ts` — `gameWinner`, `leaguePoints`, `computeStandings` (sort order, tie-breaks, team + pair unit)
+  - `scheduling.test.ts` — `balancedRoundRobin` (equal/unequal sides, 1v1/0v0 edge), `generateAllPairMatches`
+  - `bracket.test.ts` — `buildBracket` (4/8/16 entries, `next_match_id` wiring), `nextPowerOf2`, `roundLabel`, `buildDoubleBracket` shape
+  - `divisions.test.ts` — `computePairDivision` boundaries, empty/1-element/2-element thresholds, `divisionLabelTh`, `divisionCount`, `divisionTone` cycling
+  - `settings.test.ts` — `parseSettings({}) → DEFAULT_SETTINGS`, legacy `queue_bracket_preference` translation, invalid input fallback
+  - `competitor.test.ts` — `teamToCompetitor`, `pairToCompetitor` name formation, `buildCompetitorMap` lookup
+- Source files are not modified by tests (lib is read-only). Server-side / Supabase-touching modules (`audit.ts`, `permissions.ts`, `settings.server.ts`) excluded — would require mocking.
+
+### Bug tracking — `bug.md` (2026-05-22, commits `4d53912`, `d721beb`)
+
+- `bug.md` at project root is the single source of truth for known bugs. Two sections: `## Open` and `## Resolved`, newest entries on top of each section, grouped by dated subheading.
+- Entry format: `**[P0|P1|P2] short title** — Context · Repro · Suspected cause · Suggested fix`.
+- `CLAUDE.md` "Bug tracking" rule (added 2026-05-22) requires:
+  - After every test run (unit / build / E2E / manual smoke), append findings to `## Open` under a dated subheading; if all pass, add a one-line confirmation under that date.
+  - When a bug is fixed, move the entry to `## Resolved` with fix date + commit SHA + a `Fix:` line summarizing what changed.
+  - If the fix changed any documented behavior, schema, label, or contract, sync `spec.md` too; if `spec.md` had a related "Known issues / Pending fix" entry, remove that entry there as well.
+- Current state: **2 Open** (P2 tab label drift logged then fixed in this section + P2 duplicate "เพิ่มสมาชิก" `aria-label` for screen readers and automation). **8 Resolved** — 7 P1 review findings + 1 player-level-fill (verified as Playwright-only automation gap, not an app bug).
+
+### Full E2E smoke test (2026-05-22)
+
+Comprehensive test pass against production Supabase using create-then-cleanup pattern:
+
+1. **Unit** — `vitest run`: 222/222 pass.
+2. **Typecheck** — `npx tsc --noEmit`: exit 0.
+3. **Production build** — `next build`: 18 routes compiled, exit 0.
+4. **E2E browser flow** via `playwright-cli` skill — created `E2E_TEST_<ts>` tournament (`group_knockout`, pair, thresholds `[5]`, 2 teams + 8 players + 4 pairs), generated pair matches, queue assignment + court + start, share token + public page + TV page.
+5. **Cleanup** — all `E2E_TEST_*` rows deleted via Supabase MCP across `audit_logs`, `matches`, `pairs`, `team_players`, `group_teams`, `groups`, `teams`, `tournament_admins`, `tournaments`. Verified 0 rows remain; NOMKONZ TOUNAMENT #2 untouched.
+
+Findings logged to `bug.md` (1 automation-only P1 since closed by manual verification, 2 P2 doc/UX items).

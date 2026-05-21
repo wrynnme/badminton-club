@@ -8,11 +8,12 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldError, FieldGroup, FieldLabel, FieldDescription } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
 import { updateTournamentAction } from "@/lib/actions/tournaments";
 import type { Tournament, TournamentFormat, SeedingMethod, MatchUnit } from "@/lib/types";
+import { ThresholdChipList } from "./threshold-chip-list";
 
 const formSchema = z.object({
   name: z.string().min(2, "ชื่อสั้นไป"),
@@ -26,7 +27,7 @@ const formSchema = z.object({
   seeding_method: z.enum(["random", "by_group_score"]),
   advance_count: z.number().int().min(1).max(8),
   team_count: z.number().int().min(2, "อย่างน้อย 2 ทีม").max(64),
-  pair_division_threshold: z.number().nullable(),
+  pair_division_thresholds: z.array(z.number()),
   notes: z.string(),
 });
 
@@ -46,7 +47,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tour
       seeding_method: tournament.seeding_method as SeedingMethod,
       advance_count: tournament.advance_count ?? 2,
       team_count: tournament.team_count,
-      pair_division_threshold: tournament.pair_division_threshold ?? null,
+      pair_division_thresholds: tournament.pair_division_thresholds ?? [],
       notes: tournament.notes ?? "",
     },
     validators: { onSubmit: formSchema },
@@ -155,22 +156,12 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tour
 
             <form.Subscribe selector={(s) => s.values.match_unit}>
               {(unit) => unit === "pair" && (
-                <form.Field name="pair_division_threshold">
+                <form.Field name="pair_division_thresholds">
                   {(field) => (
-                    <Field>
-                      <FieldLabel>Threshold แบ่งกลุ่มบน/ล่าง</FieldLabel>
-                      <div className="flex items-center gap-2">
-                        <Input type="number" step="0.5" placeholder="ไม่แบ่งกลุ่ม"
-                          value={field.state.value ?? ""}
-                          onChange={(e) => field.handleChange(e.target.value === "" ? null : Number(e.target.value))}
-                          className="w-32" />
-                        {field.state.value != null && (
-                          <Button type="button" size="sm" variant="ghost" className="text-xs text-muted-foreground"
-                            onClick={() => field.handleChange(null)}>ล้าง</Button>
-                        )}
-                      </div>
-                      <FieldDescription>pair_level &gt; ค่านี้ → กลุ่มบน · ว่างไว้ = ไม่แบ่ง</FieldDescription>
-                    </Field>
+                    <ThresholdChipList
+                      value={field.state.value}
+                      onChange={field.handleChange}
+                    />
                   )}
                 </form.Field>
               )}

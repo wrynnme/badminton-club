@@ -17,6 +17,7 @@ import { CoAdminControls } from "@/components/tournament/co-admin-controls";
 import { AuditLogPanel } from "@/components/tournament/audit-log-panel";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import { TournamentTabs } from "@/components/tournament/tournament-tabs";
+import { TournamentDashboardLazy } from "@/components/tournament/tournament-dashboard-lazy";
 import { MatchQueue } from "@/components/tournament/match-queue";
 import { CourtManager } from "@/components/tournament/court-manager";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
@@ -25,15 +26,10 @@ import { SettingsManager } from "@/components/tournament/settings-manager";
 import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match } from "@/lib/types";
 import type { TournamentAdmin } from "@/lib/actions/admins";
 import { parseSettings } from "@/lib/tournament/settings";
+import { parseTournamentThresholds } from "@/lib/tournament/divisions";
+import { TOURNAMENT_STATUS_BADGE, TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";
 
 export const dynamic = "force-dynamic";
-
-const statusLabel: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
-  draft: { label: "แบบร่าง", variant: "outline" },
-  registering: { label: "เปิดรับสมัคร", variant: "secondary" },
-  ongoing: { label: "กำลังแข่ง", variant: "default" },
-  completed: { label: "จบแล้ว", variant: "destructive" },
-};
 
 const formatLabel: Record<string, string> = {
   group_only: "แบ่งกลุ่ม",
@@ -58,20 +54,20 @@ export default async function TournamentDetailPage({
   if (!tournament) notFound();
   const t = tournament as Tournament;
 
-  // teams, groups, and matches are all independent of each other.
-  // pairs needs teamIdList from teams, so fetch teams first then
-  // kick off pairs in a second wave alongside the teams result.
-  const [teamsRes, groupsRes, matchesRes] = await Promise.all([
+  // teams, groups, matches, and pairs are all independent — fetch in a single wave.
+  // Pairs uses an inner join on teams to scope by tournament_id without first
+  // awaiting the teams list (cast required because the join column shape isn't
+  // part of the generated PairWithPlayers type).
+  const [teamsRes, groupsRes, matchesRes, pairsRes] = await Promise.all([
     sb.from("teams").select("*, players:team_players(*)").eq("tournament_id", id).order("created_at"),
     sb.from("groups").select("*, group_teams(*, team:teams(*)), matches(*)").eq("tournament_id", id).order("name"),
     sb.from("matches").select("*").eq("tournament_id", id).order("round_type", { ascending: true }).order("match_number"),
+    sb
+      .from("pairs")
+      .select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*), team:teams!inner(tournament_id)")
+      .eq("team.tournament_id", id)
+      .order("created_at"),
   ]);
-
-  const teamIdList = (teamsRes.data ?? []).map((row) => row.id);
-
-  const pairsRes = teamIdList.length
-    ? await sb.from("pairs").select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)").in("team_id", teamIdList).order("created_at")
-    : { data: [] };
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];
   const groups: GroupWithTeams[] = (groupsRes.data ?? []) as GroupWithTeams[];
@@ -120,7 +116,6 @@ export default async function TournamentDetailPage({
 
   const canEdit = isOwner || isCoAdmin;
 
-  const s = statusLabel[t.status];
   const settings = parseSettings(t.settings);
   const showGroups = t.match_unit === "team" && (t.format === "group_only" || t.format === "group_knockout");
   const showPairs = t.match_unit === "pair";
@@ -141,7 +136,7 @@ export default async function TournamentDetailPage({
             <Trophy className="h-6 w-6 shrink-0" />
             <h1 className="text-2xl font-bold">{t.name}</h1>
           </div>
-          <Badge variant={s.variant}>{s.label}</Badge>
+          <Badge variant={TOURNAMENT_STATUS_BADGE[t.status]}>{TOURNAMENT_STATUS_LABEL[t.status]}</Badge>
         </div>
 
         {/* Info card */}
@@ -192,15 +187,20 @@ export default async function TournamentDetailPage({
           showKnockout={showKnockout}
           showQueue={showQueue}
           showSettings={canEdit}
+          dashboardTab={
+            <TournamentDashboardLazy
+              tournament={t}
+              teams={teams}
+              pairs={pairs}
+              matches={allMatches}
+            />
+          }
           teamsTab={
             <TeamManager
               tournamentId={t.id}
               teams={teams}
               isOwner={canEdit}
               teamCount={t.team_count}
-              matches={allMatches}
-              pairs={pairs}
-              matchUnit={t.match_unit}
             />
           }
           groupsTab={
@@ -213,7 +213,7 @@ export default async function TournamentDetailPage({
               pairs={pairs}
               matches={allMatches.filter((m) => m.pair_a_id)}
               isOwner={canEdit}
-              pairDivisionThreshold={t.pair_division_threshold}
+              pairDivisionThresholds={parseTournamentThresholds(t.pair_division_thresholds)}
             />
           }
           knockoutTab={
@@ -240,6 +240,7 @@ export default async function TournamentDetailPage({
               canEdit={canEdit}
               courts={t.courts ?? []}
               requireCourtToStart={settings.require_court_to_start}
+              courtStrict={settings.court_strict}
             />
           }
           settingsTab={
@@ -264,7 +265,7 @@ export default async function TournamentDetailPage({
               {canEdit && (
                 <>
                   <CourtManager tournamentId={t.id} initialCourts={t.courts ?? []} />
-                  <SettingsManager tournamentId={t.id} initialSettings={t.settings} />
+                  <SettingsManager tournamentId={t.id} initialSettings={t.settings} pairDivisionThresholds={parseTournamentThresholds(t.pair_division_thresholds)} />
                   <EditTournamentForm tournament={t} existingTeamCount={teams.length} />
                 </>
               )}

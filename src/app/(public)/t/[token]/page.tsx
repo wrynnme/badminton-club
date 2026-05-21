@@ -8,9 +8,11 @@ import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-w
 import { PublicHero } from "@/components/tournament/public/public-hero";
 import { PublicOverview } from "@/components/tournament/public/public-overview";
 import { PublicTournamentShell } from "@/components/tournament/public/public-tournament-shell";
+import { TournamentDashboardLazy } from "@/components/tournament/tournament-dashboard-lazy";
 import { MatchQueue } from "@/components/tournament/match-queue";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseSettings } from "@/lib/tournament/settings";
+import { parseTournamentThresholds } from "@/lib/tournament/divisions";
 import type {
   Tournament,
   TeamWithPlayers,
@@ -39,9 +41,11 @@ export default async function PublicTournamentPage({
   if (!tournament) notFound();
   const t = tournament as Tournament;
 
-  // teams, groups, and matches are all independent — fetch in parallel.
-  // pairs needs teamIdList from teams, so it follows in a second wave.
-  const [teamsRes, groupsRes, matchesRes] = await Promise.all([
+  // teams, groups, matches, and pairs are all independent — fetch in a single wave.
+  // Pairs uses an inner join on teams to scope by tournament_id without first
+  // awaiting the teams list (cast required because the join column shape isn't
+  // part of the generated PairWithPlayers type).
+  const [teamsRes, groupsRes, matchesRes, pairsRes] = await Promise.all([
     sb
       .from("teams")
       .select("*, players:team_players(*)")
@@ -58,19 +62,14 @@ export default async function PublicTournamentPage({
       .eq("tournament_id", t.id)
       .order("round_type", { ascending: true })
       .order("match_number"),
+    sb
+      .from("pairs")
+      .select(
+        "*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*), team:teams!inner(tournament_id)"
+      )
+      .eq("team.tournament_id", t.id)
+      .order("created_at"),
   ]);
-
-  const teamIdList = (teamsRes.data ?? []).map((x) => x.id);
-
-  const pairsRes = teamIdList.length
-    ? await sb
-        .from("pairs")
-        .select(
-          "*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)"
-        )
-        .in("team_id", teamIdList)
-        .order("created_at")
-    : { data: [] };
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];
   const groups: GroupWithTeams[] = (groupsRes.data ?? []) as GroupWithTeams[];
@@ -96,10 +95,8 @@ export default async function PublicTournamentPage({
           tournament={t}
           token={token}
           teams={teams}
-          pairs={pairs}
           allMatches={allMatches}
           showBracketLink={knockoutMatches.length > 0}
-          showExport={settings.export_visible}
         />
 
         {t.notes && (
@@ -114,6 +111,14 @@ export default async function PublicTournamentPage({
           showPairs={showPairStage}
           showKnockout={showKnockoutStage}
           showQueue={showQueueStage}
+          dashboard={
+            <TournamentDashboardLazy
+              tournament={t}
+              teams={teams}
+              pairs={pairs}
+              matches={allMatches}
+            />
+          }
           overview={
             <PublicOverview
               tournament={t}
@@ -142,7 +147,7 @@ export default async function PublicTournamentPage({
                 teams={teams}
                 pairs={pairs}
                 matches={allMatches.filter((m) => m.pair_a_id)}
-                pairDivisionThreshold={t.pair_division_threshold}
+                pairDivisionThresholds={parseTournamentThresholds(t.pair_division_thresholds)}
                 isOwner={false}
                 matchRowSize="comfortable"
               />
@@ -173,6 +178,7 @@ export default async function PublicTournamentPage({
                 canEdit={false}
                 courts={t.courts ?? []}
                 requireCourtToStart={settings.require_court_to_start}
+                courtStrict={settings.court_strict}
               />
             ) : undefined
           }

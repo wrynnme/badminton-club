@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type TabId = "teams" | "groups" | "pairs" | "knockout" | "queue" | "settings";
+type TabId = "dashboard" | "teams" | "groups" | "pairs" | "knockout" | "queue" | "settings";
 
 export function TournamentTabs({
+  dashboardTab,
   teamsTab,
   groupsTab,
   pairsTab,
@@ -19,6 +20,7 @@ export function TournamentTabs({
   showQueue,
   showSettings,
 }: {
+  dashboardTab: ReactNode;
   teamsTab: ReactNode;
   groupsTab?: ReactNode;
   pairsTab?: ReactNode;
@@ -36,7 +38,7 @@ export function TournamentTabs({
   const searchParams = useSearchParams();
 
   const validTabs = useMemo(() => {
-    const list: TabId[] = ["teams"];
+    const list: TabId[] = ["dashboard", "teams"];
     if (showGroups) list.push("groups");
     if (showPairs) list.push("pairs");
     if (showKnockout) list.push("knockout");
@@ -46,6 +48,9 @@ export function TournamentTabs({
   }, [showGroups, showPairs, showKnockout, showQueue, showSettings]);
 
   const queryTab = searchParams.get("tab") as TabId | null;
+  // Default landing tab is "teams" — keeps recharts out of the initial bundle
+  // for typical viewers. Users opt into the dashboard by clicking the tab,
+  // which lazy-mounts it.
   const activeTab: TabId =
     queryTab && validTabs.includes(queryTab) ? queryTab : "teams";
 
@@ -71,6 +76,9 @@ export function TournamentTabs({
 
   const onValueChange = (next: string) => {
     const params = new URLSearchParams(searchParams.toString());
+    // "teams" is the canonical default — strip the ?tab= param for it so the
+    // URL stays clean. All other tabs (including dashboard) get an explicit
+    // ?tab=<id>.
     if (next === "teams") params.delete("tab");
     else params.set("tab", next);
     const qs = params.toString();
@@ -80,6 +88,7 @@ export function TournamentTabs({
   return (
     <Tabs value={activeTab} onValueChange={onValueChange}>
       <TabsList className="w-full flex-wrap h-auto">
+        <TabsTrigger value="dashboard">แดชบอร์ด</TabsTrigger>
         <TabsTrigger value="teams">ทีม</TabsTrigger>
         {showGroups && <TabsTrigger value="groups">กลุ่ม</TabsTrigger>}
         {showPairs && <TabsTrigger value="pairs">คู่</TabsTrigger>}
@@ -87,6 +96,10 @@ export function TournamentTabs({
         {showQueue && <TabsTrigger value="queue">ตารางคิว</TabsTrigger>}
         {showSettings && <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>}
       </TabsList>
+
+      <TabsContent value="dashboard" className="mt-6">
+        {mounted.has("dashboard") ? dashboardTab : null}
+      </TabsContent>
 
       <TabsContent value="teams" className="mt-6">
         {mounted.has("teams") ? teamsTab : null}

@@ -1,0 +1,331 @@
+import { describe, it, expect } from "vitest";
+import {
+  nextPowerOf2,
+  buildBracket,
+  buildDoubleBracket,
+  roundLabel,
+  lowerRoundLabel,
+} from "../bracket";
+import type { BracketEntry, BracketMatchDef } from "../bracket";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function makeEntries(n: number): BracketEntry[] {
+  return Array.from({ length: n }, (_, i) => ({
+    teamId: `team-${i + 1}`,
+    label: `Team ${i + 1}`,
+  }));
+}
+
+function makeEntriesWithByes(total: number, realTeams: number): BracketEntry[] {
+  return Array.from({ length: total }, (_, i) => ({
+    teamId: i < realTeams ? `team-${i + 1}` : null,
+    label: i < realTeams ? `Team ${i + 1}` : "BYE",
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// nextPowerOf2
+// ---------------------------------------------------------------------------
+describe("nextPowerOf2", () => {
+  it("returns 1 for n=1", () => expect(nextPowerOf2(1)).toBe(1));
+  it("returns 2 for n=2", () => expect(nextPowerOf2(2)).toBe(2));
+  it("returns 4 for n=3", () => expect(nextPowerOf2(3)).toBe(4));
+  it("returns 4 for n=4", () => expect(nextPowerOf2(4)).toBe(4));
+  it("returns 8 for n=5", () => expect(nextPowerOf2(5)).toBe(8));
+  it("returns 8 for n=8", () => expect(nextPowerOf2(8)).toBe(8));
+  it("returns 16 for n=9", () => expect(nextPowerOf2(9)).toBe(16));
+  it("returns 16 for n=16", () => expect(nextPowerOf2(16)).toBe(16));
+  it("returns 32 for n=17", () => expect(nextPowerOf2(17)).toBe(32));
+  it("returns 1 for n=0", () => expect(nextPowerOf2(0)).toBe(1));
+});
+
+// ---------------------------------------------------------------------------
+// buildBracket — match count
+// ---------------------------------------------------------------------------
+describe("buildBracket match counts", () => {
+  it("4-entry bracket has 3 matches (4-1)", () => {
+    const result = buildBracket(makeEntries(4));
+    expect(result).toHaveLength(3);
+  });
+
+  it("8-entry bracket has 7 matches (8-1)", () => {
+    const result = buildBracket(makeEntries(8));
+    expect(result).toHaveLength(7);
+  });
+
+  it("16-entry bracket has 15 matches (16-1)", () => {
+    const result = buildBracket(makeEntries(16));
+    expect(result).toHaveLength(15);
+  });
+
+  it("2-entry bracket has 1 match", () => {
+    const result = buildBracket(makeEntries(2));
+    expect(result).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildBracket — round structure
+// ---------------------------------------------------------------------------
+describe("buildBracket round structure", () => {
+  it("4-entry: round 1 has 2 matches, round 2 has 1 match", () => {
+    const matches = buildBracket(makeEntries(4));
+    const r1 = matches.filter((m) => m.roundNumber === 1);
+    const r2 = matches.filter((m) => m.roundNumber === 2);
+    expect(r1).toHaveLength(2);
+    expect(r2).toHaveLength(1);
+  });
+
+  it("8-entry: rounds 1/2/3 have 4/2/1 matches", () => {
+    const matches = buildBracket(makeEntries(8));
+    expect(matches.filter((m) => m.roundNumber === 1)).toHaveLength(4);
+    expect(matches.filter((m) => m.roundNumber === 2)).toHaveLength(2);
+    expect(matches.filter((m) => m.roundNumber === 3)).toHaveLength(1);
+  });
+
+  it("all bracket type is 'upper'", () => {
+    const matches = buildBracket(makeEntries(4));
+    expect(matches.every((m) => m.bracket === "upper")).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildBracket — next_match_id wiring
+// ---------------------------------------------------------------------------
+describe("buildBracket next_match_id wiring", () => {
+  it("final match has null nextMatchId", () => {
+    const matches = buildBracket(makeEntries(4));
+    const final = matches.find((m) => m.roundNumber === 2)!;
+    expect(final.nextMatchId).toBeNull();
+    expect(final.nextMatchSlot).toBeNull();
+  });
+
+  it("R1 match next_match_id points to an R2 match id", () => {
+    const matches = buildBracket(makeEntries(4));
+    const r2Ids = new Set(matches.filter((m) => m.roundNumber === 2).map((m) => m.id));
+    const r1Matches = matches.filter((m) => m.roundNumber === 1);
+    r1Matches.forEach((m) => {
+      expect(m.nextMatchId).not.toBeNull();
+      expect(r2Ids.has(m.nextMatchId!)).toBe(true);
+    });
+  });
+
+  it("R1 matches have nextMatchSlot 'a' or 'b'", () => {
+    const matches = buildBracket(makeEntries(4));
+    const r1 = matches.filter((m) => m.roundNumber === 1);
+    const slots = r1.map((m) => m.nextMatchSlot);
+    expect(slots).toContain("a");
+    expect(slots).toContain("b");
+  });
+
+  it("8-entry: every R1 match's nextMatchId appears in R2", () => {
+    const matches = buildBracket(makeEntries(8));
+    const r2Ids = new Set(matches.filter((m) => m.roundNumber === 2).map((m) => m.id));
+    matches
+      .filter((m) => m.roundNumber === 1)
+      .forEach((m) => {
+        expect(r2Ids.has(m.nextMatchId!)).toBe(true);
+      });
+  });
+
+  it("8-entry: every R2 match's nextMatchId appears in R3 (final)", () => {
+    const matches = buildBracket(makeEntries(8));
+    const r3Ids = new Set(matches.filter((m) => m.roundNumber === 3).map((m) => m.id));
+    matches
+      .filter((m) => m.roundNumber === 2)
+      .forEach((m) => {
+        expect(r3Ids.has(m.nextMatchId!)).toBe(true);
+      });
+  });
+
+  it("loserNextMatchId is null for all SE matches", () => {
+    const matches = buildBracket(makeEntries(8));
+    expect(matches.every((m) => m.loserNextMatchId === null)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildBracket — team assignment
+// ---------------------------------------------------------------------------
+describe("buildBracket team assignment", () => {
+  it("R1 matches have teamAId and teamBId set", () => {
+    const matches = buildBracket(makeEntries(4));
+    const r1 = matches.filter((m) => m.roundNumber === 1);
+    r1.forEach((m) => {
+      expect(m.teamAId).not.toBeNull();
+      expect(m.teamBId).not.toBeNull();
+    });
+  });
+
+  it("R2 final has null teamAId/teamBId (to be filled by results)", () => {
+    const matches = buildBracket(makeEntries(4));
+    const final = matches.find((m) => m.roundNumber === 2)!;
+    expect(final.teamAId).toBeNull();
+    expect(final.teamBId).toBeNull();
+  });
+
+  it("BYE detection: isBye=true when one slot is null in R1", () => {
+    const entries = makeEntriesWithByes(4, 3); // 3 real + 1 bye
+    const matches = buildBracket(entries);
+    const byeMatches = matches.filter((m) => m.isBye);
+    expect(byeMatches.length).toBeGreaterThan(0);
+  });
+
+  it("all 4 teams appear in R1 for a 4-entry bracket", () => {
+    const matches = buildBracket(makeEntries(4));
+    const r1 = matches.filter((m) => m.roundNumber === 1);
+    const teamIds = new Set([
+      ...r1.map((m) => m.teamAId),
+      ...r1.map((m) => m.teamBId),
+    ]);
+    teamIds.delete(null);
+    expect(teamIds.size).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildBracket — unique IDs
+// ---------------------------------------------------------------------------
+describe("buildBracket unique IDs", () => {
+  it("all match IDs are unique", () => {
+    const matches = buildBracket(makeEntries(8));
+    const ids = matches.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("match numbers are sequential starting at 1", () => {
+    const matches = buildBracket(makeEntries(8));
+    const nums = matches.map((m) => m.matchNumber).sort((a, b) => a - b);
+    expect(nums).toEqual([1, 2, 3, 4, 5, 6, 7]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildDoubleBracket — basic shape
+// ---------------------------------------------------------------------------
+describe("buildDoubleBracket", () => {
+  it("4-entry DE has upper + lower + grand_final sections", () => {
+    const matches = buildDoubleBracket(makeEntries(4));
+    const brackets = new Set(matches.map((m) => m.bracket));
+    expect(brackets.has("upper")).toBe(true);
+    expect(brackets.has("lower")).toBe(true);
+    expect(brackets.has("grand_final")).toBe(true);
+  });
+
+  it("4-entry DE: exactly 1 grand_final match", () => {
+    const matches = buildDoubleBracket(makeEntries(4));
+    expect(matches.filter((m) => m.bracket === "grand_final")).toHaveLength(1);
+  });
+
+  it("4-entry DE: 2 upper R1 matches", () => {
+    const matches = buildDoubleBracket(makeEntries(4));
+    const upperR1 = matches.filter((m) => m.bracket === "upper" && m.roundNumber === 1);
+    expect(upperR1).toHaveLength(2);
+  });
+
+  it("4-entry DE: all IDs are unique", () => {
+    const matches = buildDoubleBracket(makeEntries(4));
+    const ids = matches.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("8-entry DE: all IDs are unique", () => {
+    const matches = buildDoubleBracket(makeEntries(8));
+    const ids = matches.map((m) => m.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("4-entry DE: upper R1 matches have loserNextMatchId set", () => {
+    const matches = buildDoubleBracket(makeEntries(4));
+    const upperR1 = matches.filter((m) => m.bracket === "upper" && m.roundNumber === 1);
+    upperR1.forEach((m) => {
+      expect(m.loserNextMatchId).not.toBeNull();
+    });
+  });
+
+  it("4-entry DE: grand_final has nextMatchId=null", () => {
+    const matches = buildDoubleBracket(makeEntries(4));
+    const gf = matches.find((m) => m.bracket === "grand_final")!;
+    expect(gf.nextMatchId).toBeNull();
+  });
+
+  it("4-entry DE: grand_final nextMatchSlot=null, loserNextMatchSlot=null", () => {
+    const matches = buildDoubleBracket(makeEntries(4));
+    const gf = matches.find((m) => m.bracket === "grand_final")!;
+    expect(gf.nextMatchSlot).toBeNull();
+    expect(gf.loserNextMatchSlot).toBeNull();
+  });
+
+  it("4-entry DE: lower bracket matches have bracket='lower'", () => {
+    const matches = buildDoubleBracket(makeEntries(4));
+    const lower = matches.filter((m) => m.bracket === "lower");
+    expect(lower.length).toBeGreaterThan(0);
+    lower.forEach((m) => expect(m.bracket).toBe("lower"));
+  });
+
+  it("4-entry DE: upper bracket winner advances to grand_final slot 'a'", () => {
+    const matches = buildDoubleBracket(makeEntries(4));
+    const upperFinal = matches
+      .filter((m) => m.bracket === "upper")
+      .sort((a, b) => b.roundNumber - a.roundNumber)[0];
+    const gf = matches.find((m) => m.bracket === "grand_final")!;
+    expect(upperFinal.nextMatchId).toBe(gf.id);
+    expect(upperFinal.nextMatchSlot).toBe("a");
+  });
+
+  it("4-entry DE: lower bracket final advances to grand_final slot 'b'", () => {
+    const matches = buildDoubleBracket(makeEntries(4));
+    const lowerMatches = matches.filter((m) => m.bracket === "lower");
+    const lowerFinal = lowerMatches.sort((a, b) => b.roundNumber - a.roundNumber)[0];
+    const gf = matches.find((m) => m.bracket === "grand_final")!;
+    expect(lowerFinal.nextMatchId).toBe(gf.id);
+    expect(lowerFinal.nextMatchSlot).toBe("b");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// roundLabel
+// ---------------------------------------------------------------------------
+describe("roundLabel", () => {
+  it("final round → 'รอบชิงชนะเลิศ'", () => {
+    expect(roundLabel(3, 3, 8)).toBe("รอบชิงชนะเลิศ");
+  });
+
+  it("semi-final round → 'รอบรองชนะเลิศ'", () => {
+    expect(roundLabel(2, 3, 8)).toBe("รอบรองชนะเลิศ");
+  });
+
+  it("quarter-final round (maxRound ≥ 4) → 'รอบก่อนรองชนะเลิศ'", () => {
+    expect(roundLabel(2, 4, 16)).toBe("รอบก่อนรองชนะเลิศ");
+  });
+
+  it("round 1 of 3 (bracketSize 8) → uses team count format", () => {
+    const label = roundLabel(1, 3, 8);
+    expect(label).toBe("รอบ 8 ทีม");
+  });
+
+  it("round 1 of 4 (bracketSize 16) → 'รอบ 16 ทีม'", () => {
+    expect(roundLabel(1, 4, 16)).toBe("รอบ 16 ทีม");
+  });
+
+  it("round 3 of 4 (bracketSize 16) → 'รอบรองชนะเลิศ'", () => {
+    expect(roundLabel(3, 4, 16)).toBe("รอบรองชนะเลิศ");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// lowerRoundLabel
+// ---------------------------------------------------------------------------
+describe("lowerRoundLabel", () => {
+  it("final lower round → 'Lower Final'", () => {
+    expect(lowerRoundLabel(4, 4)).toBe("Lower Final");
+  });
+
+  it("non-final lower round → 'สายล่าง รอบ N'", () => {
+    expect(lowerRoundLabel(1, 4)).toBe("สายล่าง รอบ 1");
+    expect(lowerRoundLabel(2, 4)).toBe("สายล่าง รอบ 2");
+    expect(lowerRoundLabel(3, 4)).toBe("สายล่าง รอบ 3");
+  });
+});

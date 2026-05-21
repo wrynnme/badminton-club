@@ -26,9 +26,11 @@ export async function SiteHeader() {
           </Link>
           {session ? (
             <>
-              <Link href="/clubs/new">
-                <Button size="sm">สร้างก๊วน</Button>
-              </Link>
+              {!session.isGuest && (
+                <Link href="/clubs/new">
+                  <Button size="sm">สร้างก๊วน</Button>
+                </Link>
+              )}
               <div className="flex items-center gap-2">
                 <Avatar className="h-8 w-8">
                   {session.pictureUrl && <AvatarImage src={session.pictureUrl} />}

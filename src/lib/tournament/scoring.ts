@@ -1,4 +1,4 @@
-import type { Game, Match } from "@/lib/types";
+import type { Game, Match, PairWithPlayers, Team } from "@/lib/types";
 
 export const WIN_POINTS = 3;
 export const DRAW_POINTS = 1;
@@ -92,6 +92,48 @@ export function computeStandings(
   }
 
   return Array.from(map.values()).sort((a, b) => {
+    if (b.leaguePoints !== a.leaguePoints) return b.leaguePoints - a.leaguePoints;
+    if (b.pointDiff !== a.pointDiff) return b.pointDiff - a.pointDiff;
+    return b.pointsFor - a.pointsFor;
+  });
+}
+
+/**
+ * Aggregate pair standings into team standings by summing per-pair rows.
+ * Used when match_unit='pair' to show overall team performance.
+ */
+export function aggregatePairStandingsToTeams(
+  pairStandings: StandingRow[],
+  pairs: PairWithPlayers[],
+  teams: Team[]
+): StandingRow[] {
+  const pairTeamMap = new Map(pairs.map((p) => [p.id, p.team_id]));
+  const acc = new Map<string, StandingRow>(
+    teams.map((t) => [t.id, {
+      competitorId: t.id, played: 0, wins: 0, draws: 0, losses: 0,
+      pointsFor: 0, pointsAgainst: 0, leaguePoints: 0, pointDiff: 0,
+    }])
+  );
+
+  for (const s of pairStandings) {
+    const teamId = pairTeamMap.get(s.competitorId);
+    if (!teamId) continue;
+    const row = acc.get(teamId);
+    if (!row) continue;
+    row.played += s.played;
+    row.wins += s.wins;
+    row.draws += s.draws;
+    row.losses += s.losses;
+    row.pointsFor += s.pointsFor;
+    row.pointsAgainst += s.pointsAgainst;
+  }
+
+  for (const row of acc.values()) {
+    row.leaguePoints = leaguePoints(row.wins, row.draws);
+    row.pointDiff = row.pointsFor - row.pointsAgainst;
+  }
+
+  return Array.from(acc.values()).sort((a, b) => {
     if (b.leaguePoints !== a.leaguePoints) return b.leaguePoints - a.leaguePoints;
     if (b.pointDiff !== a.pointDiff) return b.pointDiff - a.pointDiff;
     return b.pointsFor - a.pointsFor;

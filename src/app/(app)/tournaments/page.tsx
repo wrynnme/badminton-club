@@ -7,16 +7,10 @@ import { getSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TOURNAMENT_STATUS_BADGE, TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";
 import type { Tournament } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-const statusLabel: Record<string, { label: string; variant: "default" | "secondary" | "outline" | "destructive" }> = {
-  draft: { label: "แบบร่าง", variant: "outline" },
-  registering: { label: "เปิดรับสมัคร", variant: "secondary" },
-  ongoing: { label: "กำลังแข่ง", variant: "default" },
-  completed: { label: "จบแล้ว", variant: "destructive" },
-};
 
 const formatLabel: Record<string, string> = {
   group_only: "แบ่งกลุ่ม",
@@ -40,7 +34,7 @@ export default async function TournamentsPage() {
           <Trophy className="h-6 w-6" />
           <h1 className="text-2xl font-bold">Tournament</h1>
         </div>
-        {session && (
+        {session && !session.isGuest && (
           <Link href="/tournaments/new">
             <Button size="sm">
               <Plus className="h-4 w-4 mr-1" />
@@ -54,23 +48,27 @@ export default async function TournamentsPage() {
         <div className="text-center py-16 text-muted-foreground space-y-3">
           <Trophy className="h-12 w-12 mx-auto opacity-20" />
           <p>ยังไม่มีทัวร์นาเมนต์</p>
-          {session && (
+          {session && !session.isGuest && (
             <Link href="/tournaments/new">
               <Button variant="outline">สร้างทัวร์นาเมนต์แรก</Button>
             </Link>
+          )}
+          {session?.isGuest && (
+            <p className="text-xs">เข้าสู่ระบบด้วย LINE เพื่อสร้างทัวร์นาเมนต์</p>
           )}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
           {(tournaments as Tournament[]).map((t) => {
-            const s = statusLabel[t.status];
             return (
               <Link key={t.id} href={`/tournaments/${t.id}`}>
                 <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
                   <CardHeader className="pb-2">
                     <div className="flex items-start justify-between gap-2">
                       <CardTitle className="text-base leading-snug">{t.name}</CardTitle>
-                      <Badge variant={s.variant} className="shrink-0">{s.label}</Badge>
+                      <Badge variant={TOURNAMENT_STATUS_BADGE[t.status]} className="shrink-0">
+                        {TOURNAMENT_STATUS_LABEL[t.status]}
+                      </Badge>
                     </div>
                   </CardHeader>
                   <CardContent className="text-sm text-muted-foreground space-y-1">
