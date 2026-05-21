@@ -41,7 +41,7 @@ export function PublicTournamentShell({
     <Tabs value={active} onValueChange={onChange} className="w-full">
       <TabsList
         variant="line"
-        className="w-full justify-start gap-0 rounded-none border-b bg-transparent pb-0 h-auto overflow-x-auto"
+        className="w-full justify-start gap-0 rounded-none border-b bg-transparent pb-0 h-auto flex-wrap"
       >
         <TabsTrigger value="dashboard" className="px-4 pb-3 pt-1 rounded-none text-sm sm:text-base">
           แดชบอร์ด

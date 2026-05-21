@@ -97,10 +97,8 @@ export default async function PublicTournamentPage({
           tournament={t}
           token={token}
           teams={teams}
-          pairs={pairs}
           allMatches={allMatches}
           showBracketLink={knockoutMatches.length > 0}
-          showExport={settings.export_visible}
         />
 
         {t.notes && (
