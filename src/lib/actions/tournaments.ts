@@ -14,6 +14,7 @@ import {
   parseSettings,
   type TournamentSettings,
 } from "@/lib/tournament/settings";
+import { parseTournamentThresholds } from "@/lib/tournament/divisions";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
@@ -113,8 +114,8 @@ export async function updateTournamentAction(input: CreateTournamentInput & { id
     .maybeSingle();
 
   // Block threshold change when non-pending matches exist
-  const oldThresholds: number[] = (before?.pair_division_thresholds as number[] | null) ?? [];
-  const newThresholds: number[] = parsed.data.pair_division_thresholds ?? [];
+  const oldThresholds: number[] = parseTournamentThresholds(before?.pair_division_thresholds);
+  const newThresholds: number[] = parseTournamentThresholds(parsed.data.pair_division_thresholds);
   if (oldThresholds.join(",") !== newThresholds.join(",")) {
     const { count } = await sb
       .from("matches")

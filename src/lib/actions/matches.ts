@@ -14,7 +14,7 @@ import { assertCanEdit } from "@/lib/tournament/permissions";
 import { writeAuditLog } from "@/lib/tournament/audit";
 import { notifyTournamentEvent } from "@/lib/notification/line";
 import { getTournamentSettings } from "@/lib/tournament/settings.server";
-import { computePairDivision, parseDivision, parsePairLevel, divisionLabelTh } from "@/lib/tournament/divisions";
+import { computePairDivision, parseDivision, parsePairLevel, divisionLabelTh, parseTournamentThresholds } from "@/lib/tournament/divisions";
 import type { TournamentSettings } from "@/lib/tournament/settings";
 
 async function loginRedirect(): Promise<never> {
@@ -69,6 +69,30 @@ export async function generateGroupsAction(tournamentId: string, groupCount: num
     description: `สร้างกลุ่ม ${groupCount} กลุ่ม${koCleared ? " (รีเซ็ตสาย knockout)" : ""}`,
   });
   return { ok: true, knockoutCleared: koCleared };
+}
+
+/**
+ * Get the next sequential `match_number` for a tournament. When `roundType`
+ * is provided, the scan is scoped to that round_type (e.g., to continue
+ * numbering after group stage when generating the knockout bracket). Without
+ * `roundType`, the scan covers every row in the tournament. Returns 1 when
+ * no matching rows exist.
+ */
+async function getNextMatchNumber(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  tournamentId: string,
+  opts?: { roundType?: "group" | "knockout" },
+): Promise<number> {
+  let q = sb
+    .from("matches")
+    .select("match_number")
+    .eq("tournament_id", tournamentId);
+  if (opts?.roundType) q = q.eq("round_type", opts.roundType);
+  const { data } = await q
+    .order("match_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return (data?.match_number ?? 0) + 1;
 }
 
 async function resetGroupTeamStandings(
@@ -223,7 +247,7 @@ export async function generatePairMatchesAction(tournamentId: string) {
 
   // Fetch tournament thresholds + pairs
   const { data: tournament } = await sb.from("tournaments").select("pair_division_thresholds").eq("id", tournamentId).single();
-  const thresholds: number[] = (tournament?.pair_division_thresholds as number[] | null) ?? [];
+  const thresholds: number[] = parseTournamentThresholds(tournament?.pair_division_thresholds);
 
   const { data: teams } = await sb
     .from("teams")
@@ -500,15 +524,7 @@ export async function generateKnockoutAction(tournamentId: string) {
   if (!tournament) return { error: "ไม่พบทัวร์นาเมนต์" };
 
   // KO match_number ต่อจาก group stage (max group match_number; 0 ถ้าไม่มี)
-  const { data: groupMaxRow } = await sb
-    .from("matches")
-    .select("match_number")
-    .eq("tournament_id", tournamentId)
-    .eq("round_type", "group")
-    .order("match_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const groupMax = groupMaxRow?.match_number ?? 0;
+  const groupMax = (await getNextMatchNumber(sb, tournamentId, { roundType: "group" })) - 1;
 
   // ── Pair mode ──
   if (tournament.match_unit === "pair") {
@@ -529,7 +545,7 @@ export async function generateKnockoutAction(tournamentId: string) {
     const pairs = (pairsRaw as unknown as RawPair[]) ?? [];
     if (pairs.length < 2) return { error: "ต้องมีอย่างน้อย 2 คู่" };
 
-    const thresholds: number[] = (tournament.pair_division_thresholds as number[] | null) ?? [];
+    const thresholds: number[] = parseTournamentThresholds(tournament.pair_division_thresholds);
 
     function pairSeed(p: RawPair): Seed {
       const label = [p.player1?.display_name, p.player2?.display_name].filter(Boolean).join(" / ") || p.id.slice(0, 6);
@@ -572,6 +588,8 @@ export async function generateKnockoutAction(tournamentId: string) {
         allMatches = buildBracket(toEntries(topSeeds, nextPowerOf2(topSeeds.length)));
       } else {
         // N-division: independent bracket per division
+        // Invariant: divByPairId values are always in [1..divCount] — computePairDivision
+        // clamps via `N - 1 - i` (max) and `N` fallback (min), so the d-equality below never misses.
         const divCount = thresholds.length + 1;
         let anyBuilt = false;
         let matchNumOffset = 0;
@@ -658,22 +676,84 @@ export async function generateKnockoutAction(tournamentId: string) {
     });
     if (insertErr) return { error: "สร้างสายน็อกเอาต์ไม่สำเร็จ" };
 
-    // Resolve BYEs inline (cannot reuse insertAndResolveByes because division is now on inserts)
+    // Resolve BYEs inline (cannot reuse insertAndResolveByes because division is now on inserts).
+    // Two passes mirror insertAndResolveByes: pass 0 = upper BYEs, pass 1 = lower-bracket
+    // BYEs that became single-team via null upper losers. Within each pass we batch the
+    // completion UPDATEs and the next-slot UPDATEs via Promise.all so all writes for ~D×B
+    // BYEs run in 2 waves instead of 2×D×B sequential round-trips.
     const byeMatches = allMatches.filter((m) => m.isBye);
-    for (const m of byeMatches) {
-      const winnerIs: "a" | "b" = m.teamAId ? "a" : "b";
-      const winner = m.teamAId ?? m.teamBId;
-      const walkover = byeWalkoverGames(winnerIs);
-      await sb.from("matches").update({
-        status: "completed",
-        winner_id: winner,
-        games: walkover.games,
-        team_a_score: walkover.teamAScore,
-        team_b_score: walkover.teamBScore,
-      }).eq("id", m.id);
-      if (m.nextMatchId && m.nextMatchSlot && winner) {
-        const slot = m.nextMatchSlot === "a" ? colA : colB;
-        await sb.from("matches").update({ [slot]: winner }).eq("id", m.nextMatchId);
+    const lowerByeCandidates = allMatches.filter((m) => m.bracket === "lower" || m.bracket === "grand_final");
+
+    for (let pass = 0; pass < 2; pass++) {
+      if (pass === 0) {
+        // Upper BYEs — auto-complete + advance winner to next slot.
+        const completePromises = byeMatches.map((m) => {
+          const winnerIs: "a" | "b" = m.teamAId ? "a" : "b";
+          const winner = m.teamAId ?? m.teamBId;
+          const walkover = byeWalkoverGames(winnerIs);
+          return sb.from("matches").update({
+            status: "completed",
+            winner_id: winner,
+            games: walkover.games,
+            team_a_score: walkover.teamAScore,
+            team_b_score: walkover.teamBScore,
+          }).eq("id", m.id);
+        });
+        await Promise.all(completePromises);
+
+        const slotPromises = byeMatches.flatMap((m) => {
+          const winner = m.teamAId ?? m.teamBId;
+          if (!m.nextMatchId || !m.nextMatchSlot || !winner) return [];
+          const slot = m.nextMatchSlot === "a" ? colA : colB;
+          return [sb.from("matches").update({ [slot]: winner }).eq("id", m.nextMatchId)];
+        });
+        if (slotPromises.length) await Promise.all(slotPromises);
+      } else if (lowerByeCandidates.length > 0) {
+        // Pass 2 — lower-bracket single-team rows from null upper losers.
+        const { data: lowerCurrent } = await sb
+          .from("matches")
+          .select("id, pair_a_id, pair_b_id, next_match_id, next_match_slot, status")
+          .eq("tournament_id", tournamentId)
+          .eq("round_type", "knockout")
+          .in("id", lowerByeCandidates.map((m) => m.id))
+          .eq("status", "pending");
+
+        type LowerRow = {
+          id: string;
+          pair_a_id: string | null;
+          pair_b_id: string | null;
+          next_match_id: string | null;
+          next_match_slot: "a" | "b" | null;
+        };
+        const walkoverable = ((lowerCurrent ?? []) as LowerRow[]).filter((m) => {
+          const aId = m.pair_a_id;
+          const bId = m.pair_b_id;
+          return (aId === null) !== (bId === null); // exactly one side null
+        });
+
+        const completePromises = walkoverable.map((m) => {
+          const aId = m.pair_a_id;
+          const bId = m.pair_b_id;
+          const winnerIs: "a" | "b" = aId ? "a" : "b";
+          const winner = (aId ?? bId)!;
+          const walkover = byeWalkoverGames(winnerIs);
+          return sb.from("matches").update({
+            status: "completed",
+            winner_id: winner,
+            games: walkover.games,
+            team_a_score: walkover.teamAScore,
+            team_b_score: walkover.teamBScore,
+          }).eq("id", m.id);
+        });
+        if (completePromises.length) await Promise.all(completePromises);
+
+        const slotPromises = walkoverable.flatMap((m) => {
+          const winner = m.pair_a_id ?? m.pair_b_id;
+          if (!m.next_match_id || !m.next_match_slot || !winner) return [];
+          const slot = m.next_match_slot === "a" ? colA : colB;
+          return [sb.from("matches").update({ [slot]: winner }).eq("id", m.next_match_id)];
+        });
+        if (slotPromises.length) await Promise.all(slotPromises);
       }
     }
 
@@ -821,7 +901,7 @@ export async function createManualMatchAction(input: {
     .eq("id", input.tournamentId)
     .single();
 
-  const thresholds: number[] = (tournament?.pair_division_thresholds as number[] | null) ?? [];
+  const thresholds: number[] = parseTournamentThresholds(tournament?.pair_division_thresholds);
 
   function pairDivNum(level: string | null | undefined): number | null {
     if (thresholds.length === 0) return null;
@@ -832,14 +912,7 @@ export async function createManualMatchAction(input: {
   const divB = pairDivNum(pB.pair_level as string | null);
   if (divA !== divB) return { error: "คู่ต้องอยู่ใน division เดียวกัน" };
 
-  const { data: maxRow } = await sb
-    .from("matches")
-    .select("match_number")
-    .eq("tournament_id", input.tournamentId)
-    .eq("round_type", "group")
-    .order("match_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const nextMatchNumber = await getNextMatchNumber(sb, input.tournamentId, { roundType: "group" });
 
   // P1-A fix: INSERT + tail-position assignment are now atomic inside the RPC
   // so concurrent createManualMatchAction calls cannot produce duplicate queue_position.
@@ -849,7 +922,7 @@ export async function createManualMatchAction(input: {
     p_team_b_id: pB.team_id,
     p_pair_a_id: input.pairAId,
     p_pair_b_id: input.pairBId,
-    p_match_number: (maxRow?.match_number ?? 0) + 1,
+    p_match_number: nextMatchNumber,
     p_division: divA === null ? null : String(divA),
   });
 

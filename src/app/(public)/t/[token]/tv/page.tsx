@@ -10,18 +10,14 @@ import { TvStandingsCarousel, type StandingsPage, type TableRow } from "@/compon
 import { TvUpcomingCarousel } from "@/components/tournament/tv-upcoming-carousel";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { computeStandings, type StandingRow } from "@/lib/tournament/scoring";
-import { computePairDivision, parsePairLevel } from "@/lib/tournament/divisions";
+import { computePairDivision, parsePairLevel, parseTournamentThresholds } from "@/lib/tournament/divisions";
 import { parseSettings } from "@/lib/tournament/settings";
+import { TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_TEXT: Record<string, string> = {
-  draft: "แบบร่าง",
-  registering: "เปิดรับสมัคร",
-  ongoing: "กำลังแข่ง",
-  completed: "จบแล้ว",
-};
+// TODO: extract shared public TV header (#review-2026-05-22)
 
 export default async function TvDisplayPage({
   params,
@@ -40,18 +36,21 @@ export default async function TvDisplayPage({
   if (!tournament) notFound();
   const t = tournament as Tournament;
 
-  // teams and matches are independent — fetch in parallel.
-  // pairs needs teamIdList from teams, so it follows in a second wave.
-  const [teamsRes, matchesRes] = await Promise.all([
+  // teams, matches, and pairs are all independent — fetch in a single wave.
+  // Pairs uses an inner join on teams to scope by tournament_id without first
+  // awaiting the teams list; team_players projection is narrowed to (id,
+  // display_name) because TV only renders display names (~50% payload trim on
+  // that join). Cast required because the join column shape isn't part of the
+  // generated PairWithPlayers type.
+  const [teamsRes, matchesRes, pairsRes] = await Promise.all([
     sb.from("teams").select("*").eq("tournament_id", t.id).order("created_at"),
     sb.from("matches").select("*").eq("tournament_id", t.id).order("match_number"),
+    sb
+      .from("pairs")
+      .select("*, player1:team_players!player_id_1(id, display_name), player2:team_players!player_id_2(id, display_name), team:teams!inner(tournament_id)")
+      .eq("team.tournament_id", t.id)
+      .order("created_at"),
   ]);
-
-  const teamIdList = (teamsRes.data ?? []).map((x) => x.id);
-
-  const pairsRes = teamIdList.length
-    ? await sb.from("pairs").select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)").in("team_id", teamIdList).order("created_at")
-    : { data: [] };
 
   const teams: Team[] = (teamsRes.data ?? []) as Team[];
   const pairs: PairWithPlayers[] = (pairsRes.data ?? []) as unknown as PairWithPlayers[];
@@ -74,6 +73,10 @@ export default async function TvDisplayPage({
   const competitorIds = unit === "team" ? teams.map((x) => x.id) : pairs.map((p) => p.id);
   const knockoutCount = allMatches.filter((m) => m.round_type === "knockout").length;
   const STANDINGS_LIMIT = settings.tv_standings_rows;
+  // Safety cap: even when user picks 0 ("show all"), never render more than
+  // 50 rows on the TV — beyond that the table overflows the fixed-height
+  // carousel pane and ruins the layout.
+  const effectiveLimit = STANDINGS_LIMIT === 0 ? 50 : STANDINGS_LIMIT;
 
   // --- Build standings pages for the rotating carousel ---
   const standingsPages: StandingsPage[] = [];
@@ -82,7 +85,7 @@ export default async function TvDisplayPage({
   const pairById = new Map(pairs.map((p) => [p.id, p]));
 
   const rowsFromStandings = (rows: StandingRow[], nameLookup: (id: string) => { name: string; color?: string | null }) =>
-    (STANDINGS_LIMIT === 0 ? rows : rows.slice(0, STANDINGS_LIMIT))
+    rows.slice(0, effectiveLimit)
       .map((s) => {
         const meta = nameLookup(s.competitorId);
         return {
@@ -114,9 +117,7 @@ export default async function TvDisplayPage({
     // Pair mode — split per Division (no team-totals page)
     const pairStandings = computeStandings(allMatches, "pair", competitorIds);
 
-    const thresholds = Array.isArray(t.pair_division_thresholds)
-      ? (t.pair_division_thresholds as number[]).filter((n) => typeof n === "number" && !Number.isNaN(n))
-      : [];
+    const thresholds = parseTournamentThresholds(t.pair_division_thresholds);
 
     const pairNameLookup = (id: string) => {
       const c = competitorMap.get(id);
@@ -173,7 +174,7 @@ export default async function TvDisplayPage({
           </div>
           <div className="flex items-center gap-3 lg:gap-4">
             <span className="px-3 py-1 lg:px-4 lg:py-1.5 rounded-full border text-sm lg:text-lg 2xl:text-xl font-semibold">
-              {STATUS_TEXT[t.status] ?? t.status}
+              {TOURNAMENT_STATUS_LABEL[t.status] ?? t.status}
             </span>
             {settings.tv_show_fullscreen_button && <TvFullscreenButton />}
             {settings.tv_show_bracket_link && knockoutCount > 0 && (

@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Bar, BarChart, Cell, LabelList, XAxis, YAxis } from "recharts";
 import {
   ChartContainer,
@@ -8,6 +7,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { TvCarouselDots, useCarousel } from "@/components/tournament/tv-carousel-shell";
 
 export type ChartRow = {
   id: string;
@@ -50,7 +50,10 @@ function TvStandingsChart({ rows }: { rows: ChartRow[] }) {
   const data = rows.map((r) => ({
     name: r.name,
     pts: r.pts,
-    fill: r.color ?? "#94a3b8",
+    // Use theme-aware muted foreground for fallback so dark/light mode stays
+    // consistent. Recharts passes the fill string through to SVG, which
+    // resolves CSS custom properties at paint time.
+    fill: r.color ?? "var(--muted-foreground)",
   }));
   const chartHeight = Math.min(rows.length * 28 + 16, 240);
   return (
@@ -98,23 +101,7 @@ function TvStandingsChart({ rows }: { rows: ChartRow[] }) {
 }
 
 export function TvStandingsCarousel({ pages, intervalMs = 8000, fontSize = "md" }: Props) {
-  const [active, setActive] = useState(0);
-
-  // Clamp index if pages shrinks
-  useEffect(() => {
-    if (active >= pages.length && pages.length > 0) {
-      setActive(0);
-    }
-  }, [pages.length, active]);
-
-  // Cycle when more than one page
-  useEffect(() => {
-    if (pages.length <= 1) return;
-    const id = setInterval(() => {
-      setActive((prev) => (prev + 1) % pages.length);
-    }, intervalMs);
-    return () => clearInterval(id);
-  }, [pages.length, intervalMs]);
+  const { active, setActive } = useCarousel(pages.length, intervalMs);
 
   if (pages.length === 0) {
     return (
@@ -127,28 +114,18 @@ export function TvStandingsCarousel({ pages, intervalMs = 8000, fontSize = "md" 
     );
   }
 
-  const current = pages[Math.min(active, pages.length - 1)];
+  const current = pages[active];
 
   return (
     <div className="h-full overflow-hidden flex flex-col">
       <div className="shrink-0 flex items-center justify-between pb-2">
         <h2 className="text-xl lg:text-2xl 2xl:text-3xl font-bold">{current.title}</h2>
-        {pages.length > 1 && (
-          <div className="flex items-center gap-2">
-            {pages.map((p, i) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => setActive(i)}
-                aria-label={`ไปหน้า ${p.title}`}
-                aria-current={i === active}
-                className={`w-3 h-3 lg:w-3.5 lg:h-3.5 rounded-full transition-colors cursor-pointer hover:bg-foreground/70 ${
-                  i === active ? "bg-foreground" : "bg-muted"
-                }`}
-              />
-            ))}
-          </div>
-        )}
+        <TvCarouselDots
+          count={pages.length}
+          active={active}
+          onSelect={setActive}
+          labels={(i) => `ไปหน้า ${pages[i]?.title ?? i + 1}`}
+        />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border bg-card p-3 lg:p-4">
         <div key={current.id} className="animate-in fade-in duration-300 h-full">

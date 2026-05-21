@@ -36,12 +36,39 @@ export function parsePairLevel(raw: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function divisionLabel(n: number): string {
+export function divisionLabelTh(n: number): string {
   return `Division ${n}`;
 }
 
-export function divisionLabelTh(n: number): string {
-  return `Division ${n}`;
+/**
+ * Parse the raw `tournaments.pair_division_thresholds` jsonb-ish value into a
+ * clean `number[]`. Filters out non-numeric / NaN / Infinity entries.
+ * Returns `[]` when the input is not an array (incl. null/undefined).
+ */
+export function parseTournamentThresholds(raw: unknown): number[] {
+  return Array.isArray(raw)
+    ? raw.filter((n): n is number => typeof n === "number" && Number.isFinite(n))
+    : [];
+}
+
+/**
+ * Build a `pair_id → division (1..N)` lookup from a list of pairs and the
+ * tournament thresholds. Pairs whose `pair_level` resolves to no division
+ * (e.g., null level + non-empty thresholds → bottom division) are still
+ * included via `computePairDivision`. Returns an empty map when thresholds
+ * are empty (single-bucket mode).
+ */
+export function buildPairDivisionMap(
+  pairs: { id: string; pair_level: string | null }[],
+  thresholds: number[],
+): Map<string, number> {
+  const map = new Map<string, number>();
+  if (thresholds.length === 0) return map;
+  for (const p of pairs) {
+    const d = computePairDivision(parsePairLevel(p.pair_level), thresholds);
+    if (d != null) map.set(p.id, d);
+  }
+  return map;
 }
 
 export const DIVISION_COLORS: Array<{ border: string; bg: string; text: string }> = [

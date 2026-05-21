@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Bar, BarChart, Cell, LabelList, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, Cell, LabelList } from "recharts";
 import {
   Card,
   CardContent,
@@ -16,6 +16,7 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { computeStandings } from "@/lib/tournament/scoring";
+import { OrientableBarAxes, orientableBarLayout } from "@/components/tournament/charts/orientable-bar";
 import type { Match, Pair, Team } from "@/lib/types";
 
 type TeamSummaryProps = {
@@ -82,7 +83,7 @@ export function TeamSummary({ teams, matches, pairs, matchUnit, size = "default"
     [teams, matches, pairs, matchUnit]
   );
   const isTv = size === "tv";
-  const isHorizontal = orientation === "horizontal";
+  const barLayout = orientableBarLayout(orientation);
 
   const completedMatches = matches.filter((m) => m.status === "completed").length;
 
@@ -116,35 +117,16 @@ export function TeamSummary({ teams, matches, pairs, matchUnit, size = "default"
           <BarChart
             accessibilityLayer
             data={chartData}
-            {...(isHorizontal ? { layout: "vertical" as const } : {})}
+            {...(barLayout.layout ? { layout: barLayout.layout } : {})}
             margin={{ top: 4, right: 24, bottom: 4, left: 8 }}
           >
-            {isHorizontal ? (
-              <>
-                <XAxis type="number" hide />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={6}
-                  width={yAxisWidth}
-                  tick={{ fontSize: tickFontSize, fontWeight: isTv ? 600 : 400 }}
-                />
-              </>
-            ) : (
-              <>
-                <XAxis
-                  type="category"
-                  dataKey="name"
-                  tickLine={false}
-                  axisLine={false}
-                  tickMargin={6}
-                  tick={{ fontSize: tickFontSize, fontWeight: isTv ? 600 : 400 }}
-                />
-                <YAxis type="number" hide />
-              </>
-            )}
+            <OrientableBarAxes
+              orientation={orientation}
+              dataKey="name"
+              categoryYWidth={yAxisWidth}
+              tickFontSize={tickFontSize}
+              tickFontWeight={isTv ? 600 : 400}
+            />
             <ChartTooltip
               cursor={false}
               content={<ChartTooltipContent hideLabel />}
@@ -155,7 +137,7 @@ export function TeamSummary({ teams, matches, pairs, matchUnit, size = "default"
               ))}
               <LabelList
                 dataKey="pts"
-                position={isHorizontal ? "right" : "top"}
+                position={barLayout.labelPosition}
                 offset={8}
                 className="fill-foreground"
                 fontSize={labelFontSize}

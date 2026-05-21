@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -8,8 +8,6 @@ import {
   Cell,
   LabelList,
   Legend,
-  XAxis,
-  YAxis,
 } from "recharts";
 import {
   Trophy,
@@ -33,16 +31,23 @@ import {
   type ChartConfig,
 } from "@/components/ui/chart";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { computeStandings, gameWinner, type StandingRow } from "@/lib/tournament/scoring";
 import {
-  computePairDivision,
+  computeStandings,
+  gameWinner,
+  sumGameScores,
+  type StandingRow,
+} from "@/lib/tournament/scoring";
+import {
+  buildPairDivisionMap,
   divisionLabelTh,
   parseDivision,
-  parsePairLevel,
+  parseTournamentThresholds,
 } from "@/lib/tournament/divisions";
+import { OrientableBarAxes, orientableBarLayout } from "@/components/tournament/charts/orientable-bar";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { TeamSummary } from "@/components/tournament/team-summary";
 import { parseSettings } from "@/lib/tournament/settings";
+import { truncate } from "@/lib/utils";
 import type {
   Match,
   PairWithPlayers,
@@ -61,9 +66,9 @@ const accent = "var(--chart-1)";
 
 const chartConfig = {
   pts: { label: "คะแนน", color: "var(--chart-1)" },
-  wins: { label: "ชนะ", color: "var(--chart-2)" },
+  wins: { label: "ฝั่งชนะ", color: "var(--chart-2)" },
   draws: { label: "เสมอ", color: "var(--chart-4)" },
-  losses: { label: "แพ้", color: "var(--chart-5)" },
+  losses: { label: "ฝั่งแพ้", color: "var(--chart-5)" },
   count: { label: "แมตช์", color: "var(--chart-3)" },
 } satisfies ChartConfig;
 
@@ -119,23 +124,34 @@ function ProgressBar({ pct }: { pct: number }) {
   );
 }
 
-function truncate(s: string, n = 14): string {
-  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
-}
+// Thailand-only product — render times in Asia/Bangkok regardless of
+// server / client TZ. Using Intl.DateTimeFormat with an explicit timeZone
+// makes SSR and CSR output identical (no hydration mismatch).
+const BANGKOK_TIME_FMT = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  timeZone: "Asia/Bangkok",
+});
 
 function formatHHmm(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+  return BANGKOK_TIME_FMT.format(d);
 }
 
 export function TournamentDashboard({ tournament, teams, pairs, matches }: Props) {
   const unit = tournament.match_unit;
-  const chartOrientation = parseSettings(tournament.settings).chart_orientation;
+  // Memoise: parseSettings runs a zod parse + per-field fallback; cheap but
+  // pointless to redo on every render — settings only changes when the
+  // tournament row itself changes.
+  const settings = useMemo(() => parseSettings(tournament.settings), [tournament.settings]);
+  const chartOrientation = settings.chart_orientation;
   const isHorizontal = chartOrientation === "horizontal";
+  // Shared axis/layout/label-position lookup reused by all three orientable
+  // bar charts on this dashboard (points, W/D/L per division, court usage).
+  const pointsAxes = orientableBarLayout(chartOrientation);
   const competitorMap = useMemo(
     () => buildCompetitorMap(unit, teams.map(({ players: _p, ...rest }) => rest), pairs),
     [unit, teams, pairs],
@@ -144,6 +160,21 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
   const playerCount = useMemo(
     () => teams.reduce((acc, t) => acc + (t.players?.length ?? 0), 0),
     [teams],
+  );
+
+  // Stable key over the bits of matches we care about — protects downstream
+  // useMemos from being invalidated when only the array identity changes
+  // (e.g., realtime triggers router.refresh that produces a new array with
+  // identical content).
+  const matchesKey = useMemo(
+    () =>
+      matches
+        .map(
+          (m) =>
+            `${m.id}:${m.status}:${m.team_a_score ?? 0}:${m.team_b_score ?? 0}`,
+        )
+        .join(","),
+    [matches],
   );
 
   const matchTotals = useMemo(() => {
@@ -156,7 +187,9 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
       else pending++;
     }
     return { completed, inProgress, pending, total: matches.length };
-  }, [matches]);
+    // matchesKey already encodes id+status changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchesKey]);
 
   const progressPct = matchTotals.total === 0
     ? 0
@@ -176,12 +209,10 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
   );
 
   // Division thresholds (declared early so Top performers tabs can use them)
-  const divisionThresholds: number[] = useMemo(() => {
-    const raw = tournament.pair_division_thresholds;
-    return Array.isArray(raw)
-      ? raw.filter((n) => typeof n === "number" && !Number.isNaN(n))
-      : [];
-  }, [tournament.pair_division_thresholds]);
+  const divisionThresholds: number[] = useMemo(
+    () => parseTournamentThresholds(tournament.pair_division_thresholds),
+    [tournament.pair_division_thresholds],
+  );
 
   const hasDivisions = divisionThresholds.length > 0;
   const showTopDivTabs = unit === "pair" && hasDivisions;
@@ -190,15 +221,19 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
   // Top performers: division filter state — "all" | "1" | "2" | ...
   const [selectedDiv, setSelectedDiv] = useState<string>("all");
 
+  // Guard against stale division selection — if the tournament mode flips
+  // (e.g., pair → team) the division tabs disappear but selectedDiv may
+  // still hold "2", leaving filteredPlayedStandings empty. Reset to "all".
+  useEffect(() => {
+    if (!showTopDivTabs && selectedDiv !== "all") {
+      setSelectedDiv("all");
+    }
+  }, [showTopDivTabs, selectedDiv]);
+
   // Pair-ID → division map (for "pair" + thresholds mode)
   const pairDivisionMap = useMemo(() => {
-    const map = new Map<string, number>();
-    if (unit !== "pair" || !hasDivisions) return map;
-    for (const p of pairs) {
-      const d = computePairDivision(parsePairLevel(p.pair_level), divisionThresholds);
-      if (d != null) map.set(p.id, d);
-    }
-    return map;
+    if (unit !== "pair" || !hasDivisions) return new Map<string, number>();
+    return buildPairDivisionMap(pairs, divisionThresholds);
   }, [unit, hasDivisions, pairs, divisionThresholds]);
 
   // Filter playedStandings by selected division (no-op if "all" or no divisions)
@@ -243,9 +278,16 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
         fill,
       };
     });
-  }, [playedStandings, competitorMap, unit]);
+    // matchesKey threads through playedStandings via standings -> computeStandings(matches)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchesKey, playedStandings, competitorMap, unit]);
 
-  // Chart B — Win/Draw/Loss per division (pair mode + thresholds set)
+  // Chart B — Matches played per division, broken down by outcome
+  // (pair mode + thresholds set). Each completed match in a division
+  // counts EXACTLY ONCE. Since a "match" doesn't have a single perspective,
+  // we count from both sides: 1 win + 1 loss for decisive, 2 draws for draw.
+  // This means wins == losses (always), and the stack height equals total
+  // (matches × 2). Legend labels are renamed to reflect "per-side" semantics.
   const divisionChartData = useMemo(() => {
     if (!hasDivisions) return [];
     type Bucket = { wins: number; draws: number; losses: number };
@@ -256,10 +298,11 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
       if (div == null) continue;
       const winner = gameWinner(m.games);
       const cur = buckets.get(div) ?? { wins: 0, draws: 0, losses: 0 };
-      if (winner === "draw") cur.draws += 2; // both sides drew
-      else {
-        cur.wins += 1;
-        cur.losses += 1;
+      if (winner === "draw") {
+        cur.draws += 2; // both sides drew
+      } else {
+        cur.wins += 1; // one side won
+        cur.losses += 1; // the other side lost
       }
       buckets.set(div, cur);
     }
@@ -273,7 +316,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
         losses: b.losses,
       };
     });
-  }, [matches, hasDivisions]);
+  }, [matchesKey, hasDivisions]);
 
   // Section 4 — court usage + timeline
   const courtUsage = useMemo(() => {
@@ -283,12 +326,16 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
       if (!c) continue;
       counts.set(c, (counts.get(c) ?? 0) + 1);
     }
+    // Normalise tournament.courts via .trim() to match the trimmed match.court
+    // keys above (do NOT lowercase — Thai court names are case-preserving).
+    const tournamentCourts = (tournament.courts ?? []).map((c) => c.trim()).filter(Boolean);
     // Use ordered tournament.courts when available, append any unknowns last
-    const known = (tournament.courts ?? []).filter((c) => counts.has(c));
+    const known = tournamentCourts.filter((c) => counts.has(c));
     const extras = Array.from(counts.keys()).filter((c) => !known.includes(c));
     const order = [...known, ...extras];
     return order.map((name) => ({ name: truncate(name, 12), fullName: name, count: counts.get(name) ?? 0 }));
-  }, [matches, tournament.courts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchesKey, tournament.courts]);
 
   const recentTimeline = useMemo(() => {
     return matches
@@ -304,16 +351,21 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
         const bId = unit === "team" ? m.team_b_id : m.pair_b_id;
         const aName = (aId && competitorMap.get(aId)?.name) || "—";
         const bName = (bId && competitorMap.get(bId)?.name) || "—";
+        const totals = sumGameScores(m.games);
         return {
           id: m.id,
           time: formatHHmm(m.started_at),
           matchNumber: m.match_number,
           aName,
           bName,
-          score: `${m.team_a_score ?? 0}:${m.team_b_score ?? 0}`,
+          // games-won count (e.g. "2:0")
+          games: `${m.team_a_score ?? 0}:${m.team_b_score ?? 0}`,
+          // sum of points across all games (e.g. "42-30")
+          pointTotals: `${totals.a}-${totals.b}`,
         };
       });
-  }, [matches, competitorMap, unit]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchesKey, competitorMap, unit]);
 
   const pointsChartHeight = Math.max(160, pointsChartData.length * 32 + 24);
   const courtChartHeight = Math.max(140, courtUsage.length * 32 + 24);
@@ -472,35 +524,14 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                 <BarChart
                   accessibilityLayer
                   data={pointsChartData}
-                  {...(isHorizontal ? { layout: "vertical" as const } : {})}
+                  {...(pointsAxes.layout ? { layout: pointsAxes.layout } : {})}
                   margin={{ top: 4, right: 28, bottom: 4, left: 8 }}
                 >
-                  {isHorizontal ? (
-                    <>
-                      <XAxis type="number" hide />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={6}
-                        width={92}
-                        tick={{ fontSize: 12 }}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <XAxis
-                        type="category"
-                        dataKey="name"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={6}
-                        tick={{ fontSize: 12 }}
-                      />
-                      <YAxis type="number" hide />
-                    </>
-                  )}
+                  <OrientableBarAxes
+                    orientation={chartOrientation}
+                    dataKey="name"
+                    categoryYWidth={92}
+                  />
                   <ChartTooltip
                     cursor={false}
                     content={<ChartTooltipContent hideLabel />}
@@ -511,7 +542,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                     ))}
                     <LabelList
                       dataKey="pts"
-                      position={isHorizontal ? "right" : "top"}
+                      position={pointsAxes.labelPosition}
                       offset={8}
                       className="fill-foreground"
                       fontSize={12}
@@ -545,48 +576,17 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                 <BarChart
                   accessibilityLayer
                   data={divisionChartData}
-                  {...(isHorizontal ? { layout: "vertical" as const } : {})}
+                  {...(pointsAxes.layout ? { layout: pointsAxes.layout } : {})}
                   margin={{ top: 8, right: 12, bottom: 4, left: 0 }}
                 >
                   <CartesianGrid vertical={isHorizontal} horizontal={!isHorizontal} strokeDasharray="3 3" />
-                  {isHorizontal ? (
-                    <>
-                      <XAxis
-                        type="number"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={4}
-                        tick={{ fontSize: 12 }}
-                        allowDecimals={false}
-                      />
-                      <YAxis
-                        type="category"
-                        dataKey="division"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={6}
-                        tick={{ fontSize: 12 }}
-                        width={72}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <XAxis
-                        dataKey="division"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={6}
-                        tick={{ fontSize: 12 }}
-                      />
-                      <YAxis
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={4}
-                        tick={{ fontSize: 12 }}
-                        allowDecimals={false}
-                      />
-                    </>
-                  )}
+                  <OrientableBarAxes
+                    orientation={chartOrientation}
+                    dataKey="division"
+                    categoryYWidth={72}
+                    valueAxisHidden={false}
+                    valueAxisAllowDecimals={false}
+                  />
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="wins" stackId="r" fill="var(--color-wins)" radius={[0, 0, 0, 0]} />
@@ -625,35 +625,15 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                 <BarChart
                   accessibilityLayer
                   data={courtUsage}
-                  {...(isHorizontal ? { layout: "vertical" as const } : {})}
+                  {...(pointsAxes.layout ? { layout: pointsAxes.layout } : {})}
                   margin={{ top: 4, right: 28, bottom: 4, left: 8 }}
                 >
-                  {isHorizontal ? (
-                    <>
-                      <XAxis type="number" hide allowDecimals={false} />
-                      <YAxis
-                        type="category"
-                        dataKey="name"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={6}
-                        width={84}
-                        tick={{ fontSize: 12 }}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <XAxis
-                        type="category"
-                        dataKey="name"
-                        tickLine={false}
-                        axisLine={false}
-                        tickMargin={6}
-                        tick={{ fontSize: 12 }}
-                      />
-                      <YAxis type="number" hide allowDecimals={false} />
-                    </>
-                  )}
+                  <OrientableBarAxes
+                    orientation={chartOrientation}
+                    dataKey="name"
+                    categoryYWidth={84}
+                    valueAxisAllowDecimals={false}
+                  />
                   <ChartTooltip
                     cursor={false}
                     content={<ChartTooltipContent hideLabel />}
@@ -661,7 +641,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                   <Bar dataKey="count" radius={4} fill="var(--color-count)">
                     <LabelList
                       dataKey="count"
-                      position={isHorizontal ? "right" : "top"}
+                      position={pointsAxes.labelPosition}
                       offset={8}
                       className="fill-foreground"
                       fontSize={12}
@@ -695,8 +675,13 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                       {row.aName} <span className="text-muted-foreground">vs</span>{" "}
                       {row.bName}
                     </span>
-                    <span className="font-semibold tabular-nums shrink-0">
-                      {row.score}
+                    <span className="flex flex-col items-end shrink-0 leading-tight">
+                      <span className="font-semibold tabular-nums">
+                        เกม {row.games}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground tabular-nums font-normal">
+                        รวมแต้ม {row.pointTotals}
+                      </span>
                     </span>
                   </li>
                 ))}

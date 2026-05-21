@@ -83,6 +83,10 @@ const LEGACY_PREFERENCE_MAP: Record<
 };
 
 function normalizeLegacy(raw: Record<string, unknown>): Record<string, unknown> {
+  // Defensive: caller's TypeScript guards `typeof === "object"` but that
+  // includes arrays. Return arrays unchanged so the downstream zod parse
+  // rejects them naturally instead of crashing on object-spread semantics.
+  if (Array.isArray(raw)) return raw;
   const pref = raw["queue_bracket_preference"] as string | undefined;
   if (pref && !("queue_division_order" in raw)) {
     const mapped = LEGACY_PREFERENCE_MAP[pref as LegacyPreference];

@@ -9,16 +9,13 @@ import { TvFullscreenButton } from "@/components/tournament/tv-fullscreen-button
 import { buildVisualBracket } from "@/lib/tournament/bracket-visual";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseSettings } from "@/lib/tournament/settings";
+import { divisionLabelTh, parseDivision } from "@/lib/tournament/divisions";
+import { TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_TEXT: Record<string, string> = {
-  draft: "แบบร่าง",
-  registering: "เปิดรับสมัคร",
-  ongoing: "กำลังแข่ง",
-  completed: "จบแล้ว",
-};
+// TODO: extract shared public TV header (#review-2026-05-22)
 
 export default async function PublicBracketPage({
   params,
@@ -32,7 +29,7 @@ export default async function PublicBracketPage({
     .from("tournaments")
     .select("*")
     .eq("share_token", token)
-    .single();
+    .maybeSingle();
 
   if (!tournament) notFound();
   const t = tournament as Tournament;
@@ -66,14 +63,44 @@ export default async function PublicBracketPage({
 
   const knockoutMatches = allMatches.filter((m) => m.round_type === "knockout");
 
-  const upperRounds = buildVisualBracket(knockoutMatches, "upper");
-  const lowerRounds = buildVisualBracket(knockoutMatches, "lower");
-  const grandFinalRounds = buildVisualBracket(knockoutMatches, "grand_final");
+  // Group knockout matches by division (pair mode + thresholds set), so each
+  // division renders its own independent bracket. parseDivision returns null
+  // for matches with no division (team mode or no thresholds set) — those
+  // collapse into a single null-keyed bucket.
+  const divisionBuckets = new Map<number | null, Match[]>();
+  for (const m of knockoutMatches) {
+    const k = parseDivision(m.division);
+    const arr = divisionBuckets.get(k);
+    if (arr) arr.push(m);
+    else divisionBuckets.set(k, [m]);
+  }
+  // Order: null first (single-bucket mode), then 1..N ascending
+  const divisionKeys = Array.from(divisionBuckets.keys()).sort((a, b) => {
+    if (a === b) return 0;
+    if (a === null) return -1;
+    if (b === null) return 1;
+    return a - b;
+  });
 
-  const hasBracket = upperRounds.length > 0;
-  const hasLower = lowerRounds.length > 0;
-  const hasGrandFinal = grandFinalRounds.length > 0;
-  const isMultiSection = hasLower || hasGrandFinal;
+  type DivisionBracketSet = {
+    divKey: number | null;
+    upperRounds: ReturnType<typeof buildVisualBracket>;
+    lowerRounds: ReturnType<typeof buildVisualBracket>;
+    grandFinalRounds: ReturnType<typeof buildVisualBracket>;
+  };
+
+  const divisionBracketSets: DivisionBracketSet[] = divisionKeys.map((divKey) => {
+    const ms = divisionBuckets.get(divKey) ?? [];
+    return {
+      divKey,
+      upperRounds: buildVisualBracket(ms, "upper"),
+      lowerRounds: buildVisualBracket(ms, "lower"),
+      grandFinalRounds: buildVisualBracket(ms, "grand_final"),
+    };
+  });
+
+  const hasBracket = divisionBracketSets.some((s) => s.upperRounds.length > 0);
+  const isMultiDivision = divisionBracketSets.length > 1;
 
   return (
     <TournamentLiveWrapper
@@ -81,7 +108,7 @@ export default async function PublicBracketPage({
       isOngoing={t.status === "ongoing"}
       realtimeEnabled={settings.realtime_enabled}
     >
-      <TvAutoRefresh intervalMs={60_000} />
+      <TvAutoRefresh intervalMs={settings.tv_refresh_interval_sec * 1000} />
       <div className="h-screen w-screen overflow-hidden flex flex-col bg-background text-foreground p-3 lg:p-4">
         {/* Hero — fixed-height header */}
         <header className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
@@ -97,7 +124,7 @@ export default async function PublicBracketPage({
           </div>
           <div className="flex items-center gap-3 lg:gap-4">
             <span className="px-3 py-1 lg:px-4 lg:py-1.5 rounded-full border text-sm lg:text-lg 2xl:text-xl font-semibold">
-              {STATUS_TEXT[t.status] ?? t.status}
+              {TOURNAMENT_STATUS_LABEL[t.status] ?? t.status}
             </span>
             <TvFullscreenButton />
             <Link
@@ -117,36 +144,58 @@ export default async function PublicBracketPage({
           </div>
         ) : (
           <div className="flex-1 min-h-0 overflow-auto pt-3">
-            <section className="space-y-1">
-              {isMultiSection && (
-                <h2 className="text-sm font-semibold text-muted-foreground mb-4">สายบน</h2>
-              )}
-              <BracketView rounds={upperRounds} competitorById={competitorMap} unit={unit} />
-            </section>
+            {divisionBracketSets.map((set, dIdx) => {
+              const { divKey, upperRounds, lowerRounds, grandFinalRounds } = set;
+              const hasUpper = upperRounds.length > 0;
+              if (!hasUpper) return null;
+              const hasLower = lowerRounds.length > 0;
+              const hasGrandFinal = grandFinalRounds.length > 0;
+              const isMultiSection = hasLower || hasGrandFinal;
+              return (
+                <div key={`div-${divKey ?? "none"}`}>
+                  {isMultiDivision && divKey !== null && (
+                    <h2 className="text-base lg:text-lg font-semibold mb-3">
+                      {divisionLabelTh(divKey)}
+                    </h2>
+                  )}
 
-            {hasLower && (
-              <>
-                <Separator className="my-8" />
-                <section className="space-y-1">
-                  <h2 className="text-sm font-semibold text-muted-foreground mb-4">สายล่าง</h2>
-                  <BracketView rounds={lowerRounds} competitorById={competitorMap} unit={unit} />
-                </section>
-              </>
-            )}
+                  <section className="space-y-1">
+                    {isMultiSection && (
+                      <h3 className="text-sm font-semibold text-muted-foreground mb-4">สายบน</h3>
+                    )}
+                    <BracketView rounds={upperRounds} competitorById={competitorMap} unit={unit} />
+                  </section>
 
-            {hasGrandFinal && (
-              <>
-                <Separator className="my-8" />
-                <section className="space-y-1">
-                  <h2 className="text-sm font-semibold text-muted-foreground mb-4">Grand Final</h2>
-                  <BracketView
-                    rounds={grandFinalRounds}
-                    competitorById={competitorMap}
-                    unit={unit}
-                  />
-                </section>
-              </>
-            )}
+                  {hasLower && (
+                    <>
+                      <Separator className="my-8" />
+                      <section className="space-y-1">
+                        <h3 className="text-sm font-semibold text-muted-foreground mb-4">สายล่าง</h3>
+                        <BracketView rounds={lowerRounds} competitorById={competitorMap} unit={unit} />
+                      </section>
+                    </>
+                  )}
+
+                  {hasGrandFinal && (
+                    <>
+                      <Separator className="my-8" />
+                      <section className="space-y-1">
+                        <h3 className="text-sm font-semibold text-muted-foreground mb-4">Grand Final</h3>
+                        <BracketView
+                          rounds={grandFinalRounds}
+                          competitorById={competitorMap}
+                          unit={unit}
+                        />
+                      </section>
+                    </>
+                  )}
+
+                  {isMultiDivision && dIdx < divisionBracketSets.length - 1 && (
+                    <Separator className="my-10" />
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MatchRow } from "@/components/tournament/match-row";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { computeStandings, aggregatePairStandingsToTeams, type StandingRow } from "@/lib/tournament/scoring";
-import { computePairDivision, parsePairLevel, divisionLabelTh, divisionTone, divisionCount } from "@/lib/tournament/divisions";
+import { computePairDivision, parsePairLevel, divisionLabelTh, divisionTone, divisionCount, parseTournamentThresholds } from "@/lib/tournament/divisions";
 import type { Tournament, TeamWithPlayers, PairWithPlayers, Match, Team } from "@/lib/types";
 
 export function PublicOverview({
@@ -46,9 +46,7 @@ export function PublicOverview({
   const teamTotalsPlayed = teamTotals.filter((s) => s.played > 0);
 
   // ── Section 2: Pair standings split by division (pair mode only) ──
-  const thresholds: number[] = Array.isArray(tournament.pair_division_thresholds)
-    ? (tournament.pair_division_thresholds as number[]).filter((n) => typeof n === "number" && !Number.isNaN(n))
-    : [];
+  const thresholds: number[] = parseTournamentThresholds(tournament.pair_division_thresholds);
   // Build per-division buckets (1..N) when thresholds are set
   const N = divisionCount(thresholds);
   const divisionBuckets = new Map<number, StandingRow[]>();

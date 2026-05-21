@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Maximize, Minimize } from "lucide-react";
+import { toast } from "sonner";
 
 export function TvFullscreenButton() {
   const [isFs, setIsFs] = useState(false);
@@ -13,10 +14,16 @@ export function TvFullscreenButton() {
   }, []);
 
   const toggle = async () => {
-    if (document.fullscreenElement) {
-      await document.exitFullscreen();
-    } else {
-      await document.documentElement.requestFullscreen();
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {
+      // requestFullscreen / exitFullscreen can reject in iframes, restricted
+      // browsers, or when permissions are missing — surface a clean message.
+      toast.error("ไม่รองรับโหมดเต็มจอ");
     }
   };
 

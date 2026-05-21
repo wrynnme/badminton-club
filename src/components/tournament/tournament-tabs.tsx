@@ -48,8 +48,11 @@ export function TournamentTabs({
   }, [showGroups, showPairs, showKnockout, showQueue, showSettings]);
 
   const queryTab = searchParams.get("tab") as TabId | null;
+  // Default landing tab is "teams" — keeps recharts out of the initial bundle
+  // for typical viewers. Users opt into the dashboard by clicking the tab,
+  // which lazy-mounts it.
   const activeTab: TabId =
-    queryTab && validTabs.includes(queryTab) ? queryTab : "dashboard";
+    queryTab && validTabs.includes(queryTab) ? queryTab : "teams";
 
   // Lazy-mount: each tab content only renders after first visit. After mount,
   // it stays mounted so switching back is instant + preserves local state.
@@ -73,7 +76,10 @@ export function TournamentTabs({
 
   const onValueChange = (next: string) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (next === "dashboard") params.delete("tab");
+    // "teams" is the canonical default — strip the ?tab= param for it so the
+    // URL stays clean. All other tabs (including dashboard) get an explicit
+    // ?tab=<id>.
+    if (next === "teams") params.delete("tab");
     else params.set("tab", next);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });

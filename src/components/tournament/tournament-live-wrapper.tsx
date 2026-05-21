@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui/badge";
 
-const REFRESH_DEBOUNCE_MS = 400;
+const REFRESH_DEBOUNCE_MS = 800;
 
 export function TournamentLiveWrapper({
   tournamentId,

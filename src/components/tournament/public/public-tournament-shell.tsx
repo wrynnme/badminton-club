@@ -28,8 +28,11 @@ export function PublicTournamentShell({
   showKnockout: boolean;
   showQueue: boolean;
 }) {
-  const [active, setActive] = useState<TabId>("dashboard");
-  const [mounted, setMounted] = useState<Set<TabId>>(() => new Set<TabId>(["dashboard"]));
+  // Default landing tab is "overview" — keeps recharts out of the initial
+  // bundle for typical public viewers. Dashboard tab is opt-in via click,
+  // which lazy-mounts it.
+  const [active, setActive] = useState<TabId>("overview");
+  const [mounted, setMounted] = useState<Set<TabId>>(() => new Set<TabId>(["overview"]));
 
   const onChange = (v: string) => {
     const next = v as TabId;
