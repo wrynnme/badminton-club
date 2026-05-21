@@ -36,20 +36,18 @@ export default async function TvDisplayPage({
   if (!tournament) notFound();
   const t = tournament as Tournament;
 
-  const teamsRes = await sb
-    .from("teams")
-    .select("*")
-    .eq("tournament_id", t.id)
-    .order("created_at");
+  // teams and matches are independent — fetch in parallel.
+  // pairs needs teamIdList from teams, so it follows in a second wave.
+  const [teamsRes, matchesRes] = await Promise.all([
+    sb.from("teams").select("*").eq("tournament_id", t.id).order("created_at"),
+    sb.from("matches").select("*").eq("tournament_id", t.id).order("match_number"),
+  ]);
 
   const teamIdList = (teamsRes.data ?? []).map((x) => x.id);
 
-  const [pairsRes, matchesRes] = await Promise.all([
-    teamIdList.length
-      ? sb.from("pairs").select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)").in("team_id", teamIdList).order("created_at")
-      : Promise.resolve({ data: [] }),
-    sb.from("matches").select("*").eq("tournament_id", t.id).order("match_number"),
-  ]);
+  const pairsRes = teamIdList.length
+    ? await sb.from("pairs").select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)").in("team_id", teamIdList).order("created_at")
+    : { data: [] };
 
   const teams: Team[] = (teamsRes.data ?? []) as Team[];
   const pairs: PairWithPlayers[] = (pairsRes.data ?? []) as unknown as PairWithPlayers[];

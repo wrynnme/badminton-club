@@ -48,27 +48,30 @@ export default async function TournamentDetailPage({
 }) {
   const { id } = await params;
   const sb = await createAdminClient();
-  const session = await getSession();
 
-  const { data: tournament } = await sb
-    .from("tournaments")
-    .select("*")
-    .eq("id", id)
-    .single();
+  // Fetch session + tournament in parallel — neither depends on the other
+  const [session, { data: tournament }] = await Promise.all([
+    getSession(),
+    sb.from("tournaments").select("*").eq("id", id).single(),
+  ]);
 
   if (!tournament) notFound();
   const t = tournament as Tournament;
 
-  const teamsRes = await sb.from("teams").select("*, players:team_players(*)").eq("tournament_id", id).order("created_at");
-  const teamIdList = (teamsRes.data ?? []).map((t) => t.id);
-
-  const [groupsRes, pairsRes, matchesRes] = await Promise.all([
+  // teams, groups, and matches are all independent of each other.
+  // pairs needs teamIdList from teams, so fetch teams first then
+  // kick off pairs in a second wave alongside the teams result.
+  const [teamsRes, groupsRes, matchesRes] = await Promise.all([
+    sb.from("teams").select("*, players:team_players(*)").eq("tournament_id", id).order("created_at"),
     sb.from("groups").select("*, group_teams(*, team:teams(*)), matches(*)").eq("tournament_id", id).order("name"),
-    teamIdList.length
-      ? sb.from("pairs").select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)").in("team_id", teamIdList).order("created_at")
-      : Promise.resolve({ data: [] }),
     sb.from("matches").select("*").eq("tournament_id", id).order("round_type", { ascending: true }).order("match_number"),
   ]);
+
+  const teamIdList = (teamsRes.data ?? []).map((row) => row.id);
+
+  const pairsRes = teamIdList.length
+    ? await sb.from("pairs").select("*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)").in("team_id", teamIdList).order("created_at")
+    : { data: [] };
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];
   const groups: GroupWithTeams[] = (groupsRes.data ?? []) as GroupWithTeams[];
@@ -78,8 +81,34 @@ export default async function TournamentDetailPage({
 
   const isOwner = session?.profileId === t.owner_id;
 
+  // co-admin check + coAdmins list: run in parallel when owner (both needed),
+  // or run just the check when not owner.
+  type CoAdminRow = {
+    tournament_id: string;
+    user_id: string;
+    added_by: string | null;
+    added_at: string;
+    profile: { line_user_id: string | null; display_name: string | null } | null;
+  };
+
   let isCoAdmin = false;
-  if (!isOwner && session?.profileId) {
+  let coAdmins: TournamentAdmin[] = [];
+
+  if (isOwner) {
+    const { data: rows } = await sb
+      .from("tournament_admins")
+      .select("tournament_id, user_id, added_by, added_at, profile:profiles!user_id(line_user_id, display_name)")
+      .eq("tournament_id", id)
+      .order("added_at");
+    coAdmins = ((rows ?? []) as unknown as CoAdminRow[]).map((r) => ({
+      tournament_id: r.tournament_id,
+      user_id: r.user_id,
+      line_user_id: r.profile?.line_user_id ?? null,
+      display_name: r.profile?.display_name ?? null,
+      added_by: r.added_by ?? "",
+      added_at: r.added_at,
+    }));
+  } else if (session?.profileId) {
     const { data: adminRow } = await sb
       .from("tournament_admins")
       .select("user_id")
@@ -88,30 +117,8 @@ export default async function TournamentDetailPage({
       .maybeSingle();
     isCoAdmin = !!adminRow;
   }
-  const canEdit = isOwner || isCoAdmin;
 
-  type CoAdminRow = {
-    tournament_id: string;
-    user_id: string;
-    added_by: string | null;
-    added_at: string;
-    profile: { line_user_id: string | null; display_name: string | null } | null;
-  };
-  const coAdmins: TournamentAdmin[] = isOwner
-    ? (((await sb
-        .from("tournament_admins")
-        .select("tournament_id, user_id, added_by, added_at, profile:profiles!user_id(line_user_id, display_name)")
-        .eq("tournament_id", id)
-        .order("added_at")
-      ).data ?? []) as unknown as CoAdminRow[]).map((r) => ({
-        tournament_id: r.tournament_id,
-        user_id: r.user_id,
-        line_user_id: r.profile?.line_user_id ?? null,
-        display_name: r.profile?.display_name ?? null,
-        added_by: r.added_by ?? "",
-        added_at: r.added_at,
-      }))
-    : [];
+  const canEdit = isOwner || isCoAdmin;
 
   const s = statusLabel[t.status];
   const settings = parseSettings(t.settings);
@@ -253,13 +260,17 @@ export default async function TournamentDetailPage({
                   isOwner={canEdit}
                 />
               )}
+              {canEdit && (
+                <>
+                  <CourtManager tournamentId={t.id} initialCourts={t.courts ?? []} />
+                  <SettingsManager tournamentId={t.id} initialSettings={t.settings} />
+                  <EditTournamentForm tournament={t} existingTeamCount={teams.length} />
+                </>
+              )}
               {isOwner && (
                 <>
                   <ShareControls tournamentId={t.id} shareToken={t.share_token} appUrl={appUrl} />
-                  <CourtManager tournamentId={t.id} initialCourts={t.courts ?? []} />
                   <CoAdminControls tournamentId={t.id} initialAdmins={coAdmins} />
-                  <SettingsManager tournamentId={t.id} initialSettings={t.settings} />
-                  <EditTournamentForm tournament={t} existingTeamCount={teams.length} />
                 </>
               )}
               {canEdit && <AuditLogPanel tournamentId={t.id} />}

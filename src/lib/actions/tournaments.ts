@@ -96,7 +96,7 @@ export async function updateTournamentAction(input: CreateTournamentInput & { id
     return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
   }
 
-  if (!(await assertIsOwner(id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
 
@@ -142,7 +142,7 @@ export async function updateTournamentAction(input: CreateTournamentInput & { id
 export async function updateCourtsAction(tournamentId: string, courts: string[]) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const COURT_NAME_MAX = 40;
   const COURTS_MAX = 50;
@@ -209,7 +209,7 @@ export async function updateTournamentSettingsAction(
 ) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
   const { data: row, error: readErr } = await sb
