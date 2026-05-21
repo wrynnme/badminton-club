@@ -483,15 +483,6 @@ export function SettingsManager({
 
           <p className="text-xs text-muted-foreground/80 pt-3 pb-0.5">จำนวนรายการ</p>
           <NumberRow
-            id="tv-upcoming-count"
-            label='จำนวน "กำลังเล่น / ถัดไป"'
-            description="1–5 รายการ"
-            value={settings.tv_upcoming_count}
-            min={1}
-            max={5}
-            onChange={(v) => update("tv_upcoming_count", v)}
-          />
-          <NumberRow
             id="tv-completed-count"
             label='จำนวน "จบล่าสุด"'
             description="1–3 รายการ"
@@ -521,6 +512,15 @@ export function SettingsManager({
             onChange={(v) => update("tv_carousel_interval_sec", v)}
           />
           <NumberRow
+            id="tv-upcoming-interval"
+            label='รอบหมุน "กำลังเล่น / ถัดไป" (วินาที)'
+            description="3–30 วินาที"
+            value={settings.tv_upcoming_interval_sec}
+            min={3}
+            max={30}
+            onChange={(v) => update("tv_upcoming_interval_sec", v)}
+          />
+          <NumberRow
             id="tv-refresh-interval"
             label="รอบรีเฟรชหน้า TV (วินาที)"
             description="30–300 วินาที (fallback เมื่อปิด Realtime)"
@@ -529,6 +529,34 @@ export function SettingsManager({
             max={300}
             onChange={(v) => update("tv_refresh_interval_sec", v)}
           />
+
+          <p className="text-xs text-muted-foreground/80 pt-3 pb-0.5">ขนาดฟอนต์</p>
+          <div className="flex items-center justify-between gap-3 py-1">
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor="tv-standings-font-size" className="text-sm">ขนาดฟอนต์ตารางอันดับ</Label>
+              <p className="text-xs text-muted-foreground">
+                ปรับขนาดตัวอักษรในตารางคะแนน Division
+              </p>
+            </div>
+            <Select
+              value={settings.tv_standings_font_size}
+              onValueChange={(v) => update("tv_standings_font_size", v as "sm" | "md" | "lg" | "xl")}
+            >
+              <SelectTrigger id="tv-standings-font-size" className="w-36 h-8 text-xs">
+                <SelectValue>
+                  {(value) =>
+                    value === "sm" ? "เล็ก" : value === "md" ? "กลาง" : value === "lg" ? "ใหญ่" : value === "xl" ? "ใหญ่มาก" : ""
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="sm">เล็ก</SelectItem>
+                <SelectItem value="md">กลาง</SelectItem>
+                <SelectItem value="lg">ใหญ่</SelectItem>
+                <SelectItem value="xl">ใหญ่มาก</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </section>
       </CardContent>
     </Card>

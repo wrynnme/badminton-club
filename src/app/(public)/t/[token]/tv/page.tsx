@@ -4,10 +4,10 @@ import { Trophy } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import { TvAutoRefresh } from "@/components/tournament/tv-auto-refresh";
-import { TvMatchCard } from "@/components/tournament/tv-match-card";
 import { TvFullscreenButton } from "@/components/tournament/tv-fullscreen-button";
 import { TeamSummary } from "@/components/tournament/team-summary";
 import { TvStandingsCarousel, type StandingsPage, type TableRow } from "@/components/tournament/tv-standings-carousel";
+import { TvUpcomingCarousel } from "@/components/tournament/tv-upcoming-carousel";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { computeStandings, type StandingRow } from "@/lib/tournament/scoring";
 import { computePairDivision, parsePairLevel } from "@/lib/tournament/divisions";
@@ -62,17 +62,14 @@ export default async function TvDisplayPage({
 
   const settings = parseSettings(t.settings);
 
-  const upcoming = allMatches
-    .filter((m) => m.status !== "completed")
-    .sort((a, b) => {
-      // in_progress first, then pending; tiebreak match_number
-      if (a.status !== b.status) {
-        if (a.status === "in_progress") return -1;
-        if (b.status === "in_progress") return 1;
-      }
-      return a.match_number - b.match_number;
-    })
-    .slice(0, settings.tv_upcoming_count);
+  const inProgressMatches = allMatches
+    .filter((m) => m.status === "in_progress")
+    .sort((a, b) => a.match_number - b.match_number);
+
+  const pendingMatches = allMatches
+    .filter((m) => m.status === "pending")
+    .sort((a, b) => a.match_number - b.match_number)
+    .slice(0, 6);
 
   const competitorIds = unit === "team" ? teams.map((x) => x.id) : pairs.map((p) => p.id);
   const knockoutCount = allMatches.filter((m) => m.round_type === "knockout").length;
@@ -207,18 +204,13 @@ export default async function TvDisplayPage({
             {/* Left col-span-4 — "กำลังเล่น / ถัดไป" */}
             {settings.tv_show_upcoming ? (
               <section className="col-span-4 h-full overflow-hidden flex flex-col">
-                <h2 className="shrink-0 text-xl lg:text-2xl 2xl:text-3xl font-bold pb-2 lg:pb-3">กำลังเล่น / ถัดไป</h2>
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  {upcoming.length === 0 ? (
-                    <p className="text-lg lg:text-2xl 2xl:text-3xl text-muted-foreground">ไม่มีคิวค้าง</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {upcoming.map((m) => (
-                        <TvMatchCard key={m.id} match={m} competitorById={competitorMap} unit={unit} />
-                      ))}
-                    </div>
-                  )}
-                </div>
+                <TvUpcomingCarousel
+                  inProgress={inProgressMatches}
+                  pending={pendingMatches}
+                  competitorById={competitorMap}
+                  unit={unit}
+                  intervalMs={settings.tv_upcoming_interval_sec * 1000}
+                />
               </section>
             ) : (
               <div className="col-span-4" />
@@ -227,7 +219,7 @@ export default async function TvDisplayPage({
             {/* Middle col-span-4 — "คะแนนของแต่ละคู่" */}
             {settings.tv_show_standings_carousel ? (
               <aside className="col-span-4 h-full overflow-hidden flex flex-col">
-                <TvStandingsCarousel pages={allStandingsPages} intervalMs={settings.tv_carousel_interval_sec * 1000} />
+                <TvStandingsCarousel pages={allStandingsPages} intervalMs={settings.tv_carousel_interval_sec * 1000} fontSize={settings.tv_standings_font_size} />
               </aside>
             ) : (
               <div className="col-span-4" />

@@ -42,12 +42,13 @@ export const TournamentSettingsSchema = z.object({
   tv_show_fullscreen_button: z.boolean().default(true),
   tv_show_bracket_link: z.boolean().default(true),
 
-  tv_upcoming_count: z.number().int().min(1).max(5).default(3),
   tv_completed_count: z.number().int().min(1).max(3).default(1),
   tv_standings_rows: z.number().int().min(0).max(50).default(6),
 
   tv_carousel_interval_sec: z.number().int().min(3).max(30).default(8),
+  tv_upcoming_interval_sec: z.number().int().min(3).max(30).default(8),
   tv_refresh_interval_sec: z.number().int().min(30).max(300).default(60),
+  tv_standings_font_size: z.enum(["sm", "md", "lg", "xl"]).default("md"),
 
   // Chart bar orientation for Dashboard bar charts (recharts):
   //   vertical   = category on X axis, value on Y axis (vertical bars, default)

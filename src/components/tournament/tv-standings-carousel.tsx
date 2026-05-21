@@ -31,9 +31,17 @@ export type StandingsPage =
 type Props = {
   pages: StandingsPage[];
   intervalMs?: number;
+  fontSize?: "sm" | "md" | "lg" | "xl";
 };
 
 const chartConfig = { pts: { label: "คะแนน" } } satisfies ChartConfig;
+
+const FONT_SIZE_CLASS: Record<"sm" | "md" | "lg" | "xl", { table: string; rowMaxName: string }> = {
+  sm: { table: "text-sm lg:text-base 2xl:text-lg", rowMaxName: "max-w-[7rem] lg:max-w-[9rem] 2xl:max-w-[12rem]" },
+  md: { table: "text-base lg:text-lg 2xl:text-xl", rowMaxName: "max-w-[8rem] lg:max-w-[10rem] 2xl:max-w-[14rem]" },
+  lg: { table: "text-lg lg:text-xl 2xl:text-2xl", rowMaxName: "max-w-[9rem] lg:max-w-[12rem] 2xl:max-w-[16rem]" },
+  xl: { table: "text-xl lg:text-2xl 2xl:text-3xl", rowMaxName: "max-w-[10rem] lg:max-w-[14rem] 2xl:max-w-[18rem]" },
+};
 
 function TvStandingsChart({ rows }: { rows: ChartRow[] }) {
   if (rows.length === 0) {
@@ -89,7 +97,7 @@ function TvStandingsChart({ rows }: { rows: ChartRow[] }) {
   );
 }
 
-export function TvStandingsCarousel({ pages, intervalMs = 8000 }: Props) {
+export function TvStandingsCarousel({ pages, intervalMs = 8000, fontSize = "md" }: Props) {
   const [active, setActive] = useState(0);
 
   // Clamp index if pages shrinks
@@ -147,7 +155,7 @@ export function TvStandingsCarousel({ pages, intervalMs = 8000 }: Props) {
           {current.kind === "chart" ? (
             <TvStandingsChart rows={current.rows} />
           ) : (
-            <table className="w-full text-base lg:text-lg 2xl:text-xl">
+            <table className={`w-full ${FONT_SIZE_CLASS[fontSize].table}`}>
               <thead>
                 <tr className="text-left text-muted-foreground border-b">
                   <th className="py-1 font-normal w-8">#</th>
@@ -163,7 +171,7 @@ export function TvStandingsCarousel({ pages, intervalMs = 8000 }: Props) {
                     className={i === 0 ? "font-bold text-green-600 dark:text-green-400" : ""}
                   >
                     <td className="py-1 tabular-nums">{i + 1}</td>
-                    <td className="py-1 truncate max-w-[8rem] lg:max-w-[10rem] 2xl:max-w-[14rem]">
+                    <td className={`py-1 truncate ${FONT_SIZE_CLASS[fontSize].rowMaxName}`}>
                       <div className="flex items-center gap-1.5">
                         {row.color && (
                           <span

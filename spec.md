@@ -786,3 +786,71 @@ User intent: queue numbers in รอแข่ง / กำลังแข่ง /
 - Direct SQL (no migration) — deleted 15 test tournaments via `DELETE FROM tournaments WHERE id <> 'acc3f738-4156-435d-a87b-b2242ed31d31'`. FK cascades dropped 57 teams, 48 players, 8 pairs, 10 groups, 60 matches, 84 audit_logs.
 - Kept only "NOMKONZ TOUNAMENT #2" (id `acc3f738-4156-435d-a87b-b2242ed31d31`).
 - `clubs*` tables untouched.
+
+### TV display rework — 3-column + carousels + settings (2026-05-22)
+
+Major redesign of `/t/[token]/tv` from a 8/4 grid into a fully-configurable 3-column TV scoreboard. All new TV behavior controlled by tournament settings (no DB migration; jsonb).
+
+**Layout** — `src/app/(public)/t/[token]/tv/page.tsx`:
+- Body: `h-screen w-screen overflow-hidden flex flex-col` (locked landscape, no vertical scroll).
+- Header: name + venue + status pill + `<TvFullscreenButton/>` + "ดูสาย" link (only when `knockoutCount > 0`) + "ออก TV" link.
+- Main: `grid grid-cols-12 gap-4`; each section `col-span-4 h-full overflow-hidden flex flex-col`. Empty columns render as placeholder `<div className="col-span-4" />` to keep the 4/4/4 invariant regardless of which toggles are off.
+  - **Left (col-span-4)** — `<TvUpcomingCarousel inProgress={...} pending={...} intervalMs={settings.tv_upcoming_interval_sec*1000} />`
+  - **Middle (col-span-4)** — `<TvStandingsCarousel pages={allStandingsPages} intervalMs={settings.tv_carousel_interval_sec*1000} fontSize={settings.tv_standings_font_size} />`
+  - **Right (col-span-4)** — `<TeamSummary size="tv" orientation="vertical" fillParent />` (gated by `tv_show_team_chart`)
+- `pendingMatches.slice(0, 6)` — fixed cap of 6 (no longer user-configurable; the previous `tv_upcoming_count` setting was removed).
+- The old "จบล่าสุด" section was dropped from rendering entirely; settings keys `tv_show_completed` / `tv_completed_count` still exist in schema but no UI consumes them.
+
+**New components**:
+- `src/components/tournament/tv-fullscreen-button.tsx` — `'use client'`, tracks `document.fullscreenElement` via `fullscreenchange` listener, toggles `requestFullscreen()` / `exitFullscreen()`, `<Maximize/>` ↔ `<Minimize/>` icon.
+- `src/components/tournament/tv-upcoming-carousel.tsx` — 2-page rotating carousel:
+  - **Page 1 "กำลังเล่น"** — all `in_progress` matches sorted by `match_number`.
+  - **Page 2 "ถัดไป"** — top-6 `pending` matches sorted by `match_number`.
+  - Pages with empty match list are filtered out (no blank slide).
+  - Layout: `grid grid-rows-6 gap-2` — every card occupies 1/6 of column height regardless of how many matches are in the current page, so a single in_progress card has the same visual size as one of six pending cards.
+  - Auto-rotates every `intervalMs` when both pages have matches; dot indicators are `<button>` (`onClick={() => setActive(i)}`), `aria-label` + `aria-current`, hover state; `setInterval` cleaned up on unmount.
+- `src/components/tournament/tv-standings-carousel.tsx` — extended with `fontSize?: "sm" | "md" | "lg" | "xl"` prop. `FONT_SIZE_CLASS` constant maps each size to `{table, rowMaxName}` Tailwind class pairs (table text + row name max-width).
+- `src/app/(public)/t/[token]/bracket/page.tsx` — NEW public TV-mode bracket page. Mirrors data-fetch pattern of `/t/[token]/tv/page.tsx`; renders upper / lower / grand_final via `buildVisualBracket` + `<BracketView/>` × 3 sections separated by `<Separator/>`; same header layout as TV page with fullscreen button + "ออก" → `/t/${token}/tv`; `force-dynamic` + `TournamentLiveWrapper` + `TvAutoRefresh`.
+
+**TvMatchCard** (`src/components/tournament/tv-match-card.tsx`) — refactored to compact-only mode:
+- `density` / `comfortable` mode REMOVED; only the previous "compact" variant remains. All call sites simplified.
+- New `fillHeight?: boolean` prop: when true, card uses `h-full flex flex-col gap-2` (with `shrink-0` header + `flex-1 min-h-0` content row) so it fills its parent height; when false, card uses `space-y-2` natural height.
+- Multi-tier `nameSize(name)` — 5 buckets keyed off name length (>28 / >22 / >16 / >12 / else) so common names display at the max size and longer ones step down progressively before triggering the truncate ellipsis.
+- Names use `whitespace-nowrap truncate leading-tight min-w-0` (single-line with ellipsis, never wrap).
+
+**TeamSummary** (`src/components/tournament/team-summary.tsx`) — three new optional props:
+- `size?: "default" | "tv"` (default `"default"`). TV mode applies `text-2xl lg:text-3xl 2xl:text-4xl` title, larger YAxis tick (`fontSize: 20`, `fontWeight: 600`), larger LabelList (`fontSize: 24`, `fontWeight: 800`), wider YAxis (`width: 140`), thicker rows (`rowH: 56`). Drops the "เปรียบเทียบคะแนนระหว่างทีม" CardDescription on TV.
+- `orientation?: "vertical" | "horizontal"` (default `"vertical"`). Default vertical = recharts default layout (XAxis category, YAxis number hidden, vertical bars, `LabelList position="top"`). Horizontal = `layout="vertical"`, XAxis hidden, YAxis category, `LabelList position="right"`.
+- `fillParent?: boolean` (default `false`). Card root → `h-full flex flex-col`; CardHeader → `shrink-0`; CardContent → `flex-1 min-h-0 flex flex-col`; ChartContainer → `flex-1 min-h-0 aspect-auto` + inline `style={{ aspectRatio: "auto" }}` to suppress shadcn's default `aspect-video`. Required because the right TV column needs the chart to stretch to viewport height.
+
+**Public dashboard `/t/[token]`** (`src/components/tournament/public/public-overview.tsx`) — overview tab body restructured into stacked Cards:
+1. **คะแนนรวมทีม** — team-mode reads `computeStandings` directly; pair-mode aggregates pair StandingRows into team totals via inline `aggregatePairStandingsToTeams` helper (sums P/W/D/L/PF/PA, recomputes `leaguePoints` + `pointDiff`, sorts pts→diff→PF). Includes W-D-L column.
+2. **คะแนนตามคู่ แยก Division** (pair mode only) — reads `tournament.pair_division_thresholds`; buckets pair standings by `computePairDivision(parsePairLevel(pair_level), thresholds)`; renders one card per Division 1..N in a `md:grid-cols-2` grid. When thresholds = [] → single "อันดับคู่" card.
+3. **ตารางคิว** — in-progress rows highlighted; top-6 pending rows sorted by `queue_position ?? match_number`, TBD-only matches filtered out. Empty state "ยังไม่มีคิว".
+4. **ผลล่าสุด** — top-5 completed (unchanged).
+
+**Settings** (`src/lib/tournament/settings.ts` + `src/components/tournament/settings-manager.tsx`) — new section "การแสดงผล TV". All fields default-on / sensible defaults; old jsonb rows parse cleanly via `parseSettings` per-field fallback.
+
+| Field                            | Type / Range                        | Default | Purpose                                                            |
+| -------------------------------- | ----------------------------------- | ------- | ------------------------------------------------------------------ |
+| `tv_show_team_chart`             | boolean                             | `true`  | Show right column TeamSummary chart                                |
+| `tv_show_standings_carousel`     | boolean                             | `true`  | Show middle column standings carousel                              |
+| `tv_show_upcoming`               | boolean                             | `true`  | Show left column upcoming carousel                                 |
+| `tv_show_completed`              | boolean                             | `true`  | (dead — UI dropped, retained for forward compat)                   |
+| `tv_show_fullscreen_button`      | boolean                             | `true`  | Show fullscreen icon button in header                              |
+| `tv_show_bracket_link`           | boolean                             | `true`  | Show "ดูสาย" link (when KO matches exist)                          |
+| `tv_completed_count`             | int 1–3                             | `1`     | (dead with completed section)                                      |
+| `tv_standings_rows`              | int 0–50 (sentinel: `0` = ทั้งหมด)  | `6`     | Cap rows per Division standings page                               |
+| `tv_standings_font_size`         | enum `sm` / `md` / `lg` / `xl`      | `md`    | Standings table font + name-column max-width                       |
+| `tv_carousel_interval_sec`       | int 3–30                            | `8`     | Rotation interval for standings carousel                           |
+| `tv_upcoming_interval_sec`       | int 3–30                            | `8`     | Rotation interval for upcoming carousel                            |
+| `tv_refresh_interval_sec`        | int 30–300                          | `60`    | `<TvAutoRefresh intervalMs>` (page-level fallback refresh)         |
+
+Settings UI in "การแสดงผล TV" Card is split into sub-groups: "ส่วนต่างๆ ของหน้า TV" (toggles), "จำนวนรายการ" (counts), "การหมุน / รีเฟรช" (intervals), + standalone "ขนาดฟอนต์" Select.
+
+**Old settings removed** (this session):
+- `tv_upcoming_count` — pending cap is now hardcoded `6`.
+
+**Files touched**:
+- New: `tv-fullscreen-button.tsx`, `tv-upcoming-carousel.tsx`, `bracket/page.tsx`.
+- Modified: `tv/page.tsx`, `tv-standings-carousel.tsx`, `tv-match-card.tsx`, `team-summary.tsx`, `public-overview.tsx`, `settings-manager.tsx`, `settings.ts`.
