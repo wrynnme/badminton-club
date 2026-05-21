@@ -75,6 +75,23 @@ Trust but verify. Read the actual diff/changes before reporting done. Subagent s
 2. Update data contracts if any interface changed
 3. Never claim "done" without updating `spec.md` first
 
+## Bug tracking (`bug.md`)
+
+Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`. Newest entries on top of each section.
+
+**After running tests** (unit / build / E2E / manual smoke):
+
+- Append every new finding to `## Open` under a dated subheading (e.g. `### YYYY-MM-DD — <test type>`).
+- Entry format: `- **[P0|P1|P2] short title** — Context · Repro · Suspected cause · Suggested fix`.
+- Even if all tests pass, add a one-line confirmation under the date (so the log shows the run happened).
+
+**After fixing a bug**:
+
+1. Move the entry from `## Open` to `## Resolved`, prefix with fix date and commit SHA.
+2. Append a `Fix:` line summarizing what changed (files + approach).
+3. Update `spec.md` if the fix changed any documented behavior, schema, label, or contract.
+4. If the bug had a related entry in `spec.md` "Known issues" / "Pending fix" — remove that entry there as well.
+
 ## Development Rules
 
 - **Forms**: TanStack Form everywhere — `useForm` + `form.Field` + `form.Subscribe`
