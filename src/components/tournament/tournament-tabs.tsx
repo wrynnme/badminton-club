@@ -4,9 +4,10 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type TabId = "teams" | "groups" | "pairs" | "knockout" | "queue" | "settings";
+type TabId = "dashboard" | "teams" | "groups" | "pairs" | "knockout" | "queue" | "settings";
 
 export function TournamentTabs({
+  dashboardTab,
   teamsTab,
   groupsTab,
   pairsTab,
@@ -19,6 +20,7 @@ export function TournamentTabs({
   showQueue,
   showSettings,
 }: {
+  dashboardTab: ReactNode;
   teamsTab: ReactNode;
   groupsTab?: ReactNode;
   pairsTab?: ReactNode;
@@ -36,7 +38,7 @@ export function TournamentTabs({
   const searchParams = useSearchParams();
 
   const validTabs = useMemo(() => {
-    const list: TabId[] = ["teams"];
+    const list: TabId[] = ["dashboard", "teams"];
     if (showGroups) list.push("groups");
     if (showPairs) list.push("pairs");
     if (showKnockout) list.push("knockout");
@@ -47,7 +49,7 @@ export function TournamentTabs({
 
   const queryTab = searchParams.get("tab") as TabId | null;
   const activeTab: TabId =
-    queryTab && validTabs.includes(queryTab) ? queryTab : "teams";
+    queryTab && validTabs.includes(queryTab) ? queryTab : "dashboard";
 
   // Lazy-mount: each tab content only renders after first visit. After mount,
   // it stays mounted so switching back is instant + preserves local state.
@@ -71,7 +73,7 @@ export function TournamentTabs({
 
   const onValueChange = (next: string) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (next === "teams") params.delete("tab");
+    if (next === "dashboard") params.delete("tab");
     else params.set("tab", next);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
@@ -80,6 +82,7 @@ export function TournamentTabs({
   return (
     <Tabs value={activeTab} onValueChange={onValueChange}>
       <TabsList className="w-full flex-wrap h-auto">
+        <TabsTrigger value="dashboard">แดชบอร์ด</TabsTrigger>
         <TabsTrigger value="teams">ทีม</TabsTrigger>
         {showGroups && <TabsTrigger value="groups">กลุ่ม</TabsTrigger>}
         {showPairs && <TabsTrigger value="pairs">คู่</TabsTrigger>}
@@ -87,6 +90,10 @@ export function TournamentTabs({
         {showQueue && <TabsTrigger value="queue">ตารางคิว</TabsTrigger>}
         {showSettings && <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>}
       </TabsList>
+
+      <TabsContent value="dashboard" className="mt-6">
+        {mounted.has("dashboard") ? dashboardTab : null}
+      </TabsContent>
 
       <TabsContent value="teams" className="mt-6">
         {mounted.has("teams") ? teamsTab : null}

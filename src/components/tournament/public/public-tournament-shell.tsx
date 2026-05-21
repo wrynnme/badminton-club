@@ -3,9 +3,10 @@
 import { useState, type ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type TabId = "overview" | "groups" | "pairs" | "knockout" | "queue";
+type TabId = "dashboard" | "overview" | "groups" | "pairs" | "knockout" | "queue";
 
 export function PublicTournamentShell({
+  dashboard,
   overview,
   groups,
   pairs,
@@ -16,6 +17,7 @@ export function PublicTournamentShell({
   showKnockout,
   showQueue,
 }: {
+  dashboard: ReactNode;
   overview: ReactNode;
   groups?: ReactNode;
   pairs?: ReactNode;
@@ -26,8 +28,8 @@ export function PublicTournamentShell({
   showKnockout: boolean;
   showQueue: boolean;
 }) {
-  const [active, setActive] = useState<TabId>("overview");
-  const [mounted, setMounted] = useState<Set<TabId>>(() => new Set<TabId>(["overview"]));
+  const [active, setActive] = useState<TabId>("dashboard");
+  const [mounted, setMounted] = useState<Set<TabId>>(() => new Set<TabId>(["dashboard"]));
 
   const onChange = (v: string) => {
     const next = v as TabId;
@@ -41,6 +43,9 @@ export function PublicTournamentShell({
         variant="line"
         className="w-full justify-start gap-0 rounded-none border-b bg-transparent pb-0 h-auto overflow-x-auto"
       >
+        <TabsTrigger value="dashboard" className="px-4 pb-3 pt-1 rounded-none text-sm sm:text-base">
+          แดชบอร์ด
+        </TabsTrigger>
         <TabsTrigger value="overview" className="px-4 pb-3 pt-1 rounded-none text-sm sm:text-base">
           ภาพรวม
         </TabsTrigger>
@@ -66,6 +71,9 @@ export function PublicTournamentShell({
         )}
       </TabsList>
 
+      <TabsContent value="dashboard" className="mt-6">
+        {mounted.has("dashboard") ? dashboard : null}
+      </TabsContent>
       <TabsContent value="overview" className="mt-6">
         {mounted.has("overview") ? overview : null}
       </TabsContent>

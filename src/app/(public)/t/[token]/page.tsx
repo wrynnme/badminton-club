@@ -8,6 +8,7 @@ import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-w
 import { PublicHero } from "@/components/tournament/public/public-hero";
 import { PublicOverview } from "@/components/tournament/public/public-overview";
 import { PublicTournamentShell } from "@/components/tournament/public/public-tournament-shell";
+import { TournamentDashboard } from "@/components/tournament/tournament-dashboard";
 import { MatchQueue } from "@/components/tournament/match-queue";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseSettings } from "@/lib/tournament/settings";
@@ -114,6 +115,14 @@ export default async function PublicTournamentPage({
           showPairs={showPairStage}
           showKnockout={showKnockoutStage}
           showQueue={showQueueStage}
+          dashboard={
+            <TournamentDashboard
+              tournament={t}
+              teams={teams}
+              pairs={pairs}
+              matches={allMatches}
+            />
+          }
           overview={
             <PublicOverview
               tournament={t}
