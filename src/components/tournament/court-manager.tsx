@@ -125,7 +125,7 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
         {courts.length === 0 ? (
           <p className="text-sm text-muted-foreground">ยังไม่มีสนาม — เพิ่มได้ด้านล่าง</p>
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <DndContext id="court-manager-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={courts} strategy={verticalListSortingStrategy}>
               <ul className="space-y-1.5">
                 {courts.map((name) => (

@@ -249,7 +249,7 @@ export function MatchQueue({
           {pending.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">ไม่มีแมตช์รอแข่ง</p>
           ) : canEdit ? (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <DndContext id="match-queue-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
               <SortableContext items={pending.map((m) => m.id)} strategy={verticalListSortingStrategy}>
                 <ul className="space-y-2">
                   {pending.map((m) => (
