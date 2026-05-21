@@ -81,6 +81,7 @@ export function MatchQueue({
   unit,
   canEdit,
   courts = [],
+  requireCourtToStart = false,
 }: {
   matches: Match[];
   competitorById: Map<string, Competitor>;
@@ -88,6 +89,7 @@ export function MatchQueue({
   unit: MatchUnit;
   canEdit: boolean;
   courts?: string[];
+  requireCourtToStart?: boolean;
 }) {
   const router = useRouter();
   const [items, setItems] = useState<Match[]>([]);
@@ -251,6 +253,7 @@ export function MatchQueue({
                       unit={unit}
                       canEdit
                       courts={courts}
+                      requireCourtToStart={requireCourtToStart}
                     />
                   ))}
                 </ul>
@@ -285,6 +288,7 @@ export function MatchQueue({
                   unit={unit}
                   canEdit={canEdit}
                   courts={courts}
+                  requireCourtToStart={requireCourtToStart}
                 />
               ))}
             </ul>
@@ -305,6 +309,7 @@ export function MatchQueue({
                   unit={unit}
                   canEdit={canEdit}
                   courts={courts}
+                  requireCourtToStart={requireCourtToStart}
                 />
               ))}
             </ul>
@@ -379,6 +384,7 @@ function SortableQueueRow(props: {
   unit: MatchUnit;
   canEdit: true;
   courts: string[];
+  requireCourtToStart: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.match.id,
@@ -400,6 +406,7 @@ function SortableQueueRow(props: {
         canEdit={props.canEdit}
         dragHandleProps={{ ...attributes, ...listeners }}
         courts={props.courts}
+        requireCourtToStart={props.requireCourtToStart}
       />
     </li>
   );
@@ -412,6 +419,7 @@ function NonDraggableRow(props: {
   unit: MatchUnit;
   canEdit: boolean;
   courts: string[];
+  requireCourtToStart: boolean;
 }) {
   return (
     <li>
@@ -423,6 +431,7 @@ function NonDraggableRow(props: {
         canEdit={props.canEdit}
         dragHandleProps={null}
         courts={props.courts}
+        requireCourtToStart={props.requireCourtToStart}
       />
     </li>
   );
@@ -444,6 +453,7 @@ function QueueRowReadOnly(props: {
         canEdit={false}
         dragHandleProps={null}
         courts={props.courts}
+        requireCourtToStart={false}
       />
     </li>
   );
@@ -457,6 +467,7 @@ function QueueRowBody({
   canEdit,
   dragHandleProps,
   courts,
+  requireCourtToStart,
 }: {
   match: Match;
   competitorById: Map<string, Competitor>;
@@ -465,6 +476,7 @@ function QueueRowBody({
   canEdit: boolean;
   dragHandleProps: Record<string, unknown> | null;
   courts: string[];
+  requireCourtToStart: boolean;
 }) {
   const { a, b, unknownLabel } = getCompetitorNames(match, unit, competitorById);
   const [court, setCourt] = useState(match.court ?? "");
@@ -598,7 +610,7 @@ function QueueRowBody({
                     size="sm"
                     variant="default"
                     className="h-7 text-xs px-2 gap-1"
-                    disabled={startPending}
+                    disabled={startPending || (requireCourtToStart && !match.court)}
                     onClick={() => startStart(async () => {
                       const res = await startMatchAction(match.id, tournamentId);
                       if (res && "error" in res) toast.error(res.error);
@@ -610,7 +622,11 @@ function QueueRowBody({
                   </Button>
                 }
               />
-              <TooltipContent>เริ่มแมตช์ #{match.match_number} + แจ้งเตือน LINE</TooltipContent>
+              <TooltipContent>
+                {requireCourtToStart && !match.court
+                  ? "ต้องเลือกสนามก่อน"
+                  : `เริ่มแมตช์ #${match.match_number} + แจ้งเตือน LINE`}
+              </TooltipContent>
             </Tooltip>
           )}
 

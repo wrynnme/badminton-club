@@ -257,6 +257,13 @@ export function SettingsManager({
             checked={settings.auto_advance_next}
             onChange={(v) => update("auto_advance_next", v)}
           />
+          <ToggleRow
+            id="require_court_to_start"
+            label="ต้องเลือกสนามก่อนเริ่มแมตช์"
+            description="บล็อกปุ่ม 'เริ่ม' ในแท็บตารางคิวจนกว่าจะเลือกสนาม"
+            checked={settings.require_court_to_start}
+            onChange={(v) => commit({ require_court_to_start: v }, { ...settings, require_court_to_start: v })}
+          />
           <div className="flex items-center justify-between gap-3 py-1">
             <div className="flex flex-col gap-0.5">
               <Label htmlFor="queue-bracket-pref" className="text-sm">กลุ่มไหนแข่งก่อน</Label>

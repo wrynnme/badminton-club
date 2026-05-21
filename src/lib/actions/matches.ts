@@ -1456,6 +1456,12 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
   // Phase 11 — cooldown gate: read from matches.started_at (decoupled from audit_log_enabled).
   // Backfill on migration ensures pre-existing in_progress rows count.
   const settings = await getTournamentSettings(tournamentId);
+
+  // require_court_to_start gate: reject if flag is on and no court assigned.
+  if (settings.require_court_to_start && !match.court) {
+    return { error: "ต้องเลือกสนามก่อนเริ่มแมตช์" };
+  }
+
   if (settings.match_cooldown_minutes > 0) {
     const { data: lastStarted } = await sb
       .from("matches")

@@ -172,6 +172,7 @@ export default async function PublicTournamentPage({
                 unit={t.match_unit}
                 canEdit={false}
                 courts={t.courts ?? []}
+                requireCourtToStart={settings.require_court_to_start}
               />
             ) : undefined
           }

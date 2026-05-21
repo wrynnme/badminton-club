@@ -458,6 +458,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 | `realtime_enabled`                 | `true`  | `TournamentLiveWrapper` prop `realtimeEnabled`; skips Supabase subscribe                                                                                      |
 | `audit_log_enabled`                | `true`  | `writeAuditLog` fetches settings + early-returns when `false` (1 extra column read per write — acceptable for the current write volume)                       |
 | `match_cooldown_minutes` (0-30)    | `0`     | `startMatchAction` reads latest `audit_logs` row with `event_type='match_started'` for this tournament; rejects if `now - created_at < cooldown`              |
+| `require_court_to_start`           | `false` | `startMatchAction` (server gate) + `match-queue.tsx` (button disabled + tooltip)                                                                              |
 
 **Cut from Phase 11**: `require_checkin` — needs new `team_players.checked_in_at` column + check-in flow → Phase 12.
 
