@@ -1,12 +1,13 @@
 "use client";
 
-import { Bar, BarChart, Cell, LabelList, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, Cell, LabelList } from "recharts";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
+import { OrientableBarAxes } from "@/components/tournament/charts/orientable-bar";
 import { TvCarouselDots, useCarousel } from "@/components/tournament/tv-carousel-shell";
 
 export type ChartRow = {
@@ -70,15 +71,11 @@ function TvStandingsChart({ rows }: { rows: ChartRow[] }) {
           margin={{ top: 2, right: 24, bottom: 2, left: 4 }}
           barCategoryGap={4}
         >
-          <XAxis type="number" hide />
-          <YAxis
-            type="category"
+          <OrientableBarAxes
+            orientation="horizontal"
             dataKey="name"
-            tickLine={false}
-            axisLine={false}
-            tickMargin={4}
-            width={72}
-            tick={{ fontSize: 11 }}
+            categoryYWidth={72}
+            tickFontSize={11}
           />
           <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
           <Bar dataKey="pts" radius={3} barSize={16}>

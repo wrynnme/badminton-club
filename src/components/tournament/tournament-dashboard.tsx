@@ -169,10 +169,11 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
   const matchesKey = useMemo(
     () =>
       matches
-        .map(
-          (m) =>
-            `${m.id}:${m.status}:${m.team_a_score ?? 0}:${m.team_b_score ?? 0}`,
-        )
+        .map((m) => {
+          const last = m.games?.[m.games.length - 1];
+          const lastStr = last ? `${last.a}-${last.b}` : "";
+          return `${m.id}:${m.status}:${m.team_a_score ?? 0}:${m.team_b_score ?? 0}:${m.games?.length ?? 0}:${lastStr}`;
+        })
         .join(","),
     [matches],
   );
@@ -316,7 +317,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
         losses: b.losses,
       };
     });
-  }, [matchesKey, hasDivisions]);
+  }, [matchesKey, hasDivisions, divisionThresholds]);
 
   // Section 4 — court usage + timeline
   const courtUsage = useMemo(() => {

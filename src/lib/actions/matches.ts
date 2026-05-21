@@ -77,12 +77,20 @@ export async function generateGroupsAction(tournamentId: string, groupCount: num
  * numbering after group stage when generating the knockout bracket). Without
  * `roundType`, the scan covers every row in the tournament. Returns 1 when
  * no matching rows exist.
+ *
+ * When `precomputedMax` is provided, the query is skipped entirely and the
+ * function returns `precomputedMax + 1`. This avoids a duplicate scan when
+ * the caller has already computed the max (e.g. `generateKnockoutAction`
+ * computes `groupMax` and passes it down here).
  */
 async function getNextMatchNumber(
   sb: Awaited<ReturnType<typeof createAdminClient>>,
   tournamentId: string,
-  opts?: { roundType?: "group" | "knockout" },
+  opts?: { roundType?: "group" | "knockout"; precomputedMax?: number },
 ): Promise<number> {
+  if (opts?.precomputedMax !== undefined) {
+    return opts.precomputedMax + 1;
+  }
   let q = sb
     .from("matches")
     .select("match_number")
@@ -449,13 +457,21 @@ async function insertAndResolveByes(
   });
   if (error) return { error: "สร้างสายน็อกเอาต์ไม่สำเร็จ" };
 
-  // Auto-complete BYE matches and advance winners; do 2 passes for cascading lower bracket BYEs
-  for (let pass = 0; pass < 2; pass++) {
-    const byeMatches = allMatches.filter((m) => m.isBye);
-    const lowerByeCandidates = allMatches.filter((m) => m.bracket === "lower" || m.bracket === "grand_final");
+  // Auto-complete BYE matches and advance winners. Lower-bracket BYE chains can
+  // cascade > 2 rounds (e.g. deep double-elim with sparse seeds), so we loop
+  // until no more walkovers are produced. Cap iterations at log2(bracket) + 2
+  // as a safety net to prevent infinite loops on malformed data.
+  const byeMatches = allMatches.filter((m) => m.isBye);
+  const lowerByeCandidates = allMatches.filter((m) => m.bracket === "lower" || m.bracket === "grand_final");
+  const maxIter = Math.max(2, Math.ceil(Math.log2(Math.max(2, allMatches.length))) + 2);
+  let iter = 0;
+  let resolvedThisIter = 0;
+  while (iter < maxIter) {
+    resolvedThisIter = 0;
 
-    // Upper BYEs — advance winner only; BYE has no real loser, so loserNextMatch slot is left null
-    if (pass === 0) {
+    // Iteration 0 — upper BYEs (winner advances + loser slot explicitly nulled
+    // so the lower-bracket pass can detect a single-null row next iteration).
+    if (iter === 0) {
       for (const m of byeMatches) {
         const winnerIs: "a" | "b" = m.teamAId ? "a" : "b";
         const winner = m.teamAId ?? m.teamBId;
@@ -471,14 +487,21 @@ async function insertAndResolveByes(
           const slot = m.nextMatchSlot === "a" ? colA : colB;
           await sb.from("matches").update({ [slot]: winner }).eq("id", m.nextMatchId);
         }
+        // Fix 2 — BYE has no real loser; explicitly null the loser_next_match
+        // slot so the next iteration's single-null filter walks it over.
+        if (m.loserNextMatchId && m.loserNextMatchSlot) {
+          const loserSlotCol = m.loserNextMatchSlot === "a" ? colA : colB;
+          await sb.from("matches").update({ [loserSlotCol]: null }).eq("id", m.loserNextMatchId);
+        }
+        resolvedThisIter += 1;
       }
     }
 
-    // Lower bracket single-team BYEs (from null upper losers)
+    // Every iteration — sweep lower-bracket pending rows with exactly one side null
     if (lowerByeCandidates.length > 0) {
       const { data: lowerCurrent } = await sb
         .from("matches")
-        .select("id, team_a_id, team_b_id, pair_a_id, pair_b_id, next_match_id, next_match_slot, status")
+        .select("id, team_a_id, team_b_id, pair_a_id, pair_b_id, next_match_id, next_match_slot, loser_next_match_id, loser_next_match_slot, status")
         .eq("tournament_id", tournamentId)
         .eq("round_type", "knockout")
         .in("id", lowerByeCandidates.map((m) => m.id))
@@ -502,8 +525,20 @@ async function insertAndResolveByes(
           const slot = m.next_match_slot === "a" ? colA : colB;
           await sb.from("matches").update({ [slot]: winner }).eq("id", m.next_match_id);
         }
+        // Propagate null-loser downward so the chain can keep cascading.
+        if (m.loser_next_match_id && m.loser_next_match_slot) {
+          const loserSlotCol = m.loser_next_match_slot === "a" ? colA : colB;
+          await sb.from("matches").update({ [loserSlotCol]: null }).eq("id", m.loser_next_match_id);
+        }
+        resolvedThisIter += 1;
       }
     }
+
+    iter += 1;
+    if (resolvedThisIter === 0) break;
+  }
+  if (iter >= maxIter && resolvedThisIter > 0) {
+    console.warn(`[insertAndResolveByes] BYE cascade hit max iterations (${maxIter}) — possible bracket anomaly`);
   }
 
   return null; // no error
@@ -523,7 +558,9 @@ export async function generateKnockoutAction(tournamentId: string) {
     .single();
   if (!tournament) return { error: "ไม่พบทัวร์นาเมนต์" };
 
-  // KO match_number ต่อจาก group stage (max group match_number; 0 ถ้าไม่มี)
+  // KO match_number ต่อจาก group stage (max group match_number; 0 ถ้าไม่มี).
+  // Subsequent `getNextMatchNumber` calls inside this action should reuse this via
+  // `{ precomputedMax: groupMax }` to skip the redundant max(match_number) round-trip.
   const groupMax = (await getNextMatchNumber(sb, tournamentId, { roundType: "group" })) - 1;
 
   // ── Pair mode ──
@@ -677,16 +714,21 @@ export async function generateKnockoutAction(tournamentId: string) {
     if (insertErr) return { error: "สร้างสายน็อกเอาต์ไม่สำเร็จ" };
 
     // Resolve BYEs inline (cannot reuse insertAndResolveByes because division is now on inserts).
-    // Two passes mirror insertAndResolveByes: pass 0 = upper BYEs, pass 1 = lower-bracket
-    // BYEs that became single-team via null upper losers. Within each pass we batch the
-    // completion UPDATEs and the next-slot UPDATEs via Promise.all so all writes for ~D×B
-    // BYEs run in 2 waves instead of 2×D×B sequential round-trips.
+    // Loop until no more walkovers are produced — cascading lower-bracket BYE chains in
+    // double-elim can extend > 2 rounds when seeds are sparse. Safety cap at log2 + 2
+    // iterations to prevent infinite loops on malformed bracket data. Within each
+    // iteration the completion UPDATEs and slot UPDATEs are batched via Promise.all.
     const byeMatches = allMatches.filter((m) => m.isBye);
     const lowerByeCandidates = allMatches.filter((m) => m.bracket === "lower" || m.bracket === "grand_final");
+    const maxIter = Math.max(2, Math.ceil(Math.log2(Math.max(2, allMatches.length))) + 2);
+    let iter = 0;
+    let resolvedThisIter = 0;
+    while (iter < maxIter) {
+      resolvedThisIter = 0;
 
-    for (let pass = 0; pass < 2; pass++) {
-      if (pass === 0) {
-        // Upper BYEs — auto-complete + advance winner to next slot.
+      // Iteration 0 — upper BYEs (winner advances + loser slot explicitly nulled
+      // so the lower-bracket sweep can detect a single-null row next iteration).
+      if (iter === 0) {
         const completePromises = byeMatches.map((m) => {
           const winnerIs: "a" | "b" = m.teamAId ? "a" : "b";
           const winner = m.teamAId ?? m.teamBId;
@@ -699,20 +741,32 @@ export async function generateKnockoutAction(tournamentId: string) {
             team_b_score: walkover.teamBScore,
           }).eq("id", m.id);
         });
-        await Promise.all(completePromises);
+        if (completePromises.length) await Promise.all(completePromises);
 
         const slotPromises = byeMatches.flatMap((m) => {
           const winner = m.teamAId ?? m.teamBId;
-          if (!m.nextMatchId || !m.nextMatchSlot || !winner) return [];
-          const slot = m.nextMatchSlot === "a" ? colA : colB;
-          return [sb.from("matches").update({ [slot]: winner }).eq("id", m.nextMatchId)];
+          const writes = [];
+          if (m.nextMatchId && m.nextMatchSlot && winner) {
+            const slot = m.nextMatchSlot === "a" ? colA : colB;
+            writes.push(sb.from("matches").update({ [slot]: winner }).eq("id", m.nextMatchId));
+          }
+          // Fix 2 — BYE has no real loser; explicitly null the loser_next_match
+          // slot so the next iteration's single-null filter walks it over.
+          if (m.loserNextMatchId && m.loserNextMatchSlot) {
+            const loserSlotCol = m.loserNextMatchSlot === "a" ? colA : colB;
+            writes.push(sb.from("matches").update({ [loserSlotCol]: null }).eq("id", m.loserNextMatchId));
+          }
+          return writes;
         });
         if (slotPromises.length) await Promise.all(slotPromises);
-      } else if (lowerByeCandidates.length > 0) {
-        // Pass 2 — lower-bracket single-team rows from null upper losers.
+        resolvedThisIter += byeMatches.length;
+      }
+
+      // Every iteration — sweep lower-bracket pending rows with exactly one side null
+      if (lowerByeCandidates.length > 0) {
         const { data: lowerCurrent } = await sb
           .from("matches")
-          .select("id, pair_a_id, pair_b_id, next_match_id, next_match_slot, status")
+          .select("id, pair_a_id, pair_b_id, next_match_id, next_match_slot, loser_next_match_id, loser_next_match_slot, status")
           .eq("tournament_id", tournamentId)
           .eq("round_type", "knockout")
           .in("id", lowerByeCandidates.map((m) => m.id))
@@ -724,6 +778,8 @@ export async function generateKnockoutAction(tournamentId: string) {
           pair_b_id: string | null;
           next_match_id: string | null;
           next_match_slot: "a" | "b" | null;
+          loser_next_match_id: string | null;
+          loser_next_match_slot: "a" | "b" | null;
         };
         const walkoverable = ((lowerCurrent ?? []) as LowerRow[]).filter((m) => {
           const aId = m.pair_a_id;
@@ -749,12 +805,27 @@ export async function generateKnockoutAction(tournamentId: string) {
 
         const slotPromises = walkoverable.flatMap((m) => {
           const winner = m.pair_a_id ?? m.pair_b_id;
-          if (!m.next_match_id || !m.next_match_slot || !winner) return [];
-          const slot = m.next_match_slot === "a" ? colA : colB;
-          return [sb.from("matches").update({ [slot]: winner }).eq("id", m.next_match_id)];
+          const writes = [];
+          if (m.next_match_id && m.next_match_slot && winner) {
+            const slot = m.next_match_slot === "a" ? colA : colB;
+            writes.push(sb.from("matches").update({ [slot]: winner }).eq("id", m.next_match_id));
+          }
+          // Propagate null-loser downward so the chain can keep cascading.
+          if (m.loser_next_match_id && m.loser_next_match_slot) {
+            const loserSlotCol = m.loser_next_match_slot === "a" ? colA : colB;
+            writes.push(sb.from("matches").update({ [loserSlotCol]: null }).eq("id", m.loser_next_match_id));
+          }
+          return writes;
         });
         if (slotPromises.length) await Promise.all(slotPromises);
+        resolvedThisIter += walkoverable.length;
       }
+
+      iter += 1;
+      if (resolvedThisIter === 0) break;
+    }
+    if (iter >= maxIter && resolvedThisIter > 0) {
+      console.warn(`[generateKnockoutAction:pair] BYE cascade hit max iterations (${maxIter}) — possible bracket anomaly`);
     }
 
     // Apply division-priority ordering immediately after bracket insert.
