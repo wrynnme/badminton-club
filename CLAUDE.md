@@ -164,7 +164,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - `co-admin-controls.tsx` — owner-only: add/remove co-admins by LINE user_id
 - `audit-log-panel.tsx` — collapsible panel; owner + co-admin; newest-first, limit 50
 - `manual-match-dialog.tsx` — Dialog to create manual pair match; filters pair B by same division as pair A
-- `tournament-tabs.tsx` — client Tab wrapper: ทีม · กลุ่ม* · จับคู่* · น็อคเอ้า* · ตารางคิว* · ตั้งค่า** (\* conditional per format/state, ** owner+co-admin only via `showSettings`); lazy-mount per tab (`mounted: Set<TabId>`); active tab synced to `?tab=` via `useSearchParams`
+- `tournament-tabs.tsx` — client Tab wrapper: แดชบอร์ด · ทีม · กลุ่ม* · คู่* · น็อคเอ้า* · ตารางคิว* · ตั้งค่า** (\* conditional per format/state — `แดชบอร์ด` always shown, `กลุ่ม` only when `match_unit=team` AND format includes group stage, `คู่` only when `match_unit=pair`, `น็อคเอ้า` only when format includes knockout, `ตารางคิว` shown once matches exist; ** owner+co-admin only via `showSettings`); lazy-mount per tab (`mounted: Set<TabId>`); active tab synced to `?tab=` via `useSearchParams`
 - `match-queue.tsx` — sub-tabs `รอแข่ง` (sortable) / `กำลังแข่ง` / `จบแล้ว` with count badges; per-row court Select (or free-text) + `เริ่ม` / `จบแข่ง` / `ยกเลิก` / `รีเซ็ต` + `จัดคิวอัตโนมัติ` + court status banner; row number shows `queue_position ?? match_number` (lock on start); division badge ("บน" / "ล่าง"); `requireCourtToStart` prop (threaded through `SortableQueueRow` / `NonDraggableRow` / `QueueRowReadOnly` / `QueueRowBody`) disables "เริ่ม" + shows tooltip "ต้องเลือกสนามก่อน" when flag ON and court empty
 - `match-list.tsx` — wraps `MatchRow` array; uses `content-visibility:auto` + `contain-intrinsic-size` for off-screen rows
 - `court-manager.tsx` — DnD list of court names in Settings tab; 250ms debounce + serialized writes; calls `updateCourtsAction`
@@ -181,7 +181,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 
 - `/tournaments` — list
 - `/tournaments/new` — create form (mode, format, match_unit, pair_division_thresholds[] via ThresholdChipList, advance_count, team_count …)
-- `/tournaments/[id]` — detail page with tabs (ทีม · กลุ่ม · จับคู่ · น็อคเอ้า · ตารางคิว · ตั้งค่า); `canEdit = isOwner || isCoAdmin`; `showSettings = canEdit`
+- `/tournaments/[id]` — detail page with tabs (แดชบอร์ด · ทีม · กลุ่ม · คู่ · น็อคเอ้า · ตารางคิว · ตั้งค่า — `กลุ่ม` only when `match_unit=team` + format includes group stage, `คู่` only when `match_unit=pair`); `canEdit = isOwner || isCoAdmin`; `showSettings = canEdit`
 - `/tournaments/[id]/bracket` — visual bracket page (no auth required)
 - `/t/[token]` — public read-only share page (no auth, fetched by share_token); passes `matchRowSize="comfortable"` to all stages; `max-w-4xl` layout
 - `/t/[token]/tv` — full-screen TV display: upcoming/in-progress (top 8) + standings sidebar (top 8) + จบล่าสุด (last 6); `force-dynamic`; wrapped in `TournamentLiveWrapper`
@@ -265,7 +265,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 
 ### Thai labels
 
-- `น็อคเอ้า` (not "Knockout"), `จับคู่` (not "คู่"), `แบ่งกลุ่ม + น็อคเอ้า` (`group_knockout`), `ชิงชนะเลิศ` (Grand Final). DB enums + URL params unchanged.
+- `น็อคเอ้า` (not "Knockout"), top-level tab `คู่` (in `tournament-tabs.tsx`) but PairStage sub-tab + button label remain `จับคู่` (in `pair-stage.tsx` / `pair-manager.tsx`), `แบ่งกลุ่ม + น็อคเอ้า` (`group_knockout`), `ชิงชนะเลิศ` (Grand Final), `แดชบอร์ด` (first/default-adjacent tab). DB enums + URL params unchanged.
 
 ## MCP Servers
 

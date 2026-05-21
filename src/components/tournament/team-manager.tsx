@@ -254,6 +254,7 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
 
           {isOwner && !addingMember && (
             <Button size="sm" variant="outline" className="w-full h-7 text-xs"
+              aria-label={`เพิ่มสมาชิกในทีม ${team.name}`}
               onClick={() => setAddingMember(true)}>
               <Plus className="h-3 w-3 mr-1" />เพิ่มสมาชิก
             </Button>

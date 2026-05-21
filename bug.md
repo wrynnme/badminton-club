@@ -4,19 +4,18 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-### 2026-05-22 — Full E2E test session
-
-- **[P2] Tab label drift between docs and runtime**
-  - Context: `CLAUDE.md` + `spec.md` list tabs as `ทีม · กลุ่ม · จับคู่ · น็อคเอ้า · ตารางคิว · ตั้งค่า`. Actual rendered tabs in pair-mode tournament: `แดชบอร์ด · ทีม · คู่ · น็อคเอ้า · ตารางคิว · ตั้งค่า`. `กลุ่ม` tab absent; `จับคู่` renamed to `คู่`; `แดชบอร์ด` added.
-  - Repro: Open any pair-mode `group_knockout` tournament detail page, count tab triggers.
-  - Suggested fix: update `spec.md` + `CLAUDE.md` "Components → tournament-tabs.tsx" line to reflect current labels + conditional rules (`กลุ่ม` only shown when format requires it and unit=team; `แดชบอร์ด` always shown).
-
-- **[P2] Duplicate "เพิ่มสมาชิก" buttons fragile for automation/AT**
-  - Context: When multiple team cards expanded, each has its own "เพิ่มสมาชิก" button with identical accessible name. Playwright role lookup hits the first match (Alpha) instead of the intended team.
-  - Repro: Add 2 teams, expand both, query `getByRole('button', { name: 'เพิ่มสมาชิก' })` — returns first card's button.
-  - Suggested fix: add per-team `aria-label="เพิ่มสมาชิกในทีม {team.name}"` to button. Improves screen-reader UX too.
+(none)
 
 ## Resolved
+
+### 2026-05-22 — P2 fixes
+
+- **[P2] Tab label drift between docs and runtime**
+  - Fix: `CLAUDE.md` — lines 167, 184, 268 — updated tab list to `แดชบอร์ด · ทีม · กลุ่ม* · คู่* · น็อคเอ้า* · ตารางคิว* · ตั้งค่า**`; spelled-out conditional rules (`แดชบอร์ด` always; `กลุ่ม` only `match_unit=team` + group format; `คู่` only `match_unit=pair`); clarified top-level tab `คู่` vs PairStage internal sub-tab/button still `จับคู่`. `spec.md` required no edits (line 236 already correct).
+
+- **[P2] Duplicate "เพิ่มสมาชิก" buttons fragile for automation/AT**
+  - Fix: `team-manager.tsx:257` — added `aria-label={`เพิ่มสมาชิกในทีม ${team.name}`}` to per-team Add Member button. Disambiguates accessible name across multiple expanded team cards.
+
 
 ### 2026-05-22 — Manual verification (not an app bug)
 
