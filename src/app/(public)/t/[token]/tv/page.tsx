@@ -7,7 +7,7 @@ import { TvAutoRefresh } from "@/components/tournament/tv-auto-refresh";
 import { TvMatchCard } from "@/components/tournament/tv-match-card";
 import { TvStandingsCarousel, type StandingsPage, type TableRow } from "@/components/tournament/tv-standings-carousel";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
-import { computeStandings, aggregatePairStandingsToTeams, type StandingRow } from "@/lib/tournament/scoring";
+import { computeStandings, type StandingRow } from "@/lib/tournament/scoring";
 import { computePairDivision, parsePairLevel } from "@/lib/tournament/divisions";
 import { parseSettings } from "@/lib/tournament/settings";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
@@ -87,7 +87,6 @@ export default async function TvDisplayPage({
 
   const rowsFromStandings = (rows: StandingRow[], nameLookup: (id: string) => { name: string; color?: string | null }) =>
     rows
-      .filter((s) => s.played > 0)
       .slice(0, 6)
       .map((s) => {
         const meta = nameLookup(s.competitorId);
@@ -117,20 +116,8 @@ export default async function TvDisplayPage({
       rows: teamTotalsRows,
     });
   } else {
-    // Pair mode — aggregate per-pair standings into per-team totals
+    // Pair mode — split per Division (no team-totals page)
     const pairStandings = computeStandings(allMatches, "pair", competitorIds);
-    const teamAggSorted = aggregatePairStandingsToTeams(pairStandings, pairs, teams);
-
-    teamTotalsRows = rowsFromStandings(teamAggSorted, (id) => {
-      const tm = teamById.get(id);
-      return { name: tm?.name ?? "—", color: tm?.color };
-    });
-    standingsPages.push({
-      kind: "table",
-      id: "team-total",
-      title: "คะแนนรวมทีม",
-      rows: teamTotalsRows,
-    });
 
     const thresholds = Array.isArray(t.pair_division_thresholds)
       ? (t.pair_division_thresholds as number[]).filter((n) => typeof n === "number" && !Number.isNaN(n))
@@ -225,7 +212,7 @@ export default async function TvDisplayPage({
             </section>
 
             {/* Right column — split vertically */}
-            <aside className="col-span-4 h-full grid grid-rows-2 gap-4">
+            <aside className="col-span-4 h-full min-h-0 grid grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
               {/* Top — standings carousel */}
               <TvStandingsCarousel pages={allStandingsPages} intervalMs={8000} />
 

@@ -142,7 +142,7 @@ export function TvStandingsCarousel({ pages, intervalMs = 8000 }: Props) {
           </div>
         )}
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden rounded-xl border bg-card p-3 lg:p-4">
+      <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border bg-card p-3 lg:p-4">
         <div key={current.id} className="animate-in fade-in duration-300 h-full">
           {current.kind === "chart" ? (
             <TvStandingsChart rows={current.rows} />
