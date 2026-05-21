@@ -239,6 +239,7 @@ export default async function TournamentDetailPage({
               unit={t.match_unit}
               canEdit={canEdit}
               courts={t.courts ?? []}
+              requireCourtToStart={settings.require_court_to_start}
             />
           }
           settingsTab={
