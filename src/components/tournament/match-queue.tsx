@@ -352,25 +352,63 @@ function getCompetitorNames(
 
 function DivisionBadge({ match }: { match: Match }) {
   const div = parseDivision(match.division);
-  const bracketLabel =
-    match.bracket === "upper" ? "W" : match.bracket === "lower" ? "L" : match.bracket === "grand_final" ? "F" : null;
+  const isKO = match.round_type === "knockout";
+  const bracketLabel = !isKO
+    ? null
+    : match.bracket === "upper" ? "W" : match.bracket === "lower" ? "L" : match.bracket === "grand_final" ? "F" : null;
 
-  if (div == null && bracketLabel == null) return null;
+  if (div == null && !isKO) return null;
+
+  const bracketTooltip = !isKO
+    ? null
+    : match.bracket === "upper"
+      ? "Winner bracket (สายชนะ)"
+      : match.bracket === "lower"
+      ? "Loser bracket (สายแพ้)"
+      : match.bracket === "grand_final"
+      ? "Grand Final (ชิงชนะเลิศ)"
+      : null;
 
   return (
     <span className="flex items-center gap-0.5 shrink-0">
       {div != null && (() => {
         const tone = divisionTone(div);
         return (
-          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${tone.border} ${tone.bg} ${tone.text}`}>
-            D{div}
-          </span>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium cursor-help ${tone.border} ${tone.bg} ${tone.text}`}>
+                  D{div}
+                </span>
+              }
+            />
+            <TooltipContent>Division {div}</TooltipContent>
+          </Tooltip>
         );
       })()}
-      {bracketLabel != null && (
-        <span className="text-[10px] px-1 py-0.5 rounded border font-medium border-muted-foreground/30 bg-muted/40 text-muted-foreground">
-          {bracketLabel}
-        </span>
+      {isKO && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="text-[10px] px-1 py-0.5 rounded border font-medium cursor-help border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                KO
+              </span>
+            }
+          />
+          <TooltipContent>น็อคเอ้า</TooltipContent>
+        </Tooltip>
+      )}
+      {bracketLabel != null && bracketTooltip != null && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="text-[10px] px-1 py-0.5 rounded border font-medium cursor-help border-muted-foreground/30 bg-muted/40 text-muted-foreground">
+                {bracketLabel}
+              </span>
+            }
+          />
+          <TooltipContent>{bracketTooltip}</TooltipContent>
+        </Tooltip>
       )}
     </span>
   );

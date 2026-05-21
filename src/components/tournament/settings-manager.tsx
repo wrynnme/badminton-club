@@ -145,7 +145,7 @@ function DivisionPriorityRow({
         <div className="flex flex-col gap-0.5">
           <Label htmlFor="division-priority" className="text-sm font-medium">ลำดับ Division</Label>
           <p className="text-xs text-muted-foreground">
-            เลข Division คั่นด้วย , (1=สูงสุด) — ว่างไว้ = ตามลำดับธรรมชาติ 1..{nDivisions}
+            ลำดับ Div ที่จะลงสนามก่อน (เช่น 2,1) — ว่างไว้ = 1..{nDivisions}
           </p>
         </div>
         <Input
@@ -333,7 +333,11 @@ export function SettingsManager({
               onValueChange={(v) => update("queue_division_order", v as TournamentSettings["queue_division_order"])}
             >
               <SelectTrigger id="queue-division-order" className="w-36 h-8 text-xs">
-                <SelectValue />
+                <SelectValue>
+                  {(value) =>
+                    value === "interleaved" ? "สลับ" : value === "sequential" ? "ตามลำดับ" : value === "chunked" ? "เป็นชุด" : ""
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="interleaved">สลับ</SelectItem>

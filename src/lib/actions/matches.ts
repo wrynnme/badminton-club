@@ -398,6 +398,7 @@ async function insertAndResolveByes(
   tournamentId: string,
   allMatches: BracketMatchDef[],
   isPair = false,
+  matchNumberOffset = 0,
 ) {
   const colA = isPair ? "pair_a_id" : "team_a_id";
   const colB = isPair ? "pair_b_id" : "team_b_id";
@@ -405,7 +406,7 @@ async function insertAndResolveByes(
   const inserts = allMatches.map((m) => ({
     id: m.id,
     round_number: m.roundNumber,
-    match_number: m.matchNumber,
+    match_number: m.matchNumber + matchNumberOffset,
     [colA]: m.teamAId,
     [colB]: m.teamBId,
     next_match_id: m.nextMatchId,
@@ -497,6 +498,17 @@ export async function generateKnockoutAction(tournamentId: string) {
     .eq("id", tournamentId)
     .single();
   if (!tournament) return { error: "ไม่พบทัวร์นาเมนต์" };
+
+  // KO match_number ต่อจาก group stage (max group match_number; 0 ถ้าไม่มี)
+  const { data: groupMaxRow } = await sb
+    .from("matches")
+    .select("match_number")
+    .eq("tournament_id", tournamentId)
+    .eq("round_type", "group")
+    .order("match_number", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const groupMax = groupMaxRow?.match_number ?? 0;
 
   // ── Pair mode ──
   if (tournament.match_unit === "pair") {
@@ -625,7 +637,7 @@ export async function generateKnockoutAction(tournamentId: string) {
       return {
         id: m.id,
         round_number: m.roundNumber,
-        match_number: m.matchNumber,
+        match_number: m.matchNumber + groupMax,
         [colA]: m.teamAId,
         [colB]: m.teamBId,
         next_match_id: m.nextMatchId,
@@ -741,7 +753,7 @@ export async function generateKnockoutAction(tournamentId: string) {
     allMatches = buildBracket(entries);
   }
 
-  const err = await insertAndResolveByes(sb, tournamentId, allMatches);
+  const err = await insertAndResolveByes(sb, tournamentId, allMatches, false, groupMax);
   if (err) return err;
 
   // Apply division-priority ordering immediately after bracket insert.
