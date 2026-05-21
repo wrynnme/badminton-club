@@ -17,7 +17,7 @@ import { CoAdminControls } from "@/components/tournament/co-admin-controls";
 import { AuditLogPanel } from "@/components/tournament/audit-log-panel";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import { TournamentTabs } from "@/components/tournament/tournament-tabs";
-import { TournamentDashboard } from "@/components/tournament/tournament-dashboard";
+import { TournamentDashboardLazy } from "@/components/tournament/tournament-dashboard-lazy";
 import { MatchQueue } from "@/components/tournament/match-queue";
 import { CourtManager } from "@/components/tournament/court-manager";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
@@ -188,7 +188,7 @@ export default async function TournamentDetailPage({
           showQueue={showQueue}
           showSettings={canEdit}
           dashboardTab={
-            <TournamentDashboard
+            <TournamentDashboardLazy
               tournament={t}
               teams={teams}
               pairs={pairs}
