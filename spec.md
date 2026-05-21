@@ -233,7 +233,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ### UI Improvements
 
-- Tournament detail page split into tabs: **ทีม · กลุ่ม* · คู่* · Knockout\* · ตั้งค่า** (\* conditional per format)
+- Tournament detail page split into tabs: **แดชบอร์ด · ทีม · กลุ่ม\* · คู่\* · น็อคเอ้า\* · ตารางคิว\* · ตั้งค่า\*\*** (\* conditional per format/state, \*\* owner+co-admin only). `แดชบอร์ด` always shown; `กลุ่ม` only when `match_unit=team` + format includes group stage; `คู่` only when `match_unit=pair`; `น็อคเอ้า` only when format includes knockout; `ตารางคิว` shown once matches exist; `ตั้งค่า` hidden for public viewers.
 - `Loader2` spinner on all pending/loading buttons
 - Error messages — Thai-friendly throughout; no raw `error.message` from DB exposed to UI
 - Settings tab (owner-only): `edit-tournament-form.tsx` — TanStack Form pre-populated with current tournament data, calls `updateTournamentAction`
@@ -929,3 +929,38 @@ Settings UI in "การแสดงผล TV" Card is split into sub-groups: "
 
 **Wiring**:
 - `(app)/tournaments/[id]/page.tsx` and `(public)/t/[token]/page.tsx` now mount `<TournamentDashboardLazy />` instead of `<TournamentDashboard />`. The granular skeleton renders during chunk fetch.
+
+### Test infrastructure — vitest unit suite (2026-05-22, commit `4d53912`)
+
+- `vitest` + `@vitest/coverage-v8` installed as devDependencies; `vitest.config.ts` at project root with `@` alias → `./src`, `environment: 'node'`, `globals: true`.
+- npm scripts: `test` (`vitest run`), `test:watch`, `test:coverage`.
+- 6 test files under `src/lib/tournament/__tests__/` covering pure functions only — **222 passing**:
+  - `scoring.test.ts` — `gameWinner`, `leaguePoints`, `computeStandings` (sort order, tie-breaks, team + pair unit)
+  - `scheduling.test.ts` — `balancedRoundRobin` (equal/unequal sides, 1v1/0v0 edge), `generateAllPairMatches`
+  - `bracket.test.ts` — `buildBracket` (4/8/16 entries, `next_match_id` wiring), `nextPowerOf2`, `roundLabel`, `buildDoubleBracket` shape
+  - `divisions.test.ts` — `computePairDivision` boundaries, empty/1-element/2-element thresholds, `divisionLabelTh`, `divisionCount`, `divisionTone` cycling
+  - `settings.test.ts` — `parseSettings({}) → DEFAULT_SETTINGS`, legacy `queue_bracket_preference` translation, invalid input fallback
+  - `competitor.test.ts` — `teamToCompetitor`, `pairToCompetitor` name formation, `buildCompetitorMap` lookup
+- Source files are not modified by tests (lib is read-only). Server-side / Supabase-touching modules (`audit.ts`, `permissions.ts`, `settings.server.ts`) excluded — would require mocking.
+
+### Bug tracking — `bug.md` (2026-05-22, commits `4d53912`, `d721beb`)
+
+- `bug.md` at project root is the single source of truth for known bugs. Two sections: `## Open` and `## Resolved`, newest entries on top of each section, grouped by dated subheading.
+- Entry format: `**[P0|P1|P2] short title** — Context · Repro · Suspected cause · Suggested fix`.
+- `CLAUDE.md` "Bug tracking" rule (added 2026-05-22) requires:
+  - After every test run (unit / build / E2E / manual smoke), append findings to `## Open` under a dated subheading; if all pass, add a one-line confirmation under that date.
+  - When a bug is fixed, move the entry to `## Resolved` with fix date + commit SHA + a `Fix:` line summarizing what changed.
+  - If the fix changed any documented behavior, schema, label, or contract, sync `spec.md` too; if `spec.md` had a related "Known issues / Pending fix" entry, remove that entry there as well.
+- Current state: **2 Open** (P2 tab label drift logged then fixed in this section + P2 duplicate "เพิ่มสมาชิก" `aria-label` for screen readers and automation). **8 Resolved** — 7 P1 review findings + 1 player-level-fill (verified as Playwright-only automation gap, not an app bug).
+
+### Full E2E smoke test (2026-05-22)
+
+Comprehensive test pass against production Supabase using create-then-cleanup pattern:
+
+1. **Unit** — `vitest run`: 222/222 pass.
+2. **Typecheck** — `npx tsc --noEmit`: exit 0.
+3. **Production build** — `next build`: 18 routes compiled, exit 0.
+4. **E2E browser flow** via `playwright-cli` skill — created `E2E_TEST_<ts>` tournament (`group_knockout`, pair, thresholds `[5]`, 2 teams + 8 players + 4 pairs), generated pair matches, queue assignment + court + start, share token + public page + TV page.
+5. **Cleanup** — all `E2E_TEST_*` rows deleted via Supabase MCP across `audit_logs`, `matches`, `pairs`, `team_players`, `group_teams`, `groups`, `teams`, `tournament_admins`, `tournaments`. Verified 0 rows remain; NOMKONZ TOUNAMENT #2 untouched.
+
+Findings logged to `bug.md` (1 automation-only P1 since closed by manual verification, 2 P2 doc/UX items).
