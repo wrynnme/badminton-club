@@ -67,7 +67,6 @@ export default async function PublicTournamentPage({
       .select("*")
       .eq("tournament_id", t.id)
       .order("round_type", { ascending: true })
-      .order("queue_position", { ascending: true, nullsFirst: false })
       .order("match_number"),
   ]);
 
