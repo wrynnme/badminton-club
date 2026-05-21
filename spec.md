@@ -229,6 +229,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - No division: top `advance_count` pairs overall → single bracket
 - With division: top `advance_count` from upper + lower → `buildIndependentDoubleBracket` (upper + lower + grand final)
 - `knockout_only` pair mode: seed all pairs (no standings needed)
+- **KO `match_number` continuous across stages (2026-05-22)**: queries `max(match_number) WHERE round_type='group' AND tournament_id=...` once and passes that offset to all insertion paths. Pair-mode inserts apply `m.matchNumber + groupMax`; team-mode `insertAndResolveByes` helper accepts `matchNumberOffset` (default 0). No UNIQUE constraint on `match_number` → safe to offset; KO matches now numbered after group matches in display.
 
 ### UI Improvements
 
@@ -366,14 +367,14 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **Cards grid** `grid-cols-2 sm:grid-cols-4` — แต่ละสี: color ring (`--tw-ring-color` CSS variable) + pts + ชื่อทีม (truncate)
 - **Bar chart** — horizontal bars ความกว้างตาม `pts/maxPts`; `Card`/`CardContent`; `transition-[width] duration-500`
 
-### Team Summary (Teams Tab)
+### Team Summary (Dashboard Tab — moved 2026-05-22)
 
 - **Component**: `TeamSummary` ใน `src/components/tournament/team-summary.tsx`
-- Mounted ที่หัวของแท็บ `ทีม` ผ่าน `team-manager.tsx` (รับ props `matches`, `pairs`, `matchUnit`)
+- Mounted ใน Dashboard tab (ไม่ใช่ Teams tab อีกแล้ว) ระหว่าง summary cards กับ Top performers; `TeamManager` ไม่รับ `matches` / `pairs` / `matchUnit` props แล้ว
 - Team mode: `computeStandings(matches, "team", teamIds)` แล้ว map row.id → team
 - Pair mode: aggregate `leaguePoints` ของทุก pair group by `pair.team_id`
 - แสดงเมื่อ `completedMatches > 0 && teams.length >= 2`
-- รูปแบบ: horizontal bars ตาม ColorSummary pattern; `--tw-ring-color` CSS var, `transition-[width] duration-500`; `useMemo` aggregation
+- รูปแบบ: bar chart (recharts) — รับ `orientation: "vertical" | "horizontal"` prop จาก `tournament.settings.chart_orientation` ของ Dashboard parent; TV page passes `orientation={settings.chart_orientation}` ที่ call site เดิม
 
 ---
 
@@ -749,3 +750,39 @@ User intent: queue numbers in รอแข่ง / กำลังแข่ง /
 - **`tv/page.tsx`**: already N-division-aware from prior work; import `computePairDivision` confirmed present; no structural change needed.
 - **`tv-match-card.tsx`**: no division badge in this component; no change needed.
 - **`tournaments/[id]/page.tsx`**: passes `pairDivisionThresholds={t.pair_division_thresholds ?? []}` to `<SettingsManager>`.
+
+### Dashboard tab + KO badge guard + chart_orientation (2026-05-22)
+
+- **NEW Dashboard tab** — first/default tab "แดชบอร์ด" on tournament detail page (private + public share). Visible to ALL viewers (no `canEdit` gate). Component: `src/components/tournament/tournament-dashboard.tsx`. Sections:
+  1. **Summary cards**: teams/pairs count, total players, total matches with completed/in-progress/pending subtitle, progress % with bar.
+  2. **`TeamSummary`** (moved from Teams tab) — "คะแนนสะสมแต่ละทีม" chart.
+  3. **Top performers** — 2 cards "อันดับสูงสุด" (top 5 by points) + "ผู้ชนะมากสุด" (top 5 by wins), with right-aligned division sub-tabs (ทั้งหมด · Div 1..N) when `match_unit === "pair"` && `pair_division_thresholds.length > 0`.
+  4. **Charts**: "คะแนนรวมต่อทีม/คู่" top-10 bar chart (team color in team mode, accent in pair mode) + "Win/Draw/Loss แยก Division" stacked bar chart (only when divisions configured).
+  5. **Court usage / timeline**: bar chart of matches per court + last 10 completed matches with HH:mm time, names, score.
+- Lazy-mounted via existing `mounted: Set<TabId>` pattern in `tournament-tabs.tsx` + `public-tournament-shell.tsx`. Tab ID = `"dashboard"`.
+- **`TeamManager` simplified** — no longer takes `matches` / `pairs` / `matchUnit` props (TeamSummary moved out of the Teams tab).
+
+- **`match-queue.tsx` DivisionBadge — KO pill + bracket guard (commit 75e4bc3)**:
+  - Renders yellow "KO" pill (tooltip "น็อคเอ้า") for any match where `round_type === "knockout"`.
+  - Shows existing W/L/F bracket badges ONLY for KO matches (previously they leaked into group matches because DB default `bracket='upper'` on every row). Group matches no longer show bogus "Winner bracket" tooltips.
+
+- **Settings UX polish (commit 75e4bc3)** — `settings-manager.tsx`:
+  - Helper text for Division priority field: `"ลำดับ Div ที่จะลงสนามก่อน (เช่น 2,1) — ว่างไว้ = 1..{N}"` (was the older "1=สูงสุด" phrasing).
+  - Base UI `<SelectValue>` for `queue_division_order` now uses an explicit render-function child to map enum value → Thai label (`interleaved → "สลับ"`, `sequential → "ตามลำดับ"`, `chunked → "เป็นชุด"`). Without the render function the trigger displayed the raw enum value.
+
+### New setting `chart_orientation` (2026-05-22)
+
+| Flag                | Default    | Wire point                                                                                          |
+| ------------------- | ---------- | --------------------------------------------------------------------------------------------------- |
+| `chart_orientation` | `vertical` | Affects all 4 bar charts: `TeamSummary`, Dashboard points top-10, Dashboard W/D/L per Division, Dashboard court usage. |
+
+- Schema (`src/lib/tournament/settings.ts`): `chart_orientation: z.enum(["vertical", "horizontal"]).default("vertical")`.
+- `"vertical"` = category on X axis, value on Y, `LabelList position="top"`. `"horizontal"` = recharts `layout="vertical"`, category on Y, value on X, `LabelList position="right"`.
+- `TeamSummary` takes an `orientation` prop; Dashboard reads from `tournament.settings.chart_orientation`; TV page passes `orientation={settings.chart_orientation}` to `TeamSummary` call sites.
+- UI: new toggle under "การแสดงผล + Privacy" section in Settings tab.
+
+### Production DB cleanup (2026-05-22)
+
+- Direct SQL (no migration) — deleted 15 test tournaments via `DELETE FROM tournaments WHERE id <> 'acc3f738-4156-435d-a87b-b2242ed31d31'`. FK cascades dropped 57 teams, 48 players, 8 pairs, 10 groups, 60 matches, 84 audit_logs.
+- Kept only "NOMKONZ TOUNAMENT #2" (id `acc3f738-4156-435d-a87b-b2242ed31d31`).
+- `clubs*` tables untouched.
