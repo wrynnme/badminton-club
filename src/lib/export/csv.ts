@@ -1,5 +1,6 @@
 import type { Match, Team, TeamPlayer, PairWithPlayers, MatchUnit } from "@/lib/types";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
+import { parseDivision } from "@/lib/tournament/divisions";
 
 function escapeCsv(v: string | number | null | undefined): string {
   const s = String(v ?? "");
@@ -12,7 +13,7 @@ function row(...cols: (string | number | null | undefined)[]): string {
 
 function roundLabel(m: Match): string {
   if (m.round_type === "group") return "กลุ่ม";
-  const bracketMap: Record<string, string> = { upper: "สายบน", lower: "สายล่าง", grand_final: "ชิงชนะเลิศ" };
+  const bracketMap: Record<string, string> = { upper: "สายชนะ", lower: "สายแพ้", grand_final: "ชิงชนะเลิศ" };
   return bracketMap[m.bracket ?? "upper"] ?? "น็อคเอ้า";
 }
 
@@ -39,6 +40,7 @@ export function generateMatchesCsv(
     "แมตช์", "รอบ", "สาย",
     unit === "pair" ? "คู่ A" : "ทีม A",
     unit === "pair" ? "คู่ B" : "ทีม B",
+    "Division",
     "เกมที่ชนะ A", "เกมที่ชนะ B",
     "แต้มรวม A", "แต้มรวม B",
     "รายละเอียดเกม", "ผู้ชนะ", "สถานะ"
@@ -64,9 +66,11 @@ export function generateMatchesCsv(
       const winnerName = winner === "a" ? aName : winner === "b" ? bName : "เสมอ";
       const statusMap: Record<string, string> = { pending: "รอ", in_progress: "กำลังแข่ง", completed: "จบแล้ว" };
 
+      const divisionNum = parseDivision(m.division);
       return row(
         m.match_number, roundLabel(m), m.round_number,
         aName, bName,
+        divisionNum !== null ? divisionNum : "",
         m.status === "completed" ? gamesA : "",
         m.status === "completed" ? gamesB : "",
         m.status === "completed" && totals ? totals.a : "",

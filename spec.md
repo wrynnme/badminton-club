@@ -29,11 +29,13 @@
 
 ### Group Stage Division
 
-- `matches.division` column: `upper | lower | null`
-- `tournaments.pair_division_threshold` — configurable per tournament (numeric, nullable)
-  - `null` = no division; all pairs play together
-  - `pair_level > threshold` → upper; else → lower
+- `matches.division` column: stores division number as text `"1"`, `"2"`, … `"N"` (legacy `"upper"` = `"1"`, `"lower"` = `"2"`)
+- `tournaments.pair_division_thresholds: number[]` — sorted ASC array; replaces singular `pair_division_threshold`
+  - `[]` = no division; all pairs play together
+  - `pair_level > thresholds[N-2]` → Division 1 (top); …; `≤ thresholds[0]` → Division N (bottom)
+  - Division 1 = highest skill tier
 - Cross-division matches only in knockout
+- Helpers: `computePairDivision(level, thresholds[])`, `divisionLabelTh(n)`, `divisionTone(n)`, `divisionCount(thresholds)`, `DIVISION_COLORS` — `src/lib/tournament/divisions.ts`
 
 ### CSV Import (2-step)
 
@@ -503,10 +505,10 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
   - `resetMatchScoreAction` (completed → pending) does the same
   - `createManualMatchAction` includes `queue_position = nextPendingTailPosition` in the insert payload so manual rows append at the tail
   - `match-queue.tsx`: removed unused `index` prop from `SortableQueueRow` / `NonDraggableRow` / `QueueRowReadOnly` / `QueueRowBody` (no longer needed since display reads from match data)
-- **Chunked bracket priority** (`queue_bracket_preference`):
-  - Schema (`src/lib/tournament/settings.ts`): enum extended with `chunk_upper_first` + `chunk_lower_first`; new field `queue_chunk_size: number (1..50, default 10)`
-  - `autoRotateQueueAction` (`matches.ts`): bucket logic upgraded — `upper_first`/`lower_first` stay strict (process all of one side then the other); `interleaved` literally zips `U-L-U-L`; chunk modes zip in chunks of `N` (e.g. `chunk_lower_first` + `N=10` → `L1..L10 U1..U10 L11..L20 U11..U20`). Greedy rest-gap still applies after the zip. Sort key respects both `m.division` (group rounds) and `m.bracket` (knockout) — group uses pair_division_threshold split, knockout uses double-elim upper/lower.
-  - `settings-manager.tsx`: Select dropdown gets 2 new options + conditional `NumberRow` for chunk size when a chunk mode is selected; label "กลุ่มไหนแข่งก่อน" + Thai descriptions
+- **N-division queue ordering** (`queue_division_order` + `queue_division_priority`):
+  - Schema (`src/lib/tournament/settings.ts`): `queue_division_order: "sequential"|"interleaved"|"chunked"` (default `"interleaved"`); `queue_division_priority: number[]` (1-based div numbers, `[]` = natural 1..N order); `queue_chunk_size: number (1..50, default 10)`. `queue_bracket_preference` removed (legacy values translated by `normalizeLegacy()`).
+  - `autoRotateQueueAction` uses `queue_division_order` + `queue_division_priority` to bucket and sequence matches across N divisions.
+  - `settings-manager.tsx`: Select for `queue_division_order` (สลับ/ตามลำดับ/เป็นชุด) + `DivisionPriorityRow` (comma-separated text input, sanitize on blur) when order ≠ interleaved + `NumberRow` for `queue_chunk_size` when chunked.
 - **Match queue UX**:
   - Division badge ("บน" amber / "ล่าง" sky) shown after `#match_number` in each row — uses `match.bracket` for knockout, `match.division` for group rounds
   - Competitor names hug `vs` via right-aligned A + left-aligned B with color dot mirrored to the inner side
@@ -733,7 +735,17 @@ User intent: queue numbers in รอแข่ง / กำลังแข่ง /
 
 - `src/components/tournament/public/public-overview.tsx` (Overview tab on `/t/[token]`) — body replaced with 3 stacked sections:
   1. **คะแนนรวมทีม** — team-mode: `computeStandings(allMatches, 'team', teamIds)` directly; pair-mode: aggregate pair StandingRows by `pairs.team_id` via inline `aggregatePairStandingsToTeams` helper (sums played/W/D/L/PF/PA, recomputes `leaguePoints` + `pointDiff`, sorts pts→diff→PF). Shows W-D-L column. Hidden when no team has `played > 0`.
-  2. **คะแนนตามคู่ แยก Div** (pair mode only) — reads `tournament.pair_division_threshold`; `parseFloat(pairs.pair_level)` → `> threshold` = Division บน, else (incl. NaN/null) = Division ล่าง. 2-col grid on lg+. Threshold null → single "อันดับคู่" card.
+  2. **คะแนนตามคู่ แยก Div** (pair mode only) — reads `tournament.pair_division_thresholds[]`; `computePairDivision(pairLevel, thresholds)` → Division 1..N. `md:grid-cols-2` grid, card border+title colored by `divisionTone(n)`. `thresholds=[]` → single "อันดับคู่" card.
   3. **ตารางคิว** — in-progress rows highlighted (`bg-green-500/5`) + green ping dot in title; then next 6 pending rows sorted by `queue_position ?? match_number`, TBD-only matches filtered out. Uses existing `MatchRow size="comfortable"`. Empty state "ยังไม่มีคิว".
 - Recent results ("ผลล่าสุด", top 5) kept below as 4th card.
 - `src/app/(public)/t/[token]/tv/page.tsx` — landscape no-scroll rework: outer `h-screen w-screen overflow-hidden flex flex-col p-3 lg:p-4`. Header `shrink-0` (tighter padding + smaller hero text). Main `flex-1 min-h-0 grid grid-cols-12 gap-4 lg:gap-6`: left `col-span-8` กำลังเล่น/ถัดไป (limited to 4 TvMatchCards), right `col-span-4 grid grid-rows-2 gap-4` with อันดับ (top 6) on top and จบล่าสุด (top 4) on bottom. Each panel `h-full overflow-hidden flex flex-col` with `shrink-0` header + `flex-1 min-h-0 overflow-hidden` body. `TvMatchCard` untouched. `TournamentLiveWrapper` + `TvAutoRefresh` + `force-dynamic` preserved.
+
+### N-division refactor Wave 3b — UI layer (2026-05-21)
+
+- **`settings-manager.tsx`**: `queue_bracket_preference` Select replaced with `queue_division_order` Select (`sequential`/`interleaved`/`chunked`) + new `DivisionPriorityRow` sub-component (comma-separated text input, sanitize on blur, show when order ≠ interleaved) + `queue_chunk_size` NumberRow (show when chunked only). New `pairDivisionThresholds: number[]` prop (default `[]`) feeds `divisionCount()` for max-N hint. Import: `divisionCount` from `src/lib/tournament/divisions`.
+- **`edit-tournament-form.tsx`**: `pair_division_threshold: z.number().nullable()` → `pair_division_thresholds: z.array(z.number()).default([])`. Default value reads `tournament.pair_division_thresholds`. Old single `<Input type="number">` replaced with `ThresholdChipList` component (chip per threshold, × to remove, "+ เพิ่ม threshold" inline input, preview "→ N Division" count). Imports: `Badge`, `X`, `Plus`, `useState`.
+- **`create-tournament-form.tsx`**: same schema + defaultValues + `ThresholdChipList` changes mirrored from edit form.
+- **`public-overview.tsx`**: removed binary `upperPairStandings` / `lowerPairStandings` arrays; replaced with `divisionBuckets: Map<number, StandingRow[]>` built via `computePairDivision`. JSX renders N cards in `md:grid-cols-2` grid, each card border+title colored by `divisionTone(n)` / `divisionLabelTh(n)`. `thresholds=[]` → single "อันดับคู่" card unchanged. Import: `computePairDivision`, `divisionLabelTh`, `divisionTone`, `divisionCount`.
+- **`tv/page.tsx`**: already N-division-aware from prior work; import `computePairDivision` confirmed present; no structural change needed.
+- **`tv-match-card.tsx`**: no division badge in this component; no change needed.
+- **`tournaments/[id]/page.tsx`**: passes `pairDivisionThresholds={t.pair_division_thresholds ?? []}` to `<SettingsManager>`.

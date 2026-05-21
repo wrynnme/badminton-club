@@ -3,8 +3,10 @@
 import * as z from "zod";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, X, Plus } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Field, FieldError, FieldGroup, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
@@ -24,9 +26,79 @@ const formSchema = z.object({
   seeding_method: z.enum(["random", "by_group_score"]),
   advance_count: z.number().int().min(1).max(8),
   team_count: z.number().int().min(2, "อย่างน้อย 2 ทีม").max(64),
-  pair_division_threshold: z.number().nullable(),
+  pair_division_thresholds: z.array(z.number()),
   notes: z.string(),
 });
+
+function ThresholdChipList({
+  value,
+  onChange,
+}: {
+  value: number[];
+  onChange: (next: number[]) => void;
+}) {
+  const [addRaw, setAddRaw] = useState("");
+  const [addActive, setAddActive] = useState(false);
+  const N = value.length + 1;
+
+  function addThreshold() {
+    const n = parseFloat(addRaw);
+    if (!Number.isFinite(n)) { setAddRaw(""); setAddActive(false); return; }
+    const next = [...new Set([...value, n])].sort((a, b) => a - b);
+    onChange(next);
+    setAddRaw("");
+    setAddActive(false);
+  }
+
+  function removeThreshold(t: number) {
+    onChange(value.filter((v) => v !== t));
+  }
+
+  return (
+    <Field>
+      <FieldLabel>Thresholds แบ่ง Division</FieldLabel>
+      <div className="flex flex-wrap items-center gap-1.5 min-h-8">
+        {value.map((t) => (
+          <Badge key={t} variant="secondary" className="gap-1 pr-1 text-sm font-mono">
+            {t}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-4 w-4 p-0 hover:bg-transparent"
+              onClick={() => removeThreshold(t)}
+            >
+              <X className="h-3 w-3" />
+            </Button>
+          </Badge>
+        ))}
+        {addActive ? (
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              step="0.5"
+              autoFocus
+              value={addRaw}
+              onChange={(e) => setAddRaw(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addThreshold(); } if (e.key === "Escape") { setAddRaw(""); setAddActive(false); } }}
+              onBlur={addThreshold}
+              className="h-7 w-24 text-sm"
+              placeholder="เช่น 5"
+            />
+          </div>
+        ) : (
+          <Button type="button" variant="outline" size="sm" className="h-7 gap-1 text-xs"
+            onClick={() => setAddActive(true)}>
+            <Plus className="h-3 w-3" /> เพิ่ม threshold
+          </Button>
+        )}
+      </div>
+      <FieldDescription>
+        → จะแบ่งเป็น {N} Division · threshold เรียงน้อย→มาก เช่น 3,5,7 → 4 Div · pair_level &gt; สูงสุด = D1
+      </FieldDescription>
+    </Field>
+  );
+}
 
 const TEAM_COUNT_PRESETS = [4, 6, 8, 12, 16];
 
@@ -44,7 +116,7 @@ export function CreateTournamentForm() {
       seeding_method: "random" as SeedingMethod,
       advance_count: 2,
       team_count: 4,
-      pair_division_threshold: null as number | null,
+      pair_division_thresholds: [] as number[],
       notes: "",
     },
     validators: { onSubmit: formSchema },
@@ -158,29 +230,15 @@ export function CreateTournamentForm() {
           )}
         </form.Field>
 
-        {/* Pair division threshold — shown for pair mode */}
+        {/* Pair division thresholds — shown for pair mode */}
         <form.Subscribe selector={(s) => s.values.match_unit}>
           {(unit) => unit === "pair" && (
-            <form.Field name="pair_division_threshold">
+            <form.Field name="pair_division_thresholds">
               {(field) => (
-                <Field>
-                  <FieldLabel>Threshold แบ่งกลุ่มบน/ล่าง</FieldLabel>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      step="0.5"
-                      placeholder="ไม่แบ่งกลุ่ม"
-                      value={field.state.value ?? ""}
-                      onChange={(e) => field.handleChange(e.target.value === "" ? null : Number(e.target.value))}
-                      className="w-32"
-                    />
-                    {field.state.value != null && (
-                      <Button type="button" size="sm" variant="ghost" className="text-xs text-muted-foreground"
-                        onClick={() => field.handleChange(null)}>ล้าง</Button>
-                    )}
-                  </div>
-                  <FieldDescription>pair_level &gt; ค่านี้ → กลุ่มบน · ว่างไว้ = ไม่แบ่ง</FieldDescription>
-                </Field>
+                <ThresholdChipList
+                  value={field.state.value}
+                  onChange={field.handleChange}
+                />
               )}
             </form.Field>
           )}

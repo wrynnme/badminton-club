@@ -14,16 +14,9 @@ import {
   type TournamentSettings,
   type LineNotifyFlags,
 } from "@/lib/tournament/settings";
+import { divisionCount } from "@/lib/tournament/divisions";
 
 const DEBOUNCE_MS = 500;
-
-const BRACKET_PREF_LABEL: Record<NonNullable<TournamentSettings["queue_bracket_preference"]>, string> = {
-  interleaved: "สลับ 1:1 (default)",
-  upper_first: "บนก่อนทั้งหมด",
-  lower_first: "ล่างก่อนทั้งหมด",
-  chunk_upper_first: "บน N : ล่าง N",
-  chunk_lower_first: "ล่าง N : บน N",
-};
 
 function ToggleRow({
   id,
@@ -107,12 +100,76 @@ function NumberRow({
   );
 }
 
+function DivisionPriorityRow({
+  nDivisions,
+  value,
+  onChange,
+}: {
+  nDivisions: number;
+  value: number[];
+  onChange: (next: number[]) => void;
+}) {
+  const [raw, setRaw] = useState(() => value.join(","));
+  const [error, setError] = useState("");
+
+  // Keep raw in sync when parent resets
+  const prevValueRef = useRef(value);
+  useEffect(() => {
+    if (prevValueRef.current !== value) {
+      prevValueRef.current = value;
+      setRaw(value.join(","));
+    }
+  }, [value]);
+
+  function handleBlur() {
+    if (raw.trim() === "") {
+      setError("");
+      onChange([]);
+      return;
+    }
+    const parts = raw.split(",").map((s) => parseInt(s.trim(), 10));
+    const valid = parts.filter((n) => Number.isFinite(n) && n >= 1 && n <= nDivisions);
+    const deduped = [...new Set(valid)];
+    if (deduped.length === 0 && raw.trim() !== "") {
+      setError(`ใส่เลข 1–${nDivisions} คั่นด้วยจุลภาค เช่น 1,2,3`);
+      return;
+    }
+    setError("");
+    setRaw(deduped.join(","));
+    onChange(deduped);
+  }
+
+  return (
+    <div className="flex flex-col gap-1 py-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-0.5">
+          <Label htmlFor="division-priority" className="text-sm font-medium">ลำดับ Division</Label>
+          <p className="text-xs text-muted-foreground">
+            เลข Division คั่นด้วย , (1=สูงสุด) — ว่างไว้ = ตามลำดับธรรมชาติ 1..{nDivisions}
+          </p>
+        </div>
+        <Input
+          id="division-priority"
+          value={raw}
+          onChange={(e) => setRaw(e.target.value)}
+          onBlur={handleBlur}
+          placeholder={`1,2,...,${nDivisions}`}
+          className="w-36 h-8 text-xs font-mono"
+        />
+      </div>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 export function SettingsManager({
   tournamentId,
   initialSettings,
+  pairDivisionThresholds = [],
 }: {
   tournamentId: string;
   initialSettings: unknown;
+  pairDivisionThresholds?: number[];
 }) {
   const [settings, setSettings] = useState<TournamentSettings>(() =>
     parseSettings(initialSettings),
@@ -266,37 +323,37 @@ export function SettingsManager({
           />
           <div className="flex items-center justify-between gap-3 py-1">
             <div className="flex flex-col gap-0.5">
-              <Label htmlFor="queue-bracket-pref" className="text-sm">กลุ่มไหนแข่งก่อน</Label>
+              <Label htmlFor="queue-division-order" className="text-sm">ลำดับ Division ใน auto-rotate</Label>
               <p className="text-xs text-muted-foreground">
-                เรียง division บน/ล่าง (กลุ่มคู่ + KO double-elim) ใน auto-rotate
+                กำหนดว่า Division ไหนแข่งก่อนในตารางคิว
               </p>
             </div>
             <Select
-              value={settings.queue_bracket_preference}
-              onValueChange={(v) => update("queue_bracket_preference", v as TournamentSettings["queue_bracket_preference"])}
+              value={settings.queue_division_order}
+              onValueChange={(v) => update("queue_division_order", v as TournamentSettings["queue_division_order"])}
             >
-              <SelectTrigger id="queue-bracket-pref" className="w-36 h-8 text-xs">
-                <SelectValue>
-                  {(v: string | null) =>
-                    BRACKET_PREF_LABEL[(v ?? "interleaved") as keyof typeof BRACKET_PREF_LABEL] ?? "สลับ (default)"
-                  }
-                </SelectValue>
+              <SelectTrigger id="queue-division-order" className="w-36 h-8 text-xs">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="interleaved">สลับ 1:1 (default)</SelectItem>
-                <SelectItem value="upper_first">บนก่อนทั้งหมด</SelectItem>
-                <SelectItem value="lower_first">ล่างก่อนทั้งหมด</SelectItem>
-                <SelectItem value="chunk_upper_first">บน N : ล่าง N</SelectItem>
-                <SelectItem value="chunk_lower_first">ล่าง N : บน N</SelectItem>
+                <SelectItem value="interleaved">สลับ</SelectItem>
+                <SelectItem value="sequential">ตามลำดับ</SelectItem>
+                <SelectItem value="chunked">เป็นชุด</SelectItem>
               </SelectContent>
             </Select>
           </div>
-          {(settings.queue_bracket_preference === "chunk_upper_first" ||
-            settings.queue_bracket_preference === "chunk_lower_first") && (
+          {settings.queue_division_order !== "interleaved" && (
+            <DivisionPriorityRow
+              nDivisions={divisionCount(pairDivisionThresholds)}
+              value={settings.queue_division_priority}
+              onChange={(v) => update("queue_division_priority", v)}
+            />
+          )}
+          {settings.queue_division_order === "chunked" && (
             <NumberRow
               id="chunk-size"
               label="ขนาด chunk (N)"
-              description="แมตช์ต่อชุดเมื่อสลับ chunk"
+              description="แมตช์ต่อชุดเมื่อสลับ chunked"
               value={settings.queue_chunk_size}
               min={1}
               max={50}

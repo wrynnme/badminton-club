@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { generatePairMatchesAction } from "@/lib/actions/matches";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
+import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
 import { computeStandings } from "@/lib/tournament/scoring";
 import type { Match, PairWithPlayers, Team, TeamWithPlayers } from "@/lib/types";
 import { ChevronDown, ChevronUp, Loader2, Swords } from "lucide-react";
@@ -23,7 +24,7 @@ export function PairStage({
   pairs,
   matches,
   isOwner,
-  pairDivisionThreshold = null,
+  pairDivisionThresholds = [],
   matchRowSize,
 }: {
   tournamentId: string;
@@ -31,10 +32,10 @@ export function PairStage({
   pairs: PairWithPlayers[];
   matches: Match[];
   isOwner: boolean;
-  pairDivisionThreshold?: number | null;
+  pairDivisionThresholds?: number[];
   matchRowSize?: "compact" | "comfortable";
 }) {
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+  const [openGroups, setOpenGroups] = useState<Map<number | null, boolean>>(new Map());
   const [genPending, startGen] = useTransition();
 
   const flatTeams: Team[] = useMemo(
@@ -55,6 +56,27 @@ export function PairStage({
     pairsByTeam.get(p.team_id)!.push(p);
   }
 
+  // Group matches by division (number | null)
+  const matchesByDivision = useMemo(() => {
+    const map = new Map<number | null, Match[]>();
+    for (const m of matches) {
+      const key = parseDivision(m.division);
+      const arr = map.get(key) ?? [];
+      arr.push(m);
+      map.set(key, arr);
+    }
+    return map;
+  }, [matches]);
+
+  // Sorted division keys: numeric divisions first (1, 2, … N), then null last
+  const divisionKeys = useMemo(
+    () =>
+      Array.from(matchesByDivision.keys()).sort(
+        (a, b) => (a ?? 99) - (b ?? 99),
+      ),
+    [matchesByDivision],
+  );
+
   // Aggregate team-level standings from pair matches
   const pairStandings = computeStandings(matches, "pair", pairs.map((p) => p.id));
   const teamAgg = new Map<string, { wins: number; draws: number; losses: number; pf: number; pa: number }>();
@@ -67,10 +89,6 @@ export function PairStage({
     teamAgg.set(pair.team_id, cur);
   }
 
-  const upperMatches = matches.filter((m) => m.division === "upper");
-  const lowerMatches = matches.filter((m) => m.division === "lower");
-  const undividedMatches = matches.filter((m) => !m.division);
-
   const totalMatches = matches.length;
   const completedMatches = matches.filter((m) => m.status === "completed").length;
   const hasMatches = totalMatches > 0;
@@ -78,6 +96,28 @@ export function PairStage({
   const teamsWithPairs = pairsByTeam.size;
 
   const showStandings = hasMatches && completedMatches > 0;
+  const hasDivisions = divisionKeys.some((k) => k !== null);
+
+  function getDivisionCompetitors(divMatches: Match[]) {
+    const pairIds = [...new Set([
+      ...divMatches.map((m) => m.pair_a_id),
+      ...divMatches.map((m) => m.pair_b_id),
+    ].filter(Boolean) as string[])];
+    return pairIds.map((id) => pairCompetitorMap.get(id)).filter(Boolean) as typeof pairCompetitors;
+  }
+
+  function isGroupOpen(key: number | null, idx: number) {
+    if (openGroups.has(key)) return openGroups.get(key)!;
+    return idx === 0; // first group open by default
+  }
+
+  function toggleGroup(key: number | null, current: boolean) {
+    setOpenGroups((prev) => {
+      const next = new Map(prev);
+      next.set(key, !current);
+      return next;
+    });
+  }
 
   return (
     <Tabs defaultValue="pairs" className="space-y-4">
@@ -122,7 +162,7 @@ export function PairStage({
                 <ManualMatchDialog
                   tournamentId={tournamentId}
                   pairs={pairs}
-                  pairDivisionThreshold={pairDivisionThreshold}
+                  pairDivisionThresholds={pairDivisionThresholds}
                 />
               )}
               {totalPairs >= 2 && teamsWithPairs >= 2 && (
@@ -132,11 +172,8 @@ export function PairStage({
                     const res = await generatePairMatchesAction(tournamentId);
                     if ("error" in res) toast.error(res.error);
                     else {
-                      const parts = [];
-                      if (res.upper) parts.push(`กลุ่มบน ${res.upper}`);
-                      if (res.lower) parts.push(`กลุ่มล่าง ${res.lower}`);
                       const koNote = res.knockoutCleared ? " — รีเซ็ตสาย knockout" : "";
-                      toast.success(`สร้าง ${res.count} แมตช์ (${parts.join(", ")})${koNote}`);
+                      toast.success(`สร้าง ${res.count} แมตช์${koNote}`);
                     }
                   })}>
                   {genPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Swords className="h-3.5 w-3.5 mr-1" />}
@@ -151,158 +188,128 @@ export function PairStage({
           <p className="text-sm text-muted-foreground">ต้องมีอย่างน้อย 2 ทีมที่มีคู่</p>
         )}
 
-        {hasMatches && (() => {
-          const hasDivisions = upperMatches.length > 0 || lowerMatches.length > 0;
-          type GroupId = "upper" | "lower" | "all";
-          const GROUP_LABEL: Record<GroupId, string> = {
-            upper: "กลุ่มบน",
-            lower: "กลุ่มล่าง",
-            all: "แมตช์ทั้งหมด",
-          };
-          const displayGroups: { id: GroupId; matchList: typeof matches }[] = hasDivisions
-            ? [
-              ...(upperMatches.length > 0 ? [{ id: "upper" as const, matchList: upperMatches }] : []),
-              ...(lowerMatches.length > 0 ? [{ id: "lower" as const, matchList: lowerMatches }] : []),
-            ]
-            : [{ id: "all" as const, matchList: undividedMatches.length > 0 ? undividedMatches : matches }];
+        {hasMatches && (
+          <div className="space-y-3">
+            {divisionKeys.map((divKey, idx) => {
+              const matchList = matchesByDivision.get(divKey) ?? [];
+              const isOpen = isGroupOpen(divKey, idx);
+              const label = divKey !== null ? divisionLabelTh(divKey) : "ไม่มีกลุ่ม";
+              const tone = divKey !== null ? divisionTone(divKey) : null;
+              const completedCount = matchList.filter((m) => m.status === "completed").length;
 
-          return (
-            <div className="space-y-3">
-              {displayGroups.map(({ id, matchList }, idx) => {
-                const isOpen = openGroups[id] ?? (idx === 0);
-                return (
-                  <Card key={id}>
-                    <CardContent className="space-y-2">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
-                        onClick={() => setOpenGroups(prev => ({ ...prev, [id]: !isOpen }))}>
-                        {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                        {GROUP_LABEL[id]}
-                        <span className="ml-1">({matchList.filter(m => m.status === "completed").length}/{matchList.length})</span>
-                      </Button>
-                      {isOpen && (
-                        <MatchList
-                          matches={matchList}
-                          competitorById={pairCompetitorMap}
-                          tournamentId={tournamentId}
-                          isOwner={isOwner}
-                          unit="pair"
-                          size={matchRowSize}
-                        />
+              return (
+                <Card key={String(divKey)}>
+                  <CardContent className="space-y-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={() => toggleGroup(divKey, isOpen)}>
+                      {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      {tone && (
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${tone.bg} ${tone.border} border`} />
                       )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          );
-        })()}
+                      {label}
+                      <span className="ml-1">({completedCount}/{matchList.length})</span>
+                    </Button>
+                    {isOpen && (
+                      <MatchList
+                        matches={matchList}
+                        competitorById={pairCompetitorMap}
+                        tournamentId={tournamentId}
+                        isOwner={isOwner}
+                        unit="pair"
+                        size={matchRowSize}
+                      />
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </TabsContent>
 
       {/* Standings */}
       <TabsContent value="standings" className="space-y-3">
         {!showStandings ? (
           <p className="text-sm text-muted-foreground">ยังไม่มีผลการแข่งขัน</p>
-        ) : (() => {
-          const hasDivisions = upperMatches.length > 0 || lowerMatches.length > 0;
-
-          function divisionStandings(divMatches: typeof matches) {
-            const pairIds = [...new Set([
-              ...divMatches.map(m => m.pair_a_id),
-              ...divMatches.map(m => m.pair_b_id),
-            ].filter(Boolean) as string[])];
-            const divCompetitors = pairIds.map(id => pairCompetitorMap.get(id)).filter(Boolean) as typeof pairCompetitors;
-            return { divCompetitors, pairIds };
-          }
-
-          return (
-            <>
-              <h2 className="font-semibold">อันดับ</h2>
-              {hasDivisions ? (
-                <div className="space-y-4">
-                  {upperMatches.length > 0 && (() => {
-                    const { divCompetitors } = divisionStandings(upperMatches);
-                    return (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-2">กลุ่มบน</p>
-                        <Card>
-                          <CardContent className="pt-3">
-                            <StandingsTable matches={upperMatches} competitors={divCompetitors} unit="pair" />
-                          </CardContent>
-                        </Card>
-                      </div>
-                    );
-                  })()}
-                  {lowerMatches.length > 0 && (() => {
-                    const { divCompetitors } = divisionStandings(lowerMatches);
-                    return (
-                      <div>
-                        <p className="text-xs font-medium text-muted-foreground mb-2">กลุ่มล่าง</p>
-                        <Card>
-                          <CardContent className="pt-3">
-                            <StandingsTable matches={lowerMatches} competitors={divCompetitors} unit="pair" />
-                          </CardContent>
-                        </Card>
-                      </div>
-                    );
-                  })()}
-                </div>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Card>
-                    <CardHeader className="pb-2"><CardTitle className="text-sm">รวมทีม</CardTitle></CardHeader>
-                    <CardContent>
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-muted-foreground border-b">
-                            <th className="text-left pb-1 font-normal">ทีม</th>
-                            <th className="text-center pb-1 font-normal w-7">W</th>
-                            <th className="text-center pb-1 font-normal w-7">D</th>
-                            <th className="text-center pb-1 font-normal w-7">L</th>
-                            <th className="text-center pb-1 font-normal w-10">+/-</th>
-                            <th className="text-center pb-1 font-normal w-8">Pts</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[...teamAgg.entries()]
-                            .map(([teamId, s]) => ({ teamId, ...s, pts: s.wins * 3 + s.draws, diff: s.pf - s.pa }))
-                            .sort((a, b) => b.pts - a.pts || b.diff - a.diff || b.pf - a.pf)
-                            .map((row, i) => {
-                              const t = teamById.get(row.teamId);
-                              return (
-                                <tr key={row.teamId} className={i === 0 ? "font-semibold" : ""}>
-                                  <td className="py-0.5">
-                                    <div className="flex items-center gap-1.5">
-                                      {t?.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />}
-                                      <span>{t?.name ?? "—"}</span>
-                                    </div>
-                                  </td>
-                                  <td className="text-center tabular-nums">{row.wins}</td>
-                                  <td className="text-center tabular-nums">{row.draws}</td>
-                                  <td className="text-center tabular-nums">{row.losses}</td>
-                                  <td className="text-center tabular-nums">{row.diff > 0 ? "+" : ""}{row.diff}</td>
-                                  <td className="text-center font-semibold tabular-nums">{row.pts}</td>
-                                </tr>
-                              );
-                            })}
-                        </tbody>
-                      </table>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardHeader className="pb-2"><CardTitle className="text-sm">รายคู่</CardTitle></CardHeader>
-                    <CardContent>
-                      <StandingsTable matches={matches} competitors={pairCompetitors} unit="pair" />
-                    </CardContent>
-                  </Card>
-                </div>
-              )}
-            </>
-          );
-        })()}
+        ) : (
+          <>
+            <h2 className="font-semibold">อันดับ</h2>
+            {hasDivisions ? (
+              <div className="space-y-4">
+                {divisionKeys.filter((k) => k !== null).map((divKey) => {
+                  const divMatches = matchesByDivision.get(divKey) ?? [];
+                  const divCompetitors = getDivisionCompetitors(divMatches);
+                  const tone = divisionTone(divKey!);
+                  return (
+                    <div key={String(divKey)}>
+                      <p className={`text-xs font-medium mb-2 ${tone.text}`}>
+                        {divisionLabelTh(divKey!)}
+                      </p>
+                      <Card>
+                        <CardContent className="pt-3">
+                          <StandingsTable matches={divMatches} competitors={divCompetitors} unit="pair" />
+                        </CardContent>
+                      </Card>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">รวมทีม</CardTitle></CardHeader>
+                  <CardContent>
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-muted-foreground border-b">
+                          <th className="text-left pb-1 font-normal">ทีม</th>
+                          <th className="text-center pb-1 font-normal w-7">W</th>
+                          <th className="text-center pb-1 font-normal w-7">D</th>
+                          <th className="text-center pb-1 font-normal w-7">L</th>
+                          <th className="text-center pb-1 font-normal w-10">+/-</th>
+                          <th className="text-center pb-1 font-normal w-8">Pts</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...teamAgg.entries()]
+                          .map(([teamId, s]) => ({ teamId, ...s, pts: s.wins * 3 + s.draws, diff: s.pf - s.pa }))
+                          .sort((a, b) => b.pts - a.pts || b.diff - a.diff || b.pf - a.pf)
+                          .map((row, i) => {
+                            const t = teamById.get(row.teamId);
+                            return (
+                              <tr key={row.teamId} className={i === 0 ? "font-semibold" : ""}>
+                                <td className="py-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    {t?.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />}
+                                    <span>{t?.name ?? "—"}</span>
+                                  </div>
+                                </td>
+                                <td className="text-center tabular-nums">{row.wins}</td>
+                                <td className="text-center tabular-nums">{row.draws}</td>
+                                <td className="text-center tabular-nums">{row.losses}</td>
+                                <td className="text-center tabular-nums">{row.diff > 0 ? "+" : ""}{row.diff}</td>
+                                <td className="text-center font-semibold tabular-nums">{row.pts}</td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">รายคู่</CardTitle></CardHeader>
+                  <CardContent>
+                    <StandingsTable matches={matches} competitors={pairCompetitors} unit="pair" />
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </>
+        )}
       </TabsContent>
     </Tabs>
   );

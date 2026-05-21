@@ -48,6 +48,7 @@ import {
   cancelMatchAction,
 } from "@/lib/actions/matches";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
+import { parseDivision, divisionTone } from "@/lib/tournament/divisions";
 import type { Match, MatchUnit } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
@@ -350,23 +351,27 @@ function getCompetitorNames(
 }
 
 function DivisionBadge({ match }: { match: Match }) {
-  // Group rounds use `division`; knockout uses `bracket`. "upper"/"lower" only.
-  const side =
-    match.round_type === "knockout" ? match.bracket : match.division;
-  if (side !== "upper" && side !== "lower") return null;
-  const isUpper = side === "upper";
-  const isKo = match.round_type === "knockout";
-  const label = isUpper ? "บน" : "ล่าง";
-  const title = `${isKo ? "สาย" : "กลุ่ม"}${label}`;
-  const tone = isUpper
-    ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-    : "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+  const div = parseDivision(match.division);
+  const bracketLabel =
+    match.bracket === "upper" ? "W" : match.bracket === "lower" ? "L" : match.bracket === "grand_final" ? "F" : null;
+
+  if (div == null && bracketLabel == null) return null;
+
   return (
-    <span
-      title={title}
-      className={`text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${tone}`}
-    >
-      {label}
+    <span className="flex items-center gap-0.5 shrink-0">
+      {div != null && (() => {
+        const tone = divisionTone(div);
+        return (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium ${tone.border} ${tone.bg} ${tone.text}`}>
+            D{div}
+          </span>
+        );
+      })()}
+      {bracketLabel != null && (
+        <span className="text-[10px] px-1 py-0.5 rounded border font-medium border-muted-foreground/30 bg-muted/40 text-muted-foreground">
+          {bracketLabel}
+        </span>
+      )}
     </span>
   );
 }

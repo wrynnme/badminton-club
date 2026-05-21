@@ -213,7 +213,7 @@ export default async function TournamentDetailPage({
               pairs={pairs}
               matches={allMatches.filter((m) => m.pair_a_id)}
               isOwner={canEdit}
-              pairDivisionThreshold={t.pair_division_threshold}
+              pairDivisionThresholds={t.pair_division_thresholds ?? []}
             />
           }
           knockoutTab={
@@ -265,7 +265,7 @@ export default async function TournamentDetailPage({
               {canEdit && (
                 <>
                   <CourtManager tournamentId={t.id} initialCourts={t.courts ?? []} />
-                  <SettingsManager tournamentId={t.id} initialSettings={t.settings} />
+                  <SettingsManager tournamentId={t.id} initialSettings={t.settings} pairDivisionThresholds={t.pair_division_thresholds ?? []} />
                   <EditTournamentForm tournament={t} existingTeamCount={teams.length} />
                 </>
               )}

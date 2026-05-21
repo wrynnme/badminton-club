@@ -14,6 +14,7 @@ import { assertCanEdit } from "@/lib/tournament/permissions";
 import { writeAuditLog } from "@/lib/tournament/audit";
 import { notifyTournamentEvent } from "@/lib/notification/line";
 import { getTournamentSettings } from "@/lib/tournament/settings.server";
+import { computePairDivision, parseDivision, divisionLabelTh } from "@/lib/tournament/divisions";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
@@ -181,9 +182,9 @@ export async function generatePairMatchesAction(tournamentId: string) {
 
   const sb = await createAdminClient();
 
-  // Fetch tournament threshold + pairs
-  const { data: tournament } = await sb.from("tournaments").select("pair_division_threshold").eq("id", tournamentId).single();
-  const threshold = tournament?.pair_division_threshold ?? null;
+  // Fetch tournament thresholds + pairs
+  const { data: tournament } = await sb.from("tournaments").select("pair_division_thresholds").eq("id", tournamentId).single();
+  const thresholds: number[] = (tournament?.pair_division_thresholds as number[] | null) ?? [];
 
   const { data: teams } = await sb
     .from("teams")
@@ -194,20 +195,15 @@ export async function generatePairMatchesAction(tournamentId: string) {
   type RawPair = { id: string; player_id_1: string | null; player_id_2: string | null; pair_level: string | null };
   type RawTeam = { id: string; pairs: RawPair[] };
 
-  function pairDivision(p: RawPair): "upper" | "lower" | null {
-    if (threshold === null) return null;
-    return levelToNum(p.pair_level) > threshold ? "upper" : "lower";
-  }
-
   const allTeamPairs = (teams as unknown as RawTeam[]).map((t) => ({
     teamId: t.id,
     pairs: t.pairs.filter((p) => p.player_id_1 && p.player_id_2),
   }));
 
-  let allMatchInserts: { round_number: number; match_number: number; team_a_id: string; team_b_id: string; pair_a_id: string; pair_b_id: string; division?: "upper" | "lower" }[];
-  let upperCount = 0, lowerCount = 0;
+  type MatchInsert = { round_number: number; match_number: number; team_a_id: string; team_b_id: string; pair_a_id: string; pair_b_id: string; division: string | null };
+  let allMatchInserts: MatchInsert[] = [];
 
-  if (threshold === null) {
+  if (thresholds.length === 0) {
     // No division — all pairs compete together
     const teamPairs = allTeamPairs
       .map((t) => ({ teamId: t.teamId, pairIds: t.pairs.map((p) => p.id) }))
@@ -217,24 +213,47 @@ export async function generatePairMatchesAction(tournamentId: string) {
     allMatchInserts = all.map((m, i) => ({
       round_number: 1, match_number: i + 1,
       team_a_id: m.teamAId, team_b_id: m.teamBId, pair_a_id: m.pairAId, pair_b_id: m.pairBId,
+      division: null,
     }));
   } else {
-    const buildTierPairs = (div: "upper" | "lower") =>
-      allTeamPairs
-        .map((t) => ({ teamId: t.teamId, pairIds: t.pairs.filter((p) => pairDivision(p) === div).map((p) => p.id) }))
-        .filter((tp) => tp.pairIds.length > 0);
+    // N-way division split — group pairs by computed division index
+    const divisionMap = new Map<number, RawPair[]>();
+    for (const t of allTeamPairs) {
+      for (const p of t.pairs) {
+        const lvl = parseFloat(p.pair_level ?? "");
+        // NaN-safe: treat NaN as lowest tier when thresholds exist
+        const safeLevel = isNaN(lvl) ? null : lvl;
+        const d = computePairDivision(safeLevel, thresholds);
+        // d is always a number here since thresholds.length > 0
+        const key = d as number;
+        if (!divisionMap.has(key)) divisionMap.set(key, []);
+        divisionMap.get(key)!.push(p);
+      }
+    }
 
-    const upperMatches = buildTierPairs("upper").length >= 2 ? generateAllPairMatches(buildTierPairs("upper")) : [];
-    const lowerMatches = buildTierPairs("lower").length >= 2 ? generateAllPairMatches(buildTierPairs("lower")) : [];
-    if (!upperMatches.length && !lowerMatches.length) return { error: "ต้องมีอย่างน้อย 2 ทีมที่มีคู่" };
-
-    upperCount = upperMatches.length;
-    lowerCount = lowerMatches.length;
     let matchNum = 1;
-    allMatchInserts = [
-      ...upperMatches.map((m) => ({ round_number: 1, match_number: matchNum++, team_a_id: m.teamAId, team_b_id: m.teamBId, pair_a_id: m.pairAId, pair_b_id: m.pairBId, division: "upper" as const })),
-      ...lowerMatches.map((m) => ({ round_number: 1, match_number: matchNum++, team_a_id: m.teamAId, team_b_id: m.teamBId, pair_a_id: m.pairAId, pair_b_id: m.pairBId, division: "lower" as const })),
-    ];
+    let anyGenerated = false;
+    // Sort divisions ascending (1 = top tier first)
+    const divKeys = Array.from(divisionMap.keys()).sort((a, b) => a - b);
+    for (const d of divKeys) {
+      // Build per-division teamPairs list (pairs grouped by their team)
+      const divPairIds = new Set((divisionMap.get(d) ?? []).map((p) => p.id));
+      const divTeamPairs = allTeamPairs
+        .map((t) => ({ teamId: t.teamId, pairIds: t.pairs.filter((p) => divPairIds.has(p.id)).map((p) => p.id) }))
+        .filter((tp) => tp.pairIds.length > 0);
+      if (divTeamPairs.length < 2) continue;
+      const divMatches = generateAllPairMatches(divTeamPairs);
+      for (const m of divMatches) {
+        allMatchInserts.push({
+          round_number: 1, match_number: matchNum++,
+          team_a_id: m.teamAId, team_b_id: m.teamBId,
+          pair_a_id: m.pairAId, pair_b_id: m.pairBId,
+          division: String(d),
+        });
+      }
+      if (divMatches.length > 0) anyGenerated = true;
+    }
+    if (!anyGenerated) return { error: "ต้องมีอย่างน้อย 2 ทีมที่มีคู่ในแต่ละ division" };
   }
 
   const { error: rpcError } = await sb.rpc("replace_tournament_matches", {
@@ -244,7 +263,7 @@ export async function generatePairMatchesAction(tournamentId: string) {
   });
   if (rpcError) return { error: "สร้างแมตช์คู่ไม่สำเร็จ" };
 
-  // Apply queue_bracket_preference ordering immediately so users don't need
+  // Apply division-priority ordering immediately so users don't need
   // to click "จัดคิวอัตโนมัติ" after generation.
   {
     const genSettings = await getTournamentSettings(tournamentId);
@@ -256,17 +275,21 @@ export async function generatePairMatchesAction(tournamentId: string) {
       .eq("round_type", "group")
       .order("match_number");
     if (newPending && newPending.length >= 2) {
+      const divPriority = genSettings.queue_division_priority.length > 0
+        ? genSettings.queue_division_priority
+        : Array.from(new Set(newPending.map((m) => parseDivision(m.division)).filter((d): d is number => d !== null))).sort((a, b) => a - b);
       const { error: swapErr } = await sb.rpc("swap_pending_match_numbers", {
         p_tournament_id: tournamentId,
-        p_ordered_ids: orderByBracketPreference(
+        p_ordered_ids: orderByDivisionPriority(
           newPending.map((m) => ({
             id: m.id,
-            division: m.division as "upper" | "lower" | null,
+            division: m.division,
             bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
             round_type: m.round_type as "group" | "knockout",
             match_number: m.match_number,
           })),
-          genSettings.queue_bracket_preference,
+          genSettings.queue_division_order,
+          divPriority,
           genSettings.queue_chunk_size,
         ).flat(),
       });
@@ -287,7 +310,7 @@ export async function generatePairMatchesAction(tournamentId: string) {
     entity_id: tournamentId,
     description: `สร้างแมตช์คู่ ${allMatchInserts.length} นัด${koCleared ? " (รีเซ็ตสาย knockout)" : ""}`,
   });
-  return { ok: true, count: allMatchInserts.length, upper: upperCount, lower: lowerCount, knockoutCleared: koCleared };
+  return { ok: true, count: allMatchInserts.length, knockoutCleared: koCleared };
 }
 
 // ============ KNOCKOUT ============
@@ -464,7 +487,7 @@ export async function generateKnockoutAction(tournamentId: string) {
 
   const { data: tournament } = await sb
     .from("tournaments")
-    .select("advance_count, seeding_method, format, has_lower_bracket, allow_drop_to_lower, match_unit, pair_division_threshold")
+    .select("advance_count, seeding_method, format, has_lower_bracket, allow_drop_to_lower, match_unit, pair_division_thresholds")
     .eq("id", tournamentId)
     .single();
   if (!tournament) return { error: "ไม่พบทัวร์นาเมนต์" };
@@ -488,31 +511,31 @@ export async function generateKnockoutAction(tournamentId: string) {
     const pairs = (pairsRaw as unknown as RawPair[]) ?? [];
     if (pairs.length < 2) return { error: "ต้องมีอย่างน้อย 2 คู่" };
 
+    const thresholds: number[] = (tournament.pair_division_thresholds as number[] | null) ?? [];
+
     function pairSeed(p: RawPair): Seed {
       const label = [p.player1?.display_name, p.player2?.display_name].filter(Boolean).join(" / ") || p.id.slice(0, 6);
       return { teamId: p.id, name: label };
     }
 
-    let allMatches: BracketMatchDef[];
+    // Returns division number (1..N) or null when no thresholds
+    function pairDivNum(pairId: string): number | null {
+      if (thresholds.length === 0) return null;
+      const p = pairs.find((x) => x.id === pairId);
+      const lvl = parseFloat(p?.pair_level ?? "");
+      return computePairDivision(isNaN(lvl) ? null : lvl, thresholds);
+    }
+
+    // Collect all BracketMatchDef across all divisions; tag each with division string
+    let allMatches: BracketMatchDef[] = [];
 
     if (tournament.format === "group_knockout") {
-      // Seed from group stage pair standings
       const { data: groupMatchesRaw } = await sb
         .from("matches").select("*").eq("tournament_id", tournamentId).eq("round_type", "group");
       const groupMatches = (groupMatchesRaw ?? []) as Match[];
-      const standings = computeStandings(groupMatches, "pair", pairs.map((p) => p.id));
-
-      const threshold = tournament.pair_division_threshold ?? null;
       const advanceCount = tournament.advance_count ?? 2;
 
-      function pairDiv(pairId: string): "upper" | "lower" | null {
-        if (threshold === null) return null;
-        const p = pairs.find((x) => x.id === pairId);
-        const n = parseFloat(p?.pair_level ?? "");
-        return !isNaN(n) && n > threshold ? "upper" : "lower";
-      }
-
-      function seedsFromStandings(rows: typeof standings, count: number): Seed[] {
+      function seedsFromStandings(rows: ReturnType<typeof computeStandings>, count: number): Seed[] {
         return rows
           .slice(0, count)
           .map((s) => {
@@ -522,39 +545,121 @@ export async function generateKnockoutAction(tournamentId: string) {
           .filter((s): s is Seed => s !== null);
       }
 
-      if (threshold === null) {
+      if (thresholds.length === 0) {
+        // No division split — single bracket from all pairs
+        const standings = computeStandings(groupMatches, "pair", pairs.map((p) => p.id));
         let topSeeds = seedsFromStandings(standings, advanceCount);
         if (topSeeds.length < 2) return { error: "คู่ที่ผ่านรอบมีไม่ถึง 2 คู่" };
         if (tournament.seeding_method === "random") topSeeds = [...topSeeds].sort(() => Math.random() - 0.5);
         allMatches = buildBracket(toEntries(topSeeds, nextPowerOf2(topSeeds.length)));
       } else {
-        const upperStandings = standings.filter((s) => pairDiv(s.competitorId) === "upper");
-        const lowerStandings = standings.filter((s) => pairDiv(s.competitorId) === "lower");
-        let upperSeeds = seedsFromStandings(upperStandings, advanceCount);
-        let lowerSeeds = seedsFromStandings(lowerStandings, advanceCount);
-        if (upperSeeds.length < 2 && lowerSeeds.length < 2) return { error: "ไม่มีคู่ที่ผ่านรอบเพียงพอในทั้งสอง division" };
-        if (tournament.seeding_method === "random") {
-          upperSeeds = [...upperSeeds].sort(() => Math.random() - 0.5);
-          lowerSeeds = [...lowerSeeds].sort(() => Math.random() - 0.5);
+        // N-division: independent bracket per division
+        const divCount = thresholds.length + 1;
+        let anyBuilt = false;
+        let matchNumOffset = 0;
+        for (let d = 1; d <= divCount; d++) {
+          const divPairIds = pairs.filter((p) => pairDivNum(p.id) === d).map((p) => p.id);
+          if (divPairIds.length < 2) continue;
+          const standings = computeStandings(groupMatches, "pair", divPairIds);
+          let divSeeds = seedsFromStandings(standings, advanceCount);
+          if (divSeeds.length < 2) continue;
+          if (tournament.seeding_method === "random") divSeeds = [...divSeeds].sort(() => Math.random() - 0.5);
+          const divMatches = tournament.has_lower_bracket
+            ? buildDoubleBracket(toEntries(divSeeds, nextPowerOf2(divSeeds.length)))
+            : buildBracket(toEntries(divSeeds, nextPowerOf2(divSeeds.length)));
+          // Renumber matchNumbers to avoid collision across divisions and tag division
+          const offset = matchNumOffset;
+          const tagged = divMatches.map((m, i) => ({
+            ...m,
+            matchNumber: offset + i + 1,
+            // Store division on the match def via a custom property (used in insert)
+            _division: String(d),
+          }));
+          allMatches = [...allMatches, ...tagged];
+          matchNumOffset += divMatches.length;
+          anyBuilt = true;
         }
-        if (upperSeeds.length >= 2 && lowerSeeds.length >= 2) {
-          allMatches = buildIndependentDoubleBracket(upperSeeds, lowerSeeds);
-        } else {
-          const s = upperSeeds.length >= 2 ? upperSeeds : lowerSeeds;
-          allMatches = buildBracket(toEntries(s, nextPowerOf2(s.length)));
-        }
+        if (!anyBuilt) return { error: "ไม่มีคู่ที่ผ่านรอบเพียงพอใน division ใดเลย" };
       }
     } else {
-      // knockout_only — seed all pairs
-      let pairSeeds = pairs.map(pairSeed);
-      if (tournament.seeding_method === "random") pairSeeds = pairSeeds.sort(() => Math.random() - 0.5);
-      allMatches = buildBracket(toEntries(pairSeeds, nextPowerOf2(pairSeeds.length)));
+      // knockout_only
+      if (thresholds.length === 0) {
+        let pairSeeds = pairs.map(pairSeed);
+        if (tournament.seeding_method === "random") pairSeeds = pairSeeds.sort(() => Math.random() - 0.5);
+        allMatches = buildBracket(toEntries(pairSeeds, nextPowerOf2(pairSeeds.length)));
+      } else {
+        const divCount = thresholds.length + 1;
+        let matchNumOffset = 0;
+        for (let d = 1; d <= divCount; d++) {
+          const divPairs = pairs.filter((p) => pairDivNum(p.id) === d);
+          if (divPairs.length < 2) continue;
+          let divSeeds = divPairs.map(pairSeed);
+          if (tournament.seeding_method === "random") divSeeds = divSeeds.sort(() => Math.random() - 0.5);
+          const divMatches = tournament.has_lower_bracket
+            ? buildDoubleBracket(toEntries(divSeeds, nextPowerOf2(divSeeds.length)))
+            : buildBracket(toEntries(divSeeds, nextPowerOf2(divSeeds.length)));
+          const offset = matchNumOffset;
+          const tagged = divMatches.map((m, i) => ({
+            ...m,
+            matchNumber: offset + i + 1,
+            _division: String(d),
+          }));
+          allMatches = [...allMatches, ...tagged];
+          matchNumOffset += divMatches.length;
+        }
+        if (!allMatches.length) return { error: "ต้องมีอย่างน้อย 2 คู่ต่อ division" };
+      }
     }
 
-    const err = await insertAndResolveByes(sb, tournamentId, allMatches, true);
-    if (err) return err;
+    // Build inserts — inherit division from _division tag; null when no thresholds
+    const colA = "pair_a_id";
+    const colB = "pair_b_id";
+    const inserts = allMatches.map((m) => {
+      const tagged = m as BracketMatchDef & { _division?: string };
+      return {
+        id: m.id,
+        round_number: m.roundNumber,
+        match_number: m.matchNumber,
+        [colA]: m.teamAId,
+        [colB]: m.teamBId,
+        next_match_id: m.nextMatchId,
+        next_match_slot: m.nextMatchSlot,
+        loser_next_match_id: m.loserNextMatchId,
+        loser_next_match_slot: m.loserNextMatchSlot,
+        bracket: m.bracket,
+        division: tagged._division ?? null,
+        status: "pending",
+        games: [],
+      };
+    });
 
-    // Apply queue_bracket_preference ordering immediately after bracket insert.
+    const { error: insertErr } = await sb.rpc("replace_tournament_matches", {
+      p_tournament_id: tournamentId,
+      p_round_type: "knockout",
+      p_matches: inserts,
+    });
+    if (insertErr) return { error: "สร้างสายน็อกเอาต์ไม่สำเร็จ" };
+
+    // Resolve BYEs inline (cannot reuse insertAndResolveByes because division is now on inserts)
+    const byeMatches = allMatches.filter((m) => m.isBye);
+    for (const m of byeMatches) {
+      const winnerIs: "a" | "b" = m.teamAId ? "a" : "b";
+      const winner = m.teamAId ?? m.teamBId;
+      const walkover = byeWalkoverGames(winnerIs);
+      await sb.from("matches").update({
+        status: "completed",
+        winner_id: winner,
+        games: walkover.games,
+        team_a_score: walkover.teamAScore,
+        team_b_score: walkover.teamBScore,
+      }).eq("id", m.id);
+      if (m.nextMatchId && m.nextMatchSlot && winner) {
+        const slot = m.nextMatchSlot === "a" ? colA : colB;
+        await sb.from("matches").update({ [slot]: winner }).eq("id", m.nextMatchId);
+      }
+    }
+
+    // Apply division-priority ordering immediately after bracket insert.
     {
       const koSettings = await getTournamentSettings(tournamentId);
       const { data: koPending } = await sb
@@ -565,17 +670,21 @@ export async function generateKnockoutAction(tournamentId: string) {
         .eq("round_type", "knockout")
         .order("match_number");
       if (koPending && koPending.length >= 2) {
+        const divPriority = koSettings.queue_division_priority.length > 0
+          ? koSettings.queue_division_priority
+          : Array.from(new Set(koPending.map((m) => parseDivision(m.division)).filter((d): d is number => d !== null))).sort((a, b) => a - b);
         const { error: swapErr } = await sb.rpc("swap_pending_match_numbers", {
           p_tournament_id: tournamentId,
-          p_ordered_ids: orderByBracketPreference(
+          p_ordered_ids: orderByDivisionPriority(
             koPending.map((m) => ({
               id: m.id,
-              division: m.division as "upper" | "lower" | null,
+              division: m.division,
               bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
               round_type: m.round_type as "group" | "knockout",
               match_number: m.match_number,
             })),
-            koSettings.queue_bracket_preference,
+            koSettings.queue_division_order,
+            divPriority,
             koSettings.queue_chunk_size,
           ).flat(),
         });
@@ -659,7 +768,7 @@ export async function generateKnockoutAction(tournamentId: string) {
   const err = await insertAndResolveByes(sb, tournamentId, allMatches);
   if (err) return err;
 
-  // Apply queue_bracket_preference ordering immediately after bracket insert.
+  // Apply division-priority ordering immediately after bracket insert.
   {
     const koSettings = await getTournamentSettings(tournamentId);
     const { data: koPending } = await sb
@@ -670,17 +779,21 @@ export async function generateKnockoutAction(tournamentId: string) {
       .eq("round_type", "knockout")
       .order("match_number");
     if (koPending && koPending.length >= 2) {
+      const divPriority = koSettings.queue_division_priority.length > 0
+        ? koSettings.queue_division_priority
+        : Array.from(new Set(koPending.map((m) => parseDivision(m.division)).filter((d): d is number => d !== null))).sort((a, b) => a - b);
       const { error: swapErr } = await sb.rpc("swap_pending_match_numbers", {
         p_tournament_id: tournamentId,
-        p_ordered_ids: orderByBracketPreference(
+        p_ordered_ids: orderByDivisionPriority(
           koPending.map((m) => ({
             id: m.id,
-            division: m.division as "upper" | "lower" | null,
+            division: m.division,
             bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
             round_type: m.round_type as "group" | "knockout",
             match_number: m.match_number,
           })),
-          koSettings.queue_bracket_preference,
+          koSettings.queue_division_order,
+          divPriority,
           koSettings.queue_chunk_size,
         ).flat(),
       });
@@ -746,20 +859,20 @@ export async function createManualMatchAction(input: {
 
   const { data: tournament } = await sb
     .from("tournaments")
-    .select("pair_division_threshold")
+    .select("pair_division_thresholds")
     .eq("id", input.tournamentId)
     .single();
 
-  const threshold = tournament?.pair_division_threshold ?? null;
+  const thresholds: number[] = (tournament?.pair_division_thresholds as number[] | null) ?? [];
 
-  function pairDiv(level: string | null | undefined): "upper" | "lower" | null {
-    if (threshold === null) return null;
+  function pairDivNum(level: string | null | undefined): number | null {
+    if (thresholds.length === 0) return null;
     const n = parseFloat(level ?? "");
-    return !isNaN(n) && n > threshold ? "upper" : "lower";
+    return computePairDivision(isNaN(n) ? null : n, thresholds);
   }
 
-  const divA = pairDiv(pA.pair_level as string | null);
-  const divB = pairDiv(pB.pair_level as string | null);
+  const divA = pairDivNum(pA.pair_level as string | null);
+  const divB = pairDivNum(pB.pair_level as string | null);
   if (divA !== divB) return { error: "คู่ต้องอยู่ใน division เดียวกัน" };
 
   const { data: maxRow } = await sb
@@ -780,7 +893,7 @@ export async function createManualMatchAction(input: {
     p_pair_a_id: input.pairAId,
     p_pair_b_id: input.pairBId,
     p_match_number: (maxRow?.match_number ?? 0) + 1,
-    p_division: divA ?? null,
+    p_division: divA === null ? null : String(divA),
   });
 
   if (error) {
@@ -1017,106 +1130,94 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
 // ============ QUEUE / SCHEDULE ============
 
 // Pure helper — no DB calls.
-// Given a list of pending match stubs, returns their IDs ordered according to
-// `queue_bracket_preference` (+ chunkSize). The caller is responsible for the
-// greedy rest-gap step that further reorders within each bracket bucket.
+// Reorders pending match stubs by N-division priority.
 //
-// Bucket assignment rules:
-//   group matches   → bucket key uses `match.division`  (upper|lower|null)
-//   knockout matches → bucket key uses `match.bracket`   (upper|lower|grand_final→null)
+// Bucket key: parseDivision(m.division) for group matches; same for KO (division is
+// tagged at generation time). null division (no-split mode) → "null bucket" (appended last).
 //
-// grand_final matches are treated as "null" (no side preference) so they fall
-// into the "other" bucket and appear at the end of the ko section.
-// Pure helper — no DB calls.
-// Returns an array of bucket arrays (string[][]). Each inner array is one
-// strict-isolation segment for the greedy rest-gap loop in autoRotateQueueAction.
-// Callers that only need a flat order (.flat()) can do so safely.
+// Within each division bucket:
+//   KO matches sort by bracket ('upper' < 'lower' < 'grand_final') then round_number then match_number.
+//   Group matches sort by match_number.
 //
-// Bucket rules:
-//   group matches   → keyed by match.division  (upper|lower|null → "other")
-//   knockout matches → keyed by match.bracket   (upper|lower|grand_final → "other")
+// order:
+//   sequential  — concat buckets in priority order; unlisted/null divs appended last.
+//   interleaved — zip 1-at-a-time across priority-ordered buckets; residual appended.
+//   chunked     — zip chunkSize-at-a-time across priority-ordered buckets; residual appended.
 //
-// Preference shapes:
-//   upper_first      → [upperIds, lowerIds, otherIds]  (per round_type section)
-//   lower_first      → [lowerIds, upperIds, otherIds]
-//   interleaved      → [interleavedAllIds]  (single bucket, zip upper+lower+rest)
-//   chunk_upper_first N → [upperChunk0, lowerChunk0, upperChunk1, lowerChunk1, ..., otherIds]
-//   chunk_lower_first N → [lowerChunk0, upperChunk0, ...]
-//
-// Empty buckets are filtered out before returning.
-function orderByBracketPreference(
+// Returns string[][] where each inner array is one isolation segment for the greedy rest-gap loop.
+function orderByDivisionPriority(
   matches: {
     id: string;
-    division: "upper" | "lower" | null;
+    division: string | null;
     bracket: "upper" | "lower" | "grand_final" | null;
     round_type: "group" | "knockout";
     match_number: number | null;
   }[],
-  preference: import("@/lib/tournament/settings").TournamentSettings["queue_bracket_preference"],
+  order: import("@/lib/tournament/settings").TournamentSettings["queue_division_order"],
+  priority: number[],
   chunkSize: number,
 ): string[][] {
   type MatchStub = typeof matches[number];
-  type Bucket = "group_upper" | "group_lower" | "group_other" | "ko_upper" | "ko_lower" | "ko_other";
 
-  const isChunkMode = preference === "chunk_upper_first" || preference === "chunk_lower_first";
+  const bracketRank = (b: string | null) =>
+    b === "upper" ? 0 : b === "lower" ? 1 : b === "grand_final" ? 2 : 3;
 
-  const bucketOf = (m: MatchStub): Bucket => {
-    const isKo = m.round_type === "knockout";
-    if (preference === "interleaved" || isChunkMode) return isKo ? "ko_other" : "group_other";
-    const side = isKo ? m.bracket : m.division;
-    if (side === "upper") return isKo ? "ko_upper" : "group_upper";
-    if (side === "lower") return isKo ? "ko_lower" : "group_lower";
-    return isKo ? "ko_other" : "group_other";
+  const sortWithin = (a: MatchStub, b: MatchStub) => {
+    if (a.round_type === "knockout" && b.round_type === "knockout") {
+      const br = bracketRank(a.bracket) - bracketRank(b.bracket);
+      if (br !== 0) return br;
+    }
+    return (a.match_number ?? 0) - (b.match_number ?? 0);
   };
 
-  // Bucket ordering for non-interleaved/non-chunk modes.
-  const bucketOrder: Bucket[] =
-    preference === "upper_first"
-      ? ["group_upper", "group_lower", "group_other", "ko_upper", "ko_lower", "ko_other"]
-      : preference === "lower_first"
-      ? ["group_lower", "group_upper", "group_other", "ko_lower", "ko_upper", "ko_other"]
-      : ["group_other", "ko_other"]; // interleaved + chunk modes collapse to single "other" per rt
+  // Group matches by division number; null gets its own bucket (key = null)
+  const bucketMap = new Map<number | null, MatchStub[]>();
+  for (const m of matches) {
+    const key = parseDivision(m.division);
+    if (!bucketMap.has(key)) bucketMap.set(key, []);
+    bucketMap.get(key)!.push(m);
+  }
 
-  const buckets = new Map<Bucket, MatchStub[]>();
-  for (const b of bucketOrder) buckets.set(b, []);
-  for (const m of matches) buckets.get(bucketOf(m))?.push(m);
+  // Sort each bucket internally
+  for (const arr of bucketMap.values()) arr.sort(sortWithin);
 
-  const byMatchNum = (a: MatchStub, b: MatchStub) => (a.match_number ?? 0) - (b.match_number ?? 0);
+  // Build ordered list of buckets: priority-listed first, then remaining div keys asc, then null last
+  const prioritySet = new Set(priority);
+  const remainingDivs = Array.from(bucketMap.keys())
+    .filter((k): k is number => k !== null && !prioritySet.has(k))
+    .sort((a, b) => a - b);
+  const orderedKeys: Array<number | null> = [
+    ...priority.filter((d) => bucketMap.has(d)),
+    ...remainingDivs,
+    ...(bucketMap.has(null) ? [null] : []),
+  ];
 
-  // Result segments — each entry becomes one inner array in the output.
+  const orderedBuckets = orderedKeys
+    .map((k) => bucketMap.get(k) ?? [])
+    .filter((b) => b.length > 0);
+
   const segments: string[][] = [];
 
-  if (preference === "interleaved" || isChunkMode) {
-    const effectiveChunk = isChunkMode ? chunkSize : 1;
-    const leadIsLower = preference === "chunk_lower_first";
-
-    for (const key of ["group_other", "ko_other"] as const) {
-      const arr = buckets.get(key) ?? [];
-      if (arr.length === 0) continue;
-      const isKo = key === "ko_other";
-      const sideOf = (m: MatchStub) => (isKo ? m.bracket : m.division);
-      const upper = arr.filter((m) => sideOf(m) === "upper").sort(byMatchNum);
-      const lower = arr.filter((m) => sideOf(m) === "lower").sort(byMatchNum);
-      const rest  = arr.filter((m) => sideOf(m) !== "upper" && sideOf(m) !== "lower").sort(byMatchNum);
-
-      const lead  = leadIsLower ? lower : upper;
-      const trail = leadIsLower ? upper : lower;
-      let li = 0;
-      let ti = 0;
-      while (li < lead.length || ti < trail.length) {
-        const leadChunk: string[] = [];
-        const trailChunk: string[] = [];
-        for (let k = 0; k < effectiveChunk && li < lead.length; k++) leadChunk.push(lead[li++].id);
-        for (let k = 0; k < effectiveChunk && ti < trail.length; k++) trailChunk.push(trail[ti++].id);
-        if (leadChunk.length > 0) segments.push(leadChunk);
-        if (trailChunk.length > 0) segments.push(trailChunk);
-      }
-      if (rest.length > 0) segments.push(rest.map((m) => m.id));
+  if (order === "sequential") {
+    for (const bucket of orderedBuckets) {
+      segments.push(bucket.map((m) => m.id));
     }
   } else {
-    for (const b of bucketOrder) {
-      const ids = (buckets.get(b) ?? []).map((m) => m.id);
-      if (ids.length > 0) segments.push(ids);
+    // interleaved (chunkSize=1) or chunked
+    const effectiveChunk = order === "interleaved" ? 1 : chunkSize;
+    const indices = orderedBuckets.map(() => 0);
+    while (true) {
+      let anyLeft = false;
+      for (let i = 0; i < orderedBuckets.length; i++) {
+        const bucket = orderedBuckets[i];
+        const start = indices[i];
+        if (start >= bucket.length) continue;
+        anyLeft = true;
+        const chunk = bucket.slice(start, start + effectiveChunk).map((m) => m.id);
+        indices[i] += effectiveChunk;
+        if (chunk.length > 0) segments.push(chunk);
+      }
+      if (!anyLeft) break;
     }
   }
 
@@ -1199,10 +1300,8 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
     restGap = settingsForRotate.auto_rotate_rest_gap;
   }
 
-  // Pending matches in current queue order. We also need `division` (upper/lower
-  // for pair group matches split by pair_division_threshold) to honor the
-  // bracket-pref bucketing for group rounds.
-  const bracketPref = settingsForRotate.queue_bracket_preference;
+  // Pending matches in current queue order. We also need `division` to honor the
+  // division-priority bucketing for group rounds.
   const { data: pending, error } = await sb
     .from("matches")
     .select("id, queue_position, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id, bracket, division, round_type")
@@ -1219,18 +1318,21 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
   // and still writes back.
   const originalIds = pending.map((m) => m.id);
 
-  // Bucket pending matches by division/bracket priority using the pure helper.
-  // The helper returns a flat ordered ID list; rebuild a match-object list so
-  // the greedy rest-gap step can still access player-slot fields.
-  const prefOrderedIds = orderByBracketPreference(
+  // Bucket pending matches by division priority using the pure helper.
+  // The helper returns string[][] where each inner array is one isolation segment.
+  const divPriority = settingsForRotate.queue_division_priority.length > 0
+    ? settingsForRotate.queue_division_priority
+    : Array.from(new Set(pending.map((m) => parseDivision(m.division)).filter((d): d is number => d !== null))).sort((a, b) => a - b);
+  const prefOrderedIds = orderByDivisionPriority(
     pending.map((m) => ({
       id: m.id,
-      division: m.division as "upper" | "lower" | null,
+      division: m.division,
       bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
       round_type: m.round_type as "group" | "knockout",
       match_number: m.match_number,
     })),
-    bracketPref,
+    settingsForRotate.queue_division_order,
+    divPriority,
     settingsForRotate.queue_chunk_size,
   );
   const pendingById = new Map(pending.map((m) => [m.id, m]));
@@ -1447,10 +1549,8 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
     }
     const { count: pendingGroups } = await groupQuery;
     if ((pendingGroups ?? 0) > 0) {
-      const label =
-        match.division === "upper" ? "แมตช์รอบกลุ่มสายบน"
-        : match.division === "lower" ? "แมตช์รอบกลุ่มสายล่าง"
-        : "แมตช์รอบกลุ่ม";
+      const divNum = parseDivision(match.division);
+      const label = divNum !== null ? `แมตช์รอบกลุ่ม${divisionLabelTh(divNum)}` : "แมตช์รอบกลุ่ม";
       return { error: `ต้องรอ${label}จบทุกคู่ก่อนจึงเริ่มน็อคเอ้าได้` };
     }
   }

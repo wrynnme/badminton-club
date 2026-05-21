@@ -12,6 +12,7 @@ import { MatchRow } from "@/components/tournament/match-row";
 import { generateKnockoutAction } from "@/lib/actions/matches";
 import { buildCompetitorMap, teamToCompetitor } from "@/lib/tournament/competitor";
 import { roundLabel, lowerRoundLabel } from "@/lib/tournament/bracket";
+import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
 import type { Match, Team, MatchUnit, PairWithPlayers } from "@/lib/types";
 
 function BracketSection({
@@ -153,17 +154,24 @@ export function KnockoutStage({
   }
   const allReqsMet = reqs.every((r) => r.met);
 
-  const upperMatches = matches.filter((m) => !m.bracket || m.bracket === "upper");
-  const lowerMatches = matches.filter((m) => m.bracket === "lower");
-  const grandFinalMatches = matches.filter((m) => m.bracket === "grand_final");
-  const hasLower = lowerMatches.length > 0;
-  const hasGrandFinal = grandFinalMatches.length > 0;
   const hasMatches = matches.length > 0;
 
-  const maxUpperRound = upperMatches.length > 0 ? Math.max(...upperMatches.map((m) => m.round_number)) : 0;
-  const upperBracketSize = Math.pow(2, maxUpperRound);
-  const totalLowerRounds = lowerMatches.length > 0 ? Math.max(...lowerMatches.map((m) => m.round_number)) : 0;
+  // Collect distinct numeric divisions present in knockout matches (null = no division split)
+  const divisionKeys: Array<number | null> = Array.from(
+    new Set(matches.map((m) => parseDivision(m.division)))
+  ).sort((a, b) => (a ?? 99) - (b ?? 99));
 
+  const isMultiDivision = divisionKeys.some((k) => k !== null);
+
+  // Helper: split a set of matches into upper/lower/grand_final sub-sections
+  function splitBrackets(ms: Match[]) {
+    const upper = ms.filter((m) => !m.bracket || m.bracket === "upper");
+    const lower = ms.filter((m) => m.bracket === "lower");
+    const grandFinal = ms.filter((m) => m.bracket === "grand_final");
+    return { upper, lower, grandFinal };
+  }
+
+  // For progress badge
   const completedPlayable = matches.filter(
     (m) => m.status === "completed" && (m.team_a_id || m.pair_a_id) && (m.team_b_id || m.pair_b_id)
   ).length;
@@ -171,13 +179,21 @@ export function KnockoutStage({
     (m) => (m.team_a_id || m.pair_a_id) && (m.team_b_id || m.pair_b_id)
   ).length;
 
-  // Find champion from grand final (or upper final if no lower bracket)
-  const finalMatch = hasGrandFinal
-    ? grandFinalMatches[0]
-    : upperMatches.find((m) => m.round_number === maxUpperRound);
-  const champion = finalMatch?.status === "completed" && finalMatch.winner_id
-    ? competitorMap.get(finalMatch.winner_id)
-    : null;
+  // Champion(s): one per division (or single when no division split)
+  const champions = divisionKeys.map((divKey) => {
+    const divMatches = divKey !== null
+      ? matches.filter((m) => parseDivision(m.division) === divKey)
+      : matches;
+    const { upper, grandFinal } = splitBrackets(divMatches);
+    const maxUpperRound = upper.length > 0 ? Math.max(...upper.map((m) => m.round_number)) : 0;
+    const finalMatch = grandFinal.length > 0
+      ? grandFinal[0]
+      : upper.find((m) => m.round_number === maxUpperRound);
+    const champion = finalMatch?.status === "completed" && finalMatch.winner_id
+      ? competitorMap.get(finalMatch.winner_id) ?? null
+      : null;
+    return { divKey, champion };
+  });
 
   return (
     <div className="space-y-4">
@@ -234,76 +250,111 @@ export function KnockoutStage({
 
       {hasMatches && (
         <div className="space-y-6">
-          {/* Upper bracket */}
-          <BracketSection
-            label={hasLower ? "สายบน (Upper)" : ""}
-            matches={upperMatches}
-            maxRound={maxUpperRound}
-            bracketSize={upperBracketSize}
-            competitorMap={competitorMap}
-            tournamentId={tournamentId}
-            isOwner={isOwner}
-            unit={matchUnit}
-            matchRowSize={matchRowSize}
-          />
+          {divisionKeys.map((divKey, dIdx) => {
+            const divMatches = divKey !== null
+              ? matches.filter((m) => parseDivision(m.division) === divKey)
+              : matches;
+            const { upper, lower, grandFinal } = splitBrackets(divMatches);
+            const hasLower = lower.length > 0;
+            const hasGrandFinal = grandFinal.length > 0;
+            const maxUpperRound = upper.length > 0 ? Math.max(...upper.map((m) => m.round_number)) : 0;
+            const upperBracketSize = Math.pow(2, maxUpperRound);
+            const totalLowerRounds = lower.length > 0 ? Math.max(...lower.map((m) => m.round_number)) : 0;
+            const tone = divKey !== null ? divisionTone(divKey) : null;
+            const { champion } = champions[dIdx];
 
-          {/* Lower bracket */}
-          {hasLower && (
-            <>
-              <Separator />
-              <BracketSection
-                label="สายล่าง (Lower)"
-                matches={lowerMatches}
-                maxRound={totalLowerRounds}
-                bracketSize={0}
-                competitorMap={competitorMap}
-                tournamentId={tournamentId}
-                isOwner={isOwner}
-                unit={matchUnit}
-                isLower
-                totalLowerRounds={totalLowerRounds}
-                matchRowSize={matchRowSize}
-              />
-            </>
-          )}
-
-          {/* Grand final */}
-          {hasGrandFinal && (
-            <>
-              <Separator />
-              <BracketSection
-                label="Grand Final"
-                matches={grandFinalMatches}
-                maxRound={1}
-                bracketSize={2}
-                competitorMap={competitorMap}
-                tournamentId={tournamentId}
-                isOwner={isOwner}
-                unit={matchUnit}
-                isFinalBracket
-                matchRowSize={matchRowSize}
-              />
-            </>
-          )}
-
-          {/* Champion banner */}
-          {champion && (
-            <>
-              <Separator />
-              <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20 dark:border-yellow-700">
-                <Trophy className="h-6 w-6 text-yellow-500 shrink-0" />
-                <div>
-                  <div className="text-xs text-muted-foreground">แชมป์</div>
-                  <div className="font-bold text-lg flex items-center gap-2">
-                    {champion.color && (
-                      <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: champion.color }} />
-                    )}
-                    {champion.name}
+            return (
+              <div key={String(divKey)} className="space-y-4">
+                {/* Division heading (only when multi-division) */}
+                {isMultiDivision && divKey !== null && (
+                  <div className={`flex items-center gap-2 pb-1 border-b ${tone?.text ?? ""}`}>
+                    <span className={`inline-block w-2 h-2 rounded-full ${tone?.bg ?? ""} border ${tone?.border ?? ""}`} />
+                    <h3 className="text-sm font-semibold">{divisionLabelTh(divKey)}</h3>
                   </div>
-                </div>
+                )}
+
+                {/* Upper / winner bracket */}
+                <BracketSection
+                  label={hasLower ? "สายชนะ" : ""}
+                  matches={upper}
+                  maxRound={maxUpperRound}
+                  bracketSize={upperBracketSize}
+                  competitorMap={competitorMap}
+                  tournamentId={tournamentId}
+                  isOwner={isOwner}
+                  unit={matchUnit}
+                  matchRowSize={matchRowSize}
+                />
+
+                {/* Lower / loser bracket */}
+                {hasLower && (
+                  <>
+                    <Separator />
+                    <BracketSection
+                      label="สายแพ้"
+                      matches={lower}
+                      maxRound={totalLowerRounds}
+                      bracketSize={0}
+                      competitorMap={competitorMap}
+                      tournamentId={tournamentId}
+                      isOwner={isOwner}
+                      unit={matchUnit}
+                      isLower
+                      totalLowerRounds={totalLowerRounds}
+                      matchRowSize={matchRowSize}
+                    />
+                  </>
+                )}
+
+                {/* Grand final */}
+                {hasGrandFinal && (
+                  <>
+                    <Separator />
+                    <BracketSection
+                      label="ชิงชนะเลิศ"
+                      matches={grandFinal}
+                      maxRound={1}
+                      bracketSize={2}
+                      competitorMap={competitorMap}
+                      tournamentId={tournamentId}
+                      isOwner={isOwner}
+                      unit={matchUnit}
+                      isFinalBracket
+                      matchRowSize={matchRowSize}
+                    />
+                  </>
+                )}
+
+                {/* Champion banner */}
+                {champion && (
+                  <>
+                    <Separator />
+                    <div className="flex items-center gap-3 p-4 rounded-lg border border-yellow-300 bg-yellow-50 dark:bg-yellow-950/20 dark:border-yellow-700">
+                      <Trophy className="h-6 w-6 text-yellow-500 shrink-0" />
+                      <div>
+                        <div className="text-xs text-muted-foreground">
+                          {isMultiDivision && divKey !== null
+                            ? `แชมป์ ${divisionLabelTh(divKey)}`
+                            : "แชมป์"}
+                        </div>
+                        <div className="font-bold text-lg flex items-center gap-2">
+                          {champion.color && (
+                            <span className="inline-block w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: champion.color }} />
+                          )}
+                          {champion.name}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Separator between divisions */}
+                {isMultiDivision && dIdx < divisionKeys.length - 1 && (
+                  <Separator className="mt-2" />
+                )}
               </div>
-            </>
-          )}
+            );
+          })}
         </div>
       )}
     </div>

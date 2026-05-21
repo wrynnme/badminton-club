@@ -142,7 +142,7 @@ export default async function PublicTournamentPage({
                 teams={teams}
                 pairs={pairs}
                 matches={allMatches.filter((m) => m.pair_a_id)}
-                pairDivisionThreshold={t.pair_division_threshold}
+                pairDivisionThresholds={t.pair_division_thresholds ?? []}
                 isOwner={false}
                 matchRowSize="comfortable"
               />

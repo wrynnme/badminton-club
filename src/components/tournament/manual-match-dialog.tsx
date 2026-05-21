@@ -20,16 +20,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createManualMatchAction } from "@/lib/actions/matches";
+import { computePairDivision, divisionLabelTh } from "@/lib/tournament/divisions";
 import type { PairWithPlayers } from "@/lib/types";
-
-function pairDivision(
-  level: string | null | undefined,
-  threshold: number | null
-): "upper" | "lower" | null {
-  if (threshold === null) return null;
-  const n = parseFloat(level ?? "");
-  return !isNaN(n) && n > threshold ? "upper" : "lower";
-}
 
 function pairLabel(pair: PairWithPlayers): string {
   const players = [pair.player1?.display_name, pair.player2?.display_name]
@@ -41,11 +33,11 @@ function pairLabel(pair: PairWithPlayers): string {
 export function ManualMatchDialog({
   tournamentId,
   pairs,
-  pairDivisionThreshold,
+  pairDivisionThresholds,
 }: {
   tournamentId: string;
   pairs: PairWithPlayers[];
-  pairDivisionThreshold: number | null;
+  pairDivisionThresholds: number[];
 }) {
   const [open, setOpen] = useState(false);
   const [pairAId, setPairAId] = useState<string>("");
@@ -54,14 +46,14 @@ export function ManualMatchDialog({
 
   const pairA = pairs.find((p) => p.id === pairAId);
   const divA = pairA
-    ? pairDivision(pairA.pair_level, pairDivisionThreshold)
+    ? computePairDivision(parseFloat(pairA.pair_level ?? ""), pairDivisionThresholds)
     : undefined;
 
   const pairBOptions = pairAId
     ? pairs.filter(
         (p) =>
           p.id !== pairAId &&
-          pairDivision(p.pair_level, pairDivisionThreshold) === divA
+          computePairDivision(parseFloat(p.pair_level ?? ""), pairDivisionThresholds) === divA
       )
     : [];
 
@@ -133,7 +125,9 @@ export function ManualMatchDialog({
               <SelectContent>
                 {pairBOptions.length === 0 ? (
                   <SelectItem value="__none__" disabled>
-                    ไม่มีคู่ใน division เดียวกัน
+                    {divA != null
+                      ? `ไม่มีคู่อื่นใน ${divisionLabelTh(divA)}`
+                      : "ไม่มีคู่ใน division เดียวกัน"}
                   </SelectItem>
                 ) : (
                   pairBOptions.map((p) => (
