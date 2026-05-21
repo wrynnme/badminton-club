@@ -449,7 +449,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 | `line_notify.bracket`              | `true`  | `generateKnockoutAction` (2 paths)                                                                                                                            |
 | `line_notify.status`               | `true`  | `updateTournamentStatusAction`                                                                                                                                |
 | `auto_rotate_rest_gap` (0-5)       | `2`     | `autoRotateQueueAction(tournamentId, restGap?)` — when caller omits, reads setting                                                                            |
-| `court_strict`                     | `true`  | UI hint only — DB partial unique index `uniq_matches_inprogress_court` always enforces. Flag exists for future loosening                                      |
+| `court_strict`                     | `true`  | `true` = `setMatchCourtAction` blocks assigning an occupied court (error toast). `false` = assignment allowed freely; Start button disabled client-side when court busy; DB index `uniq_matches_inprogress_court` still enforces at start time as defense-in-depth |
 | `color_summary`                    | `true`  | `GroupStage` prop `showColorSummary`; owner page + `/t/[token]`                                                                                               |
 | `export_visible`                   | `true`  | Owner Settings tab wraps `ExportButtons`; `PublicHero` prop `showExport`                                                                                      |
 | `allow_force_bracket_reset`        | `false` | `resetMatchScoreAction` — bypasses "next match completed" guard for upper + lower                                                                             |
@@ -486,7 +486,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ### Caveats
 
-- **`court_strict`**: flag is currently UI-only. DB index always enforces single-occupancy. Tooltip documents this. Future: drop the unique index to let the flag truly toggle behavior (trade DB integrity for UX flexibility — not done in Phase 11).
+- **`court_strict`**: now fully wired — gates `setMatchCourtAction` server-side (strict=true blocks assignment of occupied courts) and disables the Start button client-side (strict=false allows assignment but blocks start when court busy). DB index `uniq_matches_inprogress_court` remains as defense-in-depth at start time regardless of flag value.
 - **`audit_log_enabled`**: caller pays one extra read per write. Acceptable now; cache later if write volume grows.
 - **`auto_advance_next`**: no LINE notify on the auto-promoted match (different code path); add later if needed.
 - **`allow_force_bracket_reset`**: single-level cascade only — resets `next_match` / `loser_next_match` one hop. If that row's downstream rounds are also completed, a second manual reset is required. A recursive cascade would need a Postgres RPC.

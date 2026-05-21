@@ -1364,10 +1364,10 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
 
 const COURT_NAME_MAX = 40;
 
-// Policy: multiple PENDING matches may share the same court (scheduling
-// freely in advance). The DB partial UNIQUE index only enforces one
-// IN_PROGRESS match per court; conflicts surface at start time via
-// startMatchAction, not when assigning the court.
+// Policy: when court_strict=true (default), assigning an occupied court is blocked here.
+// when court_strict=false, the pre-check is skipped — the court can be assigned freely,
+// but the Start button is disabled client-side and the DB partial UNIQUE index
+// `uniq_matches_inprogress_court` still prevents two in_progress rows on the same court.
 export async function setMatchCourtAction(input: {
   matchId: string;
   tournamentId: string;
@@ -1381,7 +1381,9 @@ export async function setMatchCourtAction(input: {
   const rawCourt = input.court?.trim() ?? "";
   const court = rawCourt.length > 0 ? rawCourt.slice(0, COURT_NAME_MAX) : null;
 
-  if (court) {
+  const settings = await getTournamentSettings(input.tournamentId);
+
+  if (court && settings.court_strict) {
     const { data: occupier } = await sb
       .from("matches")
       .select("id, match_number")

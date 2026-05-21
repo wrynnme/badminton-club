@@ -245,8 +245,8 @@ export function SettingsManager({
           />
           <ToggleRow
             id="court-strict"
-            label="บังคับสนามไม่ซ้อน"
-            description="DB ยัง enforce ผ่าน partial unique index — flag นี้เป็น UI hint อนาคต"
+            label="บังคับเลือกสนามไม่ซ้อน"
+            description="เปิด = บล็อกตอนเลือกสนามที่ถูกใช้อยู่. ปิด = อนุญาตให้เลือกซ้อน แต่กดเริ่มไม่ได้ถ้าสนามไม่ว่าง"
             checked={settings.court_strict}
             onChange={(v) => update("court_strict", v)}
           />

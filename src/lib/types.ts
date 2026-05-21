@@ -57,7 +57,7 @@ export type Tournament = {
   seeding_method: SeedingMethod;
   team_count: number;
   advance_count: number;
-  pair_division_threshold: number | null;
+  pair_division_thresholds: number[];
   share_token: string | null;
   courts: string[];
   settings: Record<string, unknown>;
@@ -133,7 +133,7 @@ export type Match = {
   loser_next_match_id: string | null;
   loser_next_match_slot: "a" | "b" | null;
   bracket: BracketType | null;
-  division: "upper" | "lower" | null;
+  division: string | null;
   queue_position: number | null;
   started_at: string | null;
   created_at: string;

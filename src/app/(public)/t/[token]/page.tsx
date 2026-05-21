@@ -173,6 +173,7 @@ export default async function PublicTournamentPage({
                 canEdit={false}
                 courts={t.courts ?? []}
                 requireCourtToStart={settings.require_court_to_start}
+                courtStrict={settings.court_strict}
               />
             ) : undefined
           }
