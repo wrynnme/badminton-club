@@ -39,29 +39,19 @@ export default async function PublicTournamentPage({
   if (!tournament) notFound();
   const t = tournament as Tournament;
 
-  const teamsRes = await sb
-    .from("teams")
-    .select("*, players:team_players(*)")
-    .eq("tournament_id", t.id)
-    .order("created_at");
-
-  const teamIdList = (teamsRes.data ?? []).map((x) => x.id);
-
-  const [groupsRes, pairsRes, matchesRes] = await Promise.all([
+  // teams, groups, and matches are all independent — fetch in parallel.
+  // pairs needs teamIdList from teams, so it follows in a second wave.
+  const [teamsRes, groupsRes, matchesRes] = await Promise.all([
+    sb
+      .from("teams")
+      .select("*, players:team_players(*)")
+      .eq("tournament_id", t.id)
+      .order("created_at"),
     sb
       .from("groups")
       .select("*, group_teams(*, team:teams(*)), matches(*)")
       .eq("tournament_id", t.id)
       .order("name"),
-    teamIdList.length
-      ? sb
-          .from("pairs")
-          .select(
-            "*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)"
-          )
-          .in("team_id", teamIdList)
-          .order("created_at")
-      : Promise.resolve({ data: [] }),
     sb
       .from("matches")
       .select("*")
@@ -69,6 +59,18 @@ export default async function PublicTournamentPage({
       .order("round_type", { ascending: true })
       .order("match_number"),
   ]);
+
+  const teamIdList = (teamsRes.data ?? []).map((x) => x.id);
+
+  const pairsRes = teamIdList.length
+    ? await sb
+        .from("pairs")
+        .select(
+          "*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)"
+        )
+        .in("team_id", teamIdList)
+        .order("created_at")
+    : { data: [] };
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];
   const groups: GroupWithTeams[] = (groupsRes.data ?? []) as GroupWithTeams[];

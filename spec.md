@@ -192,7 +192,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
   - `CommandList` keeps a stable structure (one `CommandEmpty` with dynamic text + one `CommandGroup`) — cmdk requires this; mixing multiple conditional `CommandEmpty`/raw elements breaks its child diffing
   - On submit, passes selected profile's `line_user_id` to `addCoAdminAction` (which still validates LINE format + resolves to profile UUID)
 - **Audit log UI**: `audit-log-panel.tsx` — collapsible Card; fetches on first open; newest-first list
-- **Page**: `canEdit = isOwner || isCoAdmin` — `TournamentStatusControl` + all edit components use `canEdit`; owner-only: `ShareControls` + `CoAdminControls`
+- **Page**: `canEdit = isOwner || isCoAdmin` — `TournamentStatusControl` + all edit components use `canEdit`; owner-only: `ShareControls` + `CoAdminControls`; settings tab visible to `canEdit` — co-admin sees `CourtManager`, `SettingsManager`, `EditTournamentForm`, `AuditLogPanel` but not `ShareControls`/`CoAdminControls`
 
 #### Permission Matrix
 
@@ -205,7 +205,8 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 | CSV export                  | ✓       | ✓         |
 | Create/revoke share link    | ✓       | ✗         |
 | Add/remove co-admins        | ✓       | ✗         |
-| Update tournament settings  | ✓       | ✗         |
+| Update tournament settings  | ✓       | ✓         |
+| Edit courts / tournament form | ✓     | ✓         |
 | View audit log              | ✓       | ✓         |
 
 ### Manual Match Creation (pair mode)
@@ -467,7 +468,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ### UI
 
-- **`SettingsManager`** (`src/components/tournament/settings-manager.tsx`) — owner-only Card, mounted in Settings tab between `CoAdminControls` and `EditTournamentForm`
+- **`SettingsManager`** (`src/components/tournament/settings-manager.tsx`) — owner+co-admin Card, mounted in Settings tab (canEdit); rendered before `ShareControls`/`CoAdminControls` which remain owner-only
 - 3 sections: การแจ้งเตือน LINE · การจัดคิว · การแสดงผล + Privacy (icons: `Bell`, `ListOrdered`, `EyeOff`)
 - `ToggleRow` (Checkbox + Label + description) and `NumberRow` (Input type=number, clamped to schema bounds)
 - Auto-save: 500ms debounce + `inFlightRef` serializes concurrent saves; `Loader2` in header during pending; toast.error on failure
