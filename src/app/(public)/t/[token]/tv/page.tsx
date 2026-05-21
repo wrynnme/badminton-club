@@ -5,6 +5,8 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import { TvAutoRefresh } from "@/components/tournament/tv-auto-refresh";
 import { TvMatchCard } from "@/components/tournament/tv-match-card";
+import { TvFullscreenButton } from "@/components/tournament/tv-fullscreen-button";
+import { TeamSummary } from "@/components/tournament/team-summary";
 import { TvStandingsCarousel, type StandingsPage, type TableRow } from "@/components/tournament/tv-standings-carousel";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { computeStandings, type StandingRow } from "@/lib/tournament/scoring";
@@ -58,7 +60,8 @@ export default async function TvDisplayPage({
   const unit = t.match_unit;
   const competitorMap = buildCompetitorMap(unit, teams, pairs);
 
-  // Limit upcoming to 4 cards so they fit in the left column without scrolling
+  const settings = parseSettings(t.settings);
+
   const upcoming = allMatches
     .filter((m) => m.status !== "completed")
     .sort((a, b) => {
@@ -69,15 +72,11 @@ export default async function TvDisplayPage({
       }
       return a.match_number - b.match_number;
     })
-    .slice(0, 4);
-
-  const completed = allMatches
-    .filter((m) => m.status === "completed")
-    .sort((a, b) => b.match_number - a.match_number)
-    .slice(0, 4);
+    .slice(0, settings.tv_upcoming_count);
 
   const competitorIds = unit === "team" ? teams.map((x) => x.id) : pairs.map((p) => p.id);
-  const settings = parseSettings(t.settings);
+  const knockoutCount = allMatches.filter((m) => m.round_type === "knockout").length;
+  const STANDINGS_LIMIT = settings.tv_standings_rows;
 
   // --- Build standings pages for the rotating carousel ---
   const standingsPages: StandingsPage[] = [];
@@ -86,8 +85,7 @@ export default async function TvDisplayPage({
   const pairById = new Map(pairs.map((p) => [p.id, p]));
 
   const rowsFromStandings = (rows: StandingRow[], nameLookup: (id: string) => { name: string; color?: string | null }) =>
-    rows
-      .slice(0, 6)
+    (STANDINGS_LIMIT === 0 ? rows : rows.slice(0, STANDINGS_LIMIT))
       .map((s) => {
         const meta = nameLookup(s.competitorId);
         return {
@@ -163,7 +161,7 @@ export default async function TvDisplayPage({
 
   return (
     <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"} realtimeEnabled={settings.realtime_enabled}>
-      <TvAutoRefresh intervalMs={60_000} />
+      <TvAutoRefresh intervalMs={settings.tv_refresh_interval_sec * 1000} />
       <div className="h-screen w-screen overflow-hidden flex flex-col bg-background text-foreground p-3 lg:p-4">
         {/* Hero — fixed-height header */}
         <header className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
@@ -180,6 +178,15 @@ export default async function TvDisplayPage({
             <span className="px-3 py-1 lg:px-4 lg:py-1.5 rounded-full border text-sm lg:text-lg 2xl:text-xl font-semibold">
               {STATUS_TEXT[t.status] ?? t.status}
             </span>
+            {settings.tv_show_fullscreen_button && <TvFullscreenButton />}
+            {settings.tv_show_bracket_link && knockoutCount > 0 && (
+              <Link
+                href={`/t/${token}/bracket`}
+                className="text-sm lg:text-base 2xl:text-lg text-muted-foreground hover:text-foreground underline"
+              >
+                ดูสาย
+              </Link>
+            )}
             <Link
               href={`/t/${token}`}
               className="text-sm lg:text-base 2xl:text-lg text-muted-foreground hover:text-foreground underline"
@@ -194,44 +201,46 @@ export default async function TvDisplayPage({
             <p className="text-2xl lg:text-4xl 2xl:text-5xl text-muted-foreground">ยังไม่มีการแข่งขัน</p>
           </div>
         ) : (
+          // Layout invariant: keep the 3-column grid alive even when sections inside are hidden;
+          // empty columns render as placeholder <div>s rather than expanding the others.
           <div className="flex-1 min-h-0 grid grid-cols-12 gap-4 lg:gap-6 pt-3 lg:pt-4">
-            {/* Upcoming / In progress — left 8/12 */}
-            <section className="col-span-8 h-full overflow-hidden flex flex-col">
-              <h2 className="shrink-0 text-xl lg:text-2xl 2xl:text-3xl font-bold pb-2 lg:pb-3">กำลังเล่น / ถัดไป</h2>
-              <div className="flex-1 min-h-0 overflow-hidden">
-                {upcoming.length === 0 ? (
-                  <p className="text-lg lg:text-2xl 2xl:text-3xl text-muted-foreground">ไม่มีคิวค้าง</p>
-                ) : (
-                  <div className="space-y-3">
-                    {upcoming.map((m) => (
-                      <TvMatchCard key={m.id} match={m} competitorById={competitorMap} unit={unit} />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
-
-            {/* Right column — split vertically */}
-            <aside className="col-span-4 h-full min-h-0 grid grid-rows-[minmax(0,1fr)_minmax(0,1fr)] gap-4">
-              {/* Top — standings carousel */}
-              <TvStandingsCarousel pages={allStandingsPages} intervalMs={8000} />
-
-              {/* Bottom — recent */}
-              <section className="h-full overflow-hidden flex flex-col">
-                <h2 className="shrink-0 text-xl lg:text-2xl 2xl:text-3xl font-bold pb-2">จบล่าสุด</h2>
+            {/* Left col-span-4 — "กำลังเล่น / ถัดไป" */}
+            {settings.tv_show_upcoming ? (
+              <section className="col-span-4 h-full overflow-hidden flex flex-col">
+                <h2 className="shrink-0 text-xl lg:text-2xl 2xl:text-3xl font-bold pb-2 lg:pb-3">กำลังเล่น / ถัดไป</h2>
                 <div className="flex-1 min-h-0 overflow-hidden">
-                  {completed.length === 0 ? (
-                    <p className="text-base lg:text-xl text-muted-foreground">ยังไม่มีผล</p>
+                  {upcoming.length === 0 ? (
+                    <p className="text-lg lg:text-2xl 2xl:text-3xl text-muted-foreground">ไม่มีคิวค้าง</p>
                   ) : (
-                    <div className="space-y-2 lg:space-y-3">
-                      {completed.map((m) => (
+                    <div className="space-y-3">
+                      {upcoming.map((m) => (
                         <TvMatchCard key={m.id} match={m} competitorById={competitorMap} unit={unit} />
                       ))}
                     </div>
                   )}
                 </div>
               </section>
-            </aside>
+            ) : (
+              <div className="col-span-4" />
+            )}
+
+            {/* Middle col-span-4 — "คะแนนของแต่ละคู่" */}
+            {settings.tv_show_standings_carousel ? (
+              <aside className="col-span-4 h-full overflow-hidden flex flex-col">
+                <TvStandingsCarousel pages={allStandingsPages} intervalMs={settings.tv_carousel_interval_sec * 1000} />
+              </aside>
+            ) : (
+              <div className="col-span-4" />
+            )}
+
+            {/* Right col-span-4 — "คะแนนทีม" */}
+            {settings.tv_show_team_chart ? (
+              <section className="col-span-4 h-full overflow-hidden flex flex-col">
+                <TeamSummary teams={teams} matches={allMatches} pairs={pairs} matchUnit={unit} size="tv" orientation="vertical" fillParent />
+              </section>
+            ) : (
+              <div className="col-span-4" />
+            )}
           </div>
         )}
       </div>

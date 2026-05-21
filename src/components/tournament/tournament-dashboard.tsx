@@ -41,6 +41,8 @@ import {
   parsePairLevel,
 } from "@/lib/tournament/divisions";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
+import { TeamSummary } from "@/components/tournament/team-summary";
+import { parseSettings } from "@/lib/tournament/settings";
 import type {
   Match,
   PairWithPlayers,
@@ -132,6 +134,8 @@ function formatHHmm(iso: string | null): string {
 
 export function TournamentDashboard({ tournament, teams, pairs, matches }: Props) {
   const unit = tournament.match_unit;
+  const chartOrientation = parseSettings(tournament.settings).chart_orientation;
+  const isHorizontal = chartOrientation === "horizontal";
   const competitorMap = useMemo(
     () => buildCompetitorMap(unit, teams.map(({ players: _p, ...rest }) => rest), pairs),
     [unit, teams, pairs],
@@ -385,6 +389,9 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
         </SummaryCard>
       </div>
 
+      {/* Section 1b — Team score bar */}
+      <TeamSummary teams={teams} matches={matches} pairs={pairs} matchUnit={tournament.match_unit} orientation={chartOrientation} />
+
       {/* Section 2 — Top performers */}
       {showTopDivTabs && (
         <div className="flex justify-end">
@@ -465,19 +472,35 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                 <BarChart
                   accessibilityLayer
                   data={pointsChartData}
-                  layout="vertical"
+                  {...(isHorizontal ? { layout: "vertical" as const } : {})}
                   margin={{ top: 4, right: 28, bottom: 4, left: 8 }}
                 >
-                  <XAxis type="number" hide />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={6}
-                    width={92}
-                    tick={{ fontSize: 12 }}
-                  />
+                  {isHorizontal ? (
+                    <>
+                      <XAxis type="number" hide />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={6}
+                        width={92}
+                        tick={{ fontSize: 12 }}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <XAxis
+                        type="category"
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={6}
+                        tick={{ fontSize: 12 }}
+                      />
+                      <YAxis type="number" hide />
+                    </>
+                  )}
                   <ChartTooltip
                     cursor={false}
                     content={<ChartTooltipContent hideLabel />}
@@ -488,7 +511,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                     ))}
                     <LabelList
                       dataKey="pts"
-                      position="right"
+                      position={isHorizontal ? "right" : "top"}
                       offset={8}
                       className="fill-foreground"
                       fontSize={12}
@@ -522,28 +545,58 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                 <BarChart
                   accessibilityLayer
                   data={divisionChartData}
+                  {...(isHorizontal ? { layout: "vertical" as const } : {})}
                   margin={{ top: 8, right: 12, bottom: 4, left: 0 }}
                 >
-                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                  <XAxis
-                    dataKey="division"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={6}
-                    tick={{ fontSize: 12 }}
-                  />
-                  <YAxis
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={4}
-                    tick={{ fontSize: 12 }}
-                    allowDecimals={false}
-                  />
+                  <CartesianGrid vertical={isHorizontal} horizontal={!isHorizontal} strokeDasharray="3 3" />
+                  {isHorizontal ? (
+                    <>
+                      <XAxis
+                        type="number"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={4}
+                        tick={{ fontSize: 12 }}
+                        allowDecimals={false}
+                      />
+                      <YAxis
+                        type="category"
+                        dataKey="division"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={6}
+                        tick={{ fontSize: 12 }}
+                        width={72}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <XAxis
+                        dataKey="division"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={6}
+                        tick={{ fontSize: 12 }}
+                      />
+                      <YAxis
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={4}
+                        tick={{ fontSize: 12 }}
+                        allowDecimals={false}
+                      />
+                    </>
+                  )}
                   <ChartTooltip content={<ChartTooltipContent />} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="wins" stackId="r" fill="var(--color-wins)" radius={[0, 0, 0, 0]} />
                   <Bar dataKey="draws" stackId="r" fill="var(--color-draws)" radius={[0, 0, 0, 0]} />
-                  <Bar dataKey="losses" stackId="r" fill="var(--color-losses)" radius={[4, 4, 0, 0]} />
+                  <Bar
+                    dataKey="losses"
+                    stackId="r"
+                    fill="var(--color-losses)"
+                    radius={isHorizontal ? [0, 4, 4, 0] : [4, 4, 0, 0]}
+                  />
                 </BarChart>
               </ChartContainer>
             </CardContent>
@@ -572,19 +625,35 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                 <BarChart
                   accessibilityLayer
                   data={courtUsage}
-                  layout="vertical"
+                  {...(isHorizontal ? { layout: "vertical" as const } : {})}
                   margin={{ top: 4, right: 28, bottom: 4, left: 8 }}
                 >
-                  <XAxis type="number" hide allowDecimals={false} />
-                  <YAxis
-                    type="category"
-                    dataKey="name"
-                    tickLine={false}
-                    axisLine={false}
-                    tickMargin={6}
-                    width={84}
-                    tick={{ fontSize: 12 }}
-                  />
+                  {isHorizontal ? (
+                    <>
+                      <XAxis type="number" hide allowDecimals={false} />
+                      <YAxis
+                        type="category"
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={6}
+                        width={84}
+                        tick={{ fontSize: 12 }}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <XAxis
+                        type="category"
+                        dataKey="name"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={6}
+                        tick={{ fontSize: 12 }}
+                      />
+                      <YAxis type="number" hide allowDecimals={false} />
+                    </>
+                  )}
                   <ChartTooltip
                     cursor={false}
                     content={<ChartTooltipContent hideLabel />}
@@ -592,7 +661,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                   <Bar dataKey="count" radius={4} fill="var(--color-count)">
                     <LabelList
                       dataKey="count"
-                      position="right"
+                      position={isHorizontal ? "right" : "top"}
                       offset={8}
                       className="fill-foreground"
                       fontSize={12}

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Bell, ListOrdered, EyeOff, Loader2 } from "lucide-react";
+import { Bell, ListOrdered, EyeOff, Loader2, Tv } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -411,6 +411,123 @@ export function SettingsManager({
             description="อนุญาตรีเซ็ตแมตช์น็อคเอ้าที่รอบถัดไปจบแล้ว พร้อม cascade 1 ขั้น (ใช้กรณีพลาดบันทึกผลแล้วต้องแก้)"
             checked={settings.allow_force_bracket_reset}
             onChange={(v) => update("allow_force_bracket_reset", v)}
+          />
+          <div className="flex items-center justify-between gap-3 py-1">
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor="chart-orientation" className="text-sm">แนวกราฟแท่ง</Label>
+              <p className="text-xs text-muted-foreground">
+                เลือกแนวการแสดงผลกราฟแท่งใน Dashboard
+              </p>
+            </div>
+            <Select
+              value={settings.chart_orientation}
+              onValueChange={(v) => update("chart_orientation", v as TournamentSettings["chart_orientation"])}
+            >
+              <SelectTrigger id="chart-orientation" className="w-36 h-8 text-xs">
+                <SelectValue>
+                  {(value) => (value === "vertical" ? "แนวตั้ง" : value === "horizontal" ? "แนวนอน" : "")}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="vertical">แนวตั้ง</SelectItem>
+                <SelectItem value="horizontal">แนวนอน</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </section>
+
+        <section className="space-y-1 border-t pt-4">
+          <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <Tv className="h-3.5 w-3.5" /> การแสดงผล TV
+          </h3>
+
+          <p className="text-xs text-muted-foreground/80 pt-1 pb-0.5">ส่วนต่างๆ ของหน้า TV</p>
+          <div className="grid sm:grid-cols-2 gap-x-4">
+            <ToggleRow
+              id="tv-show-team-chart"
+              label="กราฟคะแนนสะสมแต่ละทีม"
+              checked={settings.tv_show_team_chart}
+              onChange={(v) => update("tv_show_team_chart", v)}
+            />
+            <ToggleRow
+              id="tv-show-standings-carousel"
+              label="ตารางอันดับ (carousel)"
+              checked={settings.tv_show_standings_carousel}
+              onChange={(v) => update("tv_show_standings_carousel", v)}
+            />
+            <ToggleRow
+              id="tv-show-upcoming"
+              label="กำลังเล่น / ถัดไป"
+              checked={settings.tv_show_upcoming}
+              onChange={(v) => update("tv_show_upcoming", v)}
+            />
+            <ToggleRow
+              id="tv-show-completed"
+              label="จบล่าสุด"
+              checked={settings.tv_show_completed}
+              onChange={(v) => update("tv_show_completed", v)}
+            />
+            <ToggleRow
+              id="tv-show-fullscreen-button"
+              label="ปุ่ม Fullscreen"
+              checked={settings.tv_show_fullscreen_button}
+              onChange={(v) => update("tv_show_fullscreen_button", v)}
+            />
+            <ToggleRow
+              id="tv-show-bracket-link"
+              label="ลิงก์ดูสาย"
+              checked={settings.tv_show_bracket_link}
+              onChange={(v) => update("tv_show_bracket_link", v)}
+            />
+          </div>
+
+          <p className="text-xs text-muted-foreground/80 pt-3 pb-0.5">จำนวนรายการ</p>
+          <NumberRow
+            id="tv-upcoming-count"
+            label='จำนวน "กำลังเล่น / ถัดไป"'
+            description="1–5 รายการ"
+            value={settings.tv_upcoming_count}
+            min={1}
+            max={5}
+            onChange={(v) => update("tv_upcoming_count", v)}
+          />
+          <NumberRow
+            id="tv-completed-count"
+            label='จำนวน "จบล่าสุด"'
+            description="1–3 รายการ"
+            value={settings.tv_completed_count}
+            min={1}
+            max={3}
+            onChange={(v) => update("tv_completed_count", v)}
+          />
+          <NumberRow
+            id="tv-standings-rows"
+            label="จำนวนแถวอันดับ"
+            description="0–50 แถวต่อหน้า carousel · 0 = ทั้งหมด"
+            value={settings.tv_standings_rows}
+            min={0}
+            max={50}
+            onChange={(v) => update("tv_standings_rows", v)}
+          />
+
+          <p className="text-xs text-muted-foreground/80 pt-3 pb-0.5">การหมุน / รีเฟรช</p>
+          <NumberRow
+            id="tv-carousel-interval"
+            label="รอบหมุนตารางอันดับ (วินาที)"
+            description="3–30 วินาที"
+            value={settings.tv_carousel_interval_sec}
+            min={3}
+            max={30}
+            onChange={(v) => update("tv_carousel_interval_sec", v)}
+          />
+          <NumberRow
+            id="tv-refresh-interval"
+            label="รอบรีเฟรชหน้า TV (วินาที)"
+            description="30–300 วินาที (fallback เมื่อปิด Realtime)"
+            value={settings.tv_refresh_interval_sec}
+            min={30}
+            max={300}
+            onChange={(v) => update("tv_refresh_interval_sec", v)}
           />
         </section>
       </CardContent>

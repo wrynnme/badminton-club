@@ -207,9 +207,6 @@ export default async function TournamentDetailPage({
               teams={teams}
               isOwner={canEdit}
               teamCount={t.team_count}
-              matches={allMatches}
-              pairs={pairs}
-              matchUnit={t.match_unit}
             />
           }
           groupsTab={

@@ -33,6 +33,26 @@ export const TournamentSettingsSchema = z.object({
   realtime_enabled: z.boolean().default(true),
   audit_log_enabled: z.boolean().default(true),
   match_cooldown_minutes: z.number().int().min(0).max(30).default(0),
+
+  // TV display
+  tv_show_team_chart: z.boolean().default(true),
+  tv_show_standings_carousel: z.boolean().default(true),
+  tv_show_upcoming: z.boolean().default(true),
+  tv_show_completed: z.boolean().default(true),
+  tv_show_fullscreen_button: z.boolean().default(true),
+  tv_show_bracket_link: z.boolean().default(true),
+
+  tv_upcoming_count: z.number().int().min(1).max(5).default(3),
+  tv_completed_count: z.number().int().min(1).max(3).default(1),
+  tv_standings_rows: z.number().int().min(0).max(50).default(6),
+
+  tv_carousel_interval_sec: z.number().int().min(3).max(30).default(8),
+  tv_refresh_interval_sec: z.number().int().min(30).max(300).default(60),
+
+  // Chart bar orientation for Dashboard bar charts (recharts):
+  //   vertical   = category on X axis, value on Y axis (vertical bars, default)
+  //   horizontal = category on Y axis, value on X axis (horizontal bars)
+  chart_orientation: z.enum(["vertical", "horizontal"]).default("vertical"),
 });
 
 export type TournamentSettings = z.infer<typeof TournamentSettingsSchema>;
