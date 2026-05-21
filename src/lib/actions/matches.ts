@@ -244,6 +244,36 @@ export async function generatePairMatchesAction(tournamentId: string) {
   });
   if (rpcError) return { error: "สร้างแมตช์คู่ไม่สำเร็จ" };
 
+  // Apply queue_bracket_preference ordering immediately so users don't need
+  // to click "จัดคิวอัตโนมัติ" after generation.
+  {
+    const genSettings = await getTournamentSettings(tournamentId);
+    const { data: newPending } = await sb
+      .from("matches")
+      .select("id, division, bracket, round_type, match_number")
+      .eq("tournament_id", tournamentId)
+      .eq("status", "pending")
+      .eq("round_type", "group")
+      .order("match_number");
+    if (newPending && newPending.length >= 2) {
+      const { error: swapErr } = await sb.rpc("swap_pending_match_numbers", {
+        p_tournament_id: tournamentId,
+        p_ordered_ids: orderByBracketPreference(
+          newPending.map((m) => ({
+            id: m.id,
+            division: m.division as "upper" | "lower" | null,
+            bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
+            round_type: m.round_type as "group" | "knockout",
+            match_number: m.match_number,
+          })),
+          genSettings.queue_bracket_preference,
+          genSettings.queue_chunk_size,
+        ).flat(),
+      });
+      if (swapErr) console.warn("[swap_pending_match_numbers]", swapErr);
+    }
+  }
+
   // Regenerating pair matches resets all scores → KO bracket seeded from standings is invalid.
   const koCleared = await clearKnockoutMatches(sb, tournamentId);
 
@@ -524,6 +554,35 @@ export async function generateKnockoutAction(tournamentId: string) {
     const err = await insertAndResolveByes(sb, tournamentId, allMatches, true);
     if (err) return err;
 
+    // Apply queue_bracket_preference ordering immediately after bracket insert.
+    {
+      const koSettings = await getTournamentSettings(tournamentId);
+      const { data: koPending } = await sb
+        .from("matches")
+        .select("id, division, bracket, round_type, match_number")
+        .eq("tournament_id", tournamentId)
+        .eq("status", "pending")
+        .eq("round_type", "knockout")
+        .order("match_number");
+      if (koPending && koPending.length >= 2) {
+        const { error: swapErr } = await sb.rpc("swap_pending_match_numbers", {
+          p_tournament_id: tournamentId,
+          p_ordered_ids: orderByBracketPreference(
+            koPending.map((m) => ({
+              id: m.id,
+              division: m.division as "upper" | "lower" | null,
+              bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
+              round_type: m.round_type as "group" | "knockout",
+              match_number: m.match_number,
+            })),
+            koSettings.queue_bracket_preference,
+            koSettings.queue_chunk_size,
+          ).flat(),
+        });
+        if (swapErr) console.warn("[swap_pending_match_numbers]", swapErr);
+      }
+    }
+
     revalidatePath(`/tournaments/${tournamentId}`);
     await writeAuditLog({
       tournament_id: tournamentId,
@@ -599,6 +658,35 @@ export async function generateKnockoutAction(tournamentId: string) {
 
   const err = await insertAndResolveByes(sb, tournamentId, allMatches);
   if (err) return err;
+
+  // Apply queue_bracket_preference ordering immediately after bracket insert.
+  {
+    const koSettings = await getTournamentSettings(tournamentId);
+    const { data: koPending } = await sb
+      .from("matches")
+      .select("id, division, bracket, round_type, match_number")
+      .eq("tournament_id", tournamentId)
+      .eq("status", "pending")
+      .eq("round_type", "knockout")
+      .order("match_number");
+    if (koPending && koPending.length >= 2) {
+      const { error: swapErr } = await sb.rpc("swap_pending_match_numbers", {
+        p_tournament_id: tournamentId,
+        p_ordered_ids: orderByBracketPreference(
+          koPending.map((m) => ({
+            id: m.id,
+            division: m.division as "upper" | "lower" | null,
+            bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
+            round_type: m.round_type as "group" | "knockout",
+            match_number: m.match_number,
+          })),
+          koSettings.queue_bracket_preference,
+          koSettings.queue_chunk_size,
+        ).flat(),
+      });
+      if (swapErr) console.warn("[swap_pending_match_numbers]", swapErr);
+    }
+  }
 
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
@@ -928,6 +1016,113 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
 
 // ============ QUEUE / SCHEDULE ============
 
+// Pure helper — no DB calls.
+// Given a list of pending match stubs, returns their IDs ordered according to
+// `queue_bracket_preference` (+ chunkSize). The caller is responsible for the
+// greedy rest-gap step that further reorders within each bracket bucket.
+//
+// Bucket assignment rules:
+//   group matches   → bucket key uses `match.division`  (upper|lower|null)
+//   knockout matches → bucket key uses `match.bracket`   (upper|lower|grand_final→null)
+//
+// grand_final matches are treated as "null" (no side preference) so they fall
+// into the "other" bucket and appear at the end of the ko section.
+// Pure helper — no DB calls.
+// Returns an array of bucket arrays (string[][]). Each inner array is one
+// strict-isolation segment for the greedy rest-gap loop in autoRotateQueueAction.
+// Callers that only need a flat order (.flat()) can do so safely.
+//
+// Bucket rules:
+//   group matches   → keyed by match.division  (upper|lower|null → "other")
+//   knockout matches → keyed by match.bracket   (upper|lower|grand_final → "other")
+//
+// Preference shapes:
+//   upper_first      → [upperIds, lowerIds, otherIds]  (per round_type section)
+//   lower_first      → [lowerIds, upperIds, otherIds]
+//   interleaved      → [interleavedAllIds]  (single bucket, zip upper+lower+rest)
+//   chunk_upper_first N → [upperChunk0, lowerChunk0, upperChunk1, lowerChunk1, ..., otherIds]
+//   chunk_lower_first N → [lowerChunk0, upperChunk0, ...]
+//
+// Empty buckets are filtered out before returning.
+function orderByBracketPreference(
+  matches: {
+    id: string;
+    division: "upper" | "lower" | null;
+    bracket: "upper" | "lower" | "grand_final" | null;
+    round_type: "group" | "knockout";
+    match_number: number | null;
+  }[],
+  preference: import("@/lib/tournament/settings").TournamentSettings["queue_bracket_preference"],
+  chunkSize: number,
+): string[][] {
+  type MatchStub = typeof matches[number];
+  type Bucket = "group_upper" | "group_lower" | "group_other" | "ko_upper" | "ko_lower" | "ko_other";
+
+  const isChunkMode = preference === "chunk_upper_first" || preference === "chunk_lower_first";
+
+  const bucketOf = (m: MatchStub): Bucket => {
+    const isKo = m.round_type === "knockout";
+    if (preference === "interleaved" || isChunkMode) return isKo ? "ko_other" : "group_other";
+    const side = isKo ? m.bracket : m.division;
+    if (side === "upper") return isKo ? "ko_upper" : "group_upper";
+    if (side === "lower") return isKo ? "ko_lower" : "group_lower";
+    return isKo ? "ko_other" : "group_other";
+  };
+
+  // Bucket ordering for non-interleaved/non-chunk modes.
+  const bucketOrder: Bucket[] =
+    preference === "upper_first"
+      ? ["group_upper", "group_lower", "group_other", "ko_upper", "ko_lower", "ko_other"]
+      : preference === "lower_first"
+      ? ["group_lower", "group_upper", "group_other", "ko_lower", "ko_upper", "ko_other"]
+      : ["group_other", "ko_other"]; // interleaved + chunk modes collapse to single "other" per rt
+
+  const buckets = new Map<Bucket, MatchStub[]>();
+  for (const b of bucketOrder) buckets.set(b, []);
+  for (const m of matches) buckets.get(bucketOf(m))?.push(m);
+
+  const byMatchNum = (a: MatchStub, b: MatchStub) => (a.match_number ?? 0) - (b.match_number ?? 0);
+
+  // Result segments — each entry becomes one inner array in the output.
+  const segments: string[][] = [];
+
+  if (preference === "interleaved" || isChunkMode) {
+    const effectiveChunk = isChunkMode ? chunkSize : 1;
+    const leadIsLower = preference === "chunk_lower_first";
+
+    for (const key of ["group_other", "ko_other"] as const) {
+      const arr = buckets.get(key) ?? [];
+      if (arr.length === 0) continue;
+      const isKo = key === "ko_other";
+      const sideOf = (m: MatchStub) => (isKo ? m.bracket : m.division);
+      const upper = arr.filter((m) => sideOf(m) === "upper").sort(byMatchNum);
+      const lower = arr.filter((m) => sideOf(m) === "lower").sort(byMatchNum);
+      const rest  = arr.filter((m) => sideOf(m) !== "upper" && sideOf(m) !== "lower").sort(byMatchNum);
+
+      const lead  = leadIsLower ? lower : upper;
+      const trail = leadIsLower ? upper : lower;
+      let li = 0;
+      let ti = 0;
+      while (li < lead.length || ti < trail.length) {
+        const leadChunk: string[] = [];
+        const trailChunk: string[] = [];
+        for (let k = 0; k < effectiveChunk && li < lead.length; k++) leadChunk.push(lead[li++].id);
+        for (let k = 0; k < effectiveChunk && ti < trail.length; k++) trailChunk.push(trail[ti++].id);
+        if (leadChunk.length > 0) segments.push(leadChunk);
+        if (trailChunk.length > 0) segments.push(trailChunk);
+      }
+      if (rest.length > 0) segments.push(rest.map((m) => m.id));
+    }
+  } else {
+    for (const b of bucketOrder) {
+      const ids = (buckets.get(b) ?? []).map((m) => m.id);
+      if (ids.length > 0) segments.push(ids);
+    }
+  }
+
+  return segments;
+}
+
 async function revalidateTournamentPaths(sb: Awaited<ReturnType<typeof createAdminClient>>, tournamentId: string) {
   revalidatePath(`/tournaments/${tournamentId}`);
   const { data, error } = await sb
@@ -1024,80 +1219,21 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
   // and still writes back.
   const originalIds = pending.map((m) => m.id);
 
-  // Bucket pending matches by division priority. Within each round_type (group
-  // vs knockout), pair tournaments split matches into `division=upper/lower`
-  // (via pair_division_threshold) and double-elim knockouts split into
-  // `bracket=upper/lower`. queue_bracket_preference governs which side runs
-  // first; "interleaved" keeps them mixed for the greedy step to shuffle.
-  type Bucket =
-    | "group_upper"
-    | "group_lower"
-    | "group_other"
-    | "ko_upper"
-    | "ko_lower"
-    | "ko_other";
-  const isChunkMode =
-    bracketPref === "chunk_upper_first" || bracketPref === "chunk_lower_first";
-  const bucketOf = (m: {
-    round_type: string | null;
-    bracket: string | null;
-    division: string | null;
-  }): Bucket => {
-    const isKo = m.round_type === "knockout";
-    if (bracketPref === "interleaved" || isChunkMode) return isKo ? "ko_other" : "group_other";
-    const side = isKo ? m.bracket : m.division;
-    if (side === "upper") return isKo ? "ko_upper" : "group_upper";
-    if (side === "lower") return isKo ? "ko_lower" : "group_lower";
-    return isKo ? "ko_other" : "group_other";
-  };
-  const bucketOrder: Bucket[] =
-    bracketPref === "upper_first"
-      ? ["group_upper", "group_lower", "group_other", "ko_upper", "ko_lower", "ko_other"]
-      : bracketPref === "lower_first"
-      ? ["group_lower", "group_upper", "group_other", "ko_lower", "ko_upper", "ko_other"]
-      : ["group_other", "ko_other"];
-
-  const buckets = new Map<Bucket, typeof pending>();
-  for (const b of bucketOrder) buckets.set(b, []);
-  for (const m of pending) {
-    const b = bucketOf(m as { round_type: string | null; bracket: string | null; division: string | null });
-    buckets.get(b)?.push(m);
-  }
-
-  // For "interleaved" and chunked modes, re-zip upper/lower within each
-  // round_type bucket so toggling from upper_first/lower_first visibly
-  // rebalances the queue. Sort by match_number first to undo prior reorders.
-  if (bracketPref === "interleaved" || isChunkMode) {
-    const chunkSize = isChunkMode ? settingsForRotate.queue_chunk_size : 1;
-    const leadIsLower = bracketPref === "chunk_lower_first";
-    const byMatchNum = (a: { match_number: number | null }, b: { match_number: number | null }) =>
-      (a.match_number ?? 0) - (b.match_number ?? 0);
-    for (const key of ["group_other", "ko_other"] as const) {
-      const arr = buckets.get(key);
-      if (!arr) continue;
-      const isKo = key === "ko_other";
-      const side = (m: { bracket: string | null; division: string | null }) =>
-        isKo ? m.bracket : m.division;
-      const upper = arr.filter((m) => side(m as { bracket: string | null; division: string | null }) === "upper").sort(byMatchNum);
-      const lower = arr.filter((m) => side(m as { bracket: string | null; division: string | null }) === "lower").sort(byMatchNum);
-      const rest = arr.filter((m) => {
-        const s = side(m as { bracket: string | null; division: string | null });
-        return s !== "upper" && s !== "lower";
-      }).sort(byMatchNum);
-
-      const zipped: typeof pending = [];
-      const lead = leadIsLower ? lower : upper;
-      const trail = leadIsLower ? upper : lower;
-      let li = 0;
-      let ti = 0;
-      while (li < lead.length || ti < trail.length) {
-        for (let k = 0; k < chunkSize && li < lead.length; k++) zipped.push(lead[li++]);
-        for (let k = 0; k < chunkSize && ti < trail.length; k++) zipped.push(trail[ti++]);
-      }
-      zipped.push(...rest);
-      buckets.set(key, zipped);
-    }
-  }
+  // Bucket pending matches by division/bracket priority using the pure helper.
+  // The helper returns a flat ordered ID list; rebuild a match-object list so
+  // the greedy rest-gap step can still access player-slot fields.
+  const prefOrderedIds = orderByBracketPreference(
+    pending.map((m) => ({
+      id: m.id,
+      division: m.division as "upper" | "lower" | null,
+      bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
+      round_type: m.round_type as "group" | "knockout",
+      match_number: m.match_number,
+    })),
+    bracketPref,
+    settingsForRotate.queue_chunk_size,
+  );
+  const pendingById = new Map(pending.map((m) => [m.id, m]));
 
   // In-progress matches — players currently on court count as "just played"
   const { data: inProgress } = await sb
@@ -1151,20 +1287,25 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
     return out;
   };
 
-  // Seed "recent" with in-progress players so the next pick rests them.
+  // Seed "recent" with in-progress players once at the start of each bucket so
+  // they are rested before any pending match in that bucket is considered.
   const inProgressPlayers = new Set<string>();
   for (const m of (inProgress as SlotRow[]) ?? []) {
     for (const p of playersOf(m)) inProgressPlayers.add(p);
   }
 
-  // Greedy per bucket so bracket priority is strict: never schedule a lower-bracket
-  // match while an upper-bracket match is still waiting (when upper_first), and
-  // vice versa. Within a bucket, pick the earliest match whose players don't
-  // appear in the last `restGap` placed matches.
+  // Greedy rest-gap pass — iterate per bucket to preserve strict bracket isolation.
+  // The helper returns string[][] where each inner array is one isolation segment.
+  // Within each bucket the greedy may reorder matches to satisfy restGap; it cannot
+  // push a match across a bucket boundary. The `recent` window carries forward
+  // across bucket boundaries (natural — restGap is a sliding window over result).
   const result: typeof pending = [];
-  for (const bucket of bucketOrder) {
-    const remaining = buckets.get(bucket) ?? [];
+  for (const bucketIds of prefOrderedIds) {
+    const bucketMatches = bucketIds.map((id) => pendingById.get(id)!).filter(Boolean);
+    const remaining = [...bucketMatches];
     while (remaining.length > 0) {
+      // Seed recent: in-progress players at position 0 of result overall; then
+      // the trailing restGap window from all matches placed so far (crosses buckets).
       const recent = new Set<string>(result.length === 0 ? inProgressPlayers : []);
       for (const m of result.slice(-restGap)) {
         for (const p of playersOf(m)) recent.add(p);
