@@ -37,6 +37,7 @@ export type UpdateClubInput = CreateClubInput & { id: string };
 export async function createClubAction(input: CreateClubInput) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  if (session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้างก๊วน" };
 
   const parsed = ClubSchema.safeParse(input);
   if (!parsed.success) {

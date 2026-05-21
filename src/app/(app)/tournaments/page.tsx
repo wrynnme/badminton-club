@@ -34,7 +34,7 @@ export default async function TournamentsPage() {
           <Trophy className="h-6 w-6" />
           <h1 className="text-2xl font-bold">Tournament</h1>
         </div>
-        {session && (
+        {session && !session.isGuest && (
           <Link href="/tournaments/new">
             <Button size="sm">
               <Plus className="h-4 w-4 mr-1" />
@@ -48,10 +48,13 @@ export default async function TournamentsPage() {
         <div className="text-center py-16 text-muted-foreground space-y-3">
           <Trophy className="h-12 w-12 mx-auto opacity-20" />
           <p>ยังไม่มีทัวร์นาเมนต์</p>
-          {session && (
+          {session && !session.isGuest && (
             <Link href="/tournaments/new">
               <Button variant="outline">สร้างทัวร์นาเมนต์แรก</Button>
             </Link>
+          )}
+          {session?.isGuest && (
+            <p className="text-xs">เข้าสู่ระบบด้วย LINE เพื่อสร้างทัวร์นาเมนต์</p>
           )}
         </div>
       ) : (

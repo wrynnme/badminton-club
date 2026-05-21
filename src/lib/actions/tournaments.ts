@@ -60,6 +60,7 @@ export type CreateTournamentInput = z.infer<typeof TournamentSchema>;
 export async function createTournamentAction(input: CreateTournamentInput) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  if (session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้างทัวร์นาเมนต์" };
 
   const parsed = TournamentSchema.safeParse(input);
   if (!parsed.success) {

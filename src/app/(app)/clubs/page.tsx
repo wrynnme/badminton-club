@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { createAdminClient } from "@/lib/supabase/server";
+import { getSession } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
 
 export default async function ClubsPage() {
   const sb = await createAdminClient();
+  const session = await getSession();
+  const canCreate = !!session && !session.isGuest;
   const today = new Date().toISOString().slice(0, 10);
 
   const { data: clubs } = await sb
@@ -31,13 +34,23 @@ export default async function ClubsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">ก๊วนทั้งหมด</h1>
-        <Link href="/clubs/new">
-          <Button>+ สร้างก๊วน</Button>
-        </Link>
+        {canCreate && (
+          <Link href="/clubs/new">
+            <Button>+ สร้างก๊วน</Button>
+          </Link>
+        )}
       </div>
 
+      {session?.isGuest && (
+        <p className="text-xs text-muted-foreground">
+          เข้าสู่ระบบด้วย LINE เพื่อสร้างก๊วน (โหมด guest เข้าร่วมก๊วนได้เท่านั้น)
+        </p>
+      )}
+
       {!clubs?.length ? (
-        <p className="text-muted-foreground">ยังไม่มีก๊วน. ลองสร้างก๊วนแรกเลย.</p>
+        <p className="text-muted-foreground">
+          {canCreate ? "ยังไม่มีก๊วน. ลองสร้างก๊วนแรกเลย." : "ยังไม่มีก๊วน."}
+        </p>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {clubs.map((c) => {

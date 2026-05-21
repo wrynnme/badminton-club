@@ -8,13 +8,14 @@ import { StandingsTable } from "@/components/tournament/standings-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { generatePairMatchesAction } from "@/lib/actions/matches";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
 import { computeStandings, aggregatePairStandingsToTeams } from "@/lib/tournament/scoring";
 import type { Match, PairWithPlayers, Team, TeamWithPlayers } from "@/lib/types";
-import { ChevronDown, ChevronUp, Loader2, Swords } from "lucide-react";
+import { ChevronDown, Loader2, Swords } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
@@ -89,24 +90,17 @@ export function PairStage({
     [pairStandings, pairs, flatTeams],
   );
 
-  // openSet tracks divisions explicitly toggled; first key opens by default when nothing toggled
-  const [openSet, setOpenSet] = useState<Set<string>>(() => new Set());
-  const isOpen = (k: number | null) => {
-    const s = String(k);
-    if (openSet.has(s)) return true;
-    // first key open by default if user hasn't toggled anything
-    return openSet.size === 0 && divisionKeys.length > 0 && String(divisionKeys[0]) === s;
-  };
-  const toggle = (k: number | null) => setOpenSet((prev) => {
-    const next = new Set(prev);
-    const s = String(k);
-    // Seed with default-open if user is interacting for the first time
-    if (next.size === 0 && divisionKeys.length > 0) {
-      next.add(String(divisionKeys[0]));
-    }
-    if (next.has(s)) next.delete(s); else next.add(s);
-    return next;
-  });
+  // closedSet tracks divisions that have been collapsed by the user; default OPEN for all
+  const [closedSet, setClosedSet] = useState<Set<string>>(() => new Set());
+  const isOpen = (k: number | null) => !closedSet.has(String(k));
+  const setOpen = (k: number | null, open: boolean) =>
+    setClosedSet((prev) => {
+      const next = new Set(prev);
+      const s = String(k);
+      if (open) next.delete(s);
+      else next.add(s);
+      return next;
+    });
 
   const totalMatches = matches.length;
   const completedMatches = matches.filter((m) => m.status === "completed").length;
@@ -206,29 +200,39 @@ export function PairStage({
               return (
                 <Card key={String(divKey)}>
                   <CardContent className="space-y-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => toggle(divKey)}>
-                      {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                      {tone && (
-                        <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${tone.bg} ${tone.border} border`} />
-                      )}
-                      {label}
-                      <span className="ml-1">({completedCount}/{matchList.length})</span>
-                    </Button>
-                    {open && (
-                      <MatchList
-                        matches={matchList}
-                        competitorById={pairCompetitorMap}
-                        tournamentId={tournamentId}
-                        isOwner={isOwner}
-                        unit="pair"
-                        size={matchRowSize}
-                      />
-                    )}
+                    <Collapsible open={open} onOpenChange={(o) => setOpen(divKey, o)}>
+                      <CollapsibleTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="w-full justify-start h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
+                          />
+                        }
+                      >
+                        <ChevronDown
+                          className={`h-3 w-3 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+                        />
+                        {tone && (
+                          <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${tone.bg} ${tone.border} border`} />
+                        )}
+                        {label}
+                        <span className="ml-1">({completedCount}/{matchList.length})</span>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <div className="pt-2">
+                          <MatchList
+                            matches={matchList}
+                            competitorById={pairCompetitorMap}
+                            tournamentId={tournamentId}
+                            isOwner={isOwner}
+                            unit="pair"
+                            size={matchRowSize}
+                          />
+                        </div>
+                      </CollapsibleContent>
+                    </Collapsible>
                   </CardContent>
                 </Card>
               );

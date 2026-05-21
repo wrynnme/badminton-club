@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { RefreshCw, Trophy, GitBranch, CheckCircle2, XCircle } from "lucide-react";
+import { RefreshCw, Trophy, GitBranch, CheckCircle2, XCircle, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { MatchRow } from "@/components/tournament/match-row";
 import { generateKnockoutAction } from "@/lib/actions/matches";
@@ -197,6 +198,18 @@ export function KnockoutStage({
     (m) => (m.team_a_id || m.pair_a_id) && (m.team_b_id || m.pair_b_id)
   ).length;
 
+  // Per-division collapse state — default OPEN; collapsedSet tracks user-collapsed divisions
+  const [closedSet, setClosedSet] = useState<Set<string>>(() => new Set());
+  const isDivOpen = (k: number | null) => !closedSet.has(String(k));
+  const setDivOpen = (k: number | null, open: boolean) =>
+    setClosedSet((prev) => {
+      const next = new Set(prev);
+      const s = String(k);
+      if (open) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+
   // Champion(s): one per division (or single when no division split)
   const champions = divisionKeys.map((divKey) => {
     const divMatches = matchesByDivision.get(divKey) ?? [];
@@ -277,16 +290,19 @@ export function KnockoutStage({
             const tone = divKey !== null ? divisionTone(divKey) : null;
             const { champion } = champions[dIdx];
 
-            return (
-              <div key={String(divKey)} className="space-y-4">
-                {/* Division heading (only when multi-division) */}
-                {isMultiDivision && divKey !== null && (
-                  <div className={`flex items-center gap-2 pb-1 border-b ${tone?.text ?? ""}`}>
-                    <span className={`inline-block w-2 h-2 rounded-full ${tone?.bg ?? ""} border ${tone?.border ?? ""}`} />
-                    <h3 className="text-sm font-semibold">{divisionLabelTh(divKey)}</h3>
-                  </div>
-                )}
+            const divPlayableTotal = divMatches.filter(
+              (m) => (m.team_a_id || m.pair_a_id) && (m.team_b_id || m.pair_b_id),
+            ).length;
+            const divPlayableCompleted = divMatches.filter(
+              (m) =>
+                m.status === "completed" &&
+                (m.team_a_id || m.pair_a_id) &&
+                (m.team_b_id || m.pair_b_id),
+            ).length;
+            const divOpen = isMultiDivision ? isDivOpen(divKey) : true;
 
+            const sectionsBody = (
+              <>
                 {/* Upper / winner bracket */}
                 <BracketSection
                   label={hasLower ? "สายชนะ" : ""}
@@ -360,6 +376,44 @@ export function KnockoutStage({
                       </div>
                     </div>
                   </>
+                )}
+              </>
+            );
+
+            return (
+              <div key={String(divKey)} className="space-y-4">
+                {isMultiDivision && divKey !== null ? (
+                  <Collapsible
+                    open={divOpen}
+                    onOpenChange={(o) => setDivOpen(divKey, o)}
+                    className="space-y-4"
+                  >
+                    {/* Division heading as trigger */}
+                    <CollapsibleTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className={`w-full justify-start h-auto px-1 py-1 pb-1 border-b rounded-none text-sm font-semibold ${tone?.text ?? ""}`}
+                        />
+                      }
+                    >
+                      <ChevronDown
+                        className={`h-3.5 w-3.5 transition-transform duration-200 ${divOpen ? "" : "-rotate-90"}`}
+                      />
+                      <span className={`inline-block w-2 h-2 rounded-full ${tone?.bg ?? ""} border ${tone?.border ?? ""}`} />
+                      <span>{divisionLabelTh(divKey)}</span>
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                        ({divPlayableCompleted}/{divPlayableTotal})
+                      </span>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="space-y-4">
+                      {sectionsBody}
+                    </CollapsibleContent>
+                  </Collapsible>
+                ) : (
+                  sectionsBody
                 )}
 
                 {/* Separator between divisions */}
