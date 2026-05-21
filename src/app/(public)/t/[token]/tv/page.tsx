@@ -7,8 +7,8 @@ import { TvAutoRefresh } from "@/components/tournament/tv-auto-refresh";
 import { TvMatchCard } from "@/components/tournament/tv-match-card";
 import { TvStandingsCarousel, type StandingsPage, type TableRow } from "@/components/tournament/tv-standings-carousel";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
-import { computeStandings, leaguePoints, type StandingRow } from "@/lib/tournament/scoring";
-import { computePairDivision } from "@/lib/tournament/divisions";
+import { computeStandings, aggregatePairStandingsToTeams, type StandingRow } from "@/lib/tournament/scoring";
+import { computePairDivision, parsePairLevel } from "@/lib/tournament/divisions";
 import { parseSettings } from "@/lib/tournament/settings";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
 
@@ -119,35 +119,7 @@ export default async function TvDisplayPage({
   } else {
     // Pair mode — aggregate per-pair standings into per-team totals
     const pairStandings = computeStandings(allMatches, "pair", competitorIds);
-
-    const teamAgg = new Map<string, StandingRow>();
-    for (const row of pairStandings) {
-      const pair = pairById.get(row.competitorId);
-      if (!pair) continue;
-      const tid = pair.team_id;
-      const cur = teamAgg.get(tid) ?? {
-        competitorId: tid,
-        played: 0, wins: 0, draws: 0, losses: 0,
-        pointsFor: 0, pointsAgainst: 0,
-        leaguePoints: 0, pointDiff: 0,
-      };
-      cur.played += row.played;
-      cur.wins += row.wins;
-      cur.draws += row.draws;
-      cur.losses += row.losses;
-      cur.pointsFor += row.pointsFor;
-      cur.pointsAgainst += row.pointsAgainst;
-      teamAgg.set(tid, cur);
-    }
-    for (const row of teamAgg.values()) {
-      row.leaguePoints = leaguePoints(row.wins, row.draws);
-      row.pointDiff = row.pointsFor - row.pointsAgainst;
-    }
-    const teamAggSorted = Array.from(teamAgg.values()).sort((a, b) => {
-      if (b.leaguePoints !== a.leaguePoints) return b.leaguePoints - a.leaguePoints;
-      if (b.pointDiff !== a.pointDiff) return b.pointDiff - a.pointDiff;
-      return b.pointsFor - a.pointsFor;
-    });
+    const teamAggSorted = aggregatePairStandingsToTeams(pairStandings, pairs, teams);
 
     teamTotalsRows = rowsFromStandings(teamAggSorted, (id) => {
       const tm = teamById.get(id);
@@ -177,12 +149,7 @@ export default async function TvDisplayPage({
       const buckets = new Map<number, StandingRow[]>();
       for (const s of pairStandings) {
         const pair = pairById.get(s.competitorId);
-        const lvlRaw = pair?.pair_level;
-        const lvl = lvlRaw === null || lvlRaw === undefined
-          ? null
-          : parseFloat(String(lvlRaw));
-        const lvlClean = lvl !== null && Number.isNaN(lvl) ? null : lvl;
-        const div = computePairDivision(lvlClean, thresholds) ?? divCount;
+        const div = computePairDivision(parsePairLevel(pair?.pair_level), thresholds) ?? divCount;
         const arr = buckets.get(div) ?? [];
         arr.push(s);
         buckets.set(div, arr);

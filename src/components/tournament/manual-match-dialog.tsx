@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Plus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createManualMatchAction } from "@/lib/actions/matches";
-import { computePairDivision, divisionLabelTh } from "@/lib/tournament/divisions";
+import { computePairDivision, parsePairLevel, divisionLabelTh } from "@/lib/tournament/divisions";
 import type { PairWithPlayers } from "@/lib/types";
 
 function pairLabel(pair: PairWithPlayers): string {
@@ -44,17 +44,24 @@ export function ManualMatchDialog({
   const [pairBId, setPairBId] = useState<string>("");
   const [isPending, startTransition] = useTransition();
 
+  const pairsByDivision = useMemo(() => {
+    const map = new Map<number | null, PairWithPlayers[]>();
+    for (const p of pairs) {
+      const d = computePairDivision(parsePairLevel(p.pair_level), pairDivisionThresholds);
+      const arr = map.get(d) ?? [];
+      arr.push(p);
+      map.set(d, arr);
+    }
+    return map;
+  }, [pairs, pairDivisionThresholds]);
+
   const pairA = pairs.find((p) => p.id === pairAId);
   const divA = pairA
-    ? computePairDivision(parseFloat(pairA.pair_level ?? ""), pairDivisionThresholds)
+    ? computePairDivision(parsePairLevel(pairA.pair_level), pairDivisionThresholds)
     : undefined;
 
-  const pairBOptions = pairAId
-    ? pairs.filter(
-        (p) =>
-          p.id !== pairAId &&
-          computePairDivision(parseFloat(p.pair_level ?? ""), pairDivisionThresholds) === divA
-      )
+  const pairBOptions = pairAId && divA !== undefined
+    ? (pairsByDivision.get(divA) ?? []).filter((p) => p.id !== pairAId)
     : [];
 
   const canSubmit = !!pairAId && !!pairBId;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useMemo, useTransition } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
 import { RefreshCw, Trophy, GitBranch, CheckCircle2, XCircle } from "lucide-react";
@@ -134,7 +134,28 @@ export function KnockoutStage({
 }) {
   const [isPending, startGen] = useTransition();
 
-  const competitorMap = buildCompetitorMap(matchUnit, teams, pairs ?? []);
+  const competitorMap = useMemo(
+    () => buildCompetitorMap(matchUnit, teams, pairs ?? []),
+    [matchUnit, teams, pairs],
+  );
+
+  const matchesByDivision = useMemo(() => {
+    const m = new Map<number | null, Match[]>();
+    for (const x of matches) {
+      const k = parseDivision(x.division);
+      const arr = m.get(k) ?? [];
+      arr.push(x);
+      m.set(k, arr);
+    }
+    return m;
+  }, [matches]);
+
+  const divisionKeysMemo = useMemo(
+    () => Array.from(matchesByDivision.keys()).sort((a, b) =>
+      a === null ? 1 : b === null ? -1 : a - b
+    ),
+    [matchesByDivision],
+  );
 
   // Build requirements checklist
   const reqs: Req[] = [];
@@ -157,10 +178,7 @@ export function KnockoutStage({
   const hasMatches = matches.length > 0;
 
   // Collect distinct numeric divisions present in knockout matches (null = no division split)
-  const divisionKeys: Array<number | null> = Array.from(
-    new Set(matches.map((m) => parseDivision(m.division)))
-  ).sort((a, b) => (a ?? 99) - (b ?? 99));
-
+  const divisionKeys = divisionKeysMemo;
   const isMultiDivision = divisionKeys.some((k) => k !== null);
 
   // Helper: split a set of matches into upper/lower/grand_final sub-sections
@@ -181,9 +199,7 @@ export function KnockoutStage({
 
   // Champion(s): one per division (or single when no division split)
   const champions = divisionKeys.map((divKey) => {
-    const divMatches = divKey !== null
-      ? matches.filter((m) => parseDivision(m.division) === divKey)
-      : matches;
+    const divMatches = matchesByDivision.get(divKey) ?? [];
     const { upper, grandFinal } = splitBrackets(divMatches);
     const maxUpperRound = upper.length > 0 ? Math.max(...upper.map((m) => m.round_number)) : 0;
     const finalMatch = grandFinal.length > 0
@@ -251,9 +267,7 @@ export function KnockoutStage({
       {hasMatches && (
         <div className="space-y-6">
           {divisionKeys.map((divKey, dIdx) => {
-            const divMatches = divKey !== null
-              ? matches.filter((m) => parseDivision(m.division) === divKey)
-              : matches;
+            const divMatches = matchesByDivision.get(divKey) ?? [];
             const { upper, lower, grandFinal } = splitBrackets(divMatches);
             const hasLower = lower.length > 0;
             const hasGrandFinal = grandFinal.length > 0;

@@ -30,6 +30,12 @@ export function parseDivision(raw: string | null | undefined): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+export function parsePairLevel(raw: string | null | undefined): number | null {
+  if (raw == null) return null;
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function divisionLabel(n: number): string {
   return `Division ${n}`;
 }

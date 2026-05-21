@@ -2,51 +2,9 @@ import { Trophy } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MatchRow } from "@/components/tournament/match-row";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
-import { computeStandings, leaguePoints, type StandingRow } from "@/lib/tournament/scoring";
-import { computePairDivision, divisionLabelTh, divisionTone, divisionCount } from "@/lib/tournament/divisions";
+import { computeStandings, aggregatePairStandingsToTeams, type StandingRow } from "@/lib/tournament/scoring";
+import { computePairDivision, parsePairLevel, divisionLabelTh, divisionTone, divisionCount } from "@/lib/tournament/divisions";
 import type { Tournament, TeamWithPlayers, PairWithPlayers, Match, Team } from "@/lib/types";
-
-/**
- * Aggregate pair standings into team standings by summing per-pair rows.
- * Used when match_unit='pair' to show overall team performance.
- */
-function aggregatePairStandingsToTeams(
-  pairStandings: StandingRow[],
-  pairs: PairWithPlayers[],
-  teams: Team[]
-): StandingRow[] {
-  const pairTeamMap = new Map(pairs.map((p) => [p.id, p.team_id]));
-  const acc = new Map<string, StandingRow>(
-    teams.map((t) => [t.id, {
-      competitorId: t.id, played: 0, wins: 0, draws: 0, losses: 0,
-      pointsFor: 0, pointsAgainst: 0, leaguePoints: 0, pointDiff: 0,
-    }])
-  );
-
-  for (const s of pairStandings) {
-    const teamId = pairTeamMap.get(s.competitorId);
-    if (!teamId) continue;
-    const row = acc.get(teamId);
-    if (!row) continue;
-    row.played += s.played;
-    row.wins += s.wins;
-    row.draws += s.draws;
-    row.losses += s.losses;
-    row.pointsFor += s.pointsFor;
-    row.pointsAgainst += s.pointsAgainst;
-  }
-
-  for (const row of acc.values()) {
-    row.leaguePoints = leaguePoints(row.wins, row.draws);
-    row.pointDiff = row.pointsFor - row.pointsAgainst;
-  }
-
-  return Array.from(acc.values()).sort((a, b) => {
-    if (b.leaguePoints !== a.leaguePoints) return b.leaguePoints - a.leaguePoints;
-    if (b.pointDiff !== a.pointDiff) return b.pointDiff - a.pointDiff;
-    return b.pointsFor - a.pointsFor;
-  });
-}
 
 export function PublicOverview({
   tournament,
@@ -79,35 +37,28 @@ export function PublicOverview({
   // ── Section 1: Team total scores (works for both team & pair modes) ──
   const teamIds = flatTeams.map((t) => t.id);
   const pairIds = pairs.map((p) => p.id);
+  const pairStandingsAll: StandingRow[] =
+    unit === "pair" ? computeStandings(allMatches, "pair", pairIds) : [];
   const teamTotals: StandingRow[] =
     unit === "team"
       ? computeStandings(allMatches, "team", teamIds)
-      : aggregatePairStandingsToTeams(
-          computeStandings(allMatches, "pair", pairIds),
-          pairs,
-          flatTeams
-        );
+      : aggregatePairStandingsToTeams(pairStandingsAll, pairs, flatTeams);
   const teamTotalsPlayed = teamTotals.filter((s) => s.played > 0);
 
   // ── Section 2: Pair standings split by division (pair mode only) ──
-  const pairStandingsAll =
-    unit === "pair" ? computeStandings(allMatches, "pair", pairIds) : [];
   const thresholds: number[] = Array.isArray(tournament.pair_division_thresholds)
     ? (tournament.pair_division_thresholds as number[]).filter((n) => typeof n === "number" && !Number.isNaN(n))
     : [];
-  const pairLevelById = new Map(
-    pairs.map((p) => {
-      const lv = p.pair_level == null ? NaN : parseFloat(p.pair_level);
-      return [p.id, Number.isFinite(lv) ? lv : NaN];
-    })
-  );
   // Build per-division buckets (1..N) when thresholds are set
   const N = divisionCount(thresholds);
   const divisionBuckets = new Map<number, StandingRow[]>();
   if (unit === "pair" && thresholds.length > 0) {
+    const pairLevelById = new Map(
+      pairs.map((p) => [p.id, parsePairLevel(p.pair_level)]),
+    );
     for (const s of pairStandingsAll) {
-      const lv = pairLevelById.get(s.competitorId) ?? NaN;
-      const div = computePairDivision(Number.isFinite(lv) ? lv : null, thresholds) ?? N;
+      const lv = pairLevelById.get(s.competitorId) ?? null;
+      const div = computePairDivision(lv, thresholds) ?? N;
       const arr = divisionBuckets.get(div) ?? [];
       arr.push(s);
       divisionBuckets.set(div, arr);

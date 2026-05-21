@@ -14,7 +14,8 @@ import { assertCanEdit } from "@/lib/tournament/permissions";
 import { writeAuditLog } from "@/lib/tournament/audit";
 import { notifyTournamentEvent } from "@/lib/notification/line";
 import { getTournamentSettings } from "@/lib/tournament/settings.server";
-import { computePairDivision, parseDivision, divisionLabelTh } from "@/lib/tournament/divisions";
+import { computePairDivision, parseDivision, parsePairLevel, divisionLabelTh } from "@/lib/tournament/divisions";
+import type { TournamentSettings } from "@/lib/tournament/settings";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
@@ -169,10 +170,48 @@ export async function generateGroupMatchesAction(tournamentId: string) {
 
 // ============ PAIR MODE ============
 
-function levelToNum(level: string | null | undefined): number {
-  if (!level) return 0;
-  const n = parseFloat(level);
-  return isNaN(n) ? 0 : n;
+async function applyDivisionPriorityOrdering(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  tournamentId: string,
+  roundType: "group" | "knockout",
+  settings?: TournamentSettings,
+): Promise<void> {
+  const s = settings ?? (await getTournamentSettings(tournamentId));
+  const { data: pending } = await sb
+    .from("matches")
+    .select("id, division, bracket, round_type, match_number")
+    .eq("tournament_id", tournamentId)
+    .eq("status", "pending")
+    .eq("round_type", roundType)
+    .order("match_number");
+  if (!pending || pending.length < 2) return;
+  const divPriority =
+    s.queue_division_priority.length > 0
+      ? s.queue_division_priority
+      : Array.from(
+          new Set(
+            pending
+              .map((m) => parseDivision(m.division))
+              .filter((d): d is number => d !== null),
+          ),
+        ).sort((a, b) => a - b);
+  const ordered = orderByDivisionPriority(
+    pending.map((m) => ({
+      id: m.id,
+      division: m.division,
+      bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
+      round_type: m.round_type as "group" | "knockout",
+      match_number: m.match_number,
+    })),
+    s.queue_division_order,
+    divPriority,
+    s.queue_chunk_size,
+  ).flat();
+  const { error } = await sb.rpc("swap_pending_match_numbers", {
+    p_tournament_id: tournamentId,
+    p_ordered_ids: ordered,
+  });
+  if (error) console.warn("[applyDivisionPriorityOrdering]", error);
 }
 
 export async function generatePairMatchesAction(tournamentId: string) {
@@ -220,10 +259,7 @@ export async function generatePairMatchesAction(tournamentId: string) {
     const divisionMap = new Map<number, RawPair[]>();
     for (const t of allTeamPairs) {
       for (const p of t.pairs) {
-        const lvl = parseFloat(p.pair_level ?? "");
-        // NaN-safe: treat NaN as lowest tier when thresholds exist
-        const safeLevel = isNaN(lvl) ? null : lvl;
-        const d = computePairDivision(safeLevel, thresholds);
+        const d = computePairDivision(parsePairLevel(p.pair_level), thresholds);
         // d is always a number here since thresholds.length > 0
         const key = d as number;
         if (!divisionMap.has(key)) divisionMap.set(key, []);
@@ -265,37 +301,7 @@ export async function generatePairMatchesAction(tournamentId: string) {
 
   // Apply division-priority ordering immediately so users don't need
   // to click "จัดคิวอัตโนมัติ" after generation.
-  {
-    const genSettings = await getTournamentSettings(tournamentId);
-    const { data: newPending } = await sb
-      .from("matches")
-      .select("id, division, bracket, round_type, match_number")
-      .eq("tournament_id", tournamentId)
-      .eq("status", "pending")
-      .eq("round_type", "group")
-      .order("match_number");
-    if (newPending && newPending.length >= 2) {
-      const divPriority = genSettings.queue_division_priority.length > 0
-        ? genSettings.queue_division_priority
-        : Array.from(new Set(newPending.map((m) => parseDivision(m.division)).filter((d): d is number => d !== null))).sort((a, b) => a - b);
-      const { error: swapErr } = await sb.rpc("swap_pending_match_numbers", {
-        p_tournament_id: tournamentId,
-        p_ordered_ids: orderByDivisionPriority(
-          newPending.map((m) => ({
-            id: m.id,
-            division: m.division,
-            bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
-            round_type: m.round_type as "group" | "knockout",
-            match_number: m.match_number,
-          })),
-          genSettings.queue_division_order,
-          divPriority,
-          genSettings.queue_chunk_size,
-        ).flat(),
-      });
-      if (swapErr) console.warn("[swap_pending_match_numbers]", swapErr);
-    }
-  }
+  await applyDivisionPriorityOrdering(sb, tournamentId, "group");
 
   // Regenerating pair matches resets all scores → KO bracket seeded from standings is invalid.
   const koCleared = await clearKnockoutMatches(sb, tournamentId);
@@ -518,13 +524,13 @@ export async function generateKnockoutAction(tournamentId: string) {
       return { teamId: p.id, name: label };
     }
 
-    // Returns division number (1..N) or null when no thresholds
-    function pairDivNum(pairId: string): number | null {
-      if (thresholds.length === 0) return null;
-      const p = pairs.find((x) => x.id === pairId);
-      const lvl = parseFloat(p?.pair_level ?? "");
-      return computePairDivision(isNaN(lvl) ? null : lvl, thresholds);
-    }
+    // Precompute division per pair once — avoids O(D·P²) `pairs.find()` inside division loops
+    const divByPairId = new Map<string, number | null>(
+      pairs.map((p) => [
+        p.id,
+        thresholds.length === 0 ? null : computePairDivision(parsePairLevel(p.pair_level), thresholds),
+      ]),
+    );
 
     // Collect all BracketMatchDef across all divisions; tag each with division string
     let allMatches: BracketMatchDef[] = [];
@@ -558,7 +564,7 @@ export async function generateKnockoutAction(tournamentId: string) {
         let anyBuilt = false;
         let matchNumOffset = 0;
         for (let d = 1; d <= divCount; d++) {
-          const divPairIds = pairs.filter((p) => pairDivNum(p.id) === d).map((p) => p.id);
+          const divPairIds = pairs.filter((p) => divByPairId.get(p.id) === d).map((p) => p.id);
           if (divPairIds.length < 2) continue;
           const standings = computeStandings(groupMatches, "pair", divPairIds);
           let divSeeds = seedsFromStandings(standings, advanceCount);
@@ -591,7 +597,7 @@ export async function generateKnockoutAction(tournamentId: string) {
         const divCount = thresholds.length + 1;
         let matchNumOffset = 0;
         for (let d = 1; d <= divCount; d++) {
-          const divPairs = pairs.filter((p) => pairDivNum(p.id) === d);
+          const divPairs = pairs.filter((p) => divByPairId.get(p.id) === d);
           if (divPairs.length < 2) continue;
           let divSeeds = divPairs.map(pairSeed);
           if (tournament.seeding_method === "random") divSeeds = divSeeds.sort(() => Math.random() - 0.5);
@@ -660,37 +666,7 @@ export async function generateKnockoutAction(tournamentId: string) {
     }
 
     // Apply division-priority ordering immediately after bracket insert.
-    {
-      const koSettings = await getTournamentSettings(tournamentId);
-      const { data: koPending } = await sb
-        .from("matches")
-        .select("id, division, bracket, round_type, match_number")
-        .eq("tournament_id", tournamentId)
-        .eq("status", "pending")
-        .eq("round_type", "knockout")
-        .order("match_number");
-      if (koPending && koPending.length >= 2) {
-        const divPriority = koSettings.queue_division_priority.length > 0
-          ? koSettings.queue_division_priority
-          : Array.from(new Set(koPending.map((m) => parseDivision(m.division)).filter((d): d is number => d !== null))).sort((a, b) => a - b);
-        const { error: swapErr } = await sb.rpc("swap_pending_match_numbers", {
-          p_tournament_id: tournamentId,
-          p_ordered_ids: orderByDivisionPriority(
-            koPending.map((m) => ({
-              id: m.id,
-              division: m.division,
-              bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
-              round_type: m.round_type as "group" | "knockout",
-              match_number: m.match_number,
-            })),
-            koSettings.queue_division_order,
-            divPriority,
-            koSettings.queue_chunk_size,
-          ).flat(),
-        });
-        if (swapErr) console.warn("[swap_pending_match_numbers]", swapErr);
-      }
-    }
+    await applyDivisionPriorityOrdering(sb, tournamentId, "knockout");
 
     revalidatePath(`/tournaments/${tournamentId}`);
     await writeAuditLog({
@@ -769,37 +745,7 @@ export async function generateKnockoutAction(tournamentId: string) {
   if (err) return err;
 
   // Apply division-priority ordering immediately after bracket insert.
-  {
-    const koSettings = await getTournamentSettings(tournamentId);
-    const { data: koPending } = await sb
-      .from("matches")
-      .select("id, division, bracket, round_type, match_number")
-      .eq("tournament_id", tournamentId)
-      .eq("status", "pending")
-      .eq("round_type", "knockout")
-      .order("match_number");
-    if (koPending && koPending.length >= 2) {
-      const divPriority = koSettings.queue_division_priority.length > 0
-        ? koSettings.queue_division_priority
-        : Array.from(new Set(koPending.map((m) => parseDivision(m.division)).filter((d): d is number => d !== null))).sort((a, b) => a - b);
-      const { error: swapErr } = await sb.rpc("swap_pending_match_numbers", {
-        p_tournament_id: tournamentId,
-        p_ordered_ids: orderByDivisionPriority(
-          koPending.map((m) => ({
-            id: m.id,
-            division: m.division,
-            bracket: m.bracket as "upper" | "lower" | "grand_final" | null,
-            round_type: m.round_type as "group" | "knockout",
-            match_number: m.match_number,
-          })),
-          koSettings.queue_division_order,
-          divPriority,
-          koSettings.queue_chunk_size,
-        ).flat(),
-      });
-      if (swapErr) console.warn("[swap_pending_match_numbers]", swapErr);
-    }
-  }
+  await applyDivisionPriorityOrdering(sb, tournamentId, "knockout");
 
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
@@ -867,8 +813,7 @@ export async function createManualMatchAction(input: {
 
   function pairDivNum(level: string | null | undefined): number | null {
     if (thresholds.length === 0) return null;
-    const n = parseFloat(level ?? "");
-    return computePairDivision(isNaN(n) ? null : n, thresholds);
+    return computePairDivision(parsePairLevel(level), thresholds);
   }
 
   const divA = pairDivNum(pA.pair_level as string | null);

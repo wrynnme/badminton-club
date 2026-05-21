@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { generatePairMatchesAction } from "@/lib/actions/matches";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
-import { computeStandings } from "@/lib/tournament/scoring";
+import { computeStandings, aggregatePairStandingsToTeams } from "@/lib/tournament/scoring";
 import type { Match, PairWithPlayers, Team, TeamWithPlayers } from "@/lib/types";
 import { ChevronDown, ChevronUp, Loader2, Swords } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
@@ -35,7 +35,6 @@ export function PairStage({
   pairDivisionThresholds?: number[];
   matchRowSize?: "compact" | "comfortable";
 }) {
-  const [openGroups, setOpenGroups] = useState<Map<number | null, boolean>>(new Map());
   const [genPending, startGen] = useTransition();
 
   const flatTeams: Team[] = useMemo(
@@ -50,11 +49,14 @@ export function PairStage({
   );
   const pairCompetitors = useMemo(() => Array.from(pairCompetitorMap.values()), [pairCompetitorMap]);
 
-  const pairsByTeam = new Map<string, PairWithPlayers[]>();
-  for (const p of pairs) {
-    if (!pairsByTeam.has(p.team_id)) pairsByTeam.set(p.team_id, []);
-    pairsByTeam.get(p.team_id)!.push(p);
-  }
+  const pairsByTeam = useMemo(() => {
+    const map = new Map<string, PairWithPlayers[]>();
+    for (const p of pairs) {
+      if (!map.has(p.team_id)) map.set(p.team_id, []);
+      map.get(p.team_id)!.push(p);
+    }
+    return map;
+  }, [pairs]);
 
   // Group matches by division (number | null)
   const matchesByDivision = useMemo(() => {
@@ -78,16 +80,33 @@ export function PairStage({
   );
 
   // Aggregate team-level standings from pair matches
-  const pairStandings = computeStandings(matches, "pair", pairs.map((p) => p.id));
-  const teamAgg = new Map<string, { wins: number; draws: number; losses: number; pf: number; pa: number }>();
-  for (const ps of pairStandings) {
-    const pair = pairs.find((p) => p.id === ps.competitorId);
-    if (!pair) continue;
-    const cur = teamAgg.get(pair.team_id) || { wins: 0, draws: 0, losses: 0, pf: 0, pa: 0 };
-    cur.wins += ps.wins; cur.draws += ps.draws; cur.losses += ps.losses;
-    cur.pf += ps.pointsFor; cur.pa += ps.pointsAgainst;
-    teamAgg.set(pair.team_id, cur);
-  }
+  const pairStandings = useMemo(
+    () => computeStandings(matches, "pair", pairs.map((p) => p.id)),
+    [matches, pairs],
+  );
+  const teamAggRows = useMemo(
+    () => aggregatePairStandingsToTeams(pairStandings, pairs, flatTeams),
+    [pairStandings, pairs, flatTeams],
+  );
+
+  // openSet tracks divisions explicitly toggled; first key opens by default when nothing toggled
+  const [openSet, setOpenSet] = useState<Set<string>>(() => new Set());
+  const isOpen = (k: number | null) => {
+    const s = String(k);
+    if (openSet.has(s)) return true;
+    // first key open by default if user hasn't toggled anything
+    return openSet.size === 0 && divisionKeys.length > 0 && String(divisionKeys[0]) === s;
+  };
+  const toggle = (k: number | null) => setOpenSet((prev) => {
+    const next = new Set(prev);
+    const s = String(k);
+    // Seed with default-open if user is interacting for the first time
+    if (next.size === 0 && divisionKeys.length > 0) {
+      next.add(String(divisionKeys[0]));
+    }
+    if (next.has(s)) next.delete(s); else next.add(s);
+    return next;
+  });
 
   const totalMatches = matches.length;
   const completedMatches = matches.filter((m) => m.status === "completed").length;
@@ -104,19 +123,6 @@ export function PairStage({
       ...divMatches.map((m) => m.pair_b_id),
     ].filter(Boolean) as string[])];
     return pairIds.map((id) => pairCompetitorMap.get(id)).filter(Boolean) as typeof pairCompetitors;
-  }
-
-  function isGroupOpen(key: number | null, idx: number) {
-    if (openGroups.has(key)) return openGroups.get(key)!;
-    return idx === 0; // first group open by default
-  }
-
-  function toggleGroup(key: number | null, current: boolean) {
-    setOpenGroups((prev) => {
-      const next = new Map(prev);
-      next.set(key, !current);
-      return next;
-    });
   }
 
   return (
@@ -190,9 +196,9 @@ export function PairStage({
 
         {hasMatches && (
           <div className="space-y-3">
-            {divisionKeys.map((divKey, idx) => {
+            {divisionKeys.map((divKey) => {
               const matchList = matchesByDivision.get(divKey) ?? [];
-              const isOpen = isGroupOpen(divKey, idx);
+              const open = isOpen(divKey);
               const label = divKey !== null ? divisionLabelTh(divKey) : "ไม่มีกลุ่ม";
               const tone = divKey !== null ? divisionTone(divKey) : null;
               const completedCount = matchList.filter((m) => m.status === "completed").length;
@@ -205,15 +211,15 @@ export function PairStage({
                       variant="ghost"
                       size="sm"
                       className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => toggleGroup(divKey, isOpen)}>
-                      {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                      onClick={() => toggle(divKey)}>
+                      {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                       {tone && (
                         <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${tone.bg} ${tone.border} border`} />
                       )}
                       {label}
                       <span className="ml-1">({completedCount}/{matchList.length})</span>
                     </Button>
-                    {isOpen && (
+                    {open && (
                       <MatchList
                         matches={matchList}
                         competitorById={pairCompetitorMap}
@@ -275,27 +281,24 @@ export function PairStage({
                         </tr>
                       </thead>
                       <tbody>
-                        {[...teamAgg.entries()]
-                          .map(([teamId, s]) => ({ teamId, ...s, pts: s.wins * 3 + s.draws, diff: s.pf - s.pa }))
-                          .sort((a, b) => b.pts - a.pts || b.diff - a.diff || b.pf - a.pf)
-                          .map((row, i) => {
-                            const t = teamById.get(row.teamId);
-                            return (
-                              <tr key={row.teamId} className={i === 0 ? "font-semibold" : ""}>
-                                <td className="py-0.5">
-                                  <div className="flex items-center gap-1.5">
-                                    {t?.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />}
-                                    <span>{t?.name ?? "—"}</span>
-                                  </div>
-                                </td>
-                                <td className="text-center tabular-nums">{row.wins}</td>
-                                <td className="text-center tabular-nums">{row.draws}</td>
-                                <td className="text-center tabular-nums">{row.losses}</td>
-                                <td className="text-center tabular-nums">{row.diff > 0 ? "+" : ""}{row.diff}</td>
-                                <td className="text-center font-semibold tabular-nums">{row.pts}</td>
-                              </tr>
-                            );
-                          })}
+                        {teamAggRows.map((row, i) => {
+                          const t = teamById.get(row.competitorId);
+                          return (
+                            <tr key={row.competitorId} className={i === 0 ? "font-semibold" : ""}>
+                              <td className="py-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  {t?.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />}
+                                  <span>{t?.name ?? "—"}</span>
+                                </div>
+                              </td>
+                              <td className="text-center tabular-nums">{row.wins}</td>
+                              <td className="text-center tabular-nums">{row.draws}</td>
+                              <td className="text-center tabular-nums">{row.losses}</td>
+                              <td className="text-center tabular-nums">{row.pointDiff > 0 ? "+" : ""}{row.pointDiff}</td>
+                              <td className="text-center font-semibold tabular-nums">{row.leaguePoints}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </CardContent>
