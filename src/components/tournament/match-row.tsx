@@ -52,7 +52,7 @@ function MatchRowImpl({
       <div className={`flex items-center gap-2 ${rowText}`}>
         <div className={`flex-1 min-w-0 text-right ${winner === "a" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
           {a?.color && <span className={colorDot} style={{ backgroundColor: a.color }} />}
-          <span className="truncate">{a?.name ?? unknownLabel}</span>
+          <span className="truncate block">{a?.name ?? unknownLabel}</span>
           {a?.subtitle && <div className={`${subText} text-muted-foreground font-normal truncate`}>{a.subtitle}</div>}
         </div>
 
@@ -67,7 +67,7 @@ function MatchRowImpl({
 
         <div className={`flex-1 min-w-0 ${winner === "b" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
           {b?.color && <span className={colorDot} style={{ backgroundColor: b.color }} />}
-          <span className="truncate">{b?.name ?? unknownLabel}</span>
+          <span className="truncate block">{b?.name ?? unknownLabel}</span>
           {b?.subtitle && <div className={`${subText} text-muted-foreground font-normal truncate`}>{b.subtitle}</div>}
         </div>
 
