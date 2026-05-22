@@ -50,21 +50,21 @@ export function TvMatchCard({
 
   return (
     <div className={`rounded-xl border bg-card p-2 lg:p-3 2xl:p-4 ${fillHeight ? "h-full flex flex-col gap-2" : "space-y-2"}`}>
-      <div className={`${fillHeight ? "shrink-0" : ""} flex items-center justify-between gap-2 text-sm lg:text-base 2xl:text-lg`}>
-        <div className="flex items-center gap-2">
-          <span className={`px-2 py-0.5 rounded-full border text-xs lg:text-sm 2xl:text-base font-medium ${status.cls}`}>
-            {status.text}
-          </span>
-          <span className="text-muted-foreground">#{match.match_number}</span>
+      <div className={`${fillHeight ? "shrink-0" : ""} flex items-center justify-between gap-3 text-sm lg:text-base 2xl:text-lg`}>
+        <span className={`px-2 py-0.5 rounded-full border text-xs lg:text-sm 2xl:text-base font-medium shrink-0 ${status.cls}`}>
+          {status.text}
+        </span>
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
+          <span className="text-muted-foreground font-mono">#{match.match_number}</span>
+          {match.court && (
+            <span className="font-bold text-base lg:text-xl 2xl:text-2xl">Court {match.court}</span>
+          )}
         </div>
-        {match.court && (
-          <span className="font-bold text-base lg:text-xl 2xl:text-2xl">Court {match.court}</span>
-        )}
       </div>
 
       <div className={`${fillHeight ? "flex-1 min-h-0" : ""} flex items-center gap-3 lg:gap-6`}>
         <div className={`flex-1 min-w-0 ${sideClass(winner === "a", winner === "b")}`}>
-          <div className="flex items-start gap-2">
+          <div className="flex items-start gap-2 min-w-0">
             {a?.color && (
               <span className="inline-block w-3 h-3 lg:w-4 lg:h-4 2xl:w-5 2xl:h-5 rounded-full shrink-0 mt-2" style={{ backgroundColor: a.color }} />
             )}
@@ -93,7 +93,7 @@ export function TvMatchCard({
         </div>
 
         <div className={`flex-1 min-w-0 text-right ${sideClass(winner === "b", winner === "a")}`}>
-          <div className="flex items-start justify-end gap-2">
+          <div className="flex items-start justify-end gap-2 min-w-0">
             <div className={`${nameSize(b?.name)} whitespace-nowrap truncate leading-tight min-w-0`}>{b?.name ?? "—"}</div>
             {b?.color && (
               <span className="inline-block w-3 h-3 lg:w-4 lg:h-4 2xl:w-5 2xl:h-5 rounded-full shrink-0 mt-2" style={{ backgroundColor: b.color }} />
