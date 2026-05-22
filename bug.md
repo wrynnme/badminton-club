@@ -4,7 +4,20 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-(none)
+### 2026-05-22 — Performance audit (backend + frontend)
+
+- **[P1] N+1 in `updateGroupTeamStandings`** — `src/lib/actions/matches.ts:1826-1838`. Sequential `for (const r of rows) await sb.from("group_teams").update(...)`. Fix: `Promise.all(rows.map(r => ...))`. Saves 50-100ms per group match score.
+- **[P1] N+1 in `reverseGroupTeamStandings`** — `src/lib/actions/matches.ts:1854-1866`. Same loop-await pattern. Fix: `Promise.all`. Saves 50-100ms per reset.
+- **[P1] Redundant `getTournamentSettings` calls within one action** — `src/lib/actions/matches.ts:211, 336, 1122, 1399, 1561, 1587, 1661`. Each call = a DB round-trip. Fix: pass `settings` through as optional param to helpers (e.g. `applyDivisionPriorityOrdering(sb, tournamentId, "knockout", settings)`).
+- **[P1] `matchesKey` O(N*M) string serialization** — `src/components/tournament/tournament-dashboard.tsx:169`. Builds `${m.id}:${m.status}:${m.games.map(...).join(",")}` for 168 matches every refresh. Fix: numeric hash or `${matches.length}:${latestUpdatedAt}`. Saves 3-8ms/refresh.
+- **[P1] `occupiedCourts` memo chain → dnd-kit re-init** — `src/components/tournament/match-queue.tsx:552`. `QueueRowBody` reads `occupiedCourts.has(...)` inline; new Set ref on every refresh triggers dnd-kit context re-eval. Fix: derive `isCourtOccupied` once via `useMemo`. Saves 5-15ms/refresh on hot path.
+
+- **[P2] `react-qr-code` eager import** — `src/components/tournament/share-controls.tsx:6`. ~15-25 KB in initial bundle even for users who never open QR dialog. Fix: `dynamic(() => import("react-qr-code"), { ssr: false })`.
+- **[P2] `JSON.stringify(games)` fallback in MatchRow memo** — `src/components/tournament/match-row.tsx:138`. Cheap on small arrays but cleaner as direct array compare. Fix: loop compare `a.games[i].a/b`.
+- **[P2] Court status cards no `content-visibility`** — `src/components/tournament/match-queue.tsx:169`. Off-screen cards still painted. Fix: `style={{ contentVisibility: 'auto', containIntrinsicSize: '100% 140px' }}` on outer Card.
+- **[P2] Unused `isOngoing` prop on `TournamentLiveWrapper`** — `src/components/tournament/tournament-live-wrapper.tsx:17-25`. Kept for "backwards compat" but commented `// no longer gates the subscription`. Fix: remove prop + update callers.
+
+## Resolved
 
 ## Resolved
 
