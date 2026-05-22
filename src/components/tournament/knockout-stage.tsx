@@ -260,8 +260,8 @@ export function KnockoutStage({
         </div>
       </div>
 
-      {/* Requirements checklist */}
-      {reqs.length > 0 && (!hasMatches || !allReqsMet) && (
+      {/* Requirements checklist — admin only */}
+      {isOwner && reqs.length > 0 && (!hasMatches || !allReqsMet) && (
         <div className="space-y-1.5">
           {reqs.map((r) => (
             <div key={r.label} className="flex items-center gap-2 text-sm">

@@ -6,7 +6,6 @@ import { PairStage } from "@/components/tournament/pair-stage";
 import { KnockoutStage } from "@/components/tournament/knockout-stage";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import { PublicHero } from "@/components/tournament/public/public-hero";
-import { PublicOverview } from "@/components/tournament/public/public-overview";
 import { PublicTournamentShell } from "@/components/tournament/public/public-tournament-shell";
 import { TournamentDashboardLazy } from "@/components/tournament/tournament-dashboard-lazy";
 import { MatchQueue } from "@/components/tournament/match-queue";
@@ -117,15 +116,6 @@ export default async function PublicTournamentPage({
               teams={teams}
               pairs={pairs}
               matches={allMatches}
-            />
-          }
-          overview={
-            <PublicOverview
-              tournament={t}
-              teams={teams}
-              flatTeams={flatTeams}
-              pairs={pairs}
-              allMatches={allMatches}
             />
           }
           groups={

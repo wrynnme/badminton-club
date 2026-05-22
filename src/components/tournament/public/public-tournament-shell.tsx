@@ -4,13 +4,12 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type TabId = "dashboard" | "overview" | "groups" | "pairs" | "knockout" | "queue";
+type TabId = "dashboard" | "groups" | "pairs" | "knockout" | "queue";
 
-const ALL_TABS: TabId[] = ["dashboard", "overview", "groups", "pairs", "knockout", "queue"];
+const ALL_TABS: TabId[] = ["dashboard", "groups", "pairs", "knockout", "queue"];
 
 export function PublicTournamentShell({
   dashboard,
-  overview,
   groups,
   pairs,
   knockout,
@@ -21,7 +20,6 @@ export function PublicTournamentShell({
   showQueue,
 }: {
   dashboard: ReactNode;
-  overview: ReactNode;
   groups?: ReactNode;
   pairs?: ReactNode;
   knockout?: ReactNode;
@@ -36,7 +34,7 @@ export function PublicTournamentShell({
   const searchParams = useSearchParams();
 
   const validTabs = useMemo<TabId[]>(() => {
-    const list: TabId[] = ["dashboard", "overview"];
+    const list: TabId[] = ["dashboard"];
     if (showGroups) list.push("groups");
     if (showPairs) list.push("pairs");
     if (showKnockout) list.push("knockout");
@@ -45,13 +43,10 @@ export function PublicTournamentShell({
   }, [showGroups, showPairs, showKnockout, showQueue]);
 
   const queryTab = searchParams.get("tab") as TabId | null;
-  // Default landing tab is "overview" — keeps recharts out of the initial
-  // bundle for typical public viewers. Dashboard tab is opt-in via click,
-  // which lazy-mounts it.
   const active: TabId =
     queryTab && ALL_TABS.includes(queryTab) && validTabs.includes(queryTab)
       ? queryTab
-      : "overview";
+      : "dashboard";
 
   // Lazy-mount: each tab content only renders after first visit. After mount,
   // it stays mounted so switching back is instant + preserves local state.
@@ -76,9 +71,9 @@ export function PublicTournamentShell({
   const onChange = (v: string) => {
     const next = v as TabId;
     const params = new URLSearchParams(searchParams.toString());
-    // "overview" is the canonical default — strip ?tab= for it so the URL
+    // "dashboard" is the canonical default — strip ?tab= for it so the URL
     // stays clean. All other tabs get an explicit ?tab=<id>.
-    if (next === "overview") params.delete("tab");
+    if (next === "dashboard") params.delete("tab");
     else params.set("tab", next);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
@@ -92,9 +87,6 @@ export function PublicTournamentShell({
       >
         <TabsTrigger value="dashboard" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
           แดชบอร์ด
-        </TabsTrigger>
-        <TabsTrigger value="overview" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
-          ภาพรวม
         </TabsTrigger>
         {showGroups && (
           <TabsTrigger value="groups" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
@@ -120,9 +112,6 @@ export function PublicTournamentShell({
 
       <TabsContent value="dashboard" className="mt-6">
         {mounted.has("dashboard") ? dashboard : null}
-      </TabsContent>
-      <TabsContent value="overview" className="mt-6">
-        {mounted.has("overview") ? overview : null}
       </TabsContent>
       {showGroups && (
         <TabsContent value="groups" className="mt-6">

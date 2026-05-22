@@ -34,7 +34,7 @@ export default async function RootLayout({
       className={`${anuphan.variable} ${geistMono.variable} h-full antialiased${isDark ? " dark" : ""}`}
       suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col bg-background">
+      <body className="min-h-full flex flex-col bg-background overflow-x-clip">
         <TooltipProvider delay={300}>{children}</TooltipProvider>
         <Toaster />
       </body>
