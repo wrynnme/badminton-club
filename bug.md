@@ -4,22 +4,30 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-### 2026-05-22 — Performance audit (backend + frontend)
+### 2026-05-22 — Performance audit (deferred)
 
-- **[P1] N+1 in `updateGroupTeamStandings`** — `src/lib/actions/matches.ts:1826-1838`. Sequential `for (const r of rows) await sb.from("group_teams").update(...)`. Fix: `Promise.all(rows.map(r => ...))`. Saves 50-100ms per group match score.
-- **[P1] N+1 in `reverseGroupTeamStandings`** — `src/lib/actions/matches.ts:1854-1866`. Same loop-await pattern. Fix: `Promise.all`. Saves 50-100ms per reset.
-- **[P1] Redundant `getTournamentSettings` calls within one action** — `src/lib/actions/matches.ts:211, 336, 1122, 1399, 1561, 1587, 1661`. Each call = a DB round-trip. Fix: pass `settings` through as optional param to helpers (e.g. `applyDivisionPriorityOrdering(sb, tournamentId, "knockout", settings)`).
-- **[P1] `matchesKey` O(N*M) string serialization** — `src/components/tournament/tournament-dashboard.tsx:169`. Builds `${m.id}:${m.status}:${m.games.map(...).join(",")}` for 168 matches every refresh. Fix: numeric hash or `${matches.length}:${latestUpdatedAt}`. Saves 3-8ms/refresh.
-- **[P1] `occupiedCourts` memo chain → dnd-kit re-init** — `src/components/tournament/match-queue.tsx:552`. `QueueRowBody` reads `occupiedCourts.has(...)` inline; new Set ref on every refresh triggers dnd-kit context re-eval. Fix: derive `isCourtOccupied` once via `useMemo`. Saves 5-15ms/refresh on hot path.
-
-- **[P2] `react-qr-code` eager import** — `src/components/tournament/share-controls.tsx:6`. ~15-25 KB in initial bundle even for users who never open QR dialog. Fix: `dynamic(() => import("react-qr-code"), { ssr: false })`.
-- **[P2] `JSON.stringify(games)` fallback in MatchRow memo** — `src/components/tournament/match-row.tsx:138`. Cheap on small arrays but cleaner as direct array compare. Fix: loop compare `a.games[i].a/b`.
-- **[P2] Court status cards no `content-visibility`** — `src/components/tournament/match-queue.tsx:169`. Off-screen cards still painted. Fix: `style={{ contentVisibility: 'auto', containIntrinsicSize: '100% 140px' }}` on outer Card.
-- **[P2] Unused `isOngoing` prop on `TournamentLiveWrapper`** — `src/components/tournament/tournament-live-wrapper.tsx:17-25`. Kept for "backwards compat" but commented `// no longer gates the subscription`. Fix: remove prop + update callers.
+- **[P1] Redundant `getTournamentSettings` calls within one action** — `src/lib/actions/matches.ts:211, 336, 1122, 1399, 1561, 1587, 1661`. Each call = a DB round-trip. Fix: pass `settings` through as optional param to helpers (`applyDivisionPriorityOrdering`, etc.). Deferred from batch 50a77f2 — needs threading settings through 3 helper functions.
 
 ## Resolved
 
-## Resolved
+### 2026-05-23 — `50a77f2` Perf audit batch (8 of 9 fixes)
+
+- **[P1] N+1 in `updateGroupTeamStandings`**
+  - Fix: `matches.ts:1826` — `for (const r of rows) await update(...)` → `await Promise.all(rows.map(r => update(...)))`. Group score scoring 50-450ms faster depending on group size.
+- **[P1] N+1 in `reverseGroupTeamStandings`**
+  - Fix: `matches.ts:1854` — same Promise.all batch pattern; Math.max guards preserved.
+- **[P1] `matchesKey` O(N*M) string serialization**
+  - Fix: `tournament-dashboard.tsx:169` — integer rolling hash via `((h << 5) - h + val) | 0` replaces `.map(...).join(",")`. 3-8ms faster per Realtime refresh; no string allocation.
+- **[P1] `occupiedCourts` memo chain → dnd-kit re-init**
+  - Fix: `match-queue.tsx:552` — `QueueRowBody` derives `isCourtOccupied = useMemo(() => occupiedCourts.has(match.court ?? ""), [...])`; replaces 2 inline `.has()` calls. Stable ref per row prevents dnd-kit context re-eval.
+- **[P2] `react-qr-code` eager import**
+  - Fix: `share-controls.tsx:6` — `import dynamic from "next/dynamic"; const QRCode = dynamic(() => import("react-qr-code"), { ssr: false })`. ~15-25KB removed from initial bundle.
+- **[P2] `JSON.stringify(games)` comparator**
+  - Fix: `match-row.tsx:138` — length check + element-by-element `a/b` compare loop; removes two `JSON.stringify` allocations per memo check.
+- **[P2] Court status cards no `content-visibility`**
+  - Fix: `match-queue.tsx:163` — outer Card gets `style={{ contentVisibility: 'auto', containIntrinsicSize: '100% 140px' }}`. Skip paint when off-screen; intrinsic size hint prevents CLS.
+- **[P2] Unused `isOngoing` prop on `TournamentLiveWrapper`**
+  - Fix: `tournament-live-wrapper.tsx` — prop removed from type + destructuring + useEffect deps. 4 callers updated (admin page, public page, TV page, bracket page).
 
 ### 2026-05-22 — P2 fixes
 
@@ -28,7 +36,6 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 - **[P2] Duplicate "เพิ่มสมาชิก" buttons fragile for automation/AT**
   - Fix: `team-manager.tsx:257` — added `aria-label={`เพิ่มสมาชิกในทีม ${team.name}`}` to per-team Add Member button. Disambiguates accessible name across multiple expanded team cards.
-
 
 ### 2026-05-22 — Manual verification (not an app bug)
 
