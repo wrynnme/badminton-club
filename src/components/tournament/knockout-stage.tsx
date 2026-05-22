@@ -260,6 +260,11 @@ export function KnockoutStage({
         </div>
       </div>
 
+      {/* Empty state for public viewers */}
+      {!isOwner && !hasMatches && (
+        <p className="text-sm text-muted-foreground py-8 text-center">ยังไม่ได้สร้างสายการแข่งขัน</p>
+      )}
+
       {/* Requirements checklist — admin only */}
       {isOwner && reqs.length > 0 && (!hasMatches || !allReqsMet) && (
         <div className="space-y-1.5">
