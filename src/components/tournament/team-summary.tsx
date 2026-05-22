@@ -118,7 +118,7 @@ export function TeamSummary({ teams, matches, pairs, matchUnit, size = "default"
             accessibilityLayer
             data={chartData}
             {...(barLayout.layout ? { layout: barLayout.layout } : {})}
-            margin={{ top: 4, right: 24, bottom: 4, left: 8 }}
+            margin={{ top: 24, right: 24, bottom: 4, left: 8 }}
           >
             <OrientableBarAxes
               orientation={orientation}
