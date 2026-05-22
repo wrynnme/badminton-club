@@ -214,7 +214,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 ### Manual Match Creation (pair mode)
 
 - **Action**: `createManualMatchAction({ tournamentId, pairAId, pairBId })` in `matches.ts`
-  - Validates same division (computed from `pair_level` vs `pair_division_threshold`)
+  - Validates same division (computed from `pair_level` via `computePairDivision(pair_level, pair_division_thresholds[])`)
   - Inserts `round_type="group"`, `match_number=max+1`, `division` auto-computed
   - writeAuditLog `event_type="match_created"`
 - **UI**: `manual-match-dialog.tsx` — Dialog + 2 Select dropdowns
@@ -270,20 +270,19 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ### Public Share Page Redesign (`/t/[token]`)
 
-- **Layout**: hero banner + notes banner + tabs (ภาพรวม / กลุ่ม / คู่ / สาย)
+- **Layout**: hero banner + notes banner + tabs (แดชบอร์ด / ทีม\* / กลุ่ม\* / คู่\* / สาย\* / ตารางคิว\* — `ภาพรวม` tab removed 2026-05-22)
 - **`PublicHero`** (`src/components/tournament/public/public-hero.tsx`) — server component:
   - Gradient card: `from-amber-50 via-background to-orange-50` + 1px gold accent stripe + decorative bg trophy
   - Title row: amber Trophy icon + tournament name + TV button (secondary)
   - Status pill (custom colors per status) + venue + date meta row
   - Stat grid 2×2 → 4-col: รูปแบบ / ทีม / คู่แข่ง / การแข่งขัน (`completed/total`)
   - Action row: `ExportButtons` + "ดูสาย" bracket link (conditional)
-- **`PublicOverview`** (`src/components/tournament/public/public-overview.tsx`) — server component:
-  - In-progress card: `ring-2 ring-green-500/30` + pulsing dot + `MatchRow` list
-  - 2-col grid (lg): standings mini-table (top 6, played > 0) + recent results (last 5)
-  - Empty states: no matches / waiting to start
+- **`PublicOverview` — REMOVED 2026-05-22** (commits `091337a` + `294dafb`): the `ภาพรวม` tab + `src/components/tournament/public/public-overview.tsx` file were both deleted. The Dashboard tab (`TournamentDashboardLazy`) now serves as the default landing view on `/t/[token]`; cross-team standings + division standings + queue snapshot moved into Dashboard.
 - **`PublicTournamentShell`** (`src/components/tournament/public/public-tournament-shell.tsx`) — client component:
   - `Tabs variant="line"` with border-b underline style
-  - Tabs: ภาพรวม (always) · กลุ่ม · คู่ · สาย (conditional on format/unit)
+  - Tabs: แดชบอร์ด (always) · กลุ่ม · คู่ · สาย · ตารางคิว (conditional on format/unit/matches-exist); `ทีม` is admin-only and not rendered here
+  - Active tab synced to `?tab=` URL param via shared `useTabSync` hook (`src/lib/hooks/use-tab-sync.ts`); lazy-mount per tab via the same hook's `mounted: Set<TabId>` (seeds `defaultTab` for instant first paint)
+  - Wrapped in `<Suspense>` on parent page (`/t/[token]/page.tsx`) — `useSearchParams` boundary requirement under Next 16 App Router
   - Receives pre-rendered `ReactNode` props — server data stays server-side across the boundary
 - **Notes banner**: amber left-border strip (`border-l-4 border-amber-400`) with `Info` icon
 - Container widened to `max-w-5xl`
@@ -734,7 +733,7 @@ User intent: queue numbers in รอแข่ง / กำลังแข่ง /
 
 ### Public dashboard + TV layout rework (2026-05-21)
 
-- `src/components/tournament/public/public-overview.tsx` (Overview tab on `/t/[token]`) — body replaced with 3 stacked sections:
+- `src/components/tournament/public/public-overview.tsx` (Overview tab on `/t/[token]`) — body replaced with 3 stacked sections (NOTE: this file was later DELETED 2026-05-22 commit `294dafb`; the Overview tab was dropped from the public shell — content listed below for historical context only):
   1. **คะแนนรวมทีม** — team-mode: `computeStandings(allMatches, 'team', teamIds)` directly; pair-mode: aggregate pair StandingRows by `pairs.team_id` via inline `aggregatePairStandingsToTeams` helper (sums played/W/D/L/PF/PA, recomputes `leaguePoints` + `pointDiff`, sorts pts→diff→PF). Shows W-D-L column. Hidden when no team has `played > 0`.
   2. **คะแนนตามคู่ แยก Div** (pair mode only) — reads `tournament.pair_division_thresholds[]`; `computePairDivision(pairLevel, thresholds)` → Division 1..N. `md:grid-cols-2` grid, card border+title colored by `divisionTone(n)`. `thresholds=[]` → single "อันดับคู่" card.
   3. **ตารางคิว** — in-progress rows highlighted (`bg-green-500/5`) + green ping dot in title; then next 6 pending rows sorted by `queue_position ?? match_number`, TBD-only matches filtered out. Uses existing `MatchRow size="comfortable"`. Empty state "ยังไม่มีคิว".
@@ -952,6 +951,29 @@ Settings UI in "การแสดงผล TV" Card is split into sub-groups: "
   - When a bug is fixed, move the entry to `## Resolved` with fix date + commit SHA + a `Fix:` line summarizing what changed.
   - If the fix changed any documented behavior, schema, label, or contract, sync `spec.md` too; if `spec.md` had a related "Known issues / Pending fix" entry, remove that entry there as well.
 - Current state: **2 Open** (P2 tab label drift logged then fixed in this section + P2 duplicate "เพิ่มสมาชิก" `aria-label` for screen readers and automation). **8 Resolved** — 7 P1 review findings + 1 player-level-fill (verified as Playwright-only automation gap, not an app bug).
+
+### Public mobile fit + tab persistence + shared hooks (2026-05-22, commits `fdd4c7a`..`ed7fc80`)
+
+12 commits — public-page mobile-overflow hardening, shared `useTabSync` hook, `public-overview.tsx` deletion, dropped deprecated `pair_division_threshold` column.
+
+**Mobile fit / overflow**:
+- `src/app/(public)/layout.tsx` (or root layout `body`) — `overflow-x-clip` on body element to swallow any stray horizontal overflow (replaces the short-lived per-page `overflow-x-hidden` wrapper from commit `7da067c` which was reverted in P1 fix `294dafb`).
+- `match-row.tsx` — name nodes use `min-w-0 truncate block`; separator + score nodes get `shrink-0`. Long pair names now ellipsis-truncate instead of pushing the row off-screen.
+- `match-queue.tsx` — competitor row collapsed to a single `grid-cols-[1fr_auto_1fr]` at ALL breakpoints (previously stacked on `<sm`); tightened cell sizing (`w-10 sm:w-12`, `p-2 sm:p-2.5`, `text-xs sm:text-sm`).
+- `tv-match-card.tsx` — header reordered: status pill on the left, `#N` + court badge on the right; competitor flex containers get `min-w-0` so truncate works inside flex.
+- `team-summary.tsx` chart top margin — was bumped `4 → 24` in commit `dceba7b`, later made orientation-conditional in `ed7fc80` (vertical needs the headroom for `LabelList position="top"`; horizontal does not).
+
+**Public `/t/[token]` tab simplification** (commit `091337a`):
+- `ภาพรวม` tab removed from `PublicTournamentShell`; `public-overview.tsx` deleted entirely in P1 fix `294dafb`. Public shell tab union now `dashboard | groups | pairs | knockout | queue` (5 tabs).
+- Knockout requirements checklist hidden from public viewers — `knockout-stage.tsx` shows empty state `ยังไม่ได้สร้างสายการแข่งขัน` when public viewer hits the empty KO state (commit `0aecce5`); admin-only checklist remains on `/tournaments/[id]`.
+- `PublicTournamentShell` now wrapped in `<Suspense>` boundary on parent page (Next 16 App Router requirement when consuming `useSearchParams`).
+
+**Shared primitives** (P2 sweep commits `dcd1311` + `777eecf` + `ed7fc80`):
+- NEW `src/lib/hooks/use-tab-sync.ts` — shared `useTabSync<TabId>({ allTabs, validTabs, defaultTab })` hook returning `{ active, mounted, onChange }`. Reads `?tab=` via `useSearchParams`; writes via `router.replace(..., { scroll: false })`; strips invalid tabs from URL. `mounted: Set<TabId>` seeds with `defaultTab` so first paint is instant (no flash). Consumed by both `tournament-tabs.tsx` (admin shell) and `public-tournament-shell.tsx` (public shell). `useLayoutEffect` + ref guard prevents the param-strip effect from racing first render.
+- NEW `src/components/tournament/public/public-tv-header.tsx` — shared TV-page header (logo + title + venue + status pill + fullscreen button + "ดูสาย"/"ออก TV" actions); consumed by `/t/[token]/tv` and `/t/[token]/bracket`. Removes duplicate inline header in `bracket/page.tsx`.
+
+**Schema cleanup** (commit `777eecf`):
+- migration `20260522000300_drop_pair_division_threshold_deprecated.sql` — drops the deprecated `tournaments.pair_division_threshold` (numeric, nullable) column. Only the array form `pair_division_thresholds` (numeric[]) remains. All code paths already used the array form; this migration is the cleanup pass.
 
 ### Full E2E smoke test (2026-05-22)
 

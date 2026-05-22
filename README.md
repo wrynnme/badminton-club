@@ -65,12 +65,14 @@ npx skills add supabase/agent-skills   # ติดตั้งครั้งเ
 | `team` | ทีม vs ทีม |
 | `pair` | คู่ (2 คน) vs คู่ — จับคู่ภายในทีม แข่งข้ามทีม |
 
-### Pair Division (กลุ่มบน/ล่าง)
+### Pair Division (N-Division)
 
-ตั้งค่า `pair_division_threshold` ต่อ tournament:
-- `null` = ไม่แบ่ง (ทุกคู่เจอกัน)
-- ตัวเลข N = `pair_level > N` → กลุ่มบน; `≤ N` → กลุ่มล่าง
-- กลุ่มบน/ล่างไม่เจอกันในรอบแบ่งกลุ่ม — เจอกันได้ในรอบ knockout
+ตั้งค่า `pair_division_thresholds: number[]` ต่อ tournament (sorted ASC):
+- `[]` = ไม่แบ่ง (ทุกคู่เจอกัน)
+- `[5]` → 2 divisions: `pair_level > 5` → Division 1 (top), `≤ 5` → Division 2
+- `[3, 7]` → 3 divisions: `> 7` → Div 1; `> 3 && ≤ 7` → Div 2; `≤ 3` → Div 3
+- Division 1 = top tier (highest skill); ขนาด array = `N-1` thresholds → `N` divisions
+- คู่ข้าม Division ไม่เจอกันในรอบแบ่งกลุ่ม — เจอกันได้ในรอบ knockout (per-Division bracket)
 
 ### Level
 

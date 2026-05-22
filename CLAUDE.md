@@ -113,6 +113,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - Player list auto-refreshes via `router.refresh()` every 30s; manual refresh button included
 - `SortablePlayerList` uses `@dnd-kit` with `activationConstraint: { distance: 8 }` for mobile compat
 - Theme stored in `theme` cookie — `layout.tsx` reads it server-side to add `dark` class on `<html>` (no next-themes)
+- Root `body` has `overflow-x-clip` (not `overflow-x-hidden`) — global horizontal-overflow guard for iOS Safari; `clip` chosen so `position:sticky` children keep working
 
 ## Tournament System (Phase 0–11 done; Phase 12 require_checkin + Phase 13 competition mode planned — see `spec.md`)
 
@@ -130,7 +131,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 
 ### Schema Tables
 
-- `tournaments` — id, owner_id, name, venue?, start_date?, end_date?, notes?, mode (`sports_day`|`competition`), status, format, match_unit (`team`|`pair`), has_lower_bracket, allow_drop_to_lower (default false), seeding_method (`random`|`by_group_score`), advance_count (default 2), team_count, pair_division_thresholds (numeric[] NOT NULL default `'{}'`, sorted ASC via CHECK + `is_numeric_array_sorted_asc()` IMMUTABLE function), pair_division_threshold (numeric, nullable — DEPRECATED, drop next release), share_token (text, unique, nullable), courts (text[] default `'{}'`), settings (jsonb NOT NULL default `'{}'`)
+- `tournaments` — id, owner_id, name, venue?, start_date?, end_date?, notes?, mode (`sports_day`|`competition`), status, format, match_unit (`team`|`pair`), has_lower_bracket, allow_drop_to_lower (default false), seeding_method (`random`|`by_group_score`), advance_count (default 2), team_count, pair_division_thresholds (numeric[] NOT NULL default `'{}'`, sorted ASC via CHECK + `is_numeric_array_sorted_asc()` IMMUTABLE function), share_token (text, unique, nullable), courts (text[] default `'{}'`), settings (jsonb NOT NULL default `'{}'`) — deprecated singular `pair_division_threshold` column DROPPED 2026-05-22 (migration `20260522000300_drop_pair_division_threshold_deprecated`)
 - `teams` — id, tournament_id, name, color, seed
 - `team_players` — id, team_id, profile_id?, display_name, role (`captain`|`member`), level text, csv_id text, created_at
 - `groups` — id, tournament_id, name
@@ -164,7 +165,10 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - `co-admin-controls.tsx` — owner-only: add/remove co-admins by LINE user_id
 - `audit-log-panel.tsx` — collapsible panel; owner + co-admin; newest-first, limit 50
 - `manual-match-dialog.tsx` — Dialog to create manual pair match; filters pair B by same division as pair A
-- `tournament-tabs.tsx` — client Tab wrapper: แดชบอร์ด · ทีม · กลุ่ม* · คู่* · น็อคเอ้า* · ตารางคิว* · ตั้งค่า** (\* conditional per format/state — `แดชบอร์ด` always shown, `กลุ่ม` only when `match_unit=team` AND format includes group stage, `คู่` only when `match_unit=pair`, `น็อคเอ้า` only when format includes knockout, `ตารางคิว` shown once matches exist; ** owner+co-admin only via `showSettings`); lazy-mount per tab (`mounted: Set<TabId>`); active tab synced to `?tab=` via `useSearchParams`
+- `tournament-tabs.tsx` — client Tab wrapper: แดชบอร์ด · ทีม · กลุ่ม* · คู่* · น็อคเอ้า* · ตารางคิว* · ตั้งค่า** (\* conditional per format/state — `แดชบอร์ด` always shown, `กลุ่ม` only when `match_unit=team` AND format includes group stage, `คู่` only when `match_unit=pair`, `น็อคเอ้า` only when format includes knockout, `ตารางคิว` shown once matches exist; ** owner+co-admin only via `showSettings`); URL-synced + lazy-mount via shared `useTabSync` hook (`src/lib/hooks/use-tab-sync.ts`)
+- `public-tournament-shell.tsx` — public Tab wrapper for `/t/[token]`: แดชบอร์ด · กลุ่ม* · คู่* · สาย* · ตารางคิว* (5 tabs — `ภาพรวม` removed 2026-05-22, no `ทีม`/`ตั้งค่า`); same `useTabSync` hook; parent page wraps it in `<Suspense>` (Next 16 `useSearchParams` requirement)
+- `use-tab-sync.ts` (`src/lib/hooks/`) — shared hook `useTabSync<TabId>({ allTabs, validTabs, defaultTab })` returns `{ active, mounted, onChange }`; reads/writes `?tab=` via `useSearchParams` + `router.replace({scroll:false})`; `mounted: Set<TabId>` seeds with `defaultTab` for instant first paint; `useLayoutEffect` + ref guard prevents param-strip race on first render
+- `public-tv-header.tsx` (`src/components/tournament/public/`) — shared TV-page header used by `/t/[token]/tv` and `/t/[token]/bracket`: logo + title + venue + status pill + fullscreen button + ดูสาย/ออก TV actions
 - `match-queue.tsx` — sub-tabs `รอแข่ง` (sortable) / `กำลังแข่ง` / `จบแล้ว` with count badges; per-row court Select (or free-text) + `เริ่ม` / `จบแข่ง` / `ยกเลิก` / `รีเซ็ต` + `จัดคิวอัตโนมัติ` + court status banner; row number shows `queue_position ?? match_number` (lock on start); division badge ("บน" / "ล่าง"); `requireCourtToStart` prop (threaded through `SortableQueueRow` / `NonDraggableRow` / `QueueRowReadOnly` / `QueueRowBody`) disables "เริ่ม" + shows tooltip "ต้องเลือกสนามก่อน" when flag ON and court empty
 - `match-list.tsx` — wraps `MatchRow` array; uses `content-visibility:auto` + `contain-intrinsic-size` for off-screen rows
 - `court-manager.tsx` — DnD list of court names in Settings tab; 250ms debounce + serialized writes; calls `updateCourtsAction`
