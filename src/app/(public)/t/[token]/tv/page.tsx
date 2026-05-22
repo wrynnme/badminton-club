@@ -1,6 +1,4 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
-import { Trophy } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import { TvAutoRefresh } from "@/components/tournament/tv-auto-refresh";
@@ -12,12 +10,10 @@ import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { computeStandings, type StandingRow } from "@/lib/tournament/scoring";
 import { computePairDivision, parsePairLevel, parseTournamentThresholds } from "@/lib/tournament/divisions";
 import { parseSettings } from "@/lib/tournament/settings";
-import { TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";
+import { PublicTvHeader } from "@/components/tournament/public/public-tv-header";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-// TODO: extract shared public TV header (#review-2026-05-22)
 
 export default async function TvDisplayPage({
   params,
@@ -162,37 +158,19 @@ export default async function TvDisplayPage({
       <TvAutoRefresh intervalMs={settings.tv_refresh_interval_sec * 1000} />
       <div className="h-screen w-screen overflow-hidden flex flex-col bg-background text-foreground p-3 lg:p-4">
         {/* Hero — fixed-height header */}
-        <header className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-          <div className="flex items-center gap-3 lg:gap-4 min-w-0">
-            <Trophy className="h-8 w-8 lg:h-10 lg:w-10 2xl:h-12 2xl:w-12 shrink-0" />
-            <div className="min-w-0">
-              <h1 className="text-2xl lg:text-4xl xl:text-5xl 2xl:text-6xl font-bold truncate leading-tight">{t.name}</h1>
-              {t.venue && (
-                <p className="text-sm lg:text-xl 2xl:text-2xl text-muted-foreground truncate leading-tight">{t.venue}</p>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-3 lg:gap-4">
-            <span className="px-3 py-1 lg:px-4 lg:py-1.5 rounded-full border text-sm lg:text-lg 2xl:text-xl font-semibold">
-              {TOURNAMENT_STATUS_LABEL[t.status] ?? t.status}
-            </span>
-            {settings.tv_show_fullscreen_button && <TvFullscreenButton />}
-            {settings.tv_show_bracket_link && knockoutCount > 0 && (
-              <Link
-                href={`/t/${token}/bracket`}
-                className="text-sm lg:text-base 2xl:text-lg text-muted-foreground hover:text-foreground underline"
-              >
-                ดูสาย
-              </Link>
-            )}
-            <Link
-              href={`/t/${token}`}
-              className="text-sm lg:text-base 2xl:text-lg text-muted-foreground hover:text-foreground underline"
-            >
-              ออก TV
-            </Link>
-          </div>
-        </header>
+        <PublicTvHeader
+          name={t.name}
+          venue={t.venue}
+          status={t.status}
+          showTrophyIcon
+          showFullscreenButton={settings.tv_show_fullscreen_button}
+          extraLinks={
+            settings.tv_show_bracket_link && knockoutCount > 0
+              ? [{ href: `/t/${token}/bracket`, label: "ดูสาย" }]
+              : []
+          }
+          backLink={{ href: `/t/${token}`, label: "ออก TV" }}
+        />
 
         {allMatches.length === 0 ? (
           <div className="flex-1 min-h-0 flex items-center justify-center">
