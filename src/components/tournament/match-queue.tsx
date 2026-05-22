@@ -608,9 +608,9 @@ function QueueRowBody({
 
         <DivisionBadge match={match} />
 
-        <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] sm:items-center gap-x-1 gap-y-0.5">
+        <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_1fr] items-center gap-x-1">
           <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" />
-          <span className="hidden sm:inline text-muted-foreground text-xs">vs</span>
+          <span className="text-muted-foreground text-xs">vs</span>
           <CompetitorLine c={b} unknownLabel={unknownLabel} align="left" />
         </div>
 
