@@ -154,7 +154,7 @@ export default async function TvDisplayPage({
   const allStandingsPages: StandingsPage[] = standingsPages.filter((p) => p.rows.length > 0);
 
   return (
-    <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"} realtimeEnabled={settings.realtime_enabled}>
+    <TournamentLiveWrapper tournamentId={t.id} realtimeEnabled={settings.realtime_enabled}>
       <TvAutoRefresh intervalMs={settings.tv_refresh_interval_sec * 1000} />
       <div className="h-screen w-screen overflow-hidden flex flex-col bg-background text-foreground p-3 lg:p-4">
         {/* Hero — fixed-height header */}

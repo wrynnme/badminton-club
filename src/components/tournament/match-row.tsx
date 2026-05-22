@@ -134,7 +134,11 @@ export const MatchRow = memo(MatchRowImpl, (prev, next) => {
   ) {
     return false;
   }
-  // games is a small array; JSON compare is cheap and accurate
-  if (JSON.stringify(a.games) !== JSON.stringify(b.games)) return false;
+  if ((a.games?.length ?? 0) !== (b.games?.length ?? 0)) return false;
+  const ag = a.games ?? [];
+  const bg = b.games ?? [];
+  for (let i = 0; i < ag.length; i++) {
+    if (ag[i].a !== bg[i].a || ag[i].b !== bg[i].b) return false;
+  }
   return true;
 });

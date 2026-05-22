@@ -9,20 +9,16 @@ const REFRESH_DEBOUNCE_MS = 800;
 
 export function TournamentLiveWrapper({
   tournamentId,
-  isOngoing,
   realtimeEnabled = true,
   children,
 }: {
   tournamentId: string;
-  // kept for backwards compat / future UI hints; no longer gates the subscription
-  isOngoing?: boolean;
   realtimeEnabled?: boolean;
   children: React.ReactNode;
 }) {
   const router = useRouter();
   const [live, setLive] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  void isOngoing;
 
   useEffect(() => {
     if (!realtimeEnabled) return;
@@ -53,7 +49,7 @@ export function TournamentLiveWrapper({
       if (refreshTimer.current) clearTimeout(refreshTimer.current);
       sb.removeChannel(channel);
     };
-  }, [tournamentId, isOngoing, realtimeEnabled, router]);
+  }, [tournamentId, realtimeEnabled, router]);
 
   return (
     <>

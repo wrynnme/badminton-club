@@ -161,7 +161,7 @@ export function MatchQueue({
   return (
     <div className="space-y-4">
       {courts.length > 0 && (
-        <Card>
+        <Card style={{ contentVisibility: 'auto', containIntrinsicSize: '100% 140px' }}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">สถานะสนาม</CardTitle>
           </CardHeader>
@@ -549,6 +549,10 @@ function QueueRowBody({
   occupiedCourts: Set<string>;
 }) {
   const { a, b, unknownLabel } = getCompetitorNames(match, unit, competitorById);
+  const isCourtOccupied = useMemo(
+    () => occupiedCourts.has(match.court ?? ""),
+    [match.court, occupiedCourts]
+  );
   const [court, setCourt] = useState(match.court ?? "");
   const [courtPending, startCourt] = useTransition();
   const [startPending, startStart] = useTransition();
@@ -683,7 +687,7 @@ function QueueRowBody({
                     disabled={
                       startPending ||
                       (requireCourtToStart && !match.court) ||
-                      (!courtStrict && !!match.court && occupiedCourts.has(match.court))
+                      (!courtStrict && !!match.court && isCourtOccupied)
                     }
                     onClick={() => startStart(async () => {
                       const res = await startMatchAction(match.id, tournamentId);
@@ -699,7 +703,7 @@ function QueueRowBody({
               <TooltipContent>
                 {requireCourtToStart && !match.court
                   ? "ต้องเลือกสนามก่อน"
-                  : !courtStrict && !!match.court && occupiedCourts.has(match.court)
+                  : !courtStrict && !!match.court && isCourtOccupied
                     ? `สนาม ${match.court} ถูกใช้อยู่`
                     : `เริ่มแมตช์ #${match.match_number} + แจ้งเตือน LINE`}
               </TooltipContent>

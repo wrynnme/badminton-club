@@ -1823,20 +1823,20 @@ async function updateGroupTeamStandings(
   const { data: rows } = await sb.from("group_teams").select("*").eq("group_id", groupId).in("team_id", [aId, bId]);
   if (!rows) return;
 
-  for (const r of rows) {
+  await Promise.all(rows.map((r) => {
     const isA = r.team_id === aId;
     const myScore = isA ? scoreA : scoreB;
     const oppScore = isA ? scoreB : scoreA;
     const won = (isA && winner === "a") || (!isA && winner === "b");
     const drew = winner === "draw";
-    await sb.from("group_teams").update({
+    return sb.from("group_teams").update({
       wins: r.wins + (won ? 1 : 0),
       draws: r.draws + (drew ? 1 : 0),
       losses: r.losses + (!won && !drew ? 1 : 0),
       points_for: r.points_for + myScore,
       points_against: r.points_against + oppScore,
     }).eq("group_id", groupId).eq("team_id", r.team_id);
-  }
+  }));
 }
 
 async function reverseGroupTeamStandings(
@@ -1851,18 +1851,18 @@ async function reverseGroupTeamStandings(
   const { data: rows } = await sb.from("group_teams").select("*").eq("group_id", groupId).in("team_id", [aId, bId]);
   if (!rows) return;
 
-  for (const r of rows) {
+  await Promise.all(rows.map((r) => {
     const isA = r.team_id === aId;
     const myScore = isA ? scoreA : scoreB;
     const oppScore = isA ? scoreB : scoreA;
     const won = (isA && winner === "a") || (!isA && winner === "b");
     const drew = winner === "draw";
-    await sb.from("group_teams").update({
+    return sb.from("group_teams").update({
       wins: Math.max(0, r.wins - (won ? 1 : 0)),
       draws: Math.max(0, r.draws - (drew ? 1 : 0)),
       losses: Math.max(0, r.losses - (!won && !drew ? 1 : 0)),
       points_for: Math.max(0, r.points_for - myScore),
       points_against: Math.max(0, r.points_against - oppScore),
     }).eq("group_id", groupId).eq("team_id", r.team_id);
-  }
+  }));
 }

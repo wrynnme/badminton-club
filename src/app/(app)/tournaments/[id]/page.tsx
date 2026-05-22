@@ -128,7 +128,7 @@ export default async function TournamentDetailPage({
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   return (
-    <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"} realtimeEnabled={settings.realtime_enabled}>
+    <TournamentLiveWrapper tournamentId={t.id} realtimeEnabled={settings.realtime_enabled}>
       <div className="space-y-6 max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-start justify-between gap-2">
