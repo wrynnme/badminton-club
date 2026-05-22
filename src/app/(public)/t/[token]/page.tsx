@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { Info } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { GroupStage } from "@/components/tournament/group-stage";
@@ -89,7 +90,7 @@ export default async function PublicTournamentPage({
 
   return (
     <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"} realtimeEnabled={settings.realtime_enabled}>
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8 overflow-x-hidden">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
         <PublicHero
           tournament={t}
           token={token}
@@ -105,74 +106,76 @@ export default async function PublicTournamentPage({
           </div>
         )}
 
-        <PublicTournamentShell
-          showGroups={showGroupStage}
-          showPairs={showPairStage}
-          showKnockout={showKnockoutStage}
-          showQueue={showQueueStage}
-          dashboard={
-            <TournamentDashboardLazy
-              tournament={t}
-              teams={teams}
-              pairs={pairs}
-              matches={allMatches}
-            />
-          }
-          groups={
-            showGroupStage ? (
-              <GroupStage
-                tournamentId={t.id}
-                groups={groups}
-                teams={flatTeams}
-                isOwner={false}
-                matchRowSize="comfortable"
-                showColorSummary={settings.color_summary}
-              />
-            ) : undefined
-          }
-          pairs={
-            showPairStage ? (
-              <PairStage
-                tournamentId={t.id}
+        <Suspense fallback={null}>
+          <PublicTournamentShell
+            showGroups={showGroupStage}
+            showPairs={showPairStage}
+            showKnockout={showKnockoutStage}
+            showQueue={showQueueStage}
+            dashboard={
+              <TournamentDashboardLazy
+                tournament={t}
                 teams={teams}
                 pairs={pairs}
-                matches={allMatches.filter((m) => m.pair_a_id)}
-                pairDivisionThresholds={parseTournamentThresholds(t.pair_division_thresholds)}
-                isOwner={false}
-                matchRowSize="comfortable"
-              />
-            ) : undefined
-          }
-          knockout={
-            showKnockoutStage ? (
-              <KnockoutStage
-                tournamentId={t.id}
-                matches={knockoutMatches}
-                teams={flatTeams}
-                pairs={t.match_unit === "pair" ? pairs : undefined}
-                matchUnit={t.match_unit}
-                advanceCount={t.advance_count ?? 2}
-                isOwner={false}
-                format={t.format}
-                matchRowSize="comfortable"
-              />
-            ) : undefined
-          }
-          queue={
-            showQueueStage ? (
-              <MatchQueue
                 matches={allMatches}
-                competitorById={competitorById}
-                tournamentId={t.id}
-                unit={t.match_unit}
-                canEdit={false}
-                courts={t.courts ?? []}
-                requireCourtToStart={settings.require_court_to_start}
-                courtStrict={settings.court_strict}
               />
-            ) : undefined
-          }
-        />
+            }
+            groups={
+              showGroupStage ? (
+                <GroupStage
+                  tournamentId={t.id}
+                  groups={groups}
+                  teams={flatTeams}
+                  isOwner={false}
+                  matchRowSize="comfortable"
+                  showColorSummary={settings.color_summary}
+                />
+              ) : undefined
+            }
+            pairs={
+              showPairStage ? (
+                <PairStage
+                  tournamentId={t.id}
+                  teams={teams}
+                  pairs={pairs}
+                  matches={allMatches.filter((m) => m.pair_a_id)}
+                  pairDivisionThresholds={parseTournamentThresholds(t.pair_division_thresholds)}
+                  isOwner={false}
+                  matchRowSize="comfortable"
+                />
+              ) : undefined
+            }
+            knockout={
+              showKnockoutStage ? (
+                <KnockoutStage
+                  tournamentId={t.id}
+                  matches={knockoutMatches}
+                  teams={flatTeams}
+                  pairs={t.match_unit === "pair" ? pairs : undefined}
+                  matchUnit={t.match_unit}
+                  advanceCount={t.advance_count ?? 2}
+                  isOwner={false}
+                  format={t.format}
+                  matchRowSize="comfortable"
+                />
+              ) : undefined
+            }
+            queue={
+              showQueueStage ? (
+                <MatchQueue
+                  matches={allMatches}
+                  competitorById={competitorById}
+                  tournamentId={t.id}
+                  unit={t.match_unit}
+                  canEdit={false}
+                  courts={t.courts ?? []}
+                  requireCourtToStart={settings.require_court_to_start}
+                  courtStrict={settings.court_strict}
+                />
+              ) : undefined
+            }
+          />
+        </Suspense>
       </div>
     </TournamentLiveWrapper>
   );
