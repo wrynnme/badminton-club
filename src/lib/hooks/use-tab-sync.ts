@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 /**
@@ -42,8 +42,11 @@ export function useTabSync<T extends string>(opts: {
     return defaultTab;
   }, [queryTab, allTabs, validTabs, defaultTab]);
 
-  // Lazy-mount tracking: seed with initial active tab; grow on navigation.
-  const [mounted, setMounted] = useState<Set<T>>(() => new Set<T>([active]));
+  // Lazy-mount tracking: seed with both active AND defaultTab so the default
+  // tab's content is never null on first render even when ?tab= points elsewhere.
+  const [mounted, setMounted] = useState<Set<T>>(
+    () => new Set<T>([active, defaultTab])
+  );
   // Use a layout effect so the Set update is synchronous before paint.
   useLayoutEffect(() => {
     setMounted((prev) => (prev.has(active) ? prev : new Set([...prev, active])));
@@ -51,14 +54,23 @@ export function useTabSync<T extends string>(opts: {
 
   // Strip invalid ?tab= synchronously before paint so the URL always matches
   // the actually-rendered tab from the very first frame.
+  // strippedRef guards against firing router.replace twice when an unrelated
+  // parent re-render changes searchString while the same invalid queryTab is
+  // still present — prevents double history entries.
+  const strippedRef = useRef<string | null>(null);
   const searchString = searchParams.toString();
   useLayoutEffect(() => {
-    if (queryTab && (!allTabs.includes(queryTab) || !validTabs.includes(queryTab))) {
-      const params = new URLSearchParams(searchString);
-      params.delete("tab");
-      const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    if (!queryTab) {
+      strippedRef.current = null;
+      return;
     }
+    if (allTabs.includes(queryTab) && validTabs.includes(queryTab)) return;
+    if (strippedRef.current === queryTab) return; // already stripped this one
+    strippedRef.current = queryTab;
+    const params = new URLSearchParams(searchString);
+    params.delete("tab");
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [queryTab, allTabs, validTabs, router, pathname, searchString]);
 
   const onChange = (next: string) => {
