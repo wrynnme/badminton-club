@@ -48,27 +48,27 @@ function MatchRowImpl({
   const colorDot = isComfy ? "inline-block w-2.5 h-2.5 rounded-full mr-2" : "inline-block w-2 h-2 rounded-full mr-1.5";
 
   return (
-    <div className={isComfy ? "py-3 space-y-2" : "py-2 space-y-2"}>
+    <div className={isComfy ? "py-3 space-y-2 overflow-hidden" : "py-2 space-y-2 overflow-hidden"}>
       <div className={`flex items-center gap-2 ${rowText}`}>
-        <div className={`flex-1 text-right ${winner === "a" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
+        <div className={`flex-1 min-w-0 text-right ${winner === "a" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
           {a?.color && <span className={colorDot} style={{ backgroundColor: a.color }} />}
-          <span>{a?.name ?? unknownLabel}</span>
-          {a?.subtitle && <div className={`${subText} text-muted-foreground font-normal`}>{a.subtitle}</div>}
+          <span className="truncate">{a?.name ?? unknownLabel}</span>
+          {a?.subtitle && <div className={`${subText} text-muted-foreground font-normal truncate`}>{a.subtitle}</div>}
         </div>
 
         {match.status === "completed" ? (
-          <div className="text-center px-2">
+          <div className="text-center px-2 shrink-0">
             <div className={scoreText}>{gamesA} : {gamesB}</div>
             {totals && <div className={totalsText}>({totals.a}–{totals.b})</div>}
           </div>
         ) : (
-          <span className={vsText}>vs</span>
+          <span className={`${vsText} shrink-0`}>vs</span>
         )}
 
-        <div className={`flex-1 ${winner === "b" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
+        <div className={`flex-1 min-w-0 ${winner === "b" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
           {b?.color && <span className={colorDot} style={{ backgroundColor: b.color }} />}
-          <span>{b?.name ?? unknownLabel}</span>
-          {b?.subtitle && <div className={`${subText} text-muted-foreground font-normal`}>{b.subtitle}</div>}
+          <span className="truncate">{b?.name ?? unknownLabel}</span>
+          {b?.subtitle && <div className={`${subText} text-muted-foreground font-normal truncate`}>{b.subtitle}</div>}
         </div>
 
         {isOwner && (
