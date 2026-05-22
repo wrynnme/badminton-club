@@ -136,11 +136,11 @@ export function PublicOverview({
   const standingsTableHeader = (showWDL: boolean) => (
     <thead>
       <tr className="border-b text-xs text-muted-foreground">
-        <th className="pb-2 font-normal text-left w-6">#</th>
+        <th className="pb-2 font-normal text-left">#</th>
         <th className="pb-2 font-normal text-left">ชื่อ</th>
-        <th className="pb-2 font-normal text-center w-9">P</th>
-        {showWDL && <th className="pb-2 font-normal text-center w-14">W-D-L</th>}
-        <th className="pb-2 font-normal text-center w-11">Pts</th>
+        <th className="pb-2 font-normal text-center">P</th>
+        {showWDL && <th className="pb-2 font-normal text-center">W-D-L</th>}
+        <th className="pb-2 font-normal text-center">Pts</th>
       </tr>
     </thead>
   );
@@ -153,8 +153,8 @@ export function PublicOverview({
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">คะแนนรวมทีม</CardTitle>
           </CardHeader>
-          <CardContent className="pt-0">
-            <table className="w-full text-sm">
+          <CardContent className="pt-0 overflow-x-auto">
+            <table className="w-full table-fixed text-xs sm:text-sm">
               {standingsTableHeader(true)}
               <tbody>
                 {teamTotalsPlayed.map((s, i) => renderStandingsRow(s, i, { showWDL: true }))}
@@ -178,9 +178,9 @@ export function PublicOverview({
                       {divisionLabelTh(div)}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="pt-0">
+                  <CardContent className="pt-0 overflow-x-auto">
                     {rows.length > 0 ? (
-                      <table className="w-full text-sm">
+                      <table className="w-full table-fixed text-xs sm:text-sm">
                         {standingsTableHeader(false)}
                         <tbody>
                           {rows.map((s, i) => renderStandingsRow(s, i))}
@@ -199,8 +199,8 @@ export function PublicOverview({
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-semibold">อันดับคู่</CardTitle>
             </CardHeader>
-            <CardContent className="pt-0">
-              <table className="w-full text-sm">
+            <CardContent className="pt-0 overflow-x-auto">
+              <table className="w-full table-fixed text-xs sm:text-sm">
                 {standingsTableHeader(false)}
                 <tbody>
                   {pairStandingsAll

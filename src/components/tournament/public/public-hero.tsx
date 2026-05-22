@@ -79,7 +79,7 @@ export function PublicHero({
 
       <div className="relative p-5 sm:p-7 space-y-4 sm:space-y-5">
         {/* Title + TV button */}
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <Trophy className="h-8 w-8 sm:h-10 sm:w-10 shrink-0 text-amber-500" />
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight leading-tight truncate">

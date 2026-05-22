@@ -100,7 +100,7 @@ export default async function PublicTournamentPage({
         />
 
         {t.notes && (
-          <div className="flex gap-3 rounded-r-lg border-l-4 border-amber-400 bg-amber-50/50 dark:bg-amber-950/20 px-4 py-3 text-sm whitespace-pre-wrap">
+          <div className="flex gap-2 sm:gap-3 rounded-r-lg border-l-4 border-amber-400 bg-amber-50/50 dark:bg-amber-950/20 px-3 sm:px-4 py-3 text-sm whitespace-pre-wrap">
             <Info className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
             <div>{t.notes}</div>
           </div>
