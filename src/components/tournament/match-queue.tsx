@@ -425,7 +425,7 @@ function StatusBadge({ status }: { status: Match["status"] }) {
 function CompetitorLine({ c, unknownLabel, align = "left" }: { c?: Competitor; unknownLabel: string; align?: "left" | "right" }) {
   const isRight = align === "right";
   return (
-    <div className={`flex items-center gap-1.5 text-sm truncate ${isRight ? "justify-end" : ""}`}>
+    <div className={`flex items-center gap-1.5 text-xs sm:text-sm truncate ${isRight ? "justify-end" : ""}`}>
       {!isRight && c?.color && <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
       <span className="truncate">{c?.name ?? unknownLabel}</span>
       {isRight && c?.color && <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
@@ -583,7 +583,7 @@ function QueueRowBody({
 
   return (
     <div className="rounded-lg border bg-card">
-      <div className="flex items-center gap-2 p-2.5">
+      <div className="flex items-center gap-2 p-2 sm:p-2.5">
         {dragHandleProps && (
           <Tooltip>
             <TooltipTrigger
@@ -602,15 +602,15 @@ function QueueRowBody({
           </Tooltip>
         )}
 
-        <div className="text-xs font-mono text-muted-foreground w-12 shrink-0">
+        <div className="text-xs font-mono text-muted-foreground w-10 sm:w-12 shrink-0">
           #{match.match_number}
         </div>
 
         <DivisionBadge match={match} />
 
-        <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] sm:items-center gap-x-1 gap-y-0.5">
+        <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_1fr] items-center gap-x-1">
           <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" />
-          <span className="hidden sm:inline text-muted-foreground text-xs">vs</span>
+          <span className="text-muted-foreground text-xs">vs</span>
           <CompetitorLine c={b} unknownLabel={unknownLabel} align="left" />
         </div>
 

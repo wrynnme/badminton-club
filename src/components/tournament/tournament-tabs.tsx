@@ -1,10 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useMemo, type ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useTabSync } from "@/lib/hooks/use-tab-sync";
 
 type TabId = "dashboard" | "teams" | "groups" | "pairs" | "knockout" | "queue" | "settings";
+
+const ALL_TABS: readonly TabId[] = [
+  "dashboard",
+  "teams",
+  "groups",
+  "pairs",
+  "knockout",
+  "queue",
+  "settings",
+];
 
 export function TournamentTabs({
   dashboardTab,
@@ -33,11 +43,7 @@ export function TournamentTabs({
   showQueue: boolean;
   showSettings: boolean;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  const validTabs = useMemo(() => {
+  const validTabs = useMemo<readonly TabId[]>(() => {
     const list: TabId[] = ["dashboard", "teams"];
     if (showGroups) list.push("groups");
     if (showPairs) list.push("pairs");
@@ -47,46 +53,17 @@ export function TournamentTabs({
     return list;
   }, [showGroups, showPairs, showKnockout, showQueue, showSettings]);
 
-  const queryTab = searchParams.get("tab") as TabId | null;
   // Default landing tab is "teams" — keeps recharts out of the initial bundle
   // for typical viewers. Users opt into the dashboard by clicking the tab,
   // which lazy-mounts it.
-  const activeTab: TabId =
-    queryTab && validTabs.includes(queryTab) ? queryTab : "teams";
-
-  // Lazy-mount: each tab content only renders after first visit. After mount,
-  // it stays mounted so switching back is instant + preserves local state.
-  const [mounted, setMounted] = useState<Set<TabId>>(() => new Set([activeTab]));
-  useEffect(() => {
-    setMounted((prev) => (prev.has(activeTab) ? prev : new Set([...prev, activeTab])));
-  }, [activeTab]);
-
-  // If URL points to a tab that doesn't exist for this viewer (e.g.
-  // ?tab=settings as a non-admin), strip the param so the canonical URL
-  // matches the actually-rendered tab.
-  const searchString = searchParams.toString();
-  useEffect(() => {
-    if (queryTab && !validTabs.includes(queryTab)) {
-      const params = new URLSearchParams(searchString);
-      params.delete("tab");
-      const qs = params.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    }
-  }, [queryTab, validTabs, router, pathname, searchString]);
-
-  const onValueChange = (next: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    // "teams" is the canonical default — strip the ?tab= param for it so the
-    // URL stays clean. All other tabs (including dashboard) get an explicit
-    // ?tab=<id>.
-    if (next === "teams") params.delete("tab");
-    else params.set("tab", next);
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  };
+  const { active, mounted, onChange } = useTabSync<TabId>({
+    allTabs: ALL_TABS,
+    validTabs,
+    defaultTab: "teams",
+  });
 
   return (
-    <Tabs value={activeTab} onValueChange={onValueChange}>
+    <Tabs value={active} onValueChange={onChange}>
       <TabsList className="w-full flex-wrap h-auto">
         <TabsTrigger value="dashboard">แดชบอร์ด</TabsTrigger>
         <TabsTrigger value="teams">ทีม</TabsTrigger>

@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useTabSync } from "@/lib/hooks/use-tab-sync";
 
-type TabId = "dashboard" | "overview" | "groups" | "pairs" | "knockout" | "queue";
+type TabId = "dashboard" | "groups" | "pairs" | "knockout" | "queue";
+
+const ALL_TABS: readonly TabId[] = ["dashboard", "groups", "pairs", "knockout", "queue"];
 
 export function PublicTournamentShell({
   dashboard,
-  overview,
   groups,
   pairs,
   knockout,
@@ -18,7 +20,6 @@ export function PublicTournamentShell({
   showQueue,
 }: {
   dashboard: ReactNode;
-  overview: ReactNode;
   groups?: ReactNode;
   pairs?: ReactNode;
   knockout?: ReactNode;
@@ -28,17 +29,20 @@ export function PublicTournamentShell({
   showKnockout: boolean;
   showQueue: boolean;
 }) {
-  // Default landing tab is "overview" — keeps recharts out of the initial
-  // bundle for typical public viewers. Dashboard tab is opt-in via click,
-  // which lazy-mounts it.
-  const [active, setActive] = useState<TabId>("overview");
-  const [mounted, setMounted] = useState<Set<TabId>>(() => new Set<TabId>(["overview"]));
+  const validTabs = useMemo<readonly TabId[]>(() => {
+    const list: TabId[] = ["dashboard"];
+    if (showGroups) list.push("groups");
+    if (showPairs) list.push("pairs");
+    if (showKnockout) list.push("knockout");
+    if (showQueue) list.push("queue");
+    return list;
+  }, [showGroups, showPairs, showKnockout, showQueue]);
 
-  const onChange = (v: string) => {
-    const next = v as TabId;
-    setActive(next);
-    setMounted((prev) => (prev.has(next) ? prev : new Set([...prev, next])));
-  };
+  const { active, mounted, onChange } = useTabSync<TabId>({
+    allTabs: ALL_TABS,
+    validTabs,
+    defaultTab: "dashboard",
+  });
 
   return (
     <Tabs value={active} onValueChange={onChange} className="w-full">
@@ -46,29 +50,26 @@ export function PublicTournamentShell({
         variant="line"
         className="w-full justify-start gap-0 rounded-none border-b bg-transparent pb-0 h-auto flex-wrap"
       >
-        <TabsTrigger value="dashboard" className="px-4 pb-3 pt-1 rounded-none text-sm sm:text-base">
+        <TabsTrigger value="dashboard" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
           แดชบอร์ด
         </TabsTrigger>
-        <TabsTrigger value="overview" className="px-4 pb-3 pt-1 rounded-none text-sm sm:text-base">
-          ภาพรวม
-        </TabsTrigger>
         {showGroups && (
-          <TabsTrigger value="groups" className="px-4 pb-3 pt-1 rounded-none text-sm sm:text-base">
+          <TabsTrigger value="groups" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
             กลุ่ม
           </TabsTrigger>
         )}
         {showPairs && (
-          <TabsTrigger value="pairs" className="px-4 pb-3 pt-1 rounded-none text-sm sm:text-base">
+          <TabsTrigger value="pairs" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
             คู่
           </TabsTrigger>
         )}
         {showKnockout && (
-          <TabsTrigger value="knockout" className="px-4 pb-3 pt-1 rounded-none text-sm sm:text-base">
+          <TabsTrigger value="knockout" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
             สาย
           </TabsTrigger>
         )}
         {showQueue && (
-          <TabsTrigger value="queue" className="px-4 pb-3 pt-1 rounded-none text-sm sm:text-base">
+          <TabsTrigger value="queue" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
             ตารางคิว
           </TabsTrigger>
         )}
@@ -76,9 +77,6 @@ export function PublicTournamentShell({
 
       <TabsContent value="dashboard" className="mt-6">
         {mounted.has("dashboard") ? dashboard : null}
-      </TabsContent>
-      <TabsContent value="overview" className="mt-6">
-        {mounted.has("overview") ? overview : null}
       </TabsContent>
       {showGroups && (
         <TabsContent value="groups" className="mt-6">

@@ -1,21 +1,17 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/server";
 import { Separator } from "@/components/ui/separator";
 import { BracketView } from "@/components/tournament/bracket-view";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import { TvAutoRefresh } from "@/components/tournament/tv-auto-refresh";
-import { TvFullscreenButton } from "@/components/tournament/tv-fullscreen-button";
+import { PublicTvHeader } from "@/components/tournament/public/public-tv-header";
 import { buildVisualBracket } from "@/lib/tournament/bracket-visual";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseSettings } from "@/lib/tournament/settings";
 import { divisionLabelTh, parseDivision } from "@/lib/tournament/divisions";
-import { TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-// TODO: extract shared public TV header (#review-2026-05-22)
 
 export default async function PublicBracketPage({
   params,
@@ -111,30 +107,12 @@ export default async function PublicBracketPage({
       <TvAutoRefresh intervalMs={settings.tv_refresh_interval_sec * 1000} />
       <div className="h-screen w-screen overflow-hidden flex flex-col bg-background text-foreground p-3 lg:p-4">
         {/* Hero — fixed-height header */}
-        <header className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-          <div className="min-w-0">
-            <h1 className="text-2xl lg:text-4xl xl:text-5xl 2xl:text-6xl font-bold truncate leading-tight">
-              {t.name}
-            </h1>
-            {t.venue && (
-              <p className="text-sm lg:text-xl 2xl:text-2xl text-muted-foreground truncate leading-tight">
-                {t.venue}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-3 lg:gap-4">
-            <span className="px-3 py-1 lg:px-4 lg:py-1.5 rounded-full border text-sm lg:text-lg 2xl:text-xl font-semibold">
-              {TOURNAMENT_STATUS_LABEL[t.status] ?? t.status}
-            </span>
-            <TvFullscreenButton />
-            <Link
-              href={`/t/${token}/tv`}
-              className="text-sm lg:text-base 2xl:text-lg text-muted-foreground hover:text-foreground underline"
-            >
-              ออก
-            </Link>
-          </div>
-        </header>
+        <PublicTvHeader
+          name={t.name}
+          venue={t.venue}
+          status={t.status}
+          backLink={{ href: `/t/${token}/tv`, label: "ออก" }}
+        />
 
         {!hasBracket ? (
           <div className="flex-1 min-h-0 flex items-center justify-center">

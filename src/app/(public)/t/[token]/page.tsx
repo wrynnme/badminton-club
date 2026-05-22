@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { Info } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { GroupStage } from "@/components/tournament/group-stage";
@@ -6,7 +7,6 @@ import { PairStage } from "@/components/tournament/pair-stage";
 import { KnockoutStage } from "@/components/tournament/knockout-stage";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import { PublicHero } from "@/components/tournament/public/public-hero";
-import { PublicOverview } from "@/components/tournament/public/public-overview";
 import { PublicTournamentShell } from "@/components/tournament/public/public-tournament-shell";
 import { TournamentDashboardLazy } from "@/components/tournament/tournament-dashboard-lazy";
 import { MatchQueue } from "@/components/tournament/match-queue";
@@ -100,89 +100,82 @@ export default async function PublicTournamentPage({
         />
 
         {t.notes && (
-          <div className="flex gap-3 rounded-r-lg border-l-4 border-amber-400 bg-amber-50/50 dark:bg-amber-950/20 px-4 py-3 text-sm whitespace-pre-wrap">
+          <div className="flex gap-2 sm:gap-3 rounded-r-lg border-l-4 border-amber-400 bg-amber-50/50 dark:bg-amber-950/20 px-3 sm:px-4 py-3 text-sm whitespace-pre-wrap">
             <Info className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
             <div>{t.notes}</div>
           </div>
         )}
 
-        <PublicTournamentShell
-          showGroups={showGroupStage}
-          showPairs={showPairStage}
-          showKnockout={showKnockoutStage}
-          showQueue={showQueueStage}
-          dashboard={
-            <TournamentDashboardLazy
-              tournament={t}
-              teams={teams}
-              pairs={pairs}
-              matches={allMatches}
-            />
-          }
-          overview={
-            <PublicOverview
-              tournament={t}
-              teams={teams}
-              flatTeams={flatTeams}
-              pairs={pairs}
-              allMatches={allMatches}
-            />
-          }
-          groups={
-            showGroupStage ? (
-              <GroupStage
-                tournamentId={t.id}
-                groups={groups}
-                teams={flatTeams}
-                isOwner={false}
-                matchRowSize="comfortable"
-                showColorSummary={settings.color_summary}
-              />
-            ) : undefined
-          }
-          pairs={
-            showPairStage ? (
-              <PairStage
-                tournamentId={t.id}
+        <Suspense fallback={null}>
+          <PublicTournamentShell
+            showGroups={showGroupStage}
+            showPairs={showPairStage}
+            showKnockout={showKnockoutStage}
+            showQueue={showQueueStage}
+            dashboard={
+              <TournamentDashboardLazy
+                tournament={t}
                 teams={teams}
                 pairs={pairs}
-                matches={allMatches.filter((m) => m.pair_a_id)}
-                pairDivisionThresholds={parseTournamentThresholds(t.pair_division_thresholds)}
-                isOwner={false}
-                matchRowSize="comfortable"
-              />
-            ) : undefined
-          }
-          knockout={
-            showKnockoutStage ? (
-              <KnockoutStage
-                tournamentId={t.id}
-                matches={knockoutMatches}
-                teams={flatTeams}
-                pairs={t.match_unit === "pair" ? pairs : undefined}
-                matchUnit={t.match_unit}
-                advanceCount={t.advance_count ?? 2}
-                isOwner={false}
-                format={t.format}
-                matchRowSize="comfortable"
-              />
-            ) : undefined
-          }
-          queue={
-            showQueueStage ? (
-              <MatchQueue
                 matches={allMatches}
-                competitorById={competitorById}
-                tournamentId={t.id}
-                unit={t.match_unit}
-                canEdit={false}
-                courts={t.courts ?? []}
-                requireCourtToStart={settings.require_court_to_start}
-                courtStrict={settings.court_strict}
               />
-            ) : undefined
-          }
-        />
+            }
+            groups={
+              showGroupStage ? (
+                <GroupStage
+                  tournamentId={t.id}
+                  groups={groups}
+                  teams={flatTeams}
+                  isOwner={false}
+                  matchRowSize="comfortable"
+                  showColorSummary={settings.color_summary}
+                />
+              ) : undefined
+            }
+            pairs={
+              showPairStage ? (
+                <PairStage
+                  tournamentId={t.id}
+                  teams={teams}
+                  pairs={pairs}
+                  matches={allMatches.filter((m) => m.pair_a_id)}
+                  pairDivisionThresholds={parseTournamentThresholds(t.pair_division_thresholds)}
+                  isOwner={false}
+                  matchRowSize="comfortable"
+                />
+              ) : undefined
+            }
+            knockout={
+              showKnockoutStage ? (
+                <KnockoutStage
+                  tournamentId={t.id}
+                  matches={knockoutMatches}
+                  teams={flatTeams}
+                  pairs={t.match_unit === "pair" ? pairs : undefined}
+                  matchUnit={t.match_unit}
+                  advanceCount={t.advance_count ?? 2}
+                  isOwner={false}
+                  format={t.format}
+                  matchRowSize="comfortable"
+                />
+              ) : undefined
+            }
+            queue={
+              showQueueStage ? (
+                <MatchQueue
+                  matches={allMatches}
+                  competitorById={competitorById}
+                  tournamentId={t.id}
+                  unit={t.match_unit}
+                  canEdit={false}
+                  courts={t.courts ?? []}
+                  requireCourtToStart={settings.require_court_to_start}
+                  courtStrict={settings.court_strict}
+                />
+              ) : undefined
+            }
+          />
+        </Suspense>
       </div>
     </TournamentLiveWrapper>
   );
