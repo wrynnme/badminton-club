@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScoreForm } from "@/components/tournament/score-form";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import {
   reorderMatchQueueAction,
   setMatchCourtAction,
@@ -422,12 +423,26 @@ function StatusBadge({ status }: { status: Match["status"] }) {
   );
 }
 
-function CompetitorLine({ c, unknownLabel, align = "left" }: { c?: Competitor; unknownLabel: string; align?: "left" | "right" }) {
+function CompetitorLine({
+  c,
+  unknownLabel,
+  align = "left",
+  entityType,
+  entityId,
+}: {
+  c?: Competitor;
+  unknownLabel: string;
+  align?: "left" | "right";
+  entityType: "pair" | "team";
+  entityId: string | null | undefined;
+}) {
   const isRight = align === "right";
   return (
     <div className={`flex items-center gap-1.5 text-xs sm:text-sm truncate ${isRight ? "justify-end" : ""}`}>
       {!isRight && c?.color && <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
-      <span className="truncate">{c?.name ?? unknownLabel}</span>
+      <EntityLink entityType={entityType} entityId={entityId}>
+        <span className="truncate">{c?.name ?? unknownLabel}</span>
+      </EntityLink>
       {isRight && c?.color && <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
     </div>
   );
@@ -613,9 +628,9 @@ function QueueRowBody({
         <DivisionBadge match={match} />
 
         <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_1fr] items-center gap-x-1">
-          <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" />
+          <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_a_id : match.team_a_id} />
           <span className="text-muted-foreground text-xs">vs</span>
-          <CompetitorLine c={b} unknownLabel={unknownLabel} align="left" />
+          <CompetitorLine c={b} unknownLabel={unknownLabel} align="left" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_b_id : match.team_b_id} />
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">

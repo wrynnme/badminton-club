@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScoreForm } from "@/components/tournament/score-form";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { resetMatchScoreAction } from "@/lib/actions/matches";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import type { Match } from "@/lib/types";
@@ -52,7 +53,9 @@ function MatchRowImpl({
       <div className={`flex items-center gap-2 ${rowText}`}>
         <div className={`flex-1 min-w-0 text-right ${winner === "a" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
           {a?.color && <span className={colorDot} style={{ backgroundColor: a.color }} />}
-          <span className="truncate block">{a?.name ?? unknownLabel}</span>
+          <EntityLink entityType={unit === "pair" ? "pair" : "team"} entityId={aId}>
+            <span className="truncate block">{a?.name ?? unknownLabel}</span>
+          </EntityLink>
           {a?.subtitle && <div className={`${subText} text-muted-foreground font-normal truncate`}>{a.subtitle}</div>}
         </div>
 
@@ -67,7 +70,9 @@ function MatchRowImpl({
 
         <div className={`flex-1 min-w-0 ${winner === "b" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
           {b?.color && <span className={colorDot} style={{ backgroundColor: b.color }} />}
-          <span className="truncate block">{b?.name ?? unknownLabel}</span>
+          <EntityLink entityType={unit === "pair" ? "pair" : "team"} entityId={bId}>
+            <span className="truncate block">{b?.name ?? unknownLabel}</span>
+          </EntityLink>
           {b?.subtitle && <div className={`${subText} text-muted-foreground font-normal truncate`}>{b.subtitle}</div>}
         </div>
 

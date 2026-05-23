@@ -1,4 +1,5 @@
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
@@ -68,7 +69,9 @@ export function TvMatchCard({
             {a?.color && (
               <span className="inline-block w-3 h-3 lg:w-4 lg:h-4 2xl:w-5 2xl:h-5 rounded-full shrink-0 mt-2" style={{ backgroundColor: a.color }} />
             )}
-            <div className={`${nameSize(a?.name)} whitespace-nowrap truncate leading-tight min-w-0`}>{a?.name ?? "—"}</div>
+            <EntityLink entityType={unit === "pair" ? "pair" : "team"} entityId={aId}>
+              <div className={`${nameSize(a?.name)} whitespace-nowrap truncate leading-tight min-w-0`}>{a?.name ?? "—"}</div>
+            </EntityLink>
           </div>
           {a?.subtitle && (
             <div className="text-muted-foreground font-normal mt-1 break-words text-xs lg:text-base 2xl:text-lg">{a.subtitle}</div>
@@ -94,7 +97,9 @@ export function TvMatchCard({
 
         <div className={`flex-1 min-w-0 text-right ${sideClass(winner === "b", winner === "a")}`}>
           <div className="flex items-start justify-end gap-2 min-w-0">
-            <div className={`${nameSize(b?.name)} whitespace-nowrap truncate leading-tight min-w-0`}>{b?.name ?? "—"}</div>
+            <EntityLink entityType={unit === "pair" ? "pair" : "team"} entityId={bId}>
+              <div className={`${nameSize(b?.name)} whitespace-nowrap truncate leading-tight min-w-0`}>{b?.name ?? "—"}</div>
+            </EntityLink>
             {b?.color && (
               <span className="inline-block w-3 h-3 lg:w-4 lg:h-4 2xl:w-5 2xl:h-5 rounded-full shrink-0 mt-2" style={{ backgroundColor: b.color }} />
             )}
