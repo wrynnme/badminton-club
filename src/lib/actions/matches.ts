@@ -1079,6 +1079,9 @@ export async function recordMatchScoreAction(input: {
     entity_id: input.matchId,
     description: `บันทึกผลแมตช์`,
   });
+  // Fetch settings once — shared by the background notify IIFE and the auto_advance_next gate.
+  const settings = await getTournamentSettings(input.tournamentId);
+
   // Build and send match result notification in background
   (async () => {
     try {
@@ -1109,7 +1112,7 @@ export async function recordMatchScoreAction(input: {
 
       const gameDetail = input.games.map((g) => `${g.a}-${g.b}`).join(", ");
       const msg = `🏸 ${nameA} vs ${nameB}\nเกมที่ชนะ: ${gamesWonA}:${gamesWonB} (${gameDetail})\nผู้ชนะ: ${winnerName}`;
-      await notifyTournamentEvent(input.tournamentId, "score", msg);
+      await notifyTournamentEvent(input.tournamentId, "score", msg, settings);
     } catch {}
   })();
 
@@ -1119,7 +1122,6 @@ export async function recordMatchScoreAction(input: {
   // and the user-facing queue revalidates. LINE notify is intentionally skipped
   // (separate code path — re-add later if needed).
   try {
-    const settings = await getTournamentSettings(input.tournamentId);
     if (settings.auto_advance_next) {
       const inheritedCourt = match.court ?? null;
       // Skip pending matches with TBD slots (e.g. KO match awaiting prior round winner).
@@ -1747,7 +1749,7 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
       }
       const courtPart = match.court ? ` (สนาม ${match.court})` : "";
       const msg = `🏸 เรียกแมตช์ #${match.match_number}${courtPart}\n${nameA} vs ${nameB}`;
-      await notifyTournamentEvent(tournamentId, "start", msg);
+      await notifyTournamentEvent(tournamentId, "start", msg, settings);
     } catch {}
   })();
 

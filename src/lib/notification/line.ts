@@ -1,16 +1,18 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import { getTournamentSettings } from "@/lib/tournament/settings.server";
-import type { LineNotifyFlags } from "@/lib/tournament/settings";
+import type { LineNotifyFlags, TournamentSettings } from "@/lib/tournament/settings";
 
 // Phase 11 — gated wrapper. Skips push when settings.line_notify[event] === false.
+// Pass `settings` when the caller already has it in scope to avoid a redundant DB fetch.
 export async function notifyTournamentEvent(
   tournamentId: string,
   event: keyof LineNotifyFlags,
   text: string,
+  settings?: TournamentSettings,
 ): Promise<void> {
   try {
-    const settings = await getTournamentSettings(tournamentId);
-    if (!settings.line_notify[event]) return;
+    const s = settings ?? (await getTournamentSettings(tournamentId));
+    if (!s.line_notify[event]) return;
     await notifyTournamentAdmins(tournamentId, text);
   } catch (err) {
     console.error("[LINE] gate exception:", err);
