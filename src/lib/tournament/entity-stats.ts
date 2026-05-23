@@ -1,5 +1,6 @@
 import type { Match, PairWithPlayers } from "@/lib/types";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
+import { computePairDivision, parsePairLevel } from "@/lib/tournament/divisions";
 
 export type EntityType = "player" | "pair" | "team" | "division";
 
@@ -308,5 +309,241 @@ export function computePlayerStats(opts: {
     matches: relevant,
     headToHead,
     partnerBreakdown,
+  };
+}
+
+/**
+ * Compute aggregated stats for a team across ALL pairs that belong to the team.
+ *
+ * - entityId = teamId
+ * - headToHead: keyed by OPPOSING TEAM id (not pair id). Built by mapping each
+ *   opponent pair_id → team_id via `pairs`. Self-matches (both pairs in same team)
+ *   are excluded.
+ * - matches: all completed matches where any team pair participated, sorted oldest→newest.
+ */
+export function computeTeamStats(opts: {
+  teamId: string;
+  pairs: PairWithPlayers[];
+  matches: Match[];
+}): EntityStats {
+  const { teamId, pairs, matches } = opts;
+
+  // All pair IDs for this team
+  const teamPairIds = new Set(
+    pairs.filter((p) => p.team_id === teamId).map((p) => p.id)
+  );
+
+  // Build lookup: pairId → teamId (for opponent team resolution)
+  const pairTeamMap = new Map<string, string>();
+  for (const p of pairs) {
+    pairTeamMap.set(p.id, p.team_id);
+  }
+
+  const isSideA = (m: Match) => teamPairIds.has(m.pair_a_id ?? "");
+
+  // Filter: completed, involves at least one team pair
+  const relevant = matches
+    .filter(
+      (m) =>
+        m.status === "completed" &&
+        (teamPairIds.has(m.pair_a_id ?? "") || teamPairIds.has(m.pair_b_id ?? ""))
+    )
+    .sort((a, b) => a.match_number - b.match_number);
+
+  let wins = 0;
+  let losses = 0;
+  let draws = 0;
+  let pointsFor = 0;
+  let pointsAgainst = 0;
+  const headToHead = new Map<
+    string,
+    { played: number; wins: number; losses: number; draws: number }
+  >();
+
+  for (const m of relevant) {
+    const onSideA = isSideA(m);
+    const opponentPairId = onSideA ? m.pair_b_id : m.pair_a_id;
+    const opponentTeamId = opponentPairId ? pairTeamMap.get(opponentPairId) : undefined;
+
+    // Skip intra-team matches (both pairs belong to same team)
+    if (opponentTeamId === teamId) continue;
+
+    const rawWinner = gameWinner(m.games);
+    const totals = sumGameScores(m.games);
+
+    if (onSideA) {
+      pointsFor += totals.a;
+      pointsAgainst += totals.b;
+    } else {
+      pointsFor += totals.b;
+      pointsAgainst += totals.a;
+    }
+
+    let result: "W" | "L" | "D";
+    if (rawWinner === "draw") {
+      result = "D";
+      draws++;
+    } else if ((rawWinner === "a" && onSideA) || (rawWinner === "b" && !onSideA)) {
+      result = "W";
+      wins++;
+    } else {
+      result = "L";
+      losses++;
+    }
+
+    // H2H keyed by opponent team id
+    if (opponentTeamId) {
+      const existing = headToHead.get(opponentTeamId) ?? {
+        played: 0, wins: 0, losses: 0, draws: 0,
+      };
+      existing.played++;
+      if (result === "W") existing.wins++;
+      else if (result === "L") existing.losses++;
+      else existing.draws++;
+      headToHead.set(opponentTeamId, existing);
+    }
+  }
+
+  const played = wins + losses + draws;
+  const winRate = played > 0 ? wins / played : 0;
+  const pointsDiff = pointsFor - pointsAgainst;
+  const streak = computeStreak(relevant, isSideA);
+
+  return {
+    entityType: "team",
+    entityId: teamId,
+    played,
+    wins,
+    losses,
+    draws,
+    winRate,
+    pointsFor,
+    pointsAgainst,
+    pointsDiff,
+    streak,
+    matches: relevant,
+    headToHead,
+  };
+}
+
+/**
+ * Compute aggregated stats for a division (1..N) based on matches.division column.
+ *
+ * - entityId = String(division)
+ * - headToHead: keyed by PAIR id → {played, wins, losses, draws} — per-pair standings
+ *   within this division. This mirrors the view's "pair standings" section and is
+ *   more meaningful than team-vs-team at division level.
+ * - matches: all completed matches where division column === String(division).
+ * - wins/losses/draws: aggregate across all match sides within division (each match
+ *   contributes exactly one W + one L, or two D to the aggregate; these stats reflect
+ *   total outcomes, not a single entity's record — use played/pointsFor/pointsAgainst
+ *   for the division summary cards; wins/losses are intentionally mirrored).
+ * - thresholds: used only to validate that `division` is within range; matches are
+ *   filtered by the stored `m.division` column directly.
+ */
+export function computeDivisionStats(opts: {
+  division: number;
+  pairs: PairWithPlayers[];
+  matches: Match[];
+  thresholds: number[];
+}): EntityStats {
+  const { division, pairs, matches, thresholds } = opts;
+
+  const divStr = String(division);
+
+  // Filter completed matches in this division using the stored column
+  const relevant = matches
+    .filter((m) => m.status === "completed" && m.division === divStr)
+    .sort((a, b) => a.match_number - b.match_number);
+
+  // Build set of pair IDs that belong to this division (via computePairDivision)
+  const divisionPairIds = new Set<string>();
+  if (thresholds.length > 0) {
+    for (const p of pairs) {
+      const d = computePairDivision(parsePairLevel(p.pair_level), thresholds);
+      if (d === division) divisionPairIds.add(p.id);
+    }
+  }
+
+  // Aggregate totals across all matches in division
+  let pointsFor = 0;  // total points scored by side A across all matches
+  let pointsAgainst = 0; // total points scored by side B across all matches
+
+  // Per-pair standings: headToHead map keyed by pair_id → {played, wins, losses, draws}
+  const headToHead = new Map<
+    string,
+    { played: number; wins: number; losses: number; draws: number }
+  >();
+
+  const ensurePairEntry = (pairId: string) => {
+    if (!headToHead.has(pairId)) {
+      headToHead.set(pairId, { played: 0, wins: 0, losses: 0, draws: 0 });
+    }
+    return headToHead.get(pairId)!;
+  };
+
+  let wins = 0;
+  let losses = 0;
+  let draws = 0;
+
+  for (const m of relevant) {
+    const rawWinner = gameWinner(m.games);
+    const totals = sumGameScores(m.games);
+
+    pointsFor += totals.a;
+    pointsAgainst += totals.b;
+
+    // Each match: side A gets W or D, side B gets L or D (mirrored)
+    if (rawWinner === "draw") {
+      draws += 2; // one draw outcome per side
+    } else if (rawWinner === "a") {
+      wins++;
+      losses++;
+    } else {
+      wins++;
+      losses++;
+    }
+
+    // Per-pair H2H (pair standings within division)
+    if (m.pair_a_id) {
+      const a = ensurePairEntry(m.pair_a_id);
+      a.played++;
+      if (rawWinner === "draw") a.draws++;
+      else if (rawWinner === "a") a.wins++;
+      else a.losses++;
+    }
+    if (m.pair_b_id) {
+      const b = ensurePairEntry(m.pair_b_id);
+      b.played++;
+      if (rawWinner === "draw") b.draws++;
+      else if (rawWinner === "a") b.losses++;
+      else b.wins++;
+    }
+  }
+
+  const played = relevant.length;
+  const winRate = played > 0 ? wins / (wins + losses + draws) : 0;
+  const pointsDiff = pointsFor - pointsAgainst;
+
+  // Streak not meaningful at division level
+  const streak: { type: "W" | "L" | "D" | null; length: number } = {
+    type: null,
+    length: 0,
+  };
+
+  return {
+    entityType: "division",
+    entityId: divStr,
+    played,
+    wins,
+    losses,
+    draws,
+    winRate,
+    pointsFor,
+    pointsAgainst,
+    pointsDiff,
+    streak,
+    matches: relevant,
+    headToHead,
   };
 }
