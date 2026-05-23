@@ -667,10 +667,6 @@ Edge cases:
 
 Excel `/Users/x/Desktop/กำหนดการแข่งขันและผลคะแนน รายการวีนฉ่ำ ครั้งที่ 2.xlsx` (130 pairs, 5 classes NB/BG/N/S/P-, 6 courts, sheets: รายชื่อรวม/กติกา/ตารางเวลา/RunMatch/Class _/KO-_/สรุปรายการรางวัล) — patterns to adopt:
 
-**Quick wins** (small effort, do anytime):
-
-- **Pair CODE auto-gen** — add `pairs.code text` (nullable). After `generateGroupsAction` for pair mode, assign `<class_code><group_letter><seed>` (e.g. `NBA1`). Display in queue / bracket / TV / CSV export. Sortable + speakable for organizers ("คู่ NBA1 มาคอร์ท 3").
-
 **Medium features**:
 
 - **Time-slot schedule grid** — currently we have queue order but no real timestamps. Add `tournaments.start_time time`, `tournaments.slot_minutes int default 30`. Auto-fill `matches.scheduled_at` during auto-rotate: `start_time + floor((queue_position-1) / court_count) * slot_minutes`. New page `/tournaments/[id]/schedule` renders HTML table time × court grid; A4 landscape print-optimized. Organizers will print and pin at venue.
