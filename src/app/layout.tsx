@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { Anuphan, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
@@ -35,7 +37,9 @@ export default async function RootLayout({
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background overflow-x-clip">
-        <TooltipProvider delay={300}>{children}</TooltipProvider>
+        <TooltipProvider delay={300}>
+          <Suspense fallback={<LoadingSpinner fullscreen />}>{children}</Suspense>
+        </TooltipProvider>
         <Toaster />
       </body>
     </html>

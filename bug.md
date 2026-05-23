@@ -10,6 +10,10 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Resolved
 
+### 2026-05-24 — unit tests (Phase B player stats)
+
+- 246/246 pass (+12 new `computePlayerStats` tests; 0 regressions)
+
 ### 2026-05-23 — `50a77f2` Perf audit batch (8 of 9 fixes)
 
 - **[P1] N+1 in `updateGroupTeamStandings`**

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { Info } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { GroupStage } from "@/components/tournament/group-stage";
 import { PairStage } from "@/components/tournament/pair-stage";
 import { KnockoutStage } from "@/components/tournament/knockout-stage";
@@ -106,7 +107,7 @@ export default async function PublicTournamentPage({
           </div>
         )}
 
-        <Suspense fallback={null}>
+        <Suspense fallback={<LoadingSpinner />}>
           <PublicTournamentShell
             showGroups={showGroupStage}
             showPairs={showPairStage}

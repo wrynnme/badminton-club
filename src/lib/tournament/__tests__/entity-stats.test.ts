@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { computePairStats } from "../entity-stats";
-import type { Match, Game } from "@/lib/types";
+import { computePairStats, computePlayerStats } from "../entity-stats";
+import type { Match, Game, PairWithPlayers, TeamPlayer } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Helper
@@ -258,5 +258,280 @@ describe("computePairStats — draw", () => {
     expect(stats.losses).toBe(0);
     expect(stats.winRate).toBe(0);
     expect(stats.streak).toEqual({ type: "D", length: 1 });
+  });
+});
+
+// ===========================================================================
+// computePlayerStats
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Helper — build minimal PairWithPlayers
+// ---------------------------------------------------------------------------
+function makePlayer(id: string, displayName = `Player ${id}`): TeamPlayer {
+  return {
+    id,
+    team_id: "team-1",
+    profile_id: null,
+    display_name: displayName,
+    role: "member",
+    level: null,
+    csv_id: null,
+    created_at: "2026-01-01T00:00:00Z",
+  };
+}
+
+function makePair(
+  id: string,
+  player1Id: string,
+  player2Id: string | null = null
+): PairWithPlayers {
+  return {
+    id,
+    team_id: "team-1",
+    player_id_1: player1Id,
+    player_id_2: player2Id,
+    display_pair_name: null,
+    pair_level: null,
+    created_at: "2026-01-01T00:00:00Z",
+    player1: makePlayer(player1Id),
+    player2: player2Id ? makePlayer(player2Id) : null,
+  };
+}
+
+const PLAYER_X = "player-x";
+const PLAYER_Y = "player-y";
+const PLAYER_Z = "player-z";
+const PLAYER_W = "player-w";
+
+// Pair X+Y (primary pair for player X)
+const PAIR_XY = "pair-xy";
+// Pair X+Z (second pair — rare case where player is in 2 pairs)
+const PAIR_XZ = "pair-xz";
+// Opponent pairs
+const PAIR_OP1 = "pair-op1";
+const PAIR_OP2 = "pair-op2";
+
+// ---------------------------------------------------------------------------
+// 9. Player not in any pair → 0 played
+// ---------------------------------------------------------------------------
+describe("computePlayerStats — player not in any pair", () => {
+  it("returns zeroed stats when player has no pairs", () => {
+    const m = makeMatch({
+      pair_a_id: PAIR_XY,
+      pair_b_id: PAIR_OP1,
+      games: [{ a: 21, b: 15 }, { a: 21, b: 10 }],
+    });
+    const stats = computePlayerStats({
+      playerId: "unknown-player",
+      pairs: [makePair(PAIR_XY, PLAYER_X, PLAYER_Y)],
+      matches: [m],
+    });
+    expect(stats.entityType).toBe("player");
+    expect(stats.entityId).toBe("unknown-player");
+    expect(stats.played).toBe(0);
+    expect(stats.matches).toHaveLength(0);
+    expect(stats.headToHead.size).toBe(0);
+    expect(stats.partnerBreakdown?.size).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. Player in 1 pair, 3 completed matches → standard aggregation
+// ---------------------------------------------------------------------------
+describe("computePlayerStats — 1 pair, 3 matches", () => {
+  const pairs = [makePair(PAIR_XY, PLAYER_X, PLAYER_Y)];
+
+  // m1: PAIR_XY is side A, wins 2-0
+  const m1 = makeMatch({
+    pair_a_id: PAIR_XY,
+    pair_b_id: PAIR_OP1,
+    games: [{ a: 21, b: 15 }, { a: 21, b: 10 }],
+  });
+  // m2: PAIR_XY is side B, wins (B wins 2-0 → side B wins)
+  const m2 = makeMatch({
+    pair_a_id: PAIR_OP1,
+    pair_b_id: PAIR_XY,
+    games: [{ a: 10, b: 21 }, { a: 15, b: 21 }],
+  });
+  // m3: PAIR_XY is side A, loses 0-2
+  const m3 = makeMatch({
+    pair_a_id: PAIR_XY,
+    pair_b_id: PAIR_OP1,
+    games: [{ a: 10, b: 21 }, { a: 15, b: 21 }],
+  });
+
+  it("counts 2 wins 1 loss", () => {
+    const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
+    expect(stats.played).toBe(3);
+    expect(stats.wins).toBe(2);
+    expect(stats.losses).toBe(1);
+    expect(stats.draws).toBe(0);
+  });
+
+  it("win rate is 2/3", () => {
+    const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
+    expect(stats.winRate).toBeCloseTo(2 / 3);
+  });
+
+  it("streak is L-1 (last match was a loss)", () => {
+    const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
+    expect(stats.streak).toEqual({ type: "L", length: 1 });
+  });
+
+  it("aggregates pointsFor and pointsAgainst correctly", () => {
+    const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
+    // m1 (sideA): for=42, against=25
+    // m2 (sideB): for=21+21=42, against=10+15=25
+    // m3 (sideA): for=25, against=42
+    expect(stats.pointsFor).toBe(42 + 42 + 25);
+    expect(stats.pointsAgainst).toBe(25 + 25 + 42);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 11. Player in 2 different pairs → matches from both counted
+// ---------------------------------------------------------------------------
+describe("computePlayerStats — player in 2 pairs", () => {
+  const pairs = [
+    makePair(PAIR_XY, PLAYER_X, PLAYER_Y),
+    makePair(PAIR_XZ, PLAYER_X, PLAYER_Z),
+  ];
+
+  // Match via pair XY vs OP1 — X wins
+  const m1 = makeMatch({
+    pair_a_id: PAIR_XY,
+    pair_b_id: PAIR_OP1,
+    games: [{ a: 21, b: 15 }, { a: 21, b: 10 }],
+  });
+  // Match via pair XZ vs OP2 — X loses
+  const m2 = makeMatch({
+    pair_a_id: PAIR_XZ,
+    pair_b_id: PAIR_OP2,
+    games: [{ a: 10, b: 21 }, { a: 15, b: 21 }],
+  });
+
+  it("counts matches from both pairs", () => {
+    const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2] });
+    expect(stats.played).toBe(2);
+    expect(stats.wins).toBe(1);
+    expect(stats.losses).toBe(1);
+  });
+
+  it("headToHead contains both opponent pairs", () => {
+    const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2] });
+    expect(stats.headToHead.has(PAIR_OP1)).toBe(true);
+    expect(stats.headToHead.has(PAIR_OP2)).toBe(true);
+    expect(stats.headToHead.get(PAIR_OP1)?.wins).toBe(1);
+    expect(stats.headToHead.get(PAIR_OP2)?.losses).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 12. partnerBreakdown groups correctly by partner player id
+// ---------------------------------------------------------------------------
+describe("computePlayerStats — partnerBreakdown", () => {
+  const pairXY = makePair(PAIR_XY, PLAYER_X, PLAYER_Y);
+  const pairXW = makePair(PAIR_XZ, PLAYER_X, PLAYER_W); // reuse PAIR_XZ id, different partner
+  const pairs = [pairXY, pairXW];
+
+  // m1 + m2: played with Y (1W 1L)
+  const m1 = makeMatch({
+    pair_a_id: PAIR_XY,
+    pair_b_id: PAIR_OP1,
+    games: [{ a: 21, b: 15 }, { a: 21, b: 10 }], // W
+  });
+  const m2 = makeMatch({
+    pair_a_id: PAIR_XY,
+    pair_b_id: PAIR_OP1,
+    games: [{ a: 10, b: 21 }, { a: 15, b: 21 }], // L
+  });
+  // m3: played with W (1W)
+  const m3 = makeMatch({
+    pair_a_id: PAIR_XZ,
+    pair_b_id: PAIR_OP2,
+    games: [{ a: 21, b: 10 }, { a: 21, b: 15 }], // W
+  });
+
+  it("tracks partner Y: 2 played, 1W 1L", () => {
+    const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
+    const withY = stats.partnerBreakdown?.get(PLAYER_Y);
+    expect(withY).toBeDefined();
+    expect(withY!.played).toBe(2);
+    expect(withY!.wins).toBe(1);
+    expect(withY!.losses).toBe(1);
+    expect(withY!.draws).toBe(0);
+  });
+
+  it("tracks partner W: 1 played, 1W", () => {
+    const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
+    const withW = stats.partnerBreakdown?.get(PLAYER_W);
+    expect(withW).toBeDefined();
+    expect(withW!.played).toBe(1);
+    expect(withW!.wins).toBe(1);
+  });
+
+  it("partnerBreakdown has exactly 2 partners", () => {
+    const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
+    expect(stats.partnerBreakdown?.size).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 13. headToHead by opponent pair id (player stats)
+// ---------------------------------------------------------------------------
+describe("computePlayerStats — headToHead by opponent pair", () => {
+  const pairs = [makePair(PAIR_XY, PLAYER_X, PLAYER_Y)];
+
+  const m1 = makeMatch({
+    pair_a_id: PAIR_XY,
+    pair_b_id: PAIR_OP1,
+    games: [{ a: 21, b: 15 }, { a: 21, b: 10 }], // W vs OP1
+  });
+  const m2 = makeMatch({
+    pair_a_id: PAIR_OP1,
+    pair_b_id: PAIR_XY,
+    games: [{ a: 21, b: 10 }, { a: 21, b: 10 }], // L vs OP1 (XY is sideB, OP1 wins)
+  });
+  const m3 = makeMatch({
+    pair_a_id: PAIR_XY,
+    pair_b_id: PAIR_OP2,
+    games: [{ a: 21, b: 15 }, { a: 21, b: 15 }], // W vs OP2
+  });
+
+  it("groups h2h by opponent pair id", () => {
+    const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
+    const vsOp1 = stats.headToHead.get(PAIR_OP1);
+    expect(vsOp1?.played).toBe(2);
+    expect(vsOp1?.wins).toBe(1);
+    expect(vsOp1?.losses).toBe(1);
+
+    const vsOp2 = stats.headToHead.get(PAIR_OP2);
+    expect(vsOp2?.played).toBe(1);
+    expect(vsOp2?.wins).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 14. Non-completed matches excluded
+// ---------------------------------------------------------------------------
+describe("computePlayerStats — ignores non-completed matches", () => {
+  it("ignores pending and in_progress", () => {
+    const pairs = [makePair(PAIR_XY, PLAYER_X, PLAYER_Y)];
+    const m1 = makeMatch({
+      pair_a_id: PAIR_XY,
+      pair_b_id: PAIR_OP1,
+      games: [{ a: 21, b: 10 }],
+      status: "pending",
+    });
+    const m2 = makeMatch({
+      pair_a_id: PAIR_XY,
+      pair_b_id: PAIR_OP1,
+      games: [{ a: 21, b: 10 }],
+      status: "in_progress",
+    });
+    const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2] });
+    expect(stats.played).toBe(0);
+    expect(stats.matches).toHaveLength(0);
   });
 });
