@@ -68,6 +68,7 @@ Trust but verify. Read the actual diff/changes before reporting done. Subagent s
 - Supabase (Postgres + RLS) — MCP connected via `.mcp.json`
 - Auth: LINE Login + Guest mode (HMAC-signed cookie, no Supabase Auth)
 - Font: Google Font Anuphan (`thai` + `latin` subsets)
+- Navigation progress bar: `@bprogress/next` 3.x (3px top bar, `var(--primary)`, no spinner)
 
 ## After completing any task
 
@@ -114,6 +115,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - `SortablePlayerList` uses `@dnd-kit` with `activationConstraint: { distance: 8 }` for mobile compat
 - Theme stored in `theme` cookie — `layout.tsx` reads it server-side to add `dark` class on `<html>` (no next-themes)
 - Root `body` has `overflow-x-clip` (not `overflow-x-hidden`) — global horizontal-overflow guard for iOS Safari; `clip` chosen so `position:sticky` children keep working
+- `EntityLink` (`src/components/tournament/stats/entity-link.tsx`) derives its base href from `usePathname()` — admin context → `/tournaments/[id]/stats/...`, public-token context → `/t/[token]/stats/...`, otherwise renders a plain span (no broken links)
 
 ## Tournament System (Phase 0–11 done; Phase 12 require_checkin + Phase 13 competition mode planned — see `spec.md`)
 
@@ -126,6 +128,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - `src/lib/tournament/bracket-visual.ts` — `buildVisualBracket(matches, section)` → `VisualRound[]`; `CARD_H`, `CONNECTOR_W` constants
 - `src/lib/tournament/settings.ts` — zod `TournamentSettingsSchema`, `parseSettings(raw)` (per-field fallback + legacy `queue_bracket_preference` translator → `normalizeLegacy`), `DEFAULT_SETTINGS` (line_notify, queue_division_order, queue_division_priority, queue_chunk_size, auto_advance_next, court_strict, allow_force_bracket_reset, match_cooldown_minutes, audit_log_enabled, realtime_enabled, etc.)
 - `src/lib/tournament/divisions.ts` — pure helpers for N-division: `computePairDivision(pairLevel, thresholds[])` → `1..N | null` (Division 1 = TOP tier), `parseDivision(text)`, `divisionLabelTh(n)` → `"Division N"`, `divisionTone(n)` (cycles 8-color palette), `divisionCount(thresholds)`, `DIVISION_COLORS`
+- `src/lib/tournament/entity-stats.ts` — `EntityStats` type (`played`, `wins`, `losses`, `draws`, `pointsFor`, `pointsAgainst`, `streak`, `headToHead`, optional `partnerBreakdown`) + pure helpers `computePairStats({pairId, matches})`, `computePlayerStats({playerId, pairs, matches})` (extends with `partnerBreakdown: Map<string, PartnerRecord>`), `computeTeamStats({teamId, pairs, matches})` (excludes intra-team matches, h2h keyed by opponent team), `computeDivisionStats({division, pairs, matches, thresholds})` (filters by `matches.division === String(n)`, h2h holds per-pair standings); shared `computeStreak(isSideA, matches)` callback pattern; 38 vitest tests in `__tests__/entity-stats.test.ts`
 - `src/lib/tournament/settings.server.ts` — `getTournamentSettings(tournamentId)` server helper
 - `src/lib/export/csv.ts` — `generateMatchesCsv`, `generateRosterCsv`, `generatePlayerImportTemplate`, `generatePairImportTemplate`, `downloadCsv`
 
@@ -167,7 +170,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - `manual-match-dialog.tsx` — Dialog to create manual pair match; filters pair B by same division as pair A
 - `tournament-tabs.tsx` — client Tab wrapper: แดชบอร์ด · ทีม · กลุ่ม* · คู่* · น็อคเอ้า* · ตารางคิว* · ตั้งค่า** (\* conditional per format/state — `แดชบอร์ด` always shown, `กลุ่ม` only when `match_unit=team` AND format includes group stage, `คู่` only when `match_unit=pair`, `น็อคเอ้า` only when format includes knockout, `ตารางคิว` shown once matches exist; ** owner+co-admin only via `showSettings`); URL-synced + lazy-mount via shared `useTabSync` hook (`src/lib/hooks/use-tab-sync.ts`)
 - `public-tournament-shell.tsx` — public Tab wrapper for `/t/[token]`: แดชบอร์ด · กลุ่ม* · คู่* · สาย* · ตารางคิว* (5 tabs — `ภาพรวม` removed 2026-05-22, no `ทีม`/`ตั้งค่า`); same `useTabSync` hook; parent page wraps it in `<Suspense>` (Next 16 `useSearchParams` requirement)
-- `use-tab-sync.ts` (`src/lib/hooks/`) — shared hook `useTabSync<TabId>({ allTabs, validTabs, defaultTab })` returns `{ active, mounted, onChange }`; reads/writes `?tab=` via `useSearchParams` + `router.replace({scroll:false})`; `mounted: Set<TabId>` seeds with `defaultTab` for instant first paint; `useLayoutEffect` + ref guard prevents param-strip race on first render
+- `use-tab-sync.ts` (`src/lib/hooks/`) — shared hook `useTabSync<TabId>({ allTabs, validTabs, defaultTab })` returns `{ active, mounted, onChange }`; reads/writes `?tab=` via `useSearchParams` + `router.replace({scroll:false})`; `mounted: Set<TabId>` seeds with `defaultTab` for instant first paint; `useLayoutEffect` + ref guard prevents param-strip race on first render; `onChange` wraps `router.replace` in `useTransition` and pairs it with `progress.start()`/`progress.stop()` from `useProgress()` (`@bprogress/next`) — `startedRef` ensures one stop per start so the top progress bar shows for the full lazy-mount + Suspense window of the next tab
 - `public-tv-header.tsx` (`src/components/tournament/public/`) — shared TV-page header used by `/t/[token]/tv` and `/t/[token]/bracket`: logo + title + venue + status pill + fullscreen button + ดูสาย/ออก TV actions
 - `match-queue.tsx` — sub-tabs `รอแข่ง` (sortable) / `กำลังแข่ง` / `จบแล้ว` with count badges; per-row court Select (or free-text) + `เริ่ม` / `จบแข่ง` / `ยกเลิก` / `รีเซ็ต` + `จัดคิวอัตโนมัติ` + court status banner; row number shows `queue_position ?? match_number` (lock on start); division badge ("บน" / "ล่าง"); `requireCourtToStart` prop (threaded through `SortableQueueRow` / `NonDraggableRow` / `QueueRowReadOnly` / `QueueRowBody`) disables "เริ่ม" + shows tooltip "ต้องเลือกสนามก่อน" when flag ON and court empty
 - `match-list.tsx` — wraps `MatchRow` array; uses `content-visibility:auto` + `contain-intrinsic-size` for off-screen rows
@@ -175,11 +178,18 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - `settings-manager.tsx` — owner-only Settings tab Card; toggles + numeric inputs for `TournamentSettings` flags; 500ms debounce auto-save; unmount-flush
 - `tournament-live-wrapper.tsx` — Supabase Realtime; subscribes to match + tournaments UPDATE/INSERT/DELETE → debounced `router.refresh()` (400ms trailing); respects `realtime_enabled`; green LIVE badge
 - `tv-auto-refresh.tsx` — `router.refresh()` every 60s (TV fallback when Realtime off)
-- `bracket-match-card.tsx` — compact card: competitors + game score + winner highlight
+- `bracket-match-card.tsx` — compact card: competitors + game score + winner highlight; competitor names wrapped in `EntityLink`
 - `bracket-view.tsx` — flex-column rounds + CSS horizontal/vertical connector lines; horizontal scroll
-- `match-row.tsx` — memoized (custom comparator); names + game score + point totals; "TBD" for unassigned; `matchRowSize` `"compact"` (default) | `"comfortable"` — propagated through `GroupStage` / `PairStage` / `KnockoutStage` / `BracketSection`
+- `match-row.tsx` — memoized (custom comparator); names + game score + point totals; "TBD" for unassigned; `matchRowSize` `"compact"` (default) | `"comfortable"` — propagated through `GroupStage` / `PairStage` / `KnockoutStage` / `BracketSection`; competitor names wrapped in `EntityLink`
 - `score-form.tsx` — games array UI (add/remove rows of score A : score B); clamps 0–99
-- `standings-table.tsx` — P/W/D/L/+−/Pts; Trophy icon for leader; shows pair subtitle (player names)
+- `standings-table.tsx` — P/W/D/L/+−/Pts; Trophy icon for leader; shows pair subtitle (player names); competitor names wrapped in `EntityLink`
+- `tournament/stats/entity-link.tsx` — shared client wrapper: `<EntityLink entityType="pair|player|team|division" entityId={id}>name</EntityLink>` derives base path from `usePathname()` (admin `/tournaments/[id]/stats/...` vs public `/t/[token]/stats/...`); plain span fallback when no tournament path detected
+- `tournament/stats/pair-stats-view.tsx` — per-pair metric cards (played / W-D-L / win rate / points diff) + streak pill + match history + h2h table; `"use client"`; wrapped in `TournamentLiveWrapper`
+- `tournament/stats/player-stats-view.tsx` — same layout as pair view + partner breakdown table + team badge (inline `borderColor`/`color` from `team.color`); accepts `pairById: Map<string, PairWithPlayers>`
+- `tournament/stats/team-stats-view.tsx` — aggregates across team's pairs (intra-team matches excluded); per-pair breakdown table; h2h keyed by opponent team
+- `tournament/stats/division-stats-view.tsx` — metric cards + pair standings (via `computeStandings`) + recent matches; colored border from `divisionTone(n).border`
+- `ui/loading-spinner.tsx` — `<LoadingSpinner fullscreen? className? />` renders `<Loader2 animate-spin />` centered on `min-h-screen` (fullscreen) or `min-h-[60vh]`; theme-aware via `text-muted-foreground`
+- `providers/progress-provider.tsx` — `"use client"` wrapper re-exporting `ProgressProvider` from `@bprogress/next/app` with `height="3px"`, `color="var(--primary)"`, `options={{ showSpinner: false }}`, `shallowRouting`; mounted in root layout outside `TooltipProvider`
 
 ### Pages
 
@@ -187,8 +197,11 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - `/tournaments/new` — create form (mode, format, match_unit, pair_division_thresholds[] via ThresholdChipList, advance_count, team_count …)
 - `/tournaments/[id]` — detail page with tabs (แดชบอร์ด · ทีม · กลุ่ม · คู่ · น็อคเอ้า · ตารางคิว · ตั้งค่า — `กลุ่ม` only when `match_unit=team` + format includes group stage, `คู่` only when `match_unit=pair`); `canEdit = isOwner || isCoAdmin`; `showSettings = canEdit`
 - `/tournaments/[id]/bracket` — visual bracket page (no auth required)
+- `/tournaments/[id]/stats/{pair|player|team|division}/[id]` — admin entity stats pages (requires session); `force-dynamic`
 - `/t/[token]` — public read-only share page (no auth, fetched by share_token); passes `matchRowSize="comfortable"` to all stages; `max-w-4xl` layout
 - `/t/[token]/tv` — full-screen TV display: upcoming/in-progress (top 8) + standings sidebar (top 8) + จบล่าสุด (last 6); `force-dynamic`; wrapped in `TournamentLiveWrapper`
+- `/t/[token]/court/[n]` — per-court referee view (public, phone-first `max-w-xl`); `[n]` = URL-encoded court name; in_progress (large card) + top 2 pending; elapsed mm:ss from `started_at`; `TournamentLiveWrapper` + `TvAutoRefresh` 30s fallback
+- `/t/[token]/stats/{pair|player|team|division}/[id]` — public entity stats pages (token-based, no auth); `force-dynamic`
 
 ### Route Groups
 
@@ -259,7 +272,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 
 - `tournaments.settings jsonb` validated by `TournamentSettingsSchema`
 - Flags wired: `line_notify.{start,score,bracket,status}`, `auto_rotate_rest_gap` (0-5), `queue_division_order` (`sequential` | `interleaved` | `chunked`, replaces legacy `queue_bracket_preference`), `queue_division_priority` (`number[]` of division indices; `[]` = natural `1..N`), `queue_chunk_size` (1-50), `court_strict` (UI hint only — DB index always enforces), `color_summary`, `export_visible`, `allow_force_bracket_reset` (single-level cascade), `allow_manual_match_after_bracket`, `auto_advance_next` (filters out TBD matches), `realtime_enabled`, `audit_log_enabled`, `match_cooldown_minutes` (0-30, reads `matches.started_at`), `require_court_to_start` (server gate in `startMatchAction` + client `เริ่ม` button disabled when court empty)
-- `notifyTournamentEvent(tournamentId, event, text)` in `src/lib/notification/line.ts` — reads settings, short-circuits when `line_notify[event]=false`
+- `notifyTournamentEvent(tournamentId, event, text, settings?)` in `src/lib/notification/line.ts` — reads settings (or accepts pre-fetched `settings?: TournamentSettings` to avoid re-fetch), short-circuits when `line_notify[event]=false`; callers like `recordMatchScoreAction` + `startMatchAction` hoist the settings fetch and pass it through to the fire-and-forget notify IIFE
 
 ### DB performance + page fetches (2026-05-21)
 

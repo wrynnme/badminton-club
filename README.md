@@ -190,6 +190,8 @@ src/
 - ✅ Phase 10 — Smart Scheduling: court list, court occupancy guard (partial UNIQUE index), auto-rotate queue (anti back-to-back), atomic reorder via `reorder_tournament_queue` RPC
 - ✅ Phase 11 — Pre-tournament Settings (feature flags): LINE notify toggles, queue bracket preference + chunk size, auto-advance, manual match guard, force bracket reset, cooldown, realtime, audit log, `require_court_to_start`
 - ✅ Perf pass (2026-05-21) — 14 FK covering indexes via `add_fk_indexes` migration; parallelized page fetches (`/tournaments/[id]`, `/t/[token]`, `/t/[token]/tv`); co-admin can now edit Settings tab
+- ✅ Per-court referee view (2026-05-24) — `/t/[token]/court/[n]` phone-first page showing in_progress + top 2 pending per court
+- ✅ Entity stats drill-down (2026-05-24, Phases A–D) — admin + public stat pages for pair / player / team / division (`/tournaments/[id]/stats/...` + `/t/[token]/stats/...`); clickable names everywhere via `EntityLink`; navigation progress bar (`@bprogress/next`); root-level `LoadingSpinner` Suspense fallback
 - [ ] Phase 12 — `require_checkin` flag + check-in flow
 - [ ] Phase 13 — Competition mode (multi-class NB/BG/N/S/P-)
 
