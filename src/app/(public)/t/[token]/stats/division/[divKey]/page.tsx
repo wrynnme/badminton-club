@@ -60,6 +60,7 @@ export default async function PublicDivisionStatsPage({
         division={division}
         divisionPairs={divisionPairs}
         competitorById={data.competitorById}
+        teamById={new Map(data.teams.map((t) => [t.id, t]))}
       />
     </StatsPageShell>
   );

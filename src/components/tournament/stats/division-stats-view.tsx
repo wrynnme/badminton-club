@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
 import { gameWinner, computeStandings } from "@/lib/tournament/scoring";
 import type { DivisionStats } from "@/lib/tournament/entity-stats";
-import type { PairWithPlayers, Match } from "@/lib/types";
+import type { PairWithPlayers, Match, Team } from "@/lib/types";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import type { CompetitorEntry } from "./shared/match-history-list";
 
@@ -59,11 +59,13 @@ export function DivisionStatsView({
   division,
   divisionPairs,
   competitorById,
+  teamById,
 }: {
   stats: DivisionStats;
   division: number;
   divisionPairs: PairWithPlayers[];
   competitorById: Map<string, CompetitorEntry>;
+  teamById?: Map<string, Team>;
 }) {
   const tone = divisionTone(division);
   const label = divisionLabelTh(division);
@@ -81,6 +83,51 @@ export function DivisionStatsView({
             b.pointsFor - a.pointsFor
         )
       : [];
+
+  // Team breakdown: aggregate the standings rows by pair.team_id so the
+  // page shows which teams contributed to this division and how they scored.
+  const pairTeamById = new Map(divisionPairs.map((p) => [p.id, p.team_id]));
+  type TeamRow = {
+    teamId: string;
+    name: string;
+    color: string | null;
+    pairs: number;
+    played: number;
+    wins: number;
+    losses: number;
+    draws: number;
+    leaguePoints: number;
+    pointDiff: number;
+  };
+  const teamMap = new Map<string, TeamRow>();
+  for (const row of standings) {
+    const tId = pairTeamById.get(row.id);
+    if (!tId) continue;
+    const t = teamById?.get(tId);
+    const ex = teamMap.get(tId) ?? {
+      teamId: tId,
+      name: t?.name ?? tId,
+      color: t?.color ?? null,
+      pairs: 0,
+      played: 0,
+      wins: 0,
+      losses: 0,
+      draws: 0,
+      leaguePoints: 0,
+      pointDiff: 0,
+    };
+    ex.pairs += 1;
+    ex.played += row.played;
+    ex.wins += row.wins;
+    ex.losses += row.losses;
+    ex.draws += row.draws;
+    ex.leaguePoints += row.leaguePoints;
+    ex.pointDiff += row.pointDiff;
+    teamMap.set(tId, ex);
+  }
+  const teamRows = [...teamMap.values()].sort(
+    (a, b) => b.leaguePoints - a.leaguePoints || b.pointDiff - a.pointDiff
+  );
 
   // Recent matches — last 6 in reverse chronological order
   const recentMatches = [...stats.matches].reverse().slice(0, 6);
@@ -165,6 +212,50 @@ export function DivisionStatsView({
           </CardContent>
         </Card>
       </div>
+
+      {/* Team breakdown within division */}
+      {teamRows.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">ผลงานแยกทีมใน {label}</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="grid grid-cols-[1.5rem_1fr_2.5rem_2.5rem_2.5rem_2.5rem_2.5rem_3rem] gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium">
+              <span>#</span>
+              <span>ทีม</span>
+              <span className="text-right">คู่</span>
+              <span className="text-right">แมตช์</span>
+              <span className="text-right">ชนะ</span>
+              <span className="text-right">แพ้</span>
+              <span className="text-right">เสมอ</span>
+              <span className="text-right">Pts</span>
+            </div>
+            {teamRows.map((row, idx) => (
+              <div
+                key={row.teamId}
+                className="grid grid-cols-[1.5rem_1fr_2.5rem_2.5rem_2.5rem_2.5rem_2.5rem_3rem] gap-x-2 px-4 py-2.5 border-b last:border-b-0 text-sm items-center"
+              >
+                <span className="text-muted-foreground text-xs tabular-nums">{idx + 1}</span>
+                <span className="truncate min-w-0 flex items-center gap-1.5">
+                  {row.color && (
+                    <span
+                      className="inline-block w-2 h-2 rounded-full shrink-0"
+                      style={{ backgroundColor: row.color }}
+                    />
+                  )}
+                  <EntityLink entityType="team" entityId={row.teamId}>{row.name}</EntityLink>
+                </span>
+                <span className="text-right tabular-nums text-muted-foreground">{row.pairs}</span>
+                <span className="text-right tabular-nums">{row.played}</span>
+                <span className="text-right tabular-nums text-green-600 dark:text-green-400">{row.wins}</span>
+                <span className="text-right tabular-nums text-red-600 dark:text-red-400">{row.losses}</span>
+                <span className="text-right tabular-nums text-yellow-600 dark:text-yellow-400">{row.draws}</span>
+                <span className="text-right tabular-nums font-semibold">{row.leaguePoints}</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Pair standings within division */}
       {standings.length > 0 && (
