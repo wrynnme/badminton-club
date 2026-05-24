@@ -101,7 +101,7 @@ export function DivisionStatsView({
   };
   const teamMap = new Map<string, TeamRow>();
   for (const row of standings) {
-    const tId = pairTeamById.get(row.id);
+    const tId = pairTeamById.get(row.competitorId);
     if (!tId) continue;
     const t = teamById?.get(tId);
     const ex = teamMap.get(tId) ?? {
