@@ -269,11 +269,11 @@ export default async function TournamentDetailPage({
                   <EditTournamentForm tournament={t} existingTeamCount={teams.length} />
                 </>
               )}
+              {canEdit && (
+                <ShareControls tournamentId={t.id} shareToken={t.share_token} appUrl={appUrl} isOwner={isOwner} />
+              )}
               {isOwner && (
-                <>
-                  <ShareControls tournamentId={t.id} shareToken={t.share_token} appUrl={appUrl} />
-                  <CoAdminControls tournamentId={t.id} initialAdmins={coAdmins} />
-                </>
+                <CoAdminControls tournamentId={t.id} initialAdmins={coAdmins} />
               )}
               {canEdit && <AuditLogPanel tournamentId={t.id} />}
             </div>
