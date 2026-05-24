@@ -6,8 +6,7 @@ import { divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
 import { gameWinner, sumGameScores, computeStandings } from "@/lib/tournament/scoring";
 import type { EntityStats } from "@/lib/tournament/entity-stats";
 import type { PairWithPlayers, Match } from "@/lib/types";
-
-type CompetitorEntry = { id: string; name: string; color?: string | null };
+import type { CompetitorEntry } from "./shared/match-history-list";
 
 function RecentMatchRow({
   match,

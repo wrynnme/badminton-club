@@ -36,11 +36,15 @@ export function computePairStats(opts: {
 }): EntityStats {
   const { pairId, matches } = opts;
 
-  // Filter to completed matches involving this pair, sorted oldest→newest
+  // Filter to completed matches involving this pair, sorted oldest→newest.
+  // Skip BYE walkovers (`games=[]`): gameWinner([]) returns "draw", which would
+  // wrongly count BYE as a draw and bleed into streak. Matches scoring.ts's
+  // null-opponent guard.
   const relevant = matches
     .filter(
       (m) =>
         m.status === "completed" &&
+        m.games.length > 0 &&
         (m.pair_a_id === pairId || m.pair_b_id === pairId)
     )
     .sort((a, b) => a.match_number - b.match_number);
@@ -199,11 +203,13 @@ export function computePlayerStats(opts: {
   const isSideA = (m: Match) =>
     playerPairIds.has(m.pair_a_id ?? "");
 
-  // Filter to completed matches involving any of this player's pairs, oldest→newest
+  // Filter to completed matches involving any of this player's pairs, oldest→newest.
+  // Skip BYE walkovers (`games=[]`) — see computePairStats.
   const relevant = matches
     .filter(
       (m) =>
         m.status === "completed" &&
+        m.games.length > 0 &&
         (playerPairIds.has(m.pair_a_id ?? "") ||
           playerPairIds.has(m.pair_b_id ?? ""))
     )
@@ -341,11 +347,13 @@ export function computeTeamStats(opts: {
 
   const isSideA = (m: Match) => teamPairIds.has(m.pair_a_id ?? "");
 
-  // Filter: completed, involves at least one team pair
+  // Filter: completed, involves at least one team pair, and not a BYE walkover.
+  // Skip `games=[]` — see computePairStats.
   const relevant = matches
     .filter(
       (m) =>
         m.status === "completed" &&
+        m.games.length > 0 &&
         (teamPairIds.has(m.pair_a_id ?? "") || teamPairIds.has(m.pair_b_id ?? ""))
     )
     .sort((a, b) => a.match_number - b.match_number);
@@ -451,9 +459,15 @@ export function computeDivisionStats(opts: {
 
   const divStr = String(division);
 
-  // Filter completed matches in this division using the stored column
+  // Filter completed matches in this division using the stored column.
+  // Skip BYE walkovers (`games=[]`) — see computePairStats.
   const relevant = matches
-    .filter((m) => m.status === "completed" && m.division === divStr)
+    .filter(
+      (m) =>
+        m.status === "completed" &&
+        m.games.length > 0 &&
+        m.division === divStr
+    )
     .sort((a, b) => a.match_number - b.match_number);
 
   // Build set of pair IDs that belong to this division (via computePairDivision)

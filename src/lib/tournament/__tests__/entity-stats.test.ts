@@ -901,3 +901,101 @@ describe("computeDivisionStats — ignores non-completed", () => {
     expect(stats.headToHead.size).toBe(0);
   });
 });
+
+// ===========================================================================
+// BYE-match regression (P1, 2026-05-24)
+// gameWinner([]) returns "draw"; BYE walkovers are `status=completed` with
+// `games=[]`. They must NOT count as draws / not bleed into streaks.
+// ===========================================================================
+
+describe("computePairStats — BYE matches (games=[]) are not counted", () => {
+  it("1 BYE → played=0, draws=0, streak={null,0}", () => {
+    const bye = makeMatch({
+      pair_a_id: PAIR_A,
+      pair_b_id: null,
+      games: [],
+    });
+    const stats = computePairStats({ pairId: PAIR_A, matches: [bye] });
+    expect(stats.played).toBe(0);
+    expect(stats.wins).toBe(0);
+    expect(stats.losses).toBe(0);
+    expect(stats.draws).toBe(0);
+    expect(stats.winRate).toBe(0);
+    expect(stats.matches).toHaveLength(0);
+    expect(stats.headToHead.size).toBe(0);
+    expect(stats.streak).toEqual({ type: null, length: 0 });
+  });
+});
+
+describe("computePlayerStats — BYE matches (games=[]) are not counted", () => {
+  it("1 BYE for the player's pair → played=0, draws=0, streak={null,0}", () => {
+    const pairs = [makePair(PAIR_XY, PLAYER_X, PLAYER_Y)];
+    const bye = makeMatch({
+      pair_a_id: PAIR_XY,
+      pair_b_id: null,
+      games: [],
+    });
+    const stats = computePlayerStats({
+      playerId: PLAYER_X,
+      pairs,
+      matches: [bye],
+    });
+    expect(stats.played).toBe(0);
+    expect(stats.wins).toBe(0);
+    expect(stats.losses).toBe(0);
+    expect(stats.draws).toBe(0);
+    expect(stats.winRate).toBe(0);
+    expect(stats.matches).toHaveLength(0);
+    expect(stats.headToHead.size).toBe(0);
+    expect(stats.partnerBreakdown?.size).toBe(0);
+    expect(stats.streak).toEqual({ type: null, length: 0 });
+  });
+});
+
+describe("computeTeamStats — BYE matches (games=[]) are not counted", () => {
+  it("1 BYE for one of the team's pairs → played=0, draws=0, streak={null,0}", () => {
+    const bye = makeMatch({
+      pair_a_id: TA1, // belongs to TEAM_A
+      pair_b_id: null,
+      games: [],
+    });
+    const stats = computeTeamStats({
+      teamId: TEAM_A,
+      pairs: teamPairs,
+      matches: [bye],
+    });
+    expect(stats.played).toBe(0);
+    expect(stats.wins).toBe(0);
+    expect(stats.losses).toBe(0);
+    expect(stats.draws).toBe(0);
+    expect(stats.winRate).toBe(0);
+    expect(stats.matches).toHaveLength(0);
+    expect(stats.headToHead.size).toBe(0);
+    expect(stats.streak).toEqual({ type: null, length: 0 });
+  });
+});
+
+describe("computeDivisionStats — BYE matches (games=[]) are not counted", () => {
+  it("1 BYE in division 1 → played=0, no headToHead entries, no points", () => {
+    const bye = makeMatch({
+      pair_a_id: DIV_PAIR_1,
+      pair_b_id: null,
+      games: [],
+      division: "1",
+    });
+    const stats = computeDivisionStats({
+      division: 1,
+      pairs: divPairs,
+      matches: [bye],
+      thresholds: THRESHOLDS_1,
+    });
+    expect(stats.played).toBe(0);
+    expect(stats.wins).toBe(0);
+    expect(stats.losses).toBe(0);
+    expect(stats.draws).toBe(0);
+    expect(stats.pointsFor).toBe(0);
+    expect(stats.pointsAgainst).toBe(0);
+    expect(stats.matches).toHaveLength(0);
+    expect(stats.headToHead.size).toBe(0);
+  });
+});
