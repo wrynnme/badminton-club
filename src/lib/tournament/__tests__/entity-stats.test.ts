@@ -975,6 +975,151 @@ describe("computeTeamStats — BYE matches (games=[]) are not counted", () => {
   });
 });
 
+// ===========================================================================
+// Regression tests for code-review findings #1, #2, #7, #9 (2026-05-24)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// #1 — computeDivisionStats: cross-bucketed matches MUST NOT leak in
+// ---------------------------------------------------------------------------
+describe("computeDivisionStats — cross-bucketed matches don't leak (#1)", () => {
+  it("excludes a match stamped division='1' whose pairs both live in Division 2", () => {
+    // Build pairs: only DIV_PAIR_1 is in division 1 (level 7 > threshold 5).
+    // DIV_PAIR_2 (level 4) and DIV_PAIR_3 (level 3) both live in division 2.
+    const skewedPairs = [
+      makeDivPair(DIV_PAIR_1, "7"),
+      makeDivPair(DIV_PAIR_2, "4"),
+      makeDivPair(DIV_PAIR_3, "3"),
+    ];
+    // Misstamped match: marked division="1" but pairs belong to division 2.
+    const leak = makeMatch({
+      pair_a_id: DIV_PAIR_2,
+      pair_b_id: DIV_PAIR_3,
+      games: [{ a: 21, b: 18 }],
+      division: "1",
+    });
+    // Genuine division-1 match (DIV_PAIR_1 has nobody to play, but still
+    // contributes a side and we want the cross-bucketed leak to be filtered).
+    const stats = computeDivisionStats({
+      division: 1,
+      pairs: skewedPairs,
+      matches: [leak],
+      thresholds: THRESHOLDS_1,
+    });
+    expect(stats.played).toBe(0);
+    expect(stats.matches).toHaveLength(0);
+    expect(stats.headToHead[DIV_PAIR_2]).toBeUndefined();
+    expect(stats.headToHead[DIV_PAIR_3]).toBeUndefined();
+  });
+
+  it("keeps a match where one side is in-division (defensive boundary)", () => {
+    const mixed = makeMatch({
+      pair_a_id: DIV_PAIR_1, // in division 1
+      pair_b_id: DIV_PAIR_3, // mis-bucketed pair (level 3 → division 2)
+      games: [{ a: 21, b: 10 }, { a: 21, b: 15 }],
+      division: "1",
+    });
+    const skewedPairs = [
+      makeDivPair(DIV_PAIR_1, "7"),
+      makeDivPair(DIV_PAIR_3, "3"),
+    ];
+    const stats = computeDivisionStats({
+      division: 1,
+      pairs: skewedPairs,
+      matches: [mixed],
+      thresholds: THRESHOLDS_1,
+    });
+    expect(stats.played).toBe(1);
+    // DIV_PAIR_1 (in-division) gets standings entry; DIV_PAIR_3 does NOT
+    expect(stats.headToHead[DIV_PAIR_1]).toBeDefined();
+    expect(stats.headToHead[DIV_PAIR_3]).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #2 — computeDivisionStats: winRate pinned to 0 (meaningless at aggregate)
+// ---------------------------------------------------------------------------
+describe("computeDivisionStats — winRate is 0 (#2)", () => {
+  it("returns winRate=0 even when matches are played (decisive)", () => {
+    const m1 = makeMatch({
+      pair_a_id: DIV_PAIR_1,
+      pair_b_id: DIV_PAIR_2,
+      games: [{ a: 21, b: 15 }, { a: 21, b: 10 }],
+      division: "1",
+    });
+    const stats = computeDivisionStats({
+      division: 1,
+      pairs: divPairs,
+      matches: [m1],
+      thresholds: THRESHOLDS_1,
+    });
+    expect(stats.played).toBe(1);
+    expect(stats.winRate).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #7 — computeTeamStats: intra-team matches filtered consistently
+// (relevant + matches + streak agree with W/L/D counts)
+// ---------------------------------------------------------------------------
+describe("computeTeamStats — intra-team filter consistency (#7)", () => {
+  it("intra-team match is absent from stats.matches AND streak", () => {
+    const intra = makeMatch({
+      pair_a_id: TA1,
+      pair_b_id: TA2, // both TEAM_A
+      games: [{ a: 21, b: 15 }, { a: 21, b: 10 }],
+    });
+    const inter = makeMatch({
+      pair_a_id: TA1,
+      pair_b_id: TB1, // TEAM_A vs TEAM_B — kept
+      games: [{ a: 21, b: 15 }, { a: 21, b: 10 }],
+    });
+    const stats = computeTeamStats({
+      teamId: TEAM_A,
+      pairs: teamPairs,
+      matches: [intra, inter],
+    });
+    expect(stats.played).toBe(1);
+    expect(stats.matches).toHaveLength(1);
+    expect(stats.matches[0].id).toBe(inter.id);
+    // Streak reflects ONLY the inter-team win, not the intra match.
+    expect(stats.streak).toEqual({ type: "W", length: 1 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// #9 — computePlayerStats: player in BOTH sides of same match is skipped
+// ---------------------------------------------------------------------------
+describe("computePlayerStats — both-sides anomaly is skipped (#9)", () => {
+  it("excludes matches where the player belongs to pair_a AND pair_b", () => {
+    // PLAYER_X is in pair_xy AND pair_xz; m1 pits them against each other.
+    const pairs = [
+      makePair(PAIR_XY, PLAYER_X, PLAYER_Y),
+      makePair(PAIR_XZ, PLAYER_X, PLAYER_Z),
+    ];
+    const both = makeMatch({
+      pair_a_id: PAIR_XY,
+      pair_b_id: PAIR_XZ,
+      games: [{ a: 21, b: 15 }, { a: 21, b: 10 }],
+    });
+    const normal = makeMatch({
+      pair_a_id: PAIR_XY,
+      pair_b_id: PAIR_OP1,
+      games: [{ a: 21, b: 15 }, { a: 21, b: 10 }], // X wins
+    });
+    const stats = computePlayerStats({
+      playerId: PLAYER_X,
+      pairs,
+      matches: [both, normal],
+    });
+    expect(stats.played).toBe(1);
+    expect(stats.matches).toHaveLength(1);
+    expect(stats.matches[0].id).toBe(normal.id);
+    expect(stats.wins).toBe(1);
+    expect(stats.draws).toBe(0);
+  });
+});
+
 describe("computeDivisionStats — BYE matches (games=[]) are not counted", () => {
   it("1 BYE in division 1 → played=0, no headToHead entries, no points", () => {
     const bye = makeMatch({

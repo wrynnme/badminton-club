@@ -79,11 +79,19 @@ async function loadCommon(
  * by any signed-in user. Pages that want a redirect-to-login behavior should
  * call `getSession()` themselves before invoking this loader.
  *
+ * The optional `fromTab` arg controls which tab the "back" link opens in
+ * the parent tournament page. Threading this through the URL is left to the
+ * page itself: callsites that want context-preserving back navigation should
+ * forward `?from=<currentTab>` when generating EntityLink hrefs, then read
+ * `searchParams.from` here. When omitted, defaults to the `pair` tab (where
+ * most drill-downs originate).
+ *
  * Returns `null` when the tournament does not exist (callers should call
  * `notFound()`).
  */
 export async function loadStatsTournamentByAdmin(
-  tournamentId: string
+  tournamentId: string,
+  fromTab?: string
 ): Promise<StatsPageData | null> {
   const sb = await createAdminClient();
   const { data: tournament } = await sb
@@ -94,7 +102,8 @@ export async function loadStatsTournamentByAdmin(
 
   if (!tournament) return null;
   const t = tournament as Tournament;
-  return loadCommon(t, `/tournaments/${t.id}?tab=pair`);
+  const tab = fromTab && fromTab.length > 0 ? fromTab : "pair";
+  return loadCommon(t, `/tournaments/${t.id}?tab=${encodeURIComponent(tab)}`);
 }
 
 /**

@@ -88,7 +88,11 @@ export function PairStatsView({
         competitorById={competitorById}
       />
 
-      <HeadToHeadTable title="พบกัน (Head-to-Head)" rows={h2hRows} />
+      <HeadToHeadTable
+        title="พบกัน (Head-to-Head)"
+        rows={h2hRows}
+        entityType="pair"
+      />
     </div>
   );
 }

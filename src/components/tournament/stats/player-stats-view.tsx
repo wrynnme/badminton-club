@@ -116,9 +116,14 @@ export function PlayerStatsView({
         title="สถิติแยกตามคู่หู"
         nameLabel="คู่หู"
         rows={partnerRows}
+        entityType="player"
       />
 
-      <HeadToHeadTable title="พบกัน (Head-to-Head)" rows={h2hRows} />
+      <HeadToHeadTable
+        title="พบกัน (Head-to-Head)"
+        rows={h2hRows}
+        entityType="pair"
+      />
     </div>
   );
 }

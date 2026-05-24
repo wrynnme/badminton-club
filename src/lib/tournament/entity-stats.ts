@@ -38,6 +38,12 @@ export type PlayerStats = StatsBase & {
   partnerBreakdown: Record<string, PartnerRecord>;
 };
 export type TeamStats = StatsBase & { entityType: "team" };
+/**
+ * Division aggregate. `winRate` is intentionally meaningless at division level
+ * (each decisive match contributes one win AND one loss to the division total),
+ * so it is fixed to `0` and views should not render it. Consumers may pass
+ * `hideWinRate` to {@link StatHeaderCards} or render their own bespoke summary.
+ */
 export type DivisionStats = StatsBase & { entityType: "division" };
 
 /**
@@ -222,13 +228,20 @@ export function computePlayerStats(opts: {
 
   // Filter to completed matches involving any of this player's pairs, oldest→newest.
   // Skip BYE walkovers (`games=[]`) — see computePairStats.
+  // Also skip "both sides" anomaly: if the player belongs to BOTH pair_a and
+  // pair_b of the same match (only possible when the player is in 2 pairs that
+  // happen to be matched against each other), W/L/D is undefined for the player.
   const relevant = matches
     .filter(
       (m) =>
         m.status === "completed" &&
         m.games.length > 0 &&
         (playerPairIds.has(m.pair_a_id ?? "") ||
-          playerPairIds.has(m.pair_b_id ?? ""))
+          playerPairIds.has(m.pair_b_id ?? "")) &&
+        !(
+          playerPairIds.has(m.pair_a_id ?? "") &&
+          playerPairIds.has(m.pair_b_id ?? "")
+        )
     )
     .sort((a, b) => a.match_number - b.match_number);
 
@@ -358,15 +371,22 @@ export function computeTeamStats(opts: {
 
   const isSideA = (m: Match) => teamPairIds.has(m.pair_a_id ?? "");
 
-  // Filter: completed, involves at least one team pair, and not a BYE walkover.
+  // Filter: completed, involves at least one team pair, not a BYE walkover, and
+  // NOT intra-team (both pairs in this team). Filtering intra-team here (rather
+  // than `continue`-ing in the loop) keeps `relevant`, `stats.matches`, and the
+  // streak calculation consistent with the W/L/D counts.
   // Skip `games=[]` — see computePairStats.
   const relevant = matches
-    .filter(
-      (m) =>
-        m.status === "completed" &&
-        m.games.length > 0 &&
-        (teamPairIds.has(m.pair_a_id ?? "") || teamPairIds.has(m.pair_b_id ?? ""))
-    )
+    .filter((m) => {
+      if (m.status !== "completed") return false;
+      if (m.games.length === 0) return false;
+      const aIn = teamPairIds.has(m.pair_a_id ?? "");
+      const bIn = teamPairIds.has(m.pair_b_id ?? "");
+      if (!aIn && !bIn) return false;
+      // Both pairs in same team → intra-team, skip.
+      if (aIn && bIn) return false;
+      return true;
+    })
     .sort((a, b) => a.match_number - b.match_number);
 
   let wins = 0;
@@ -381,8 +401,7 @@ export function computeTeamStats(opts: {
     const opponentPairId = onSideA ? m.pair_b_id : m.pair_a_id;
     const opponentTeamId = opponentPairId ? pairTeamMap.get(opponentPairId) : undefined;
 
-    // Skip intra-team matches (both pairs belong to same team)
-    if (opponentTeamId === teamId) continue;
+    // Intra-team matches are already filtered out above; no need to skip here.
 
     const rawWinner = gameWinner(m.games);
     const totals = sumGameScores(m.games);
@@ -467,25 +486,34 @@ export function computeDivisionStats(opts: {
 
   const divStr = String(division);
 
-  // Filter completed matches in this division using the stored column.
-  // Skip BYE walkovers (`games=[]`) — see computePairStats.
-  const relevant = matches
-    .filter(
-      (m) =>
-        m.status === "completed" &&
-        m.games.length > 0 &&
-        m.division === divStr
-    )
-    .sort((a, b) => a.match_number - b.match_number);
-
-  // Build set of pair IDs that belong to this division (via computePairDivision)
+  // Build set of pair IDs that belong to this division (via computePairDivision).
+  // When no thresholds are configured the whole tournament is a single bucket;
+  // we then accept every pair so the cross-bucket guard is a no-op.
   const divisionPairIds = new Set<string>();
   if (thresholds.length > 0) {
     for (const p of pairs) {
       const d = computePairDivision(parsePairLevel(p.pair_level), thresholds);
       if (d === division) divisionPairIds.add(p.id);
     }
+  } else {
+    for (const p of pairs) divisionPairIds.add(p.id);
   }
+
+  // Filter completed matches in this division using the stored column AND require
+  // at least one side to be a known division pair — defensive guard against
+  // matches whose `division` column was mis-stamped or stale relative to current
+  // bucketing (otherwise wins/h2h from another division would leak in).
+  // Skip BYE walkovers (`games=[]`) — see computePairStats.
+  const relevant = matches
+    .filter(
+      (m) =>
+        m.status === "completed" &&
+        m.games.length > 0 &&
+        m.division === divStr &&
+        (divisionPairIds.has(m.pair_a_id ?? "") ||
+          divisionPairIds.has(m.pair_b_id ?? ""))
+    )
+    .sort((a, b) => a.match_number - b.match_number);
 
   // Aggregate totals across all matches in division
   let pointsFor = 0;  // total points scored by side A across all matches
@@ -522,15 +550,17 @@ export function computeDivisionStats(opts: {
       losses++;
     }
 
-    // Per-pair H2H (pair standings within division)
-    if (m.pair_a_id) {
+    // Per-pair H2H (pair standings within division). Only record entries for
+    // pairs that actually belong to this division — keeps the standings list
+    // free of cross-bucketed pairs that snuck in on a mis-stamped match.
+    if (m.pair_a_id && divisionPairIds.has(m.pair_a_id)) {
       const a = ensurePairEntry(m.pair_a_id);
       a.played++;
       if (rawWinner === "draw") a.draws++;
       else if (rawWinner === "a") a.wins++;
       else a.losses++;
     }
-    if (m.pair_b_id) {
+    if (m.pair_b_id && divisionPairIds.has(m.pair_b_id)) {
       const b = ensurePairEntry(m.pair_b_id);
       b.played++;
       if (rawWinner === "draw") b.draws++;
@@ -540,7 +570,9 @@ export function computeDivisionStats(opts: {
   }
 
   const played = relevant.length;
-  const winRate = played > 0 ? wins / (wins + losses + draws) : 0;
+  // Division aggregate winRate is meaningless (every decisive match contributes
+  // exactly one W + one L). Pinned to 0; views must not render this field.
+  const winRate = 0;
   const pointsDiff = pointsFor - pointsAgainst;
 
   // Streak not meaningful at division level

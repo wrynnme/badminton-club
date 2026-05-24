@@ -55,10 +55,12 @@ export function TvMatchCard({
         <span className={`px-2 py-0.5 rounded-full border text-xs lg:text-sm 2xl:text-base font-medium shrink-0 ${status.cls}`}>
           {status.text}
         </span>
-        <div className="flex items-center gap-2 shrink-0 ml-auto">
-          <span className="text-muted-foreground font-mono">#{match.match_number}</span>
+        <div className="flex items-center gap-2 min-w-0 ml-auto">
+          <span className="text-muted-foreground font-mono shrink-0">#{match.match_number}</span>
           {match.court && (
-            <span className="font-bold text-base lg:text-xl 2xl:text-2xl">Court {match.court}</span>
+            <span className="font-bold text-base lg:text-xl 2xl:text-2xl truncate max-w-[200px]">
+              Court {match.court}
+            </span>
           )}
         </div>
       </div>

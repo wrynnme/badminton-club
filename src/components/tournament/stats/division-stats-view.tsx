@@ -6,6 +6,7 @@ import { divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
 import { gameWinner, sumGameScores, computeStandings } from "@/lib/tournament/scoring";
 import type { DivisionStats } from "@/lib/tournament/entity-stats";
 import type { PairWithPlayers, Match } from "@/lib/types";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import type { CompetitorEntry } from "./shared/match-history-list";
 
 function RecentMatchRow({
@@ -22,20 +23,19 @@ function RecentMatchRow({
 
   const gamesScore = match.games.map((g) => `${g.a}-${g.b}`).join(", ");
 
-  const winnerLabel =
-    rawWinner === "draw"
-      ? "เสมอ"
-      : rawWinner === "a"
-      ? sideA?.name ?? "A"
-      : sideB?.name ?? "B";
-
   return (
     <div className="grid grid-cols-[2rem_1fr_auto_1fr] sm:grid-cols-[2rem_1fr_auto_1fr_auto] items-center gap-x-2 px-4 py-2.5 border-b last:border-b-0 text-sm">
       <span className="text-muted-foreground text-xs tabular-nums">#{match.match_number}</span>
       <span
         className={`truncate min-w-0 ${rawWinner === "a" ? "font-semibold" : "text-muted-foreground"}`}
       >
-        {sideA?.name ?? "—"}
+        {sideA && match.pair_a_id ? (
+          <EntityLink entityType="pair" entityId={match.pair_a_id}>
+            {sideA.name}
+          </EntityLink>
+        ) : (
+          "—"
+        )}
       </span>
       <span className="tabular-nums text-center font-medium px-1">
         {totals.a}–{totals.b}
@@ -43,7 +43,13 @@ function RecentMatchRow({
       <span
         className={`truncate min-w-0 text-right ${rawWinner === "b" ? "font-semibold" : "text-muted-foreground"}`}
       >
-        {sideB?.name ?? "—"}
+        {sideB && match.pair_b_id ? (
+          <EntityLink entityType="pair" entityId={match.pair_b_id}>
+            {sideB.name}
+          </EntityLink>
+        ) : (
+          "—"
+        )}
       </span>
       <span className="text-xs text-muted-foreground hidden sm:block text-right">{gamesScore}</span>
     </div>
@@ -187,7 +193,11 @@ export function DivisionStatsView({
                   className="grid grid-cols-[1.5rem_1fr_3rem_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2.5 border-b last:border-b-0 text-sm items-center"
                 >
                   <span className="text-muted-foreground text-xs tabular-nums">{idx + 1}</span>
-                  <span className="truncate min-w-0">{pairName}</span>
+                  <span className="truncate min-w-0">
+                    <EntityLink entityType="pair" entityId={row.competitorId}>
+                      {pairName}
+                    </EntityLink>
+                  </span>
                   <span className="text-right tabular-nums">{row.played}</span>
                   <span className="text-right tabular-nums text-green-600 dark:text-green-400">
                     {row.wins}

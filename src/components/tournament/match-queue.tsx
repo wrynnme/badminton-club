@@ -162,7 +162,10 @@ export function MatchQueue({
   return (
     <div className="space-y-4">
       {courts.length > 0 && (
-        <Card style={{ contentVisibility: 'auto', containIntrinsicSize: '100% 140px' }}>
+        // Court status block is small (1-4 row grid) and frequently visible —
+        // `content-visibility:auto` here caused visible CLS on scroll-in for
+        // negligible perf benefit, so it's intentionally not applied.
+        <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">สถานะสนาม</CardTitle>
           </CardHeader>

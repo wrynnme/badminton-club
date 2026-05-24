@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { gameWinner } from "@/lib/tournament/scoring";
 import type { TeamStats } from "@/lib/tournament/entity-stats";
 import type { Team, PairWithPlayers } from "@/lib/types";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { StreakPill } from "./shared/streak-pill";
 import { StatHeaderCards } from "./shared/stat-header-cards";
 import { MatchHistoryList, type CompetitorEntry } from "./shared/match-history-list";
@@ -148,7 +149,11 @@ export function TeamStatsView({
                 key={row.pairId}
                 className="grid grid-cols-[1fr_3rem_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2.5 border-b last:border-b-0 text-sm items-center"
               >
-                <span className="truncate min-w-0">{row.name}</span>
+                <span className="truncate min-w-0">
+                  <EntityLink entityType="pair" entityId={row.pairId}>
+                    {row.name}
+                  </EntityLink>
+                </span>
                 <span className="text-right tabular-nums">{row.played}</span>
                 <span className="text-right tabular-nums text-green-600 dark:text-green-400">
                   {row.wins}
@@ -176,7 +181,12 @@ export function TeamStatsView({
         renderMyColumn={(m, isSideA) => {
           const myPairId = isSideA ? m.pair_a_id : m.pair_b_id;
           const myPair = myPairId ? competitorById.get(myPairId) : undefined;
-          return myPair?.name ?? "—";
+          if (!myPair || !myPairId) return "—";
+          return (
+            <EntityLink entityType="pair" entityId={myPairId}>
+              {myPair.name}
+            </EntityLink>
+          );
         }}
       />
 
@@ -184,6 +194,7 @@ export function TeamStatsView({
         title="พบกัน (Head-to-Head) ต่อทีม"
         nameLabel="ทีมคู่แข่ง"
         rows={h2hRows}
+        entityType="team"
       />
     </div>
   );

@@ -2,8 +2,18 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getTournamentSettings } from "@/lib/tournament/settings.server";
 import type { LineNotifyFlags, TournamentSettings } from "@/lib/tournament/settings";
 
-// Phase 11 — gated wrapper. Skips push when settings.line_notify[event] === false.
-// Pass `settings` when the caller already has it in scope to avoid a redundant DB fetch.
+/**
+ * Phase 11 — gated wrapper. Skips push when `settings.line_notify[event] === false`.
+ *
+ * Pass `settings` when the caller already has it in scope to avoid a redundant
+ * DB fetch.
+ *
+ * Caveat: when `settings` is passed by an action, the gate is evaluated against
+ * that snapshot — NOT the current DB row. This is intentional for single-request
+ * scope (e.g. score recorder reuses settings it already loaded for the same
+ * action), but means a concurrent toggle of `line_notify[event]` won't be seen
+ * by an in-flight notification. Omit `settings` if you need fresh values.
+ */
 export async function notifyTournamentEvent(
   tournamentId: string,
   event: keyof LineNotifyFlags,

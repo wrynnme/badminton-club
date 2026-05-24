@@ -1,8 +1,10 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { RESULT_LABEL_TH, RESULT_TEXT_CLASS } from "@/lib/tournament/result-display";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import type { Match } from "@/lib/types";
 
 export type CompetitorEntry = { id: string; name: string; color?: string | null };
@@ -13,16 +15,34 @@ export type CompetitorEntry = { id: string; name: string; color?: string | null 
  */
 type RenderMyColumn = ((match: Match, isSideA: boolean) => React.ReactNode) | null;
 
+/**
+ * Renders the opponent's display name as a node — pair / team views pass their
+ * own renderer so the name links to the relevant stats page. The default wraps
+ * in an `<EntityLink entityType="pair">` since pair is by far the most common case.
+ */
+export type OpponentNameRenderer = (
+  name: string,
+  id: string,
+) => ReactNode;
+
+const defaultOpponentRenderer: OpponentNameRenderer = (name, id) => (
+  <EntityLink entityType="pair" entityId={id}>
+    {name}
+  </EntityLink>
+);
+
 function MatchHistoryRow({
   match,
   isSideA,
   competitorById,
   renderMyColumn,
+  renderOpponentName,
 }: {
   match: Match;
   isSideA: boolean;
   competitorById: Map<string, CompetitorEntry>;
   renderMyColumn: RenderMyColumn;
+  renderOpponentName: OpponentNameRenderer;
 }) {
   const opponentId = isSideA ? match.pair_b_id : match.pair_a_id;
   const opponent = opponentId ? competitorById.get(opponentId) : undefined;
@@ -57,7 +77,11 @@ function MatchHistoryRow({
         </span>
       )}
       <span className="truncate min-w-0">
-        {opponent?.name ?? <span className="text-muted-foreground">—</span>}
+        {opponent && opponentId ? (
+          renderOpponentName(opponent.name, opponentId)
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </span>
       <span className={RESULT_TEXT_CLASS[result]}>{RESULT_LABEL_TH[result]}</span>
       <span className="tabular-nums text-right font-medium">
@@ -87,6 +111,7 @@ export function MatchHistoryList({
   emptyText = "ยังไม่มีแมตช์ที่เสร็จสิ้น",
   myColumnLabel,
   renderMyColumn = null,
+  renderOpponentName = defaultOpponentRenderer,
 }: {
   matches: Match[];
   isSideA: (match: Match) => boolean;
@@ -95,6 +120,13 @@ export function MatchHistoryList({
   emptyText?: string;
   myColumnLabel?: string;
   renderMyColumn?: RenderMyColumn;
+  /**
+   * Render the opponent's display name (link / span / etc.). Pair and player
+   * views can rely on the default (links to the opponent pair's stats page);
+   * team view passes a "team" renderer so the opponent column links to the
+   * opposing team stats. Pass `(name) => name` to render unwrapped text.
+   */
+  renderOpponentName?: OpponentNameRenderer;
 }) {
   const hasMyCol = renderMyColumn !== null;
   const gridCols = hasMyCol
@@ -128,6 +160,7 @@ export function MatchHistoryList({
                 isSideA={isSideA(m)}
                 competitorById={competitorById}
                 renderMyColumn={renderMyColumn}
+                renderOpponentName={renderOpponentName}
               />
             ))}
           </div>
