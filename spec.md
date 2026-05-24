@@ -541,6 +541,15 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 ### UX polish backlog
 
 - **`cursor: pointer` ทุก clickable** — รวมทุก `<button>`, icon-only Buttons, drag handles, color swatches, tab triggers, EntityLink wrappers, sortable rows. Tailwind v4 default ลบ `cursor-pointer` ออกจาก `<button>` แล้ว ต้องใส่ class ทุกตัวเอง. Audit pass: grep `<Button|<button|onClick=|role="button"` แล้ว apply `cursor-pointer` ที่ shadcn Button base + ที่อื่นที่ตกหล่น (DnD handles, color swatches, custom div onClick).
+- **i18n ไทย/อังกฤษ** — ทั้งหมดของ UI strings ตอนนี้ hard-coded เป็นภาษาไทย. เพิ่ม locale switcher (TH/EN) ใน SiteHeader.
+  - แนวทาง: `next-intl` หรือ `next-international` (server-component friendly สำหรับ Next 16 App Router) — เลือกตัวที่ static-export-safe.
+  - File structure: `src/locales/th.json` + `src/locales/en.json` แยก keys ตาม namespace (`common`, `tournament`, `match`, `stats`, `settings`, `audit_events`, `errors`).
+  - Locale cookie + `<html lang="th|en">` set จาก server-side cookie read (mirror theme cookie pattern).
+  - Server actions error strings ก็ต้อง translate — return error keys (`err.unchecked_count`) แทน Thai literal และ resolve ที่ client toast handler.
+  - Audit log descriptions — choice point: เก็บใน DB เป็น Thai (current) หรือเป็น i18n key + params? Simpler: keep Thai in DB, translate per-locale only at display time.
+  - LINE notify messages — locale per tournament setting (`settings.notify_locale: "th" | "en"`).
+  - Date/number formatting → `Intl.DateTimeFormat` + `Intl.NumberFormat` ทุกที่ (ตอนนี้ใช้บางที่แล้ว).
+  - Effort estimate: ~12-16 ชม. (extract + key all strings + locale plumbing + LINE/audit decisions + smoke test).
 
 ## Phase 12 — `require_checkin` (DONE 2026-05-24)
 
