@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { gameWinner } from "@/lib/tournament/scoring";
-import type { EntityStats } from "@/lib/tournament/entity-stats";
+import type { TeamStats } from "@/lib/tournament/entity-stats";
 import type { Team, PairWithPlayers } from "@/lib/types";
 import { StreakPill } from "./shared/streak-pill";
 import { StatHeaderCards } from "./shared/stat-header-cards";
@@ -17,7 +17,7 @@ export function TeamStatsView({
   competitorById,
   teamById,
 }: {
-  stats: EntityStats;
+  stats: TeamStats;
   team: Team;
   teamPairs: PairWithPlayers[];
   competitorById: Map<string, CompetitorEntry>;
@@ -74,7 +74,7 @@ export function TeamStatsView({
   );
 
   // H2H vs opponent teams
-  const h2hRows: HeadToHeadRow[] = Array.from(stats.headToHead.entries())
+  const h2hRows: HeadToHeadRow[] = Object.entries(stats.headToHead)
     .map(([opponentTeamId, h2h]) => ({
       id: opponentTeamId,
       name: teamById.get(opponentTeamId)?.name ?? opponentTeamId,

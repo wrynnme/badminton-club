@@ -60,7 +60,7 @@ describe("computePairStats — 0 matches", () => {
     expect(stats.pointsDiff).toBe(0);
     expect(stats.streak).toEqual({ type: null, length: 0 });
     expect(stats.matches).toHaveLength(0);
-    expect(stats.headToHead.size).toBe(0);
+    expect(Object.keys(stats.headToHead)).toHaveLength(0);
   });
 });
 
@@ -77,7 +77,7 @@ describe("computePairStats — pair never participates", () => {
     const stats = computePairStats({ pairId: PAIR_A, matches: [m] });
     expect(stats.played).toBe(0);
     expect(stats.matches).toHaveLength(0);
-    expect(stats.headToHead.size).toBe(0);
+    expect(Object.keys(stats.headToHead)).toHaveLength(0);
   });
 });
 
@@ -202,14 +202,14 @@ describe("computePairStats — headToHead", () => {
 
     const stats = computePairStats({ pairId: PAIR_A, matches: [m1, m2, m3] });
 
-    const vsB = stats.headToHead.get(PAIR_B);
+    const vsB = stats.headToHead[PAIR_B];
     expect(vsB).toBeDefined();
     expect(vsB!.played).toBe(2);
     expect(vsB!.wins).toBe(1);
     expect(vsB!.losses).toBe(1);
     expect(vsB!.draws).toBe(0);
 
-    const vsC = stats.headToHead.get(PAIR_C);
+    const vsC = stats.headToHead[PAIR_C];
     expect(vsC).toBeDefined();
     expect(vsC!.played).toBe(1);
     expect(vsC!.wins).toBe(0);
@@ -331,8 +331,8 @@ describe("computePlayerStats — player not in any pair", () => {
     expect(stats.entityId).toBe("unknown-player");
     expect(stats.played).toBe(0);
     expect(stats.matches).toHaveLength(0);
-    expect(stats.headToHead.size).toBe(0);
-    expect(stats.partnerBreakdown?.size).toBe(0);
+    expect(Object.keys(stats.headToHead)).toHaveLength(0);
+    expect(Object.keys(stats.partnerBreakdown)).toHaveLength(0);
   });
 });
 
@@ -420,10 +420,10 @@ describe("computePlayerStats — player in 2 pairs", () => {
 
   it("headToHead contains both opponent pairs", () => {
     const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2] });
-    expect(stats.headToHead.has(PAIR_OP1)).toBe(true);
-    expect(stats.headToHead.has(PAIR_OP2)).toBe(true);
-    expect(stats.headToHead.get(PAIR_OP1)?.wins).toBe(1);
-    expect(stats.headToHead.get(PAIR_OP2)?.losses).toBe(1);
+    expect(stats.headToHead[PAIR_OP1]).toBeDefined();
+    expect(stats.headToHead[PAIR_OP2]).toBeDefined();
+    expect(stats.headToHead[PAIR_OP1]?.wins).toBe(1);
+    expect(stats.headToHead[PAIR_OP2]?.losses).toBe(1);
   });
 });
 
@@ -455,7 +455,7 @@ describe("computePlayerStats — partnerBreakdown", () => {
 
   it("tracks partner Y: 2 played, 1W 1L", () => {
     const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
-    const withY = stats.partnerBreakdown?.get(PLAYER_Y);
+    const withY = stats.partnerBreakdown[PLAYER_Y];
     expect(withY).toBeDefined();
     expect(withY!.played).toBe(2);
     expect(withY!.wins).toBe(1);
@@ -465,7 +465,7 @@ describe("computePlayerStats — partnerBreakdown", () => {
 
   it("tracks partner W: 1 played, 1W", () => {
     const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
-    const withW = stats.partnerBreakdown?.get(PLAYER_W);
+    const withW = stats.partnerBreakdown[PLAYER_W];
     expect(withW).toBeDefined();
     expect(withW!.played).toBe(1);
     expect(withW!.wins).toBe(1);
@@ -473,7 +473,7 @@ describe("computePlayerStats — partnerBreakdown", () => {
 
   it("partnerBreakdown has exactly 2 partners", () => {
     const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
-    expect(stats.partnerBreakdown?.size).toBe(2);
+    expect(Object.keys(stats.partnerBreakdown)).toHaveLength(2);
   });
 });
 
@@ -501,12 +501,12 @@ describe("computePlayerStats — headToHead by opponent pair", () => {
 
   it("groups h2h by opponent pair id", () => {
     const stats = computePlayerStats({ playerId: PLAYER_X, pairs, matches: [m1, m2, m3] });
-    const vsOp1 = stats.headToHead.get(PAIR_OP1);
+    const vsOp1 = stats.headToHead[PAIR_OP1];
     expect(vsOp1?.played).toBe(2);
     expect(vsOp1?.wins).toBe(1);
     expect(vsOp1?.losses).toBe(1);
 
-    const vsOp2 = stats.headToHead.get(PAIR_OP2);
+    const vsOp2 = stats.headToHead[PAIR_OP2];
     expect(vsOp2?.played).toBe(1);
     expect(vsOp2?.wins).toBe(1);
   });
@@ -584,7 +584,7 @@ describe("computeTeamStats — 0 matches", () => {
     expect(stats.losses).toBe(0);
     expect(stats.draws).toBe(0);
     expect(stats.winRate).toBe(0);
-    expect(stats.headToHead.size).toBe(0);
+    expect(Object.keys(stats.headToHead)).toHaveLength(0);
   });
 });
 
@@ -656,13 +656,13 @@ describe("computeTeamStats — headToHead by opponent team", () => {
 
   it("groups h2h by opponent team id (not pair id)", () => {
     const stats = computeTeamStats({ teamId: TEAM_A, pairs: teamPairs, matches: [m1, m2, m3] });
-    const vsB = stats.headToHead.get(TEAM_B);
+    const vsB = stats.headToHead[TEAM_B];
     expect(vsB).toBeDefined();
     expect(vsB!.played).toBe(2);
     expect(vsB!.wins).toBe(1);
     expect(vsB!.losses).toBe(1);
 
-    const vsC = stats.headToHead.get(TEAM_C);
+    const vsC = stats.headToHead[TEAM_C];
     expect(vsC).toBeDefined();
     expect(vsC!.played).toBe(1);
     expect(vsC!.wins).toBe(1);
@@ -670,7 +670,7 @@ describe("computeTeamStats — headToHead by opponent team", () => {
 
   it("does not include self-team id in headToHead keys", () => {
     const stats = computeTeamStats({ teamId: TEAM_A, pairs: teamPairs, matches: [m1, m2, m3] });
-    expect(stats.headToHead.has(TEAM_A)).toBe(false);
+    expect(stats.headToHead[TEAM_A]).toBeUndefined();
   });
 });
 
@@ -690,7 +690,7 @@ describe("computeTeamStats — excludes intra-team matches", () => {
       matches: [intraMatch],
     });
     expect(stats.played).toBe(0);
-    expect(stats.headToHead.size).toBe(0);
+    expect(Object.keys(stats.headToHead)).toHaveLength(0);
   });
 });
 
@@ -759,7 +759,7 @@ describe("computeDivisionStats — 0 matches", () => {
     expect(stats.played).toBe(0);
     expect(stats.pointsFor).toBe(0);
     expect(stats.pointsAgainst).toBe(0);
-    expect(stats.headToHead.size).toBe(0);
+    expect(Object.keys(stats.headToHead)).toHaveLength(0);
     expect(stats.streak).toEqual({ type: null, length: 0 });
   });
 });
@@ -836,8 +836,8 @@ describe("computeDivisionStats — headToHead is per-pair standings", () => {
       matches: [m1, m2],
       thresholds: THRESHOLDS_1,
     });
-    const p1 = stats.headToHead.get(DIV_PAIR_1);
-    const p2 = stats.headToHead.get(DIV_PAIR_2);
+    const p1 = stats.headToHead[DIV_PAIR_1];
+    const p2 = stats.headToHead[DIV_PAIR_2];
     expect(p1).toBeDefined();
     expect(p2).toBeDefined();
     expect(p1!.played).toBe(2);
@@ -898,7 +898,7 @@ describe("computeDivisionStats — ignores non-completed", () => {
       thresholds: THRESHOLDS_1,
     });
     expect(stats.played).toBe(0);
-    expect(stats.headToHead.size).toBe(0);
+    expect(Object.keys(stats.headToHead)).toHaveLength(0);
   });
 });
 
@@ -922,7 +922,7 @@ describe("computePairStats — BYE matches (games=[]) are not counted", () => {
     expect(stats.draws).toBe(0);
     expect(stats.winRate).toBe(0);
     expect(stats.matches).toHaveLength(0);
-    expect(stats.headToHead.size).toBe(0);
+    expect(Object.keys(stats.headToHead)).toHaveLength(0);
     expect(stats.streak).toEqual({ type: null, length: 0 });
   });
 });
@@ -946,8 +946,8 @@ describe("computePlayerStats — BYE matches (games=[]) are not counted", () => 
     expect(stats.draws).toBe(0);
     expect(stats.winRate).toBe(0);
     expect(stats.matches).toHaveLength(0);
-    expect(stats.headToHead.size).toBe(0);
-    expect(stats.partnerBreakdown?.size).toBe(0);
+    expect(Object.keys(stats.headToHead)).toHaveLength(0);
+    expect(Object.keys(stats.partnerBreakdown)).toHaveLength(0);
     expect(stats.streak).toEqual({ type: null, length: 0 });
   });
 });
@@ -970,7 +970,7 @@ describe("computeTeamStats — BYE matches (games=[]) are not counted", () => {
     expect(stats.draws).toBe(0);
     expect(stats.winRate).toBe(0);
     expect(stats.matches).toHaveLength(0);
-    expect(stats.headToHead.size).toBe(0);
+    expect(Object.keys(stats.headToHead)).toHaveLength(0);
     expect(stats.streak).toEqual({ type: null, length: 0 });
   });
 });
@@ -996,6 +996,6 @@ describe("computeDivisionStats — BYE matches (games=[]) are not counted", () =
     expect(stats.pointsFor).toBe(0);
     expect(stats.pointsAgainst).toBe(0);
     expect(stats.matches).toHaveLength(0);
-    expect(stats.headToHead.size).toBe(0);
+    expect(Object.keys(stats.headToHead)).toHaveLength(0);
   });
 });

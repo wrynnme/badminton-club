@@ -6,8 +6,17 @@ export type EntityType = "player" | "pair" | "team" | "division";
 
 export type PartnerRecord = { played: number; wins: number; losses: number; draws: number };
 
-export type EntityStats = {
-  entityType: EntityType;
+export type HeadToHeadRecord = { played: number; wins: number; losses: number; draws: number };
+
+/**
+ * Base fields shared by every entity stats variant.
+ *
+ * `headToHead` is a plain object (Record) — not a Map — so views can iterate
+ * with `Object.entries(...)` without first wrapping in `Array.from(...)`,
+ * and so the value survives React server-component serialization without
+ * extra glue.
+ */
+type StatsBase = {
   entityId: string;
   played: number;
   wins: number;
@@ -19,12 +28,23 @@ export type EntityStats = {
   pointsDiff: number;
   streak: { type: "W" | "L" | "D" | null; length: number }; // latest streak
   matches: Match[]; // chronological (oldest → newest by match_number)
-  headToHead: Map<
-    string,
-    { played: number; wins: number; losses: number; draws: number }
-  >; // opponentId → stats
-  partnerBreakdown?: Map<string, PartnerRecord>; // playerId → stats (player entity only)
+  headToHead: Record<string, HeadToHeadRecord>; // opponentId → stats
 };
+
+export type PairStats = StatsBase & { entityType: "pair" };
+export type PlayerStats = StatsBase & {
+  entityType: "player";
+  /** playerId → record. Required on PlayerStats (other entity types don't have partners). */
+  partnerBreakdown: Record<string, PartnerRecord>;
+};
+export type TeamStats = StatsBase & { entityType: "team" };
+export type DivisionStats = StatsBase & { entityType: "division" };
+
+/**
+ * Discriminated union over all entity stats variants. Narrow with `entityType`
+ * to access variant-specific fields (e.g. `partnerBreakdown` on player).
+ */
+export type EntityStats = PairStats | PlayerStats | TeamStats | DivisionStats;
 
 /**
  * Compute per-pair stats from a list of tournament matches.
@@ -33,7 +53,7 @@ export type EntityStats = {
 export function computePairStats(opts: {
   pairId: string;
   matches: Match[];
-}): EntityStats {
+}): PairStats {
   const { pairId, matches } = opts;
 
   // Filter to completed matches involving this pair, sorted oldest→newest.
@@ -54,10 +74,7 @@ export function computePairStats(opts: {
   let draws = 0;
   let pointsFor = 0;
   let pointsAgainst = 0;
-  const headToHead = new Map<
-    string,
-    { played: number; wins: number; losses: number; draws: number }
-  >();
+  const headToHead: Record<string, HeadToHeadRecord> = {};
 
   for (const m of relevant) {
     const isSideA = m.pair_a_id === pairId;
@@ -90,7 +107,7 @@ export function computePairStats(opts: {
 
     // Head-to-head accumulation (skip null opponents, e.g. BYE)
     if (opponentId) {
-      const existing = headToHead.get(opponentId) ?? {
+      const existing = headToHead[opponentId] ?? {
         played: 0,
         wins: 0,
         losses: 0,
@@ -100,7 +117,7 @@ export function computePairStats(opts: {
       if (result === "W") existing.wins++;
       else if (result === "L") existing.losses++;
       else existing.draws++;
-      headToHead.set(opponentId, existing);
+      headToHead[opponentId] = existing;
     }
   }
 
@@ -178,7 +195,7 @@ export function computePlayerStats(opts: {
   playerId: string;
   pairs: PairWithPlayers[];
   matches: Match[];
-}): EntityStats {
+}): PlayerStats {
   const { playerId, pairs, matches } = opts;
 
   // All pair IDs for this player
@@ -220,14 +237,8 @@ export function computePlayerStats(opts: {
   let draws = 0;
   let pointsFor = 0;
   let pointsAgainst = 0;
-  const headToHead = new Map<
-    string,
-    { played: number; wins: number; losses: number; draws: number }
-  >();
-  const partnerBreakdown = new Map<
-    string,
-    { played: number; wins: number; losses: number; draws: number }
-  >();
+  const headToHead: Record<string, HeadToHeadRecord> = {};
+  const partnerBreakdown: Record<string, PartnerRecord> = {};
 
   for (const m of relevant) {
     const onSideA = isSideA(m);
@@ -264,7 +275,7 @@ export function computePlayerStats(opts: {
 
     // Head-to-head vs opponent pair
     if (opponentId) {
-      const existing = headToHead.get(opponentId) ?? {
+      const existing = headToHead[opponentId] ?? {
         played: 0,
         wins: 0,
         losses: 0,
@@ -274,13 +285,13 @@ export function computePlayerStats(opts: {
       if (result === "W") existing.wins++;
       else if (result === "L") existing.losses++;
       else existing.draws++;
-      headToHead.set(opponentId, existing);
+      headToHead[opponentId] = existing;
     }
 
     // Partner breakdown — partner is the OTHER player in the active pair
     const partnerId = pairPartnerMap.get(activePairId) ?? null;
     if (partnerId) {
-      const pb = partnerBreakdown.get(partnerId) ?? {
+      const pb = partnerBreakdown[partnerId] ?? {
         played: 0,
         wins: 0,
         losses: 0,
@@ -290,7 +301,7 @@ export function computePlayerStats(opts: {
       if (result === "W") pb.wins++;
       else if (result === "L") pb.losses++;
       else pb.draws++;
-      partnerBreakdown.set(partnerId, pb);
+      partnerBreakdown[partnerId] = pb;
     }
   }
 
@@ -331,7 +342,7 @@ export function computeTeamStats(opts: {
   teamId: string;
   pairs: PairWithPlayers[];
   matches: Match[];
-}): EntityStats {
+}): TeamStats {
   const { teamId, pairs, matches } = opts;
 
   // All pair IDs for this team
@@ -363,10 +374,7 @@ export function computeTeamStats(opts: {
   let draws = 0;
   let pointsFor = 0;
   let pointsAgainst = 0;
-  const headToHead = new Map<
-    string,
-    { played: number; wins: number; losses: number; draws: number }
-  >();
+  const headToHead: Record<string, HeadToHeadRecord> = {};
 
   for (const m of relevant) {
     const onSideA = isSideA(m);
@@ -401,14 +409,14 @@ export function computeTeamStats(opts: {
 
     // H2H keyed by opponent team id
     if (opponentTeamId) {
-      const existing = headToHead.get(opponentTeamId) ?? {
+      const existing = headToHead[opponentTeamId] ?? {
         played: 0, wins: 0, losses: 0, draws: 0,
       };
       existing.played++;
       if (result === "W") existing.wins++;
       else if (result === "L") existing.losses++;
       else existing.draws++;
-      headToHead.set(opponentTeamId, existing);
+      headToHead[opponentTeamId] = existing;
     }
   }
 
@@ -454,7 +462,7 @@ export function computeDivisionStats(opts: {
   pairs: PairWithPlayers[];
   matches: Match[];
   thresholds: number[];
-}): EntityStats {
+}): DivisionStats {
   const { division, pairs, matches, thresholds } = opts;
 
   const divStr = String(division);
@@ -484,16 +492,14 @@ export function computeDivisionStats(opts: {
   let pointsAgainst = 0; // total points scored by side B across all matches
 
   // Per-pair standings: headToHead map keyed by pair_id → {played, wins, losses, draws}
-  const headToHead = new Map<
-    string,
-    { played: number; wins: number; losses: number; draws: number }
-  >();
+  const headToHead: Record<string, HeadToHeadRecord> = {};
 
-  const ensurePairEntry = (pairId: string) => {
-    if (!headToHead.has(pairId)) {
-      headToHead.set(pairId, { played: 0, wins: 0, losses: 0, draws: 0 });
-    }
-    return headToHead.get(pairId)!;
+  const ensurePairEntry = (pairId: string): HeadToHeadRecord => {
+    const existing = headToHead[pairId];
+    if (existing) return existing;
+    const fresh: HeadToHeadRecord = { played: 0, wins: 0, losses: 0, draws: 0 };
+    headToHead[pairId] = fresh;
+    return fresh;
   };
 
   let wins = 0;
@@ -507,12 +513,10 @@ export function computeDivisionStats(opts: {
     pointsFor += totals.a;
     pointsAgainst += totals.b;
 
-    // Each match: side A gets W or D, side B gets L or D (mirrored)
+    // Each completed match contributes either: one W + one L (decisive result),
+    // or two D (draw, mirrored across both sides).
     if (rawWinner === "draw") {
-      draws += 2; // one draw outcome per side
-    } else if (rawWinner === "a") {
-      wins++;
-      losses++;
+      draws += 2;
     } else {
       wins++;
       losses++;

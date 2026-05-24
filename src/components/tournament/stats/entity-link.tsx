@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { useParams } from "next/navigation";
 import type { ReactNode } from "react";
 
 export function EntityLink({
@@ -14,22 +14,20 @@ export function EntityLink({
   className?: string;
   children: ReactNode;
 }) {
-  const pathname = usePathname();
+  // Use route params (typed, no regex on pathname).
+  //   /tournaments/[id]/... → params.id  → /tournaments/<id>/stats/<type>/<entityId>
+  //   /t/[token]/...        → params.token → /t/<token>/stats/<type>/<entityId>
+  // Fallback: outside either route group → render children unwrapped.
+  const params = useParams<{ id?: string; token?: string }>();
 
   // Guard: no id → render unwrapped
   if (!entityId) return <>{children}</>;
 
-  // Derive base from current pathname:
-  //   /tournaments/<id>/... → /tournaments/<id>/stats/<type>/<entityId>
-  //   /t/<token>/...        → /t/<token>/stats/<type>/<entityId>
-  // Fallback: if pathname doesn't match either, render children unwrapped.
   let href: string | null = null;
-  const adminMatch = pathname.match(/^\/tournaments\/([^/]+)/);
-  const publicMatch = pathname.match(/^\/t\/([^/]+)/);
-  if (adminMatch) {
-    href = `/tournaments/${adminMatch[1]}/stats/${entityType}/${encodeURIComponent(entityId)}`;
-  } else if (publicMatch) {
-    href = `/t/${publicMatch[1]}/stats/${entityType}/${encodeURIComponent(entityId)}`;
+  if (params.id) {
+    href = `/tournaments/${params.id}/stats/${entityType}/${encodeURIComponent(entityId)}`;
+  } else if (params.token) {
+    href = `/t/${params.token}/stats/${entityType}/${encodeURIComponent(entityId)}`;
   }
 
   if (!href) return <>{children}</>;

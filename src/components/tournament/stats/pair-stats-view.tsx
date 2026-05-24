@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { divisionLabelTh, divisionTone, parseDivision } from "@/lib/tournament/divisions";
-import type { EntityStats } from "@/lib/tournament/entity-stats";
+import type { PairStats } from "@/lib/tournament/entity-stats";
 import type { PairWithPlayers } from "@/lib/types";
 import { StreakPill } from "./shared/streak-pill";
 import { StatHeaderCards } from "./shared/stat-header-cards";
@@ -15,7 +15,7 @@ export function PairStatsView({
   pair,
   competitorById,
 }: {
-  stats: EntityStats;
+  stats: PairStats;
   pair: PairWithPlayers;
   competitorById: Map<string, CompetitorEntry>;
 }) {
@@ -35,7 +35,7 @@ export function PairStatsView({
   const divNum = parseDivision(firstDivisionMatch?.division ?? null);
   const tone = divNum ? divisionTone(divNum) : null;
 
-  const h2hRows: HeadToHeadRow[] = Array.from(stats.headToHead.entries())
+  const h2hRows: HeadToHeadRow[] = Object.entries(stats.headToHead)
     .map(([opponentId, h2h]) => ({
       id: opponentId,
       name: competitorById.get(opponentId)?.name ?? opponentId,

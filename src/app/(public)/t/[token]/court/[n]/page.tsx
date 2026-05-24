@@ -187,7 +187,13 @@ export default async function CourtRefereePage({
 }) {
   const { token, n } = await params;
   // Court names are free text — URL-decode once and use throughout.
-  const courtName = decodeURIComponent(n);
+  // Guard against malformed escape sequences (e.g. %E0%A4 alone) which throw URIError.
+  let courtName: string;
+  try {
+    courtName = decodeURIComponent(n);
+  } catch {
+    notFound();
+  }
 
   const sb = await createAdminClient();
 

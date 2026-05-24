@@ -13,13 +13,22 @@ export default async function PublicDivisionStatsPage({
   params: Promise<{ token: string; divKey: string }>;
 }) {
   const { token, divKey } = await params;
-  const division = parseInt(decodeURIComponent(divKey), 10);
+  // Guard against malformed escape sequences in divKey which would throw URIError.
+  let division: number;
+  try {
+    division = parseInt(decodeURIComponent(divKey), 10);
+  } catch {
+    notFound();
+  }
 
   const data = await loadStatsTournamentByToken(token);
   if (!data) notFound();
 
-  // Validate division param is within range
+  // Tournaments without a division split have no meaningful "division N" page.
   const thresholds: number[] = data.tournament.pair_division_thresholds ?? [];
+  if (thresholds.length === 0) notFound();
+
+  // Validate division param is within range
   const maxDivision = thresholds.length + 1;
   if (!Number.isFinite(division) || division < 1 || division > maxDivision) {
     notFound();

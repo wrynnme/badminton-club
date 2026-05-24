@@ -14,7 +14,13 @@ export default async function AdminDivisionStatsPage({
   params: Promise<{ id: string; divKey: string }>;
 }) {
   const { id, divKey } = await params;
-  const division = parseInt(decodeURIComponent(divKey), 10);
+  // Guard against malformed escape sequences in divKey which would throw URIError.
+  let division: number;
+  try {
+    division = parseInt(decodeURIComponent(divKey), 10);
+  } catch {
+    notFound();
+  }
 
   // Require session (stats are read-only, any logged-in user may view)
   const session = await getSession();
@@ -25,8 +31,11 @@ export default async function AdminDivisionStatsPage({
   const data = await loadStatsTournamentByAdmin(id);
   if (!data) notFound();
 
-  // Validate division param is within range
+  // Tournaments without a division split have no meaningful "division N" page.
   const thresholds: number[] = data.tournament.pair_division_thresholds ?? [];
+  if (thresholds.length === 0) notFound();
+
+  // Validate division param is within range
   const maxDivision = thresholds.length + 1;
   if (!Number.isFinite(division) || division < 1 || division > maxDivision) {
     notFound();

@@ -97,6 +97,12 @@ export function useTabSync<T extends string>(opts: {
   }, [isPending, progress]);
 
   const onChange = (next: string) => {
+    // No-op when clicking the already-active tab: skip router.replace + progress bar.
+    // Without this guard, same-tab clicks fire startTransition with an identical URL —
+    // useTransition stays pending (no work to do, no commit), so the cleanup effect
+    // never fires and the @bprogress bar hangs at the top of the page.
+    if (next === active) return;
+
     const params = new URLSearchParams(searchParams.toString());
     if (next === defaultTab) {
       params.delete("tab");

@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
 import { gameWinner, sumGameScores, computeStandings } from "@/lib/tournament/scoring";
-import type { EntityStats } from "@/lib/tournament/entity-stats";
+import type { DivisionStats } from "@/lib/tournament/entity-stats";
 import type { PairWithPlayers, Match } from "@/lib/types";
 import type { CompetitorEntry } from "./shared/match-history-list";
 
@@ -56,7 +56,7 @@ export function DivisionStatsView({
   divisionPairs,
   competitorById,
 }: {
-  stats: EntityStats;
+  stats: DivisionStats;
   division: number;
   divisionPairs: PairWithPlayers[];
   competitorById: Map<string, CompetitorEntry>;

@@ -2,7 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import type { EntityStats } from "@/lib/tournament/entity-stats";
+import type { PlayerStats } from "@/lib/tournament/entity-stats";
 import type { TeamPlayer, Team, PairWithPlayers } from "@/lib/types";
 import { StreakPill } from "./shared/streak-pill";
 import { StatHeaderCards } from "./shared/stat-header-cards";
@@ -16,7 +16,7 @@ export function PlayerStatsView({
   pairById,
   competitorById,
 }: {
-  stats: EntityStats;
+  stats: PlayerStats;
   player: TeamPlayer;
   team: Team | undefined;
   pairById: Map<string, PairWithPlayers>;
@@ -37,7 +37,7 @@ export function PlayerStatsView({
     if (p.player2) playerNameById.set(p.player2.id, p.player2.display_name);
   }
 
-  const h2hRows: HeadToHeadRow[] = Array.from(stats.headToHead.entries())
+  const h2hRows: HeadToHeadRow[] = Object.entries(stats.headToHead)
     .map(([opponentId, h2h]) => ({
       id: opponentId,
       name: competitorById.get(opponentId)?.name ?? opponentId,
@@ -45,7 +45,7 @@ export function PlayerStatsView({
     }))
     .sort((a, b) => b.played - a.played);
 
-  const partnerRows: HeadToHeadRow[] = Array.from(stats.partnerBreakdown?.entries() ?? [])
+  const partnerRows: HeadToHeadRow[] = Object.entries(stats.partnerBreakdown)
     .map(([partnerId, pb]) => ({
       id: partnerId,
       name: playerNameById.get(partnerId) ?? partnerId,
