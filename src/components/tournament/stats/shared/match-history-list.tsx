@@ -63,8 +63,8 @@ function MatchHistoryRow({
 
   const hasMyCol = renderMyColumn !== null;
   const gridCols = hasMyCol
-    ? "grid-cols-[2rem_1fr_1fr_3rem_4rem] sm:grid-cols-[2rem_1fr_1fr_3rem_4rem_auto]"
-    : "grid-cols-[2rem_1fr_3rem_4rem] sm:grid-cols-[2rem_1fr_3rem_4rem_auto]";
+    ? "grid-cols-[2rem_minmax(0,8rem)_minmax(0,8rem)_3rem_4rem] sm:grid-cols-[2rem_minmax(0,8rem)_minmax(0,8rem)_3rem_4rem_auto]"
+    : "grid-cols-[2rem_minmax(0,12rem)_3rem_4rem] sm:grid-cols-[2rem_minmax(0,14rem)_3rem_4rem_auto]";
 
   return (
     <div
@@ -130,8 +130,8 @@ export function MatchHistoryList({
 }) {
   const hasMyCol = renderMyColumn !== null;
   const gridCols = hasMyCol
-    ? "grid-cols-[2rem_1fr_1fr_3rem_4rem] sm:grid-cols-[2rem_1fr_1fr_3rem_4rem_auto]"
-    : "grid-cols-[2rem_1fr_3rem_4rem] sm:grid-cols-[2rem_1fr_3rem_4rem_auto]";
+    ? "grid-cols-[2rem_minmax(0,8rem)_minmax(0,8rem)_3rem_4rem] sm:grid-cols-[2rem_minmax(0,8rem)_minmax(0,8rem)_3rem_4rem_auto]"
+    : "grid-cols-[2rem_minmax(0,12rem)_3rem_4rem] sm:grid-cols-[2rem_minmax(0,14rem)_3rem_4rem_auto]";
 
   return (
     <Card>
