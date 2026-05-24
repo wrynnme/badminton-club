@@ -39,6 +39,7 @@ export default async function PublicTeamStatsPage({
         teamPairs={teamPairs}
         competitorById={data.competitorById}
         teamById={teamById}
+        thresholds={data.tournament.pair_division_thresholds ?? []}
       />
     </StatsPageShell>
   );

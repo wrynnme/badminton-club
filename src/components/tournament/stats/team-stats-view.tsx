@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { gameWinner } from "@/lib/tournament/scoring";
 import type { TeamStats } from "@/lib/tournament/entity-stats";
 import type { Team, PairWithPlayers } from "@/lib/types";
+import { computePairDivision, parsePairLevel, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { StreakPill } from "./shared/streak-pill";
 import { StatHeaderCards } from "./shared/stat-header-cards";
@@ -17,13 +18,23 @@ export function TeamStatsView({
   teamPairs,
   competitorById,
   teamById,
+  thresholds = [],
 }: {
   stats: TeamStats;
   team: Team;
   teamPairs: PairWithPlayers[];
   competitorById: Map<string, CompetitorEntry>;
   teamById: Map<string, Team>;
+  thresholds?: number[];
 }) {
+  const hasDivisions = thresholds.length > 0;
+  // Map pairId -> division number (1..N) or null when unknown / no split
+  const divisionByPairId = new Map<string, number | null>(
+    teamPairs.map((p) => [
+      p.id,
+      hasDivisions ? computePairDivision(parsePairLevel(p.pair_level), thresholds) : null,
+    ])
+  );
   // Set of pair IDs that belong to this team
   const teamPairIds = new Set(teamPairs.map((p) => p.id));
 
@@ -130,11 +141,23 @@ export function TeamStatsView({
       </div>
 
       {/* Per-pair breakdown — has extra Pts column, can't use HeadToHeadTable */}
-      {pairRows.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">ผลงานแยกตามคู่</CardTitle>
-          </CardHeader>
+      {pairRows.length > 0 && (() => {
+        // Group rows by division. Each group keeps the original sort
+        // (leaguePoints desc) so rank inside the group reflects relative
+        // standing among teammates in that division.
+        const groups = new Map<number | null, typeof pairRows>();
+        for (const row of pairRows) {
+          const divKey = divisionByPairId.get(row.pairId) ?? null;
+          const arr = groups.get(divKey) ?? [];
+          arr.push(row);
+          groups.set(divKey, arr);
+        }
+        const divKeysSorted = [...groups.keys()].sort((a, b) => {
+          if (a === null) return 1;
+          if (b === null) return -1;
+          return a - b;
+        });
+        const renderTable = (rows: typeof pairRows) => (
           <CardContent className="p-0">
             <div className="grid grid-cols-[2rem_1fr_3rem_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium">
               <span>#</span>
@@ -145,7 +168,7 @@ export function TeamStatsView({
               <span className="text-right">เสมอ</span>
               <span className="text-right">Pts</span>
             </div>
-            {pairRows.map((row, idx) => (
+            {rows.map((row, idx) => (
               <div
                 key={row.pairId}
                 className="grid grid-cols-[2rem_1fr_3rem_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2.5 border-b last:border-b-0 text-sm items-center"
@@ -172,8 +195,48 @@ export function TeamStatsView({
               </div>
             ))}
           </CardContent>
-        </Card>
-      )}
+        );
+
+        // No-split fallback: single card, original layout
+        if (!hasDivisions || divKeysSorted.length === 1) {
+          return (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">ผลงานแยกตามคู่</CardTitle>
+              </CardHeader>
+              {renderTable(pairRows)}
+            </Card>
+          );
+        }
+
+        // Split by division — one card per group with colored heading
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">ผลงานแยกตามคู่</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0 space-y-4 pb-4">
+              {divKeysSorted.map((divKey) => {
+                const rows = groups.get(divKey) ?? [];
+                const tone = divKey !== null ? divisionTone(divKey) : null;
+                const label = divKey !== null ? divisionLabelTh(divKey) : "ไม่ระบุดิวิชั่น";
+                return (
+                  <div key={String(divKey)} className="space-y-1">
+                    <p className={`text-xs font-medium px-4 ${tone?.text ?? "text-muted-foreground"}`}>
+                      {divKey !== null ? (
+                        <EntityLink entityType="division" entityId={String(divKey)}>{label}</EntityLink>
+                      ) : (
+                        label
+                      )}
+                    </p>
+                    {renderTable(rows)}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       <MatchHistoryList
         matches={stats.matches}
