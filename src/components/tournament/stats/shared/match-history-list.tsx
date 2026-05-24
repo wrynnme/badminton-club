@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
+import { gameWinner } from "@/lib/tournament/scoring";
 import { RESULT_LABEL_TH, RESULT_TEXT_CLASS } from "@/lib/tournament/result-display";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import type { Match } from "@/lib/types";
@@ -47,15 +47,22 @@ function MatchHistoryRow({
   const opponentId = isSideA ? match.pair_b_id : match.pair_a_id;
   const opponent = opponentId ? competitorById.get(opponentId) : undefined;
   const rawWinner = gameWinner(match.games);
-  const totals = sumGameScores(match.games);
 
   let result: "W" | "L" | "D";
   if (rawWinner === "draw") result = "D";
   else if ((rawWinner === "a" && isSideA) || (rawWinner === "b" && !isSideA)) result = "W";
   else result = "L";
 
-  const myPoints = isSideA ? totals.a : totals.b;
-  const oppPoints = isSideA ? totals.b : totals.a;
+  // Sets won — primary scoreboard for badminton. Point sums (e.g. 29–26)
+  // are misleading because match outcome is decided by sets, not total points.
+  let aSets = 0;
+  let bSets = 0;
+  for (const g of match.games) {
+    if (g.a > g.b) aSets++;
+    else if (g.b > g.a) bSets++;
+  }
+  const mySets = isSideA ? aSets : bSets;
+  const oppSets = isSideA ? bSets : aSets;
 
   const gamesScore = match.games
     .map((g) => (isSideA ? `${g.a}-${g.b}` : `${g.b}-${g.a}`))
@@ -85,7 +92,7 @@ function MatchHistoryRow({
       </span>
       <span className={RESULT_TEXT_CLASS[result]}>{RESULT_LABEL_TH[result]}</span>
       <span className="tabular-nums text-right font-medium">
-        {myPoints}–{oppPoints}
+        {mySets}–{oppSets}
       </span>
       <span className="text-xs text-muted-foreground hidden sm:block">{gamesScore}</span>
     </div>
@@ -150,8 +157,8 @@ export function MatchHistoryList({
               {hasMyCol && <span>{myColumnLabel ?? ""}</span>}
               <span>คู่แข่ง</span>
               <span>ผล</span>
-              <span className="text-right">คะแนน</span>
-              <span className="hidden sm:block">เกม</span>
+              <span className="text-right">เซต</span>
+              <span className="hidden sm:block">คะแนน</span>
             </div>
             {matches.map((m) => (
               <MatchHistoryRow
