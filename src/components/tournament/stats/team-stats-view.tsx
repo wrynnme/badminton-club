@@ -136,7 +136,8 @@ export function TeamStatsView({
             <CardTitle className="text-base">ผลงานแยกตามคู่</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="grid grid-cols-[1fr_3rem_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium">
+            <div className="grid grid-cols-[2rem_1fr_3rem_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium">
+              <span>#</span>
               <span>คู่</span>
               <span className="text-right">แมตช์</span>
               <span className="text-right">ชนะ</span>
@@ -144,11 +145,12 @@ export function TeamStatsView({
               <span className="text-right">เสมอ</span>
               <span className="text-right">Pts</span>
             </div>
-            {pairRows.map((row) => (
+            {pairRows.map((row, idx) => (
               <div
                 key={row.pairId}
-                className="grid grid-cols-[1fr_3rem_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2.5 border-b last:border-b-0 text-sm items-center"
+                className="grid grid-cols-[2rem_1fr_3rem_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2.5 border-b last:border-b-0 text-sm items-center"
               >
+                <span className="text-muted-foreground text-xs tabular-nums">{idx + 1}</span>
                 <span className="truncate min-w-0">
                   <EntityLink entityType="pair" entityId={row.pairId}>
                     {row.name}
