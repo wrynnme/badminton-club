@@ -166,17 +166,32 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
   // useMemos from being invalidated when only the array identity changes
   // (e.g., realtime triggers router.refresh that produces a new array with
   // identical content).
-  const matchesKey = useMemo(
-    () =>
-      matches
-        .map((m) => {
-          const last = m.games?.[m.games.length - 1];
-          const lastStr = last ? `${last.a}-${last.b}` : "";
-          return `${m.id}:${m.status}:${m.team_a_score ?? 0}:${m.team_b_score ?? 0}:${m.games?.length ?? 0}:${lastStr}`;
-        })
-        .join(","),
-    [matches],
-  );
+  const matchesKey = useMemo(() => {
+    let h = matches.length;
+    for (const m of matches) {
+      h = ((h << 5) - h + (m.status === "completed" ? 1 : 0)) | 0;
+      // Include team_a/b_score (denormalized games-won) so derived memos refresh
+      // when a score record is updated even if status string is unchanged.
+      h = ((h << 5) - h + (m.team_a_score ?? 0) + (m.team_b_score ?? 0)) | 0;
+      // Simple court fingerprint: length of court string (covers assign / clear).
+      h = ((h << 5) - h + (m.court?.length ?? 0)) | 0;
+      // started_at — seconds since epoch, coerced to i32. Forces invalidation
+      // when a match transitions to in_progress (or cooldown timestamp shifts).
+      h =
+        ((h << 5) -
+          h +
+          (m.started_at
+            ? Math.floor(new Date(m.started_at).getTime() / 1000) | 0
+            : 0)) |
+        0;
+      if (m.games) {
+        for (const g of m.games) {
+          h = ((h << 5) - h + g.a + g.b) | 0;
+        }
+      }
+    }
+    return h;
+  }, [matches]);
 
   const matchTotals = useMemo(() => {
     let completed = 0;

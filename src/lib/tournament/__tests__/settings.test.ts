@@ -19,6 +19,7 @@ describe("DEFAULT_SETTINGS", () => {
     expect(DEFAULT_SETTINGS.match_cooldown_minutes).toBe(0);
     expect(DEFAULT_SETTINGS.auto_advance_next).toBe(false);
     expect(DEFAULT_SETTINGS.require_court_to_start).toBe(false);
+    expect(DEFAULT_SETTINGS.require_checkin).toBe(false);
     expect(DEFAULT_SETTINGS.allow_force_bracket_reset).toBe(false);
     expect(DEFAULT_SETTINGS.allow_manual_match_after_bracket).toBe(true);
   });

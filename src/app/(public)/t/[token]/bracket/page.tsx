@@ -101,7 +101,6 @@ export default async function PublicBracketPage({
   return (
     <TournamentLiveWrapper
       tournamentId={t.id}
-      isOngoing={t.status === "ongoing"}
       realtimeEnabled={settings.realtime_enabled}
     >
       <TvAutoRefresh intervalMs={settings.tv_refresh_interval_sec * 1000} />

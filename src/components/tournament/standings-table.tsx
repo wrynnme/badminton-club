@@ -1,5 +1,6 @@
 import { Trophy } from "lucide-react";
 import { computeStandings } from "@/lib/tournament/scoring";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
@@ -37,7 +38,9 @@ export function StandingsTable({
                 <div className="flex items-center gap-1.5">
                   {i === 0 && r.played > 0 && <Trophy className="h-3 w-3 text-yellow-500 shrink-0" />}
                   {c?.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
-                  <span className="truncate">{c?.name ?? "—"}</span>
+                  <EntityLink entityType={unit === "team" ? "team" : "pair"} entityId={c?.id}>
+                    <span className="truncate">{c?.name ?? "—"}</span>
+                  </EntityLink>
                 </div>
                 {c?.subtitle && <div className="text-[10px] text-muted-foreground pl-3.5 truncate font-normal">{c.subtitle}</div>}
               </td>

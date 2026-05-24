@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { Info } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { GroupStage } from "@/components/tournament/group-stage";
 import { PairStage } from "@/components/tournament/pair-stage";
 import { KnockoutStage } from "@/components/tournament/knockout-stage";
@@ -89,7 +90,7 @@ export default async function PublicTournamentPage({
   const knockoutMatches = allMatches.filter((m) => m.round_type === "knockout");
 
   return (
-    <TournamentLiveWrapper tournamentId={t.id} isOngoing={t.status === "ongoing"} realtimeEnabled={settings.realtime_enabled}>
+    <TournamentLiveWrapper tournamentId={t.id} realtimeEnabled={settings.realtime_enabled}>
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
         <PublicHero
           tournament={t}
@@ -106,7 +107,7 @@ export default async function PublicTournamentPage({
           </div>
         )}
 
-        <Suspense fallback={null}>
+        <Suspense fallback={<LoadingSpinner />}>
           <PublicTournamentShell
             showGroups={showGroupStage}
             showPairs={showPairStage}

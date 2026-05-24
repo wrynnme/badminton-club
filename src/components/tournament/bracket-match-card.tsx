@@ -1,5 +1,6 @@
 import { CARD_H } from "@/lib/tournament/bracket-visual";
 import { gameWinner } from "@/lib/tournament/scoring";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 

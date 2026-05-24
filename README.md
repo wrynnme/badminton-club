@@ -65,12 +65,14 @@ npx skills add supabase/agent-skills   # ติดตั้งครั้งเ
 | `team` | ทีม vs ทีม |
 | `pair` | คู่ (2 คน) vs คู่ — จับคู่ภายในทีม แข่งข้ามทีม |
 
-### Pair Division (กลุ่มบน/ล่าง)
+### Pair Division (N-Division)
 
-ตั้งค่า `pair_division_threshold` ต่อ tournament:
-- `null` = ไม่แบ่ง (ทุกคู่เจอกัน)
-- ตัวเลข N = `pair_level > N` → กลุ่มบน; `≤ N` → กลุ่มล่าง
-- กลุ่มบน/ล่างไม่เจอกันในรอบแบ่งกลุ่ม — เจอกันได้ในรอบ knockout
+ตั้งค่า `pair_division_thresholds: number[]` ต่อ tournament (sorted ASC):
+- `[]` = ไม่แบ่ง (ทุกคู่เจอกัน)
+- `[5]` → 2 divisions: `pair_level > 5` → Division 1 (top), `≤ 5` → Division 2
+- `[3, 7]` → 3 divisions: `> 7` → Div 1; `> 3 && ≤ 7` → Div 2; `≤ 3` → Div 3
+- Division 1 = top tier (highest skill); ขนาด array = `N-1` thresholds → `N` divisions
+- คู่ข้าม Division ไม่เจอกันในรอบแบ่งกลุ่ม — เจอกันได้ในรอบ knockout (per-Division bracket)
 
 ### Level
 
@@ -188,6 +190,8 @@ src/
 - ✅ Phase 10 — Smart Scheduling: court list, court occupancy guard (partial UNIQUE index), auto-rotate queue (anti back-to-back), atomic reorder via `reorder_tournament_queue` RPC
 - ✅ Phase 11 — Pre-tournament Settings (feature flags): LINE notify toggles, queue bracket preference + chunk size, auto-advance, manual match guard, force bracket reset, cooldown, realtime, audit log, `require_court_to_start`
 - ✅ Perf pass (2026-05-21) — 14 FK covering indexes via `add_fk_indexes` migration; parallelized page fetches (`/tournaments/[id]`, `/t/[token]`, `/t/[token]/tv`); co-admin can now edit Settings tab
+- ✅ Per-court referee view (2026-05-24) — `/t/[token]/court/[n]` phone-first page showing in_progress + top 2 pending per court
+- ✅ Entity stats drill-down (2026-05-24, Phases A–D) — admin + public stat pages for pair / player / team / division (`/tournaments/[id]/stats/...` + `/t/[token]/stats/...`); clickable names everywhere via `EntityLink`; navigation progress bar (`@bprogress/next`); root-level `LoadingSpinner` Suspense fallback
 - [ ] Phase 12 — `require_checkin` flag + check-in flow
 - [ ] Phase 13 — Competition mode (multi-class NB/BG/N/S/P-)
 

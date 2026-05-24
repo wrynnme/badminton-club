@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Link2, Link2Off, Copy, Check, Loader2, QrCode } from "lucide-react";
-import QRCode from "react-qr-code";
+import dynamic from "next/dynamic";
+const QRCode = dynamic(() => import("react-qr-code"), { ssr: false });
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {

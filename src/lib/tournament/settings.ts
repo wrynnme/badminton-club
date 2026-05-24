@@ -30,6 +30,7 @@ export const TournamentSettingsSchema = z.object({
   allow_manual_match_after_bracket: z.boolean().default(true),
   auto_advance_next: z.boolean().default(false),
   require_court_to_start: z.boolean().default(false),
+  require_checkin: z.boolean().default(false),
   realtime_enabled: z.boolean().default(true),
   audit_log_enabled: z.boolean().default(true),
   match_cooldown_minutes: z.number().int().min(0).max(30).default(0),

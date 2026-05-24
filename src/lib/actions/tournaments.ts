@@ -275,11 +275,10 @@ export async function updateTournamentSettingsAction(
     });
   }
 
-  revalidatePath(`/tournaments/${tournamentId}`);
-  if (row.share_token) {
-    revalidatePath(`/t/${row.share_token}`);
-    revalidatePath(`/t/${row.share_token}/tv`);
-  }
+  // Use layout-mode revalidate so the entire /t/[token] subtree refreshes —
+  // covers /tv, /bracket, /court/[n], and /stats/{...}/[id] (settings affect
+  // realtime, line_notify, color_summary, etc. across all of those).
+  await revalidateAllTournamentPaths(sb, tournamentId);
   return { ok: true, settings: merged };
 }
 
@@ -690,4 +689,155 @@ export async function revokeShareTokenAction(tournamentId: string) {
 
   revalidatePath(`/tournaments/${tournamentId}`);
   return { ok: true };
+}
+
+// ============ CHECK-IN (Phase 12) ============
+
+async function revalidateAllTournamentPaths(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  tournamentId: string
+) {
+  revalidatePath(`/tournaments/${tournamentId}`);
+  const { data, error } = await sb.from("tournaments").select("share_token").eq("id", tournamentId).maybeSingle();
+  if (error) {
+    console.error("revalidateAllTournamentPaths share_token lookup:", error);
+    return;
+  }
+  if (data?.share_token) {
+    // 'layout' invalidates the entire /t/[token] subtree — covers /tv,
+    // /bracket, /court/[n], and /stats/{pair|player|team|division}/[id].
+    revalidatePath(`/t/${data.share_token}`, "layout");
+  }
+}
+
+export async function toggleTeamPlayerCheckInAction(input: { playerId: string; tournamentId: string }) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+  const { data: player } = await sb
+    .from("team_players")
+    .select("id, display_name, checked_in_at, team:teams!inner(tournament_id)")
+    .eq("id", input.playerId)
+    .maybeSingle();
+  if (!player) return { error: "ไม่พบผู้เล่น" };
+  const team = Array.isArray(player.team) ? player.team[0] : player.team;
+  if (!team || team.tournament_id !== input.tournamentId) return { error: "ผู้เล่นไม่อยู่ในทัวร์นี้" };
+
+  const next = player.checked_in_at ? null : new Date().toISOString();
+  const { error } = await sb.from("team_players").update({ checked_in_at: next }).eq("id", input.playerId);
+  if (error) {
+    console.error("[toggleTeamPlayerCheckInAction]", error);
+    return { error: "บันทึกสถานะเช็คอินไม่สำเร็จ" };
+  }
+
+  await writeAuditLog({
+    tournament_id: input.tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: next ? "player_checked_in" : "player_checked_out",
+    entity_type: "team_player",
+    entity_id: input.playerId,
+    description: `${next ? "เช็คอิน" : "ยกเลิกเช็คอิน"}: ${player.display_name}`,
+  });
+
+  await revalidateAllTournamentPaths(sb, input.tournamentId);
+  return { ok: true };
+}
+
+export async function bulkCheckInTeamAction(input: { teamId: string; tournamentId: string; checkIn: boolean }) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+  const { data: team } = await sb
+    .from("teams")
+    .select("id, name, tournament_id")
+    .eq("id", input.teamId)
+    .maybeSingle();
+  if (!team || team.tournament_id !== input.tournamentId) return { error: "ไม่พบทีม" };
+
+  const next = input.checkIn ? new Date().toISOString() : null;
+  // Idempotent: only touch rows whose current state differs. Preserves existing
+  // arrival timestamps (V5) and makes the action safe under cross-device races (S7).
+  let q = sb
+    .from("team_players")
+    .update({ checked_in_at: next })
+    .eq("team_id", input.teamId);
+  q = input.checkIn ? q.is("checked_in_at", null) : q.not("checked_in_at", "is", null);
+  const { data: updated, error } = await q.select("id");
+  if (error) {
+    console.error("[bulkCheckInTeamAction]", error);
+    return { error: "บันทึกสถานะเช็คอินไม่สำเร็จ" };
+  }
+  const count = updated?.length ?? 0;
+  if (count === 0) {
+    // Still revalidate so any client looking at a stale snapshot
+    // (cross-device race) gets a fresh render after dispatch.
+    await revalidateAllTournamentPaths(sb, input.tournamentId);
+    return { ok: true, count: 0, noop: true };
+  }
+
+  await writeAuditLog({
+    tournament_id: input.tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: input.checkIn ? "team_bulk_checked_in" : "team_bulk_checked_out",
+    entity_type: "team",
+    entity_id: input.teamId,
+    description: `${input.checkIn ? "เช็คอิน" : "ยกเลิกเช็คอิน"}ทีม ${team.name} ${input.checkIn ? "+" : "-"}${count} คน`,
+  });
+
+  await revalidateAllTournamentPaths(sb, input.tournamentId);
+  return { ok: true, count };
+}
+
+export async function resetAllCheckInsAction(tournamentId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+  const { data: teams, error: teamsErr } = await sb
+    .from("teams")
+    .select("id")
+    .eq("tournament_id", tournamentId);
+  if (teamsErr) {
+    console.error("[resetAllCheckInsAction] teams lookup:", teamsErr);
+    return { error: "โหลดทีมไม่สำเร็จ" };
+  }
+  const teamIds = (teams ?? []).map((t) => t.id);
+  if (teamIds.length === 0) return { ok: true, count: 0, noop: true };
+
+  const { data: updated, error } = await sb
+    .from("team_players")
+    .update({ checked_in_at: null })
+    .in("team_id", teamIds)
+    .not("checked_in_at", "is", null)
+    .select("id");
+  if (error) {
+    console.error("[resetAllCheckInsAction]", error);
+    return { error: "รีเซ็ตเช็คอินไม่สำเร็จ" };
+  }
+  const count = updated?.length ?? 0;
+  if (count === 0) {
+    // Nobody was checked in — skip audit + revalidate noise. Signal noop so
+    // the client surfaces toast.info instead of toast.success "0 คน".
+    return { ok: true, count: 0, noop: true };
+  }
+
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "tournament_checkins_reset",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: `รีเซ็ตเช็คอินทั้งหมด (${count} คน)`,
+  });
+
+  await revalidateAllTournamentPaths(sb, tournamentId);
+  return { ok: true, count };
 }

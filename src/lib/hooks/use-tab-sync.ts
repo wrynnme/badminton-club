@@ -1,7 +1,15 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useProgress } from "@bprogress/next";
 
 /**
  * Syncs a tab selection with the ?tab= URL query parameter.
@@ -73,7 +81,28 @@ export function useTabSync<T extends string>(opts: {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }, [queryTab, allTabs, validTabs, router, pathname, searchString]);
 
+  // Tab change triggers a router.replace; wrap it in startTransition so we can
+  // observe pending state via React, then drive the global @bprogress bar.
+  // This makes the top progress bar visible while the new tab's content
+  // (lazy chunks, Suspense boundaries) resolves.
+  const progress = useProgress();
+  const [isPending, startTransition] = useTransition();
+  const startedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isPending && startedRef.current) {
+      progress.stop();
+      startedRef.current = false;
+    }
+  }, [isPending, progress]);
+
   const onChange = (next: string) => {
+    // No-op when clicking the already-active tab: skip router.replace + progress bar.
+    // Without this guard, same-tab clicks fire startTransition with an identical URL —
+    // useTransition stays pending (no work to do, no commit), so the cleanup effect
+    // never fires and the @bprogress bar hangs at the top of the page.
+    if (next === active) return;
+
     const params = new URLSearchParams(searchParams.toString());
     if (next === defaultTab) {
       params.delete("tab");
@@ -81,7 +110,11 @@ export function useTabSync<T extends string>(opts: {
       params.set("tab", next);
     }
     const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    progress.start();
+    startedRef.current = true;
+    startTransition(() => {
+      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    });
   };
 
   return { active, mounted, onChange };

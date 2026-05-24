@@ -103,6 +103,55 @@ async function getNextMatchNumber(
   return (data?.match_number ?? 0) + 1;
 }
 
+type MatchPlayerCollection =
+  | { ok: true; ids: string[] }
+  | { ok: false; reason: "tbd" | "empty_roster" };
+
+async function collectMatchPlayerIds(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  match: { team_a_id: string | null; team_b_id: string | null; pair_a_id: string | null; pair_b_id: string | null },
+): Promise<MatchPlayerCollection> {
+  const hasPair = !!(match.pair_a_id || match.pair_b_id);
+  if (hasPair) {
+    if (!match.pair_a_id || !match.pair_b_id) return { ok: false, reason: "tbd" };
+    const { data, error } = await sb
+      .from("pairs")
+      .select("player_id_1, player_id_2")
+      .in("id", [match.pair_a_id, match.pair_b_id]);
+    if (error) throw new Error(`collectMatchPlayerIds pairs: ${error.message}`);
+    const ids = new Set<string>();
+    for (const p of data ?? []) {
+      if (p.player_id_1) ids.add(p.player_id_1);
+      if (p.player_id_2) ids.add(p.player_id_2);
+    }
+    if (ids.size === 0) return { ok: false, reason: "empty_roster" };
+    return { ok: true, ids: [...ids] };
+  }
+  if (!match.team_a_id || !match.team_b_id) return { ok: false, reason: "tbd" };
+  const { data, error } = await sb
+    .from("team_players")
+    .select("id")
+    .in("team_id", [match.team_a_id, match.team_b_id]);
+  if (error) throw new Error(`collectMatchPlayerIds team_players: ${error.message}`);
+  const ids = (data ?? []).map((p) => p.id);
+  if (ids.length === 0) return { ok: false, reason: "empty_roster" };
+  return { ok: true, ids };
+}
+
+async function countUncheckedPlayers(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  playerIds: string[],
+): Promise<number> {
+  if (playerIds.length === 0) return 0;
+  const { count, error } = await sb
+    .from("team_players")
+    .select("id", { count: "exact", head: true })
+    .in("id", playerIds)
+    .is("checked_in_at", null);
+  if (error) throw new Error(`countUncheckedPlayers: ${error.message}`);
+  return count ?? 0;
+}
+
 async function resetGroupTeamStandings(
   sb: Awaited<ReturnType<typeof createAdminClient>>,
   tournamentId: string,
@@ -1079,6 +1128,9 @@ export async function recordMatchScoreAction(input: {
     entity_id: input.matchId,
     description: `บันทึกผลแมตช์`,
   });
+  // Fetch settings once — shared by the background notify IIFE and the auto_advance_next gate.
+  const settings = await getTournamentSettings(input.tournamentId);
+
   // Build and send match result notification in background
   (async () => {
     try {
@@ -1109,7 +1161,7 @@ export async function recordMatchScoreAction(input: {
 
       const gameDetail = input.games.map((g) => `${g.a}-${g.b}`).join(", ");
       const msg = `🏸 ${nameA} vs ${nameB}\nเกมที่ชนะ: ${gamesWonA}:${gamesWonB} (${gameDetail})\nผู้ชนะ: ${winnerName}`;
-      await notifyTournamentEvent(input.tournamentId, "score", msg);
+      await notifyTournamentEvent(input.tournamentId, "score", msg, settings);
     } catch {}
   })();
 
@@ -1119,7 +1171,6 @@ export async function recordMatchScoreAction(input: {
   // and the user-facing queue revalidates. LINE notify is intentionally skipped
   // (separate code path — re-add later if needed).
   try {
-    const settings = await getTournamentSettings(input.tournamentId);
     if (settings.auto_advance_next) {
       const inheritedCourt = match.court ?? null;
       // Skip pending matches with TBD slots (e.g. KO match awaiting prior round winner).
@@ -1134,24 +1185,183 @@ export async function recordMatchScoreAction(input: {
         .order("queue_position", { ascending: true, nullsFirst: false })
         .order("match_number")
         .limit(20);
-      const nextPending = (candidates ?? []).find((m) => {
+      const populated = (candidates ?? []).filter((m) => {
         const isPairMatch = !!(m.pair_a_id || m.pair_b_id);
         return isPairMatch
           ? !!m.pair_a_id && !!m.pair_b_id
           : !!m.team_a_id && !!m.team_b_id;
       });
-      if (nextPending?.id) {
-        // Best-effort: respect court_strict via the DB unique index. On 23505 we silently skip.
-        const { error: advanceErr } = await sb
-          .from("matches")
-          .update({ status: "in_progress", court: inheritedCourt, started_at: new Date().toISOString() })
-          .eq("id", nextPending.id);
-        if (advanceErr) {
-          if (advanceErr.code !== "23505") {
-            console.error("[auto_advance_next] update failed:", advanceErr.message);
+      let nextPending: (typeof populated)[number] | undefined;
+      let promotedPlayerIds: string[] = [];
+      let skippedDueToCheckin = 0;
+
+      // Batch check-in resolution (V9 fix): pre-fetch pair compositions,
+      // team rosters, and unchecked player IDs in 3 round-trips total, then
+      // iterate `populated` in JS. Was 40 sequential awaits per score.
+      const candPlayerIds = new Map<string, string[]>();
+      if (settings.require_checkin && populated.length > 0) {
+        try {
+          const allPairIds = [...new Set(
+            populated.flatMap((c) => [c.pair_a_id, c.pair_b_id].filter(Boolean) as string[])
+          )];
+          const allTeamIds = [...new Set(
+            populated.flatMap((c) => [c.team_a_id, c.team_b_id].filter(Boolean) as string[])
+          )];
+
+          const pairPlayers = new Map<string, string[]>();
+          if (allPairIds.length > 0) {
+            const { data, error } = await sb
+              .from("pairs")
+              .select("id, player_id_1, player_id_2")
+              .in("id", allPairIds);
+            if (error) throw new Error(`auto-advance pairs: ${error.message}`);
+            for (const p of data ?? []) {
+              const ids: string[] = [];
+              if (p.player_id_1) ids.push(p.player_id_1);
+              if (p.player_id_2) ids.push(p.player_id_2);
+              pairPlayers.set(p.id, ids);
+            }
           }
-        } else {
+
+          const teamRoster = new Map<string, string[]>();
+          if (allTeamIds.length > 0) {
+            const { data, error } = await sb
+              .from("team_players")
+              .select("id, team_id")
+              .in("team_id", allTeamIds);
+            if (error) throw new Error(`auto-advance team_players: ${error.message}`);
+            for (const tp of data ?? []) {
+              const arr = teamRoster.get(tp.team_id) ?? [];
+              arr.push(tp.id);
+              teamRoster.set(tp.team_id, arr);
+            }
+          }
+
+          const involved = new Set<string>();
+          // Track candidates whose pair/team roster lookup was partial (e.g.
+          // a pair_a_id or team_a_id is present on the match but the batched
+          // pairs/team_players fetch did not return rows for it — likely a
+          // deleted/RLS-filtered entity). These candidates are SKIPPED rather
+          // than partially probed, otherwise we'd silently bypass the
+          // check-in gate for the missing side's players.
+          const incompleteCandIds = new Set<string>();
+          for (const c of populated) {
+            const hasPair = !!(c.pair_a_id || c.pair_b_id);
+            const ids = new Set<string>();
+            let incomplete = false;
+            if (hasPair) {
+              if (c.pair_a_id) {
+                const arr = pairPlayers.get(c.pair_a_id);
+                if (!arr) incomplete = true;
+                else arr.forEach((id) => ids.add(id));
+              }
+              if (c.pair_b_id) {
+                const arr = pairPlayers.get(c.pair_b_id);
+                if (!arr) incomplete = true;
+                else arr.forEach((id) => ids.add(id));
+              }
+            } else {
+              if (c.team_a_id) {
+                const arr = teamRoster.get(c.team_a_id);
+                if (arr === undefined) incomplete = true;
+                else arr.forEach((id) => ids.add(id));
+              }
+              if (c.team_b_id) {
+                const arr = teamRoster.get(c.team_b_id);
+                if (arr === undefined) incomplete = true;
+                else arr.forEach((id) => ids.add(id));
+              }
+            }
+            if (incomplete) {
+              incompleteCandIds.add(c.id);
+              continue;
+            }
+            const arr = [...ids];
+            candPlayerIds.set(c.id, arr);
+            for (const id of arr) involved.add(id);
+          }
+
+          const uncheckedSet = new Set<string>();
+          if (involved.size > 0) {
+            const { data, error } = await sb
+              .from("team_players")
+              .select("id")
+              .in("id", [...involved])
+              .is("checked_in_at", null);
+            if (error) throw new Error(`auto-advance unchecked: ${error.message}`);
+            for (const tp of data ?? []) uncheckedSet.add(tp.id);
+          }
+
+          for (const cand of populated) {
+            if (incompleteCandIds.has(cand.id)) { skippedDueToCheckin++; continue; }
+            const ids = candPlayerIds.get(cand.id) ?? [];
+            if (ids.length === 0) { skippedDueToCheckin++; continue; }
+            const hasUnchecked = ids.some((id) => uncheckedSet.has(id));
+            if (hasUnchecked) { skippedDueToCheckin++; continue; }
+            nextPending = cand;
+            promotedPlayerIds = ids;
+            break;
+          }
+        } catch (err) {
+          console.error("[auto_advance_next] batch checkin probe failed:", err);
+          // Write an explicit audit row so the silent skip is traceable.
+          await writeAuditLog({
+            tournament_id: input.tournamentId,
+            actor_id: session.profileId,
+            actor_name: session.displayName,
+            event_type: "auto_advance_skipped",
+            entity_type: "tournament",
+            entity_id: input.tournamentId,
+            description: `ข้าม auto-advance: ตรวจสอบเช็คอินผิดพลาด`,
+          });
+          // Fall through with nextPending undefined; auto-advance skips safely.
+        }
+      } else {
+        nextPending = populated[0];
+      }
+      if (nextPending?.id) {
+        // Atomic promote: row lock + (optional) checkin re-verify + status update.
+        const { data: rpcRes, error: rpcErr } = await sb.rpc("start_match_atomic", {
+          p_match_id: nextPending.id,
+          p_player_ids: settings.require_checkin ? promotedPlayerIds : [],
+        });
+        if (!rpcErr && rpcRes && typeof rpcRes === "object" && (rpcRes as { ok?: boolean }).ok === true) {
+          let courtAssigned = false;
+          // Inherit court via a follow-up update; RPC sets status+started_at only.
+          // On 23505 court collision, roll the promote back so the queue head
+          // doesn't get stuck `in_progress` with court=NULL.
+          if (inheritedCourt) {
+            const { error: courtErr } = await sb
+              .from("matches")
+              .update({ court: inheritedCourt })
+              .eq("id", nextPending.id);
+            if (courtErr) {
+              if (courtErr.code === "23505") {
+                // Roll back the promote — match returns to pending with no court.
+                await sb
+                  .from("matches")
+                  .update({ status: "pending", started_at: null })
+                  .eq("id", nextPending.id);
+                await writeAuditLog({
+                  tournament_id: input.tournamentId,
+                  actor_id: session.profileId,
+                  actor_name: session.displayName,
+                  event_type: "auto_advance_skipped",
+                  entity_type: "match",
+                  entity_id: nextPending.id,
+                  description: `ข้าม auto-advance #${nextPending.match_number}: สนาม ${inheritedCourt} ถูกใช้ระหว่างเริ่ม`,
+                });
+                await revalidateTournamentPaths(sb, input.tournamentId);
+                return;
+              }
+              console.error("[auto_advance_next] court inherit failed:", courtErr.message);
+            } else {
+              courtAssigned = true;
+            }
+          }
           await revalidateTournamentPaths(sb, input.tournamentId);
+          const skipSuffix = skippedDueToCheckin > 0 ? ` · ข้ามคิว ${skippedDueToCheckin} แมตช์` : "";
+          const courtSuffix = courtAssigned && inheritedCourt ? ` (สนาม ${inheritedCourt})` : "";
           await writeAuditLog({
             tournament_id: input.tournamentId,
             actor_id: session.profileId,
@@ -1159,12 +1369,64 @@ export async function recordMatchScoreAction(input: {
             event_type: "match_started",
             entity_type: "match",
             entity_id: nextPending.id,
-            description: `เริ่มแมตช์ #${nextPending.match_number} (auto-advance)${inheritedCourt ? ` (สนาม ${inheritedCourt})` : ""}`,
+            description: `เริ่มแมตช์ #${nextPending.match_number} (auto-advance)${courtSuffix}${skipSuffix}`,
           });
-          // Pending match_numbers keep their values (gap at the promoted
-          // match). Renumber only fires on manual drag or auto-rotate in
-          // the queue tab.
+
+          // LINE notify — call players to court (mirrors startMatchAction's IIFE).
+          (async () => {
+            try {
+              const isPair = !!(nextPending.pair_a_id || nextPending.pair_b_id);
+              let nameA = "—";
+              let nameB = "—";
+              if (isPair) {
+                const { data: pairs } = await sb
+                  .from("pairs")
+                  .select("id, display_pair_name, player1:team_players!player_id_1(display_name), player2:team_players!player_id_2(display_name)")
+                  .in("id", [nextPending.pair_a_id, nextPending.pair_b_id].filter(Boolean) as string[]);
+                const byId = new Map((pairs ?? []).map((p) => [p.id, p]));
+                const formatPair = (p: { display_pair_name: string | null; player1: { display_name: string } | { display_name: string }[] | null; player2: { display_name: string } | { display_name: string }[] | null } | undefined) => {
+                  if (!p) return "—";
+                  if (p.display_pair_name) return p.display_pair_name;
+                  const p1 = Array.isArray(p.player1) ? p.player1[0] : p.player1;
+                  const p2 = Array.isArray(p.player2) ? p.player2[0] : p.player2;
+                  return `${p1?.display_name ?? "?"} / ${p2?.display_name ?? "?"}`;
+                };
+                nameA = formatPair(nextPending.pair_a_id ? byId.get(nextPending.pair_a_id) : undefined);
+                nameB = formatPair(nextPending.pair_b_id ? byId.get(nextPending.pair_b_id) : undefined);
+              } else {
+                const { data: teams } = await sb
+                  .from("teams")
+                  .select("id, name")
+                  .in("id", [nextPending.team_a_id, nextPending.team_b_id].filter(Boolean) as string[]);
+                const byId = new Map((teams ?? []).map((t) => [t.id, t.name]));
+                nameA = nextPending.team_a_id ? byId.get(nextPending.team_a_id) ?? "—" : "—";
+                nameB = nextPending.team_b_id ? byId.get(nextPending.team_b_id) ?? "—" : "—";
+              }
+              const courtTag = courtAssigned && inheritedCourt ? ` (สนาม ${inheritedCourt})` : "";
+              const text = `🏸 เรียกแมตช์ #${nextPending.match_number}${courtTag}\n${nameA} vs ${nameB}`;
+              await notifyTournamentEvent(input.tournamentId, "start", text, settings);
+            } catch (notifyErr) {
+              console.error("[auto_advance_next] line notify failed:", notifyErr);
+            }
+          })().catch(() => {});
+        } else if (rpcErr) {
+          if (rpcErr.code !== "23505") {
+            console.error("[auto_advance_next] rpc failed:", rpcErr.message);
+          }
+        } else {
+          const r = (rpcRes ?? {}) as { reason?: string };
+          console.warn(`[auto_advance_next] rpc rejected: ${r.reason ?? "unknown"}`);
         }
+      } else if (skippedDueToCheckin > 0) {
+        await writeAuditLog({
+          tournament_id: input.tournamentId,
+          actor_id: session.profileId,
+          actor_name: session.displayName,
+          event_type: "auto_advance_skipped",
+          entity_type: "tournament",
+          entity_id: input.tournamentId,
+          description: `ข้าม auto-advance: ทุกคิวรอเช็คอิน (${skippedDueToCheckin} แมตช์)`,
+        });
       }
     }
   } catch (err) {
@@ -1337,8 +1599,9 @@ async function revalidateTournamentPaths(sb: Awaited<ReturnType<typeof createAdm
     return;
   }
   if (data?.share_token) {
-    revalidatePath(`/t/${data.share_token}`);
-    revalidatePath(`/t/${data.share_token}/tv`);
+    // 'layout' invalidates the entire /t/[token] subtree — covers /tv,
+    // /bracket, /court/[n], and /stats/{pair|player|team|division}/[id].
+    revalidatePath(`/t/${data.share_token}`, "layout");
   }
 }
 
@@ -1665,6 +1928,26 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
     return { error: "ต้องเลือกสนามก่อนเริ่มแมตช์" };
   }
 
+  // require_checkin pre-gate: only differentiate the TBD-slot and
+  // empty-roster cases here (the RPC can't surface those — it sees
+  // a uuid[] and treats empty as "no check required"). The actual
+  // unchecked-count is verified atomically by the RPC under a row
+  // lock and returned via reason='unchecked'.
+  let checkinPlayerIds: string[] = [];
+  if (settings.require_checkin) {
+    try {
+      const collected = await collectMatchPlayerIds(sb, match);
+      if (!collected.ok) {
+        if (collected.reason === "tbd") return { error: "ยังกำหนดทั้งสองฝั่งไม่ครบ — รอจับคู่ก่อน" };
+        return { error: "ทีมไม่มีผู้เล่น — เพิ่มผู้เล่นก่อนเริ่มแมตช์" };
+      }
+      checkinPlayerIds = collected.ids;
+    } catch (err) {
+      console.error("[require_checkin gate]", err);
+      return { error: "ตรวจสอบสถานะเช็คอินไม่สำเร็จ ลองอีกครั้ง" };
+    }
+  }
+
   if (settings.match_cooldown_minutes > 0) {
     const { data: lastStarted } = await sb
       .from("matches")
@@ -1702,10 +1985,21 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
     }
   }
 
-  const { error } = await sb
-    .from("matches")
-    .update({ status: "in_progress", started_at: new Date().toISOString() })
-    .eq("id", matchId);
+  // Atomic transition: row-lock match + re-verify checkin under the lock +
+  // UPDATE pending -> in_progress. Closes TOCTOU on the require_checkin gate.
+  const { data: rpcRes, error } = await sb.rpc("start_match_atomic", {
+    p_match_id: matchId,
+    p_player_ids: settings.require_checkin ? checkinPlayerIds : [],
+  });
+  if (!error && rpcRes && typeof rpcRes === "object" && (rpcRes as { ok?: boolean }).ok === false) {
+    const r = rpcRes as { reason?: string; count?: number };
+    if (r.reason === "unchecked") return { error: `รอเช็คอิน ${r.count ?? 0} คน — เปิดแท็บทีมเพื่อเช็คอิน` };
+    if (r.reason === "in_progress") return { error: "แมตช์นี้กำลังแข่งอยู่" };
+    if (r.reason === "completed") return { error: "แมตช์นี้จบแล้ว" };
+    if (r.reason === "status_changed") return { error: "สถานะแมตช์เปลี่ยนระหว่างเริ่ม ลองอีกครั้ง" };
+    if (r.reason === "not_found") return { error: "ไม่พบแมตช์" };
+    return { error: "เริ่มแมตช์ไม่สำเร็จ" };
+  }
   if (error) {
     if (error.code === "23505") {
       return { error: `สนาม ${match.court ?? "—"} ถูกใช้อยู่ — เลือกสนามอื่นแล้วลองใหม่` };
@@ -1747,7 +2041,7 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
       }
       const courtPart = match.court ? ` (สนาม ${match.court})` : "";
       const msg = `🏸 เรียกแมตช์ #${match.match_number}${courtPart}\n${nameA} vs ${nameB}`;
-      await notifyTournamentEvent(tournamentId, "start", msg);
+      await notifyTournamentEvent(tournamentId, "start", msg, settings);
     } catch {}
   })();
 
@@ -1823,20 +2117,20 @@ async function updateGroupTeamStandings(
   const { data: rows } = await sb.from("group_teams").select("*").eq("group_id", groupId).in("team_id", [aId, bId]);
   if (!rows) return;
 
-  for (const r of rows) {
+  await Promise.all(rows.map((r) => {
     const isA = r.team_id === aId;
     const myScore = isA ? scoreA : scoreB;
     const oppScore = isA ? scoreB : scoreA;
     const won = (isA && winner === "a") || (!isA && winner === "b");
     const drew = winner === "draw";
-    await sb.from("group_teams").update({
+    return sb.from("group_teams").update({
       wins: r.wins + (won ? 1 : 0),
       draws: r.draws + (drew ? 1 : 0),
       losses: r.losses + (!won && !drew ? 1 : 0),
       points_for: r.points_for + myScore,
       points_against: r.points_against + oppScore,
     }).eq("group_id", groupId).eq("team_id", r.team_id);
-  }
+  }));
 }
 
 async function reverseGroupTeamStandings(
@@ -1851,18 +2145,18 @@ async function reverseGroupTeamStandings(
   const { data: rows } = await sb.from("group_teams").select("*").eq("group_id", groupId).in("team_id", [aId, bId]);
   if (!rows) return;
 
-  for (const r of rows) {
+  await Promise.all(rows.map((r) => {
     const isA = r.team_id === aId;
     const myScore = isA ? scoreA : scoreB;
     const oppScore = isA ? scoreB : scoreA;
     const won = (isA && winner === "a") || (!isA && winner === "b");
     const drew = winner === "draw";
-    await sb.from("group_teams").update({
+    return sb.from("group_teams").update({
       wins: Math.max(0, r.wins - (won ? 1 : 0)),
       draws: Math.max(0, r.draws - (drew ? 1 : 0)),
       losses: Math.max(0, r.losses - (!won && !drew ? 1 : 0)),
       points_for: Math.max(0, r.points_for - myScore),
       points_against: Math.max(0, r.points_against - oppScore),
     }).eq("group_id", groupId).eq("team_id", r.team_id);
-  }
+  }));
 }

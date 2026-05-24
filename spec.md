@@ -214,7 +214,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 ### Manual Match Creation (pair mode)
 
 - **Action**: `createManualMatchAction({ tournamentId, pairAId, pairBId })` in `matches.ts`
-  - Validates same division (computed from `pair_level` vs `pair_division_threshold`)
+  - Validates same division (computed from `pair_level` via `computePairDivision(pair_level, pair_division_thresholds[])`)
   - Inserts `round_type="group"`, `match_number=max+1`, `division` auto-computed
   - writeAuditLog `event_type="match_created"`
 - **UI**: `manual-match-dialog.tsx` — Dialog + 2 Select dropdowns
@@ -270,20 +270,19 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ### Public Share Page Redesign (`/t/[token]`)
 
-- **Layout**: hero banner + notes banner + tabs (ภาพรวม / กลุ่ม / คู่ / สาย)
+- **Layout**: hero banner + notes banner + tabs (แดชบอร์ด / ทีม\* / กลุ่ม\* / คู่\* / สาย\* / ตารางคิว\* — `ภาพรวม` tab removed 2026-05-22)
 - **`PublicHero`** (`src/components/tournament/public/public-hero.tsx`) — server component:
   - Gradient card: `from-amber-50 via-background to-orange-50` + 1px gold accent stripe + decorative bg trophy
   - Title row: amber Trophy icon + tournament name + TV button (secondary)
   - Status pill (custom colors per status) + venue + date meta row
   - Stat grid 2×2 → 4-col: รูปแบบ / ทีม / คู่แข่ง / การแข่งขัน (`completed/total`)
   - Action row: `ExportButtons` + "ดูสาย" bracket link (conditional)
-- **`PublicOverview`** (`src/components/tournament/public/public-overview.tsx`) — server component:
-  - In-progress card: `ring-2 ring-green-500/30` + pulsing dot + `MatchRow` list
-  - 2-col grid (lg): standings mini-table (top 6, played > 0) + recent results (last 5)
-  - Empty states: no matches / waiting to start
+- **`PublicOverview` — REMOVED 2026-05-22** (commits `091337a` + `294dafb`): the `ภาพรวม` tab + `src/components/tournament/public/public-overview.tsx` file were both deleted. The Dashboard tab (`TournamentDashboardLazy`) now serves as the default landing view on `/t/[token]`; cross-team standings + division standings + queue snapshot moved into Dashboard.
 - **`PublicTournamentShell`** (`src/components/tournament/public/public-tournament-shell.tsx`) — client component:
   - `Tabs variant="line"` with border-b underline style
-  - Tabs: ภาพรวม (always) · กลุ่ม · คู่ · สาย (conditional on format/unit)
+  - Tabs: แดชบอร์ด (always) · กลุ่ม · คู่ · สาย · ตารางคิว (conditional on format/unit/matches-exist); `ทีม` is admin-only and not rendered here
+  - Active tab synced to `?tab=` URL param via shared `useTabSync` hook (`src/lib/hooks/use-tab-sync.ts`); lazy-mount per tab via the same hook's `mounted: Set<TabId>` (seeds `defaultTab` for instant first paint)
+  - Wrapped in `<Suspense>` on parent page (`/t/[token]/page.tsx`) — `useSearchParams` boundary requirement under Next 16 App Router
   - Receives pre-rendered `ReactNode` props — server data stays server-side across the boundary
 - **Notes banner**: amber left-border strip (`border-l-4 border-amber-400`) with `Info` icon
 - Container widened to `max-w-5xl`
@@ -462,8 +461,9 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 | `audit_log_enabled`                | `true`  | `writeAuditLog` fetches settings + early-returns when `false` (1 extra column read per write — acceptable for the current write volume)                       |
 | `match_cooldown_minutes` (0-30)    | `0`     | `startMatchAction` reads latest `audit_logs` row with `event_type='match_started'` for this tournament; rejects if `now - created_at < cooldown`              |
 | `require_court_to_start`           | `false` | `startMatchAction` (server gate) + `match-queue.tsx` (button disabled + tooltip)                                                                              |
+| `require_checkin`                  | `false` | `startMatchAction` (server gate — blocks if any player has `checked_in_at IS NULL`) + `recordMatchScoreAction` auto-advance filter (skips candidates with unready players) — see Phase 12. |
 
-**Cut from Phase 11**: `require_checkin` — needs new `team_players.checked_in_at` column + check-in flow → Phase 12.
+**Cut from Phase 11**: `require_checkin` — implemented in Phase 12 (see below).
 
 ### Notifier helper
 
@@ -536,7 +536,103 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ## Todo
 
-- Phase 12 — `require_checkin` flag + `team_players.checked_in_at` + UI check-in flow
+(Phase 12 DONE — see below.)
+
+### UX polish backlog
+
+- **`cursor: pointer` ทุก clickable** — รวมทุก `<button>`, icon-only Buttons, drag handles, color swatches, tab triggers, EntityLink wrappers, sortable rows. Tailwind v4 default ลบ `cursor-pointer` ออกจาก `<button>` แล้ว ต้องใส่ class ทุกตัวเอง. Audit pass: grep `<Button|<button|onClick=|role="button"` แล้ว apply `cursor-pointer` ที่ shadcn Button base + ที่อื่นที่ตกหล่น (DnD handles, color swatches, custom div onClick).
+- **i18n ไทย/อังกฤษ** — ทั้งหมดของ UI strings ตอนนี้ hard-coded เป็นภาษาไทย. เพิ่ม locale switcher (TH/EN) ใน SiteHeader.
+  - แนวทาง: `next-intl` หรือ `next-international` (server-component friendly สำหรับ Next 16 App Router) — เลือกตัวที่ static-export-safe.
+  - File structure: `src/locales/th.json` + `src/locales/en.json` แยก keys ตาม namespace (`common`, `tournament`, `match`, `stats`, `settings`, `audit_events`, `errors`).
+  - Locale cookie + `<html lang="th|en">` set จาก server-side cookie read (mirror theme cookie pattern).
+  - Server actions error strings ก็ต้อง translate — return error keys (`err.unchecked_count`) แทน Thai literal และ resolve ที่ client toast handler.
+  - Audit log descriptions — choice point: เก็บใน DB เป็น Thai (current) หรือเป็น i18n key + params? Simpler: keep Thai in DB, translate per-locale only at display time.
+  - LINE notify messages — locale per tournament setting (`settings.notify_locale: "th" | "en"`).
+  - Date/number formatting → `Intl.DateTimeFormat` + `Intl.NumberFormat` ทุกที่ (ตอนนี้ใช้บางที่แล้ว).
+  - Effort estimate: ~12-16 ชม. (extract + key all strings + locale plumbing + LINE/audit decisions + smoke test).
+
+## Phase 12 — `require_checkin` (DONE 2026-05-24)
+
+**Goal**: Block `startMatchAction` until every player on both sides has `team_players.checked_in_at IS NOT NULL` when the setting is on. Mirrors the existing `require_court_to_start` pattern but gates per-player.
+
+**DB**:
+- migration `20260524000100_add_team_players_checked_in_at` — `ALTER TABLE team_players ADD COLUMN checked_in_at timestamptz` + partial index `idx_team_players_checked_in ON team_players(team_id) WHERE checked_in_at IS NOT NULL`. Applied to prod via Supabase MCP.
+
+**Settings**:
+- `tournaments.settings.require_checkin: boolean` (default `false`) added to `TournamentSettingsSchema` in `src/lib/tournament/settings.ts`.
+
+**Types** (`src/lib/types.ts`):
+- `TeamPlayer.checked_in_at: string | null` added (after `csv_id`, before `created_at`). Existing `team_players(*)` selects in `/tournaments/[id]/page.tsx` + `/t/[token]/page.tsx` pick it up automatically.
+
+**Server actions** (`src/lib/actions/tournaments.ts`):
+- `toggleTeamPlayerCheckInAction({ playerId, tournamentId })` — `assertCanEdit` (owner + co-admin); validates player.team.tournament_id; flips `checked_in_at` between `now()` and `null`; audit log `player_checked_in` / `player_checked_out`; revalidates owner + share + tv paths.
+- `bulkCheckInTeamAction({ teamId, tournamentId, checkIn })` — same auth; bulk update all `team_players.team_id = teamId`; audit `team_bulk_checked_in` / `team_bulk_checked_out` with count in description.
+- `revalidateAllTournamentPaths(sb, tournamentId)` private helper — looks up `share_token` and revalidates owner + `/t/[token]` + `/t/[token]/tv` (mirrors the matches.ts helper without cross-file import).
+
+**Gate** (`src/lib/actions/matches.ts`):
+- New internal helpers `collectMatchPlayerIds(sb, match)` (returns team_player ids for both sides, pair-mode-aware via `pairs.player_id_1/2`, team-mode via `team_players.team_id`) + `findUncheckedPlayerNames(sb, ids)`.
+- `startMatchAction` adds a block after the `require_court_to_start` gate: when `settings.require_checkin` is true, collect player IDs, fetch unchecked names, reject `{ error: "รอเช็คอิน: <names>" }` if any.
+- `recordMatchScoreAction` auto-advance path filters candidates: when `require_checkin`, iterates the queue window and skips any candidate with unready players; promotes the first fully-ready match instead of the first populated one.
+
+**UI** (`src/components/tournament/team-manager.tsx`):
+- `PlayerRow` — per-player "เช็คอิน" / "พร้อม" Button (default outline → green when checked in) with `useTransition` spinner; row container gets green tint + border when checked in (`bg-green-500/5 border-green-500/30`).
+- `TeamCard` header — count Badge "X/N พร้อม" (amber-tinted while partial, solid green when 100%); icon-button `CheckCheck` (toggles all) gated by `team.players.length > 0`; uses `bulkCheckInTeamAction`. Title row gains `min-w-0 truncate` to keep the new badges from pushing the layout.
+
+**Settings tab** (`src/components/tournament/settings-manager.tsx`):
+- New `ToggleRow` under "การจัดคิว" section, after `require_court_to_start`. Wired via `commit(...)` like other toggles.
+
+**No match-queue client gate** (deferred): client doesn't have per-player check-in state in the queue tree. The server gate + toast on `เริ่ม` failure (with the unready count) is sufficient UX for the first cut. Future polish could thread a `Map<matchId, ready>` from the page.
+
+### Phase 12 Wave A — code-review P0 hardening (2026-05-24)
+
+Closes the 4 most-severe findings from the max-effort review of commit `618e829`:
+
+- migration `20260524000200_rpc_start_match_atomic` — new RPC `start_match_atomic(p_match_id uuid, p_player_ids uuid[]) RETURNS jsonb`. `SECURITY INVOKER` + `search_path = ''`, executable by `service_role` only. Locks the match row with `FOR UPDATE`, re-checks `team_players.checked_in_at IS NULL` count under a row lock, then atomically transitions `pending → in_progress`. Returns `{ ok, reason?, count? }` with reasons `not_found | completed | in_progress | unchecked | status_changed`. Closes the TOCTOU window between the JS-level gate and the prior bare `UPDATE`.
+- `src/lib/actions/matches.ts`:
+  - `collectMatchPlayerIds` now returns a discriminated `MatchPlayerCollection = { ok: true; ids } | { ok: false; reason: "tbd" | "empty_roster" }`. The `isPair` heuristic was changed: a pair-mode match must have BOTH `pair_a_id` AND `pair_b_id` set; same for team mode. Half-populated TBD slots and empty rosters now return explicit reasons. Both DB queries destructure `error` and **throw** on failure (no more silent `[]` defaults).
+  - Replaced `findUncheckedPlayerNames` (returned names) with `countUncheckedPlayers` (`{ count: 'exact', head: true }`) — no PII leak in errors, no extra bandwidth fetching names. Error messages now read `รอเช็คอิน N คน — เปิดแท็บทีมเพื่อเช็คอิน` (count only).
+  - `startMatchAction` — `require_checkin` block now wraps in `try/catch`; explicit error messages for TBD slot and empty roster; the final `UPDATE { status: 'in_progress' }` was replaced with `sb.rpc("start_match_atomic", { p_match_id, p_player_ids })`. Court 23505 collision still surfaces correctly; the RPC's reason union translates to per-case Thai errors.
+  - `recordMatchScoreAction` auto-advance — same atomic RPC for promote; counts `skippedDueToCheckin` and appends it to the audit description (e.g., `... ข้ามคิว 3 แมตช์ (รอเช็คอิน)`); when every candidate is unready, writes a new `auto_advance_skipped` audit row so the queue silence is traceable. Court inherit moved to a follow-up update post-RPC (the RPC sets status + started_at only; the partial unique index on `(tournament_id, court) WHERE status='in_progress'` still guards collisions on the follow-up).
+
+**Findings still open** (Wave B/C): roster-wide gate in team mode (V1), bulk overwrite of timestamps (V5), cross-device bulk race (S7), CSV upsert preserves stale check-in (S4), N+1 auto-advance (V9), `revalidateAllTournamentPaths` error swallow + drift (V8), missing court/stats path revalidation (S8). See review notes from the 2026-05-24 audit.
+
+### Phase 12 Wave B+C — code-review correctness + perf (2026-05-24)
+
+Closes Wave B (correctness) and Wave C (perf) findings.
+
+**V5 + S7 — Bulk idempotent UPDATE** (`tournaments.ts`):
+- `bulkCheckInTeamAction` now appends `.is("checked_in_at", null)` when `checkIn=true` and `.not("checked_in_at", "is", null)` when `checkIn=false`. Existing arrival timestamps survive subsequent bulk presses (V5). Cross-device race (S7) is harmless — both calls become idempotent. New return shape `{ ok: true, count: 0, noop: true }` when nothing changed; client surfaces "ทุกคนพร้อมอยู่แล้ว" / "ยังไม่มีคนพร้อม" via `toast.info`.
+- `toggleBulk` captures `intendCheckIn = !allCheckedIn` at click time before await so the resolved toast reads the intent at dispatch, not stale post-refresh state.
+
+**S4 — Manual check-in lifecycle reset** (`tournaments.ts` + `team-manager.tsx`):
+- New action `resetAllCheckInsAction(tournamentId)` — owner+co-admin, sets all `team_players.checked_in_at` to NULL across every team in the tournament. Returns `{ ok, count, noop? }`. Audit event `tournament_checkins_reset` with row count.
+- `TeamManager` header gains "รีเซ็ตเช็คอิน" Button (visible only when `totalCheckedIn > 0`) with `confirm()` prompt naming the current count.
+- New "Total พร้อม" Badge in the header next to the team count Badge.
+- Note: `importPlayersCsvAction` UPSERT already preserves `checked_in_at` (the update specifies columns explicitly, not `**spread`); the reset action gives the owner a manual lever between tournaments.
+
+**V8 — `revalidateAllTournamentPaths` error capture + S8 broaden paths** (`tournaments.ts`):
+- Now destructures `error` and `console.error("revalidateAllTournamentPaths share_token lookup:", error)` + early-returns when the lookup fails (mirrors `revalidateTournamentPaths` in `matches.ts`).
+- Replaced the explicit `revalidatePath('/t/X')` + `revalidatePath('/t/X/tv')` pair with a single `revalidatePath('/t/X', 'layout')` so the entire token subtree is invalidated — covers `/court/[n]`, `/bracket`, and `/stats/{pair|player|team|division}/[id]` automatically (S8).
+
+**V9 — Batch auto-advance check-in** (`matches.ts`):
+- The auto-advance loop previously fired `collectMatchPlayerIds` (1 RTT) + `countUncheckedPlayers` (1 RTT) per candidate, up to 20 candidates = 40 sequential round-trips per score.
+- New batched pre-fetch: 3 round-trips total when `require_checkin=true`:
+  1. `pairs WHERE id IN (...all candidate pair ids)` — composition map
+  2. `team_players WHERE team_id IN (...all candidate team ids)` — roster map
+  3. `team_players WHERE id IN (...all involved players) AND checked_in_at IS NULL` — unchecked set
+- Then iterates `populated` in JS, picks the first candidate with zero `unchecked.has(id)`. Same `nextPending` semantics, same `skippedDueToCheckin` accounting, same audit log behaviour. Worst-case latency drops from ~1.2-3.2s to ~50-200ms.
+- Falls through safely on any batch query failure — `nextPending` remains undefined, auto-advance silently skips that score.
+
+**V1 — Roster-wide gate (DESIGN, no code change)**:
+- In team mode, `require_checkin` gates on the full roster of both teams (every `team_players.team_id` row). This is intentional: there's no "lineup" concept in the schema, and the flag's invariant ("nobody plays until everyone is checked in") is uniform across pair + team modes. Mitigation already in place via `bulkCheckInTeamAction` (one click checks in the whole team) + `resetAllCheckInsAction` (one click resets). UI exposes both. If a tournament wants partial-roster gating, recommended workflow is to leave bench-only members un-checked-in by design — but they will currently block the start. Documented as known tradeoff; do not "fix" without an explicit lineup feature.
+
+**New event types**: `tournament_checkins_reset`, plus existing `team_bulk_checked_in/out` semantics tightened (count reflects only rows actually changed).
+
+Tests: 269/269 vitest pass; tsc clean.
+
+**Audit events** added: `player_checked_in`, `player_checked_out`, `team_bulk_checked_in`, `team_bulk_checked_out`.
+
+**Tests**: `settings.test.ts` updated — `require_checkin` default false. `competitor.test.ts` + `entity-stats.test.ts` fixtures updated with `checked_in_at: null`. Vitest 269/269 passing; `tsc --noEmit` clean.
 
 ### Phase 13 — Competition mode (multi-class, team-aware grouping)
 
@@ -668,17 +764,58 @@ Edge cases:
 
 Excel `/Users/x/Desktop/กำหนดการแข่งขันและผลคะแนน รายการวีนฉ่ำ ครั้งที่ 2.xlsx` (130 pairs, 5 classes NB/BG/N/S/P-, 6 courts, sheets: รายชื่อรวม/กติกา/ตารางเวลา/RunMatch/Class _/KO-_/สรุปรายการรางวัล) — patterns to adopt:
 
-**Quick wins** (small effort, do anytime):
-
-- **BYE preset score** — `insertAndResolveByes` currently inserts `games: []`. Set `games: [{a:21,b:15},{a:21,b:15}]` (winner side) so standings tiebreak (point diff / points-for) reflects real walkover convention. Fix in `src/lib/actions/matches.ts`.
-- **Fixed-2-game group format** — add `settings.group_match_format: "fixed_2" | "best_of_3" | "best_of_5"` (default `best_of_3`). Branch in `gameWinner` so `fixed_2` returns `"a"|"b"|"draw"` based on 2-game outcome; `ScoreForm` clamps to 2 rows when active. Common in Thai pair tournaments.
-- **Pair CODE auto-gen** — add `pairs.code text` (nullable). After `generateGroupsAction` for pair mode, assign `<class_code><group_letter><seed>` (e.g. `NBA1`). Display in queue / bracket / TV / CSV export. Sortable + speakable for organizers ("คู่ NBA1 มาคอร์ท 3").
-
 **Medium features**:
 
-- **Time-slot schedule grid** — currently we have queue order but no real timestamps. Add `tournaments.start_time time`, `tournaments.slot_minutes int default 30`. Auto-fill `matches.scheduled_at` during auto-rotate: `start_time + floor((queue_position-1) / court_count) * slot_minutes`. New page `/tournaments/[id]/schedule` renders HTML table time × court grid; A4 landscape print-optimized. Organizers will print and pin at venue.
-- **Per-court referee view** — `/t/[token]/court/[n]` — filters matches by `court=n`, shows in_progress + 2 next pending. Designed for referee phone. Auto-refresh + minimal UI.
+- **Per-court referee view** — `/t/[token]/court/[n]` — DONE (2026-05-24). New public page; `[n]` = URL-encoded court name (free text, decoded via `decodeURIComponent`). Filters matches by `court=courtName`; shows all in_progress (large card) + top 2 pending sorted by `queue_position ?? match_number` (normal card). LIVE badge when in_progress present. Empty state when no matches. Auto-refresh: `TournamentLiveWrapper` (Supabase Realtime, respects `realtime_enabled`) + `TvAutoRefresh` (30s polling fallback). Phone-first layout: `max-w-xl mx-auto px-4 py-6`. Elapsed time (mm:ss) computed server-side from `started_at`. No admin controls. Single new file: `src/app/(public)/t/[token]/court/[n]/page.tsx`.
 - **Prize summary page** — new field `tournaments.prize_template jsonb` = `[{rank:1, label:"ชนะเลิศ", cash:10000, trophy:true}, …]` per tournament. Page `/tournaments/[id]/prizes` auto-computes champion + runner-up + semifinalists from KO bracket per class. Print-friendly for award ceremony.
+- **Entity stats drill-down (player / pair / team / division)** — clickable name anywhere in the app → opens stat page showing match history + win/loss/draw aggregates for that entity. 4 entity types:
+  - **Pair** (`/tournaments/[id]/stats/pair/[pairId]` + `/t/[token]/stats/pair/[pairId]`): **DONE Phase A (2026-05-24)**. Per-pair history. Metric cards: played / W-D-L / win rate / points diff. Streak pill. Match history list. Head-to-head table vs each opponent. Division badge inferred from match data.
+    - Data layer: `src/lib/tournament/entity-stats.ts` — `computePairStats({ pairId, matches })` → `EntityStats`. Pure function, uses `gameWinner` + `sumGameScores` from `scoring.ts`. 12 vitest tests in `__tests__/entity-stats.test.ts`.
+    - View: `src/components/tournament/stats/pair-stats-view.tsx` (`"use client"`). Mobile-first grid (2-col → 4-col sm), div-based tables (no new shadcn dep), `TournamentLiveWrapper` for Realtime refresh.
+    - Admin route: `src/app/(app)/tournaments/[id]/stats/pair/[pairId]/page.tsx` — requires session (any logged-in user); `force-dynamic`.
+    - Public route: `src/app/(public)/t/[token]/stats/pair/[pairId]/page.tsx` — token-based, no auth; `force-dynamic`.
+  - **Player** (`/tournaments/[id]/stats/player/[playerId]` + public `/t/[token]/stats/player/[playerId]`): **DONE Phase B (2026-05-24)**. All completed matches where player appears (via any pair they belong to). Metric cards: played / W-D-L / win rate / points diff. Streak pill. Player header: name + level + team badge (colored border + dot). Match history list (side detection via Set of player's pair IDs). Partner breakdown table (partner name | P W L D). Head-to-head vs opponent pairs table.
+    - Data layer: `computePlayerStats({ playerId, pairs, matches })` → `EntityStats` (extended with `partnerBreakdown?: Map<string, PartnerRecord>`). `computeStreak` refactored to accept `isSideA: (m: Match) => boolean` callback — shared by both `computePairStats` and `computePlayerStats`. 12 new vitest tests (234→246 total) in `__tests__/entity-stats.test.ts`.
+    - View: `src/components/tournament/stats/player-stats-view.tsx` (`"use client"`). Same layout pattern as pair-stats-view. Team badge uses inline `style={{ borderColor, color }}` matching team.color; colored dot via `backgroundColor`. `pairById: Map<string, PairWithPlayers>` prop — player names derived in-component (no extra prop).
+    - Admin route: `src/app/(app)/tournaments/[id]/stats/player/[playerId]/page.tsx` — requires session; fetches player directly from `team_players` then validates `team_id` belongs to tournament; `force-dynamic`.
+    - Public route: `src/app/(public)/t/[token]/stats/player/[playerId]/page.tsx` — token-based, no auth; same validation pattern; `force-dynamic`.
+  - **Team** (`/tournaments/[id]/stats/team/[teamId]` + `/t/[token]/stats/team/[teamId]`): **DONE Phase C (2026-05-24)**. Aggregates all completed matches across all pairs in the team (intra-team matches excluded). Metric cards: played / W-D-L / win rate / points diff. Streak pill. Per-pair breakdown table (pair | P W L D sorted by wins). Match history list (shows "which team pair" + opponent). Head-to-head vs opponent teams.
+    - Data layer: `computeTeamStats({ teamId, pairs, matches })` → `EntityStats`. `headToHead` keyed by opponent **team** id (not pair id); built via `pairId → teamId` lookup from `pairs`. Intra-team matches (both `pair_a_id` and `pair_b_id` belong to same team) are skipped. 6 new vitest tests.
+    - View: `src/components/tournament/stats/team-stats-view.tsx` (`"use client"`). Props: `stats`, `team: Team`, `teamPairs: PairWithPlayers[]`, `competitorById`, `teamById: Map<string, Team>`. Per-pair breakdown computed in-component (not in helper). Team color dot + colored Badge in header.
+    - Admin route: `src/app/(app)/tournaments/[id]/stats/team/[teamId]/page.tsx` — requires session; validates `team.id` in tournament teams list; `force-dynamic`.
+    - Public route: `src/app/(public)/t/[token]/stats/team/[teamId]/page.tsx` — token-based, no auth; same validation; `force-dynamic`.
+  - **Division** (`/tournaments/[id]/stats/division/[divKey]` + `/t/[token]/stats/division/[divKey]`): **DONE Phase C (2026-05-24)**. Filters by `matches.division === String(division)` column directly (does not recompute from pair levels). `divKey` URL param parsed as `parseInt(decodeURIComponent(...))`, validated 1..N (N = `pair_division_thresholds.length + 1`). Metric cards: total matches / pairs that played / pairs in division / avg points per match. Pair standings table (reuses `computeStandings("pair", divisionPairIds)` sorted by league points → point diff → points for). Recent matches section (last 6 in reverse order). No streak / no global head-to-head (not meaningful at division level).
+    - Data layer: `computeDivisionStats({ division, pairs, matches, thresholds })` → `EntityStats`. `headToHead` = per-pair standings within division (pair_id → {played, wins, losses, draws}) — used by the view's standings table. `pointsFor`/`pointsAgainst` = raw side-A/side-B aggregate across all division matches. `played` = number of completed division matches. `wins`/`losses`/`draws` = mirrored aggregate (each match contributes one W + one L per side). 8 new vitest tests.
+    - View: `src/components/tournament/stats/division-stats-view.tsx` (`"use client"`). Props: `stats`, `division: number`, `divisionPairs: PairWithPlayers[]`, `competitorById`. Colored border on header card using `divisionTone(division).border`. Standings from `computeStandings` (not from `headToHead`).
+    - Admin route: `src/app/(app)/tournaments/[id]/stats/division/[divKey]/page.tsx` — requires session; `notFound()` when division out of range or thresholds empty; `force-dynamic`.
+    - Public route: `src/app/(public)/t/[token]/stats/division/[divKey]/page.tsx` — token-based; same range validation; `force-dynamic`.
+    - Design choice: `headToHead` in `EntityStats` for division holds **per-pair standings** (pair_id → W/L/D), not team-vs-team h2h. Documented in JSDoc. Phase D linking can use this to build clickable pair rows.
+  - **Linking (Phase D)**: **DONE (2026-05-24, commit `069de0e`)**. Every competitor name in `match-row.tsx`, `match-queue.tsx` (CompetitorLine), `standings-table.tsx`, `tv-match-card.tsx`, `bracket-match-card.tsx` is wrapped in `<EntityLink>` → its stat page.
+    - Shared component: `src/components/tournament/stats/entity-link.tsx` — derives base path from `usePathname()` (admin `/tournaments/[id]/stats/...` vs public `/t/[token]/stats/...`); accepts `entityType: "pair" | "player" | "team" | "division"` + `entityId`; falls back to plain span when no tournament path detected (e.g. dashboard).
+    - Tab change progress: `use-tab-sync.ts` `onChange` now wraps `router.replace` in `useTransition` and pairs it with manual `progress.start()` / `progress.stop()` calls via `useProgress()` from `@bprogress/next` — ensures the top bar shows during the new tab's lazy-mount + Suspense window (otherwise shallow `{scroll:false}` replace would skip auto-tracker).
+    - Deferred follow-up: `pair-stage.tsx` per-pair player-name spans and `team-manager.tsx` player rows still bare — to wire on next pass. Hover mini-summary tooltip not built.
+  - **Post-review hardening (2026-05-24, commits `a3da9c9` `8320a7b` `9ddf197` `57c5606`)**: 26 review findings fixed across P1/P2/P3.
+    - BYE walkovers (`games=[]`) now skipped in all `compute*Stats` loops — `gameWinner([])` returned `"draw"` previously, polluting W/L/D + streak for every KO bracket with odd entries.
+    - UI dedup: 4 shared primitives under `src/components/tournament/stats/shared/` (`streak-pill.tsx`, `stat-header-cards.tsx`, `match-history-list.tsx`, `head-to-head-table.tsx`) + `src/lib/tournament/result-display.ts` constants/helpers — ~250 LOC removed from 4 stat-view files.
+    - Page boilerplate dedup: `src/lib/tournament/stats-page-data.ts` (`loadStatsTournamentByAdmin` + `loadStatsTournamentByToken`) + `src/components/tournament/stats/stats-page-shell.tsx` — 8 stat pages now ~30-65 LOC each (was ~80-95).
+    - `EntityStats` refactored to discriminated union (`PairStats | PlayerStats | TeamStats | DivisionStats`); `headToHead: Record` (was Map, RSC-safer); `partnerBreakdown` required on `PlayerStats` only.
+    - `computeDivisionStats` filters cross-bucketed matches via `divisionPairIds` set; `winRate` pinned to 0 (formula `wins/(wins+losses+draws)` always ~0.5 for division aggregate).
+    - `computeTeamStats` intra-team matches filtered at predicate (was loop continue) → `matches[]` + `streak` consistent with W/L/D counts.
+    - `computePlayerStats` skips matches where player owns both pairs (data anomaly).
+    - `tournament-dashboard.tsx matchesKey` extended with `team_a_score+team_b_score`, `court.length`, `started_at` — was missing these fields → stale chart on court reassign.
+    - `EntityLink` uses `usePathname().startsWith()` guard (not just `useParams`); short-circuits self-links; JSDoc warns callers must gate `entityType="division"` on `thresholds.length > 0`.
+    - Bug fixes: `decodeURIComponent` try/catch → 404 not 500 (court + 2 division pages); tab progress hang on same-tab click; division `thresholds=[]` silent empty → `notFound()`; content-visibility CLS on court Card removed; tv-match-card court name truncate; `notifyTournamentEvent(settings?)` reuse caller's snapshot.
+  - **Public mode**: passes `isOwner=false` — read-only, no edit affordances.
+- **Granular queue Realtime sync (payload-driven row updates + optimistic UI)** — replace the current `router.refresh()` debounce pattern in `MatchQueue` with row-level Realtime mutation. Today every Supabase change → 800ms debounce → full RSC re-stream → entire tree reconcile. Goal: only the changed rows update; ~10× faster perceived latency.
+  - **Client store**: lift `MatchQueue` items from re-derive on `useEffect([matches])` to a `useReducer` keyed by `match.id`. Initial state seeded from server props; subsequent updates come from Realtime payloads or local optimistic mutations.
+  - **Realtime payload handler**: in `TournamentLiveWrapper` (or a new `useQueueRealtime` hook), subscribe to `matches` filter `tournament_id=eq.{id}`. On INSERT/UPDATE/DELETE: dispatch reducer action with the row payload directly — no `router.refresh()` needed for queue tab. Keep the debounced refresh as a fallback for non-queue-tab consumers (dashboard, standings) that need recompute.
+  - **Optimistic UI**: when user drags-drops/starts/cancels/resets a match — apply reducer mutation immediately + fire server action in background. On error → revert + toast. Uses standard React 19 `useOptimistic` if available, else manual rollback ref.
+  - **Visual diff**: when a Realtime payload arrives, briefly flash that row with `bg-amber-50 transition-colors duration-700` then fade. Helps multi-admin tournaments see another organizer's actions live.
+  - **Live timer**: for `in_progress` matches show elapsed `mm:ss` since `started_at`. Update via `setInterval(1000)` once per page (not per row) → broadcast tick to rows via context. Pause when tab hidden via `document.visibilitychange`.
+  - **Conflict resolution**: last-writer-wins by row `updated_at`. If optimistic local change is older than incoming server payload → server wins. Add `updated_at timestamptz` to `matches` (Postgres trigger to auto-update).
+  - **Scope guard**: only queue tab + TV upcoming carousel benefit. Standings/dashboard still need full recompute → keep `router.refresh()` for `tournaments` table updates + `matches.status='completed'` payloads only.
+  - **Backwards compat**: feature-flag via `settings.queue_payload_sync` (default off until proven). Falls back to current debounced refresh if flag off.
+- **Wheelspin / random prize draw** — new field `tournaments.prize_pool jsonb` = `[{label:"เสื้อ", qty:5}, {label:"ลูกแบด", qty:10}, …]` per tournament. Page `/tournaments/[id]/wheelspin` — pool of participants (all players or filter by team / present check-in) shown on a spinning wheel; owner triggers spin, animation lands on winner, name auto-removed from pool for next draw. Persist `prize_draws (id, tournament_id, prize_label, winner_player_id, drawn_at, drawn_by)` for audit. Also broadcast winner to TV page (overlay banner ~10s). Use case: end-of-day giveaways at sports day events.
 
 **Big feature** (gated on user demand):
 
@@ -734,7 +871,7 @@ User intent: queue numbers in รอแข่ง / กำลังแข่ง /
 
 ### Public dashboard + TV layout rework (2026-05-21)
 
-- `src/components/tournament/public/public-overview.tsx` (Overview tab on `/t/[token]`) — body replaced with 3 stacked sections:
+- `src/components/tournament/public/public-overview.tsx` (Overview tab on `/t/[token]`) — body replaced with 3 stacked sections (NOTE: this file was later DELETED 2026-05-22 commit `294dafb`; the Overview tab was dropped from the public shell — content listed below for historical context only):
   1. **คะแนนรวมทีม** — team-mode: `computeStandings(allMatches, 'team', teamIds)` directly; pair-mode: aggregate pair StandingRows by `pairs.team_id` via inline `aggregatePairStandingsToTeams` helper (sums played/W/D/L/PF/PA, recomputes `leaguePoints` + `pointDiff`, sorts pts→diff→PF). Shows W-D-L column. Hidden when no team has `played > 0`.
   2. **คะแนนตามคู่ แยก Div** (pair mode only) — reads `tournament.pair_division_thresholds[]`; `computePairDivision(pairLevel, thresholds)` → Division 1..N. `md:grid-cols-2` grid, card border+title colored by `divisionTone(n)`. `thresholds=[]` → single "อันดับคู่" card.
   3. **ตารางคิว** — in-progress rows highlighted (`bg-green-500/5`) + green ping dot in title; then next 6 pending rows sorted by `queue_position ?? match_number`, TBD-only matches filtered out. Uses existing `MatchRow size="comfortable"`. Empty state "ยังไม่มีคิว".
@@ -953,6 +1090,29 @@ Settings UI in "การแสดงผล TV" Card is split into sub-groups: "
   - If the fix changed any documented behavior, schema, label, or contract, sync `spec.md` too; if `spec.md` had a related "Known issues / Pending fix" entry, remove that entry there as well.
 - Current state: **2 Open** (P2 tab label drift logged then fixed in this section + P2 duplicate "เพิ่มสมาชิก" `aria-label` for screen readers and automation). **8 Resolved** — 7 P1 review findings + 1 player-level-fill (verified as Playwright-only automation gap, not an app bug).
 
+### Public mobile fit + tab persistence + shared hooks (2026-05-22, commits `fdd4c7a`..`ed7fc80`)
+
+12 commits — public-page mobile-overflow hardening, shared `useTabSync` hook, `public-overview.tsx` deletion, dropped deprecated `pair_division_threshold` column.
+
+**Mobile fit / overflow**:
+- `src/app/(public)/layout.tsx` (or root layout `body`) — `overflow-x-clip` on body element to swallow any stray horizontal overflow (replaces the short-lived per-page `overflow-x-hidden` wrapper from commit `7da067c` which was reverted in P1 fix `294dafb`).
+- `match-row.tsx` — name nodes use `min-w-0 truncate block`; separator + score nodes get `shrink-0`. Long pair names now ellipsis-truncate instead of pushing the row off-screen.
+- `match-queue.tsx` — competitor row collapsed to a single `grid-cols-[1fr_auto_1fr]` at ALL breakpoints (previously stacked on `<sm`); tightened cell sizing (`w-10 sm:w-12`, `p-2 sm:p-2.5`, `text-xs sm:text-sm`).
+- `tv-match-card.tsx` — header reordered: status pill on the left, `#N` + court badge on the right; competitor flex containers get `min-w-0` so truncate works inside flex.
+- `team-summary.tsx` chart top margin — was bumped `4 → 24` in commit `dceba7b`, later made orientation-conditional in `ed7fc80` (vertical needs the headroom for `LabelList position="top"`; horizontal does not).
+
+**Public `/t/[token]` tab simplification** (commit `091337a`):
+- `ภาพรวม` tab removed from `PublicTournamentShell`; `public-overview.tsx` deleted entirely in P1 fix `294dafb`. Public shell tab union now `dashboard | groups | pairs | knockout | queue` (5 tabs).
+- Knockout requirements checklist hidden from public viewers — `knockout-stage.tsx` shows empty state `ยังไม่ได้สร้างสายการแข่งขัน` when public viewer hits the empty KO state (commit `0aecce5`); admin-only checklist remains on `/tournaments/[id]`.
+- `PublicTournamentShell` now wrapped in `<Suspense>` boundary on parent page (Next 16 App Router requirement when consuming `useSearchParams`).
+
+**Shared primitives** (P2 sweep commits `dcd1311` + `777eecf` + `ed7fc80`):
+- NEW `src/lib/hooks/use-tab-sync.ts` — shared `useTabSync<TabId>({ allTabs, validTabs, defaultTab })` hook returning `{ active, mounted, onChange }`. Reads `?tab=` via `useSearchParams`; writes via `router.replace(..., { scroll: false })`; strips invalid tabs from URL. `mounted: Set<TabId>` seeds with `defaultTab` so first paint is instant (no flash). Consumed by both `tournament-tabs.tsx` (admin shell) and `public-tournament-shell.tsx` (public shell). `useLayoutEffect` + ref guard prevents the param-strip effect from racing first render.
+- NEW `src/components/tournament/public/public-tv-header.tsx` — shared TV-page header (logo + title + venue + status pill + fullscreen button + "ดูสาย"/"ออก TV" actions); consumed by `/t/[token]/tv` and `/t/[token]/bracket`. Removes duplicate inline header in `bracket/page.tsx`.
+
+**Schema cleanup** (commit `777eecf`):
+- migration `20260522000300_drop_pair_division_threshold_deprecated.sql` — drops the deprecated `tournaments.pair_division_threshold` (numeric, nullable) column. Only the array form `pair_division_thresholds` (numeric[]) remains. All code paths already used the array form; this migration is the cleanup pass.
+
 ### Full E2E smoke test (2026-05-22)
 
 Comprehensive test pass against production Supabase using create-then-cleanup pattern:
@@ -964,3 +1124,24 @@ Comprehensive test pass against production Supabase using create-then-cleanup pa
 5. **Cleanup** — all `E2E_TEST_*` rows deleted via Supabase MCP across `audit_logs`, `matches`, `pairs`, `team_players`, `group_teams`, `groups`, `teams`, `tournament_admins`, `tournaments`. Verified 0 rows remain; NOMKONZ TOUNAMENT #2 untouched.
 
 Findings logged to `bug.md` (1 automation-only P1 since closed by manual verification, 2 P2 doc/UX items).
+
+### Root-level loading UI + navigation progress bar (2026-05-24, commits `7910c99` + `069de0e`)
+
+Two complementary loading layers added on top of the existing route-level `loading.tsx` skeletons (which remain unchanged):
+
+**Shared spinner primitive**:
+- NEW `src/components/ui/loading-spinner.tsx` — `<LoadingSpinner fullscreen? className? />` renders `<Loader2 animate-spin />` centered on a `min-h-screen` (fullscreen) or `min-h-[60vh]` container. Tailwind-only, theme-aware via `text-muted-foreground`.
+
+**Root-level Suspense fallback**:
+- NEW `src/app/loading.tsx` — root App Router loading file; renders `<LoadingSpinner fullscreen />`. Catches first-load Suspense for routes that have no closer `loading.tsx`.
+- `src/app/layout.tsx` — `{children}` wrapped in `<Suspense fallback={<LoadingSpinner fullscreen />}>` inside the `TooltipProvider`. Adds an outer streaming boundary above the implicit Next.js boundary mapped from `loading.tsx`.
+- `src/app/(public)/t/[token]/page.tsx` — the previous `<Suspense fallback={null}>` around `PublicTournamentShell` was replaced with `<Suspense fallback={<LoadingSpinner />}>` (non-fullscreen — in-page boundary).
+
+**Top progress bar** (`@bprogress/next` 3.x package):
+- NEW `src/components/providers/progress-provider.tsx` — `"use client"` wrapper re-exporting `ProgressProvider` from `@bprogress/next/app` (aliased import; the package's exported name is `ProgressProvider`, NOT `AppProgressProvider`) with `height="3px"`, `color="var(--primary)"`, `options={{ showSpinner: false }}`, `shallowRouting`. Mounted in `src/app/layout.tsx` outside `TooltipProvider` so it sits above every page.
+- Behavior: a 3px bar in the project's `--primary` `oklch()` color auto-tracks `<Link>` clicks and `router.push`/`router.replace` calls across the entire app; no per-page wiring needed.
+
+**Tab change progress** (commit `069de0e`):
+- `src/lib/hooks/use-tab-sync.ts` — `onChange` now wraps `router.replace` in `useTransition` and pairs it with manual `progress.start()` / `progress.stop()` calls via `useProgress()` from `@bprogress/next`. A `startedRef` ref pairs each `start()` with exactly one `stop()` when the transition's `isPending` flips back to `false`. This is needed because `router.replace({scroll:false})` to the same path is treated as shallow by the package's auto-tracker and otherwise would not trigger the bar; pairing it with React transition state ensures the bar shows for the full duration of the new tab's lazy-mount and Suspense resolution.
+
+**Effect**: any nav click — sidebar link, tab switch, share-page link — shows the top bar; routes with their own `loading.tsx` (7 existing files in `(app)/`/`(public)/`) keep their skeletons; routes without a closer fallback get the root spinner.

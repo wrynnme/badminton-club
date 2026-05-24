@@ -6,7 +6,109 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 (none)
 
+### 2026-05-24 — Phase 12 require_checkin shipped
+
+- vitest 269/269 pass · `tsc --noEmit` clean · migration `20260524000100_add_team_players_checked_in_at` applied to prod via MCP. Per-player + bulk check-in UI live in team tab; `startMatchAction` + auto-advance gated by `settings.require_checkin`.
+
+### 2026-05-24 — Phase 12 Wave A code-review P0 hardening
+
+- vitest 269/269 pass · `tsc --noEmit` clean · migration `20260524000200_rpc_start_match_atomic` applied via MCP. Closes 4 P0 from the max-effort review of commit `618e829`:
+  - **P0 #1 (matches.ts:137)** Helper DB error swallow → `collectMatchPlayerIds` + `countUncheckedPlayers` now `throw` on error; `startMatchAction` catches and returns "ตรวจสอบสถานะเช็คอินไม่สำเร็จ".
+  - **P0 #2 (matches.ts:1763)** Start-action TOCTOU → atomic RPC `start_match_atomic` row-locks the match + re-verifies check-in under the lock + transitions status in one transaction.
+  - **P0 #3 (matches.ts:1720)** PII leak via display_name list → replaced names with count (`รอเช็คอิน N คน`); `findUncheckedPlayerNames` removed in favor of `countUncheckedPlayers` (head:true, no rows fetched).
+  - **P0 #4 (matches.ts:110)** `isPair` conflate → discriminated `MatchPlayerCollection` requires BOTH sides populated; TBD slot and empty-roster cases now surface as explicit errors ("ยังกำหนดทั้งสองฝั่งไม่ครบ" / "ทีมไม่มีผู้เล่น").
+  - Bonus: auto-advance now writes audit description `ข้ามคิว N แมตช์ (รอเช็คอิน)` when it skipped queue items; emits `auto_advance_skipped` audit row when every candidate was unready.
+
+Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upsert preserves check-in, N+1 auto-advance, revalidate error swallow, court/stats revalidate gap) still open — see spec.md "Phase 12 Wave A" section.
+
+### 2026-05-24 — Phase 12 Wave B+C correctness + perf
+
+- vitest 269/269 pass · `tsc --noEmit` clean. Closes 6 findings from the 2026-05-24 review:
+  - **V5/S7 — Bulk idempotent**: `bulkCheckInTeamAction` adds `.is("checked_in_at", null)` / `.not(...)` predicates → preserves arrival timestamps; cross-device race becomes harmless. Returns `{ noop: true }` when nothing changed; client toasts "ทุกคนพร้อมอยู่แล้ว".
+  - **S4 — Reset lifecycle**: new `resetAllCheckInsAction` + "รีเซ็ตเช็คอิน" Button in TeamManager header (owner+co-admin, confirm prompt with current count). Audit event `tournament_checkins_reset`.
+  - **V8 — Revalidate error**: `revalidateAllTournamentPaths` now logs the share_token lookup error and early-returns (mirrors matches.ts pattern).
+  - **S8 — Path coverage**: `revalidatePath('/t/[token]', 'layout')` invalidates the entire token subtree — court/bracket/stats included automatically.
+  - **V9 — Batch auto-advance**: 3 round-trips replace up to 40. Pre-fetch pair compositions + team rosters + unchecked set, intersect per candidate in JS. Worst-case latency ~1.2-3.2s → ~50-200ms.
+  - **V1 — Roster-wide gate**: documented as design intent. Mitigated via `bulkCheckInTeamAction` + `resetAllCheckInsAction`. No code change.
+
+All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
+
 ## Resolved
+
+### 2026-05-24 — `57c5606` Extra-high effort code review (15 findings)
+
+GROUP A — Division stats logic:
+- **[P1] computeDivisionStats headToHead leaks pairs from other divisions** — Fix: `divisionPairIds` set now filters both `relevant` matches and `ensurePairEntry` calls.
+- **[P1] Division winRate always ~0.5** — Fix: pinned to 0 in DivisionStats; `StatHeaderCards.hideWinRate` prop swaps to 3-col grid.
+- **[P1] Team intra-team matches polluted streak + UI list** — Fix: filtered out at predicate, not loop continue → matches[]/streak/W-L-D consistent.
+
+GROUP B — EntityLink cluster:
+- **[P1] MatchHistoryList opponent name no EntityLink wrap** — Fix: `renderOpponentName?` prop with default EntityLink wrap.
+- **[P1] HeadToHeadTable opponent name no EntityLink wrap** — Fix: `entityType?` + `renderName?` props.
+- **[P1] DivisionStatsView standings + RecentMatchRow no EntityLink** — Fix: wrapped in `<EntityLink entityType="pair">`.
+- **[P2] Division EntityLink → 404 for no-split tournament** — Fix: JSDoc warns callers to gate on `thresholds.length > 0`.
+
+GROUP C — Cache/perf:
+- **[P1] matchesKey hash misses court/started_at/team_*_score** — Fix: extended hash includes all 4 fields.
+- **[P1] content-visibility CLS on court status Card** — Fix: removed style (1-4 row grid, perf gain negligible vs CLS cost).
+
+GROUP D — Player edge + UX:
+- **[P2] Player in both pair_a + pair_b same match (anomaly)** — Fix: `computePlayerStats` filter excludes matches where player owns both pairs.
+- **[P2] backHref always ?tab=pair** — Fix: `loadStatsTournamentByAdmin(id, fromTab?)` optional param.
+
+GROUP E — Misc:
+- **[P2] notifyTournamentEvent stale settings** — Fix: JSDoc warns about snapshot caveat (no code change — acceptable per-request scope).
+- **[P2] tv-match-card court name overflow** — Fix: `truncate max-w-[200px]` + parent `min-w-0`.
+- **[P2] EntityLink useParams brittle for future routes** — Fix: `usePathname().startsWith()` guard added.
+- **[P3] EntityLink self-link** — Fix: short-circuit when `pathname.endsWith("/stats/<type>/<id>")`.
+
++9 regression tests (260 → 269 pass).
+
+### 2026-05-24 — `9ddf197` P2 review batch (7 fixes)
+
+- **[P2] decodeURIComponent throws → 500** → wrap in try/catch + notFound() (court + 2 division pages)
+- **[P2] Progress bar hang same-tab click** → `if (next === active) return;` in use-tab-sync onChange
+- **[P2] Division thresholds=[] silent empty** → `notFound()` guard
+- **[P2] EntityStats headToHead Map → Record** (RSC serialization-safe)
+- **[P2] partnerBreakdown? type leak** → discriminated union PairStats|PlayerStats|TeamStats|DivisionStats
+- **[P2] EntityLink regex → useParams** (changed to startsWith guard in later batch)
+- **[P2] computeDivisionStats wins++/losses++ collapsed** + JSDoc
+
+### 2026-05-24 — `8320a7b` P1 #3: dedup stats page boilerplate
+
+- **[P1] 8 stat pages × ~70 LOC duplicated** → extracted `loadStatsTournamentByAdmin` + `loadStatsTournamentByToken` + `<StatsPageShell>`. Pages now ~30-65 LOC each.
+
+### 2026-05-24 — `a3da9c9` P1 #1+#2: BYE bug + dedup stats view UI
+
+- **[P1] BYE matches counted as draws (CRITICAL)** — `gameWinner([])` returns "draw". Fix: skip `games.length===0` in all compute*Stats main loops + 4 regression tests.
+- **[P1] Dedup stats view components (~250 LOC)** — extracted `result-display.ts` + 4 shared primitives (streak-pill, stat-header-cards, match-history-list, head-to-head-table).
+
+### 2026-05-24 — unit tests (Phase B player stats)
+
+- 246/246 pass (+12 new `computePlayerStats` tests; 0 regressions)
+
+### 2026-05-24 — unit tests (Phase B player stats)
+
+- 246/246 pass (+12 new `computePlayerStats` tests; 0 regressions)
+
+### 2026-05-23 — `50a77f2` Perf audit batch (8 of 9 fixes)
+
+- **[P1] N+1 in `updateGroupTeamStandings`**
+  - Fix: `matches.ts:1826` — `for (const r of rows) await update(...)` → `await Promise.all(rows.map(r => update(...)))`. Group score scoring 50-450ms faster depending on group size.
+- **[P1] N+1 in `reverseGroupTeamStandings`**
+  - Fix: `matches.ts:1854` — same Promise.all batch pattern; Math.max guards preserved.
+- **[P1] `matchesKey` O(N*M) string serialization**
+  - Fix: `tournament-dashboard.tsx:169` — integer rolling hash via `((h << 5) - h + val) | 0` replaces `.map(...).join(",")`. 3-8ms faster per Realtime refresh; no string allocation.
+- **[P1] `occupiedCourts` memo chain → dnd-kit re-init**
+  - Fix: `match-queue.tsx:552` — `QueueRowBody` derives `isCourtOccupied = useMemo(() => occupiedCourts.has(match.court ?? ""), [...])`; replaces 2 inline `.has()` calls. Stable ref per row prevents dnd-kit context re-eval.
+- **[P2] `react-qr-code` eager import**
+  - Fix: `share-controls.tsx:6` — `import dynamic from "next/dynamic"; const QRCode = dynamic(() => import("react-qr-code"), { ssr: false })`. ~15-25KB removed from initial bundle.
+- **[P2] `JSON.stringify(games)` comparator**
+  - Fix: `match-row.tsx:138` — length check + element-by-element `a/b` compare loop; removes two `JSON.stringify` allocations per memo check.
+- **[P2] Court status cards no `content-visibility`**
+  - Fix: `match-queue.tsx:163` — outer Card gets `style={{ contentVisibility: 'auto', containIntrinsicSize: '100% 140px' }}`. Skip paint when off-screen; intrinsic size hint prevents CLS.
+- **[P2] Unused `isOngoing` prop on `TournamentLiveWrapper`**
+  - Fix: `tournament-live-wrapper.tsx` — prop removed from type + destructuring + useEffect deps. 4 callers updated (admin page, public page, TV page, bracket page).
 
 ### 2026-05-22 — P2 fixes
 
@@ -15,7 +117,6 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 - **[P2] Duplicate "เพิ่มสมาชิก" buttons fragile for automation/AT**
   - Fix: `team-manager.tsx:257` — added `aria-label={`เพิ่มสมาชิกในทีม ${team.name}`}` to per-team Add Member button. Disambiguates accessible name across multiple expanded team cards.
-
 
 ### 2026-05-22 — Manual verification (not an app bug)
 

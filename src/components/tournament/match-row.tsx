@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { RotateCcw, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScoreForm } from "@/components/tournament/score-form";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { resetMatchScoreAction } from "@/lib/actions/matches";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import type { Match } from "@/lib/types";
@@ -52,7 +53,9 @@ function MatchRowImpl({
       <div className={`flex items-center gap-2 ${rowText}`}>
         <div className={`flex-1 min-w-0 text-right ${winner === "a" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
           {a?.color && <span className={colorDot} style={{ backgroundColor: a.color }} />}
-          <span className="truncate block">{a?.name ?? unknownLabel}</span>
+          <EntityLink entityType={unit === "pair" ? "pair" : "team"} entityId={aId}>
+            <span className="truncate block">{a?.name ?? unknownLabel}</span>
+          </EntityLink>
           {a?.subtitle && <div className={`${subText} text-muted-foreground font-normal truncate`}>{a.subtitle}</div>}
         </div>
 
@@ -67,7 +70,9 @@ function MatchRowImpl({
 
         <div className={`flex-1 min-w-0 ${winner === "b" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
           {b?.color && <span className={colorDot} style={{ backgroundColor: b.color }} />}
-          <span className="truncate block">{b?.name ?? unknownLabel}</span>
+          <EntityLink entityType={unit === "pair" ? "pair" : "team"} entityId={bId}>
+            <span className="truncate block">{b?.name ?? unknownLabel}</span>
+          </EntityLink>
           {b?.subtitle && <div className={`${subText} text-muted-foreground font-normal truncate`}>{b.subtitle}</div>}
         </div>
 
@@ -134,7 +139,11 @@ export const MatchRow = memo(MatchRowImpl, (prev, next) => {
   ) {
     return false;
   }
-  // games is a small array; JSON compare is cheap and accurate
-  if (JSON.stringify(a.games) !== JSON.stringify(b.games)) return false;
+  if ((a.games?.length ?? 0) !== (b.games?.length ?? 0)) return false;
+  const ag = a.games ?? [];
+  const bg = b.games ?? [];
+  for (let i = 0; i < ag.length; i++) {
+    if (ag[i].a !== bg[i].a || ag[i].b !== bg[i].b) return false;
+  }
   return true;
 });

@@ -82,6 +82,7 @@ export type TeamPlayer = {
   role: TeamRole;
   level: string | null;
   csv_id: string | null;
+  checked_in_at: string | null;
   created_at: string;
 };
 
