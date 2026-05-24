@@ -1,15 +1,10 @@
 import { notFound, redirect } from "next/navigation";
-import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
-import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
-import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
-import { DivisionStatsView } from "@/components/tournament/stats/division-stats-view";
-import { buildCompetitorMap } from "@/lib/tournament/competitor";
+import { loadStatsTournamentByAdmin } from "@/lib/tournament/stats-page-data";
 import { computeDivisionStats } from "@/lib/tournament/entity-stats";
-import { parseSettings } from "@/lib/tournament/settings";
 import { computePairDivision, parsePairLevel } from "@/lib/tournament/divisions";
-import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
+import { StatsPageShell } from "@/components/tournament/stats/stats-page-shell";
+import { DivisionStatsView } from "@/components/tournament/stats/division-stats-view";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +15,6 @@ export default async function AdminDivisionStatsPage({
 }) {
   const { id, divKey } = await params;
   const division = parseInt(decodeURIComponent(divKey), 10);
-  const sb = await createAdminClient();
 
   // Require session (stats are read-only, any logged-in user may view)
   const session = await getSession();
@@ -28,68 +22,43 @@ export default async function AdminDivisionStatsPage({
     redirect(`/login?redirectTo=/tournaments/${id}/stats/division/${divKey}`);
   }
 
-  // Fetch tournament + matches + teams in parallel; pairs follow (need teamIds)
-  const [{ data: tournament }, matchesRes, teamsRes] = await Promise.all([
-    sb.from("tournaments").select("*").eq("id", id).maybeSingle(),
-    sb.from("matches").select("*").eq("tournament_id", id).order("match_number"),
-    sb.from("teams").select("*").eq("tournament_id", id).order("created_at"),
-  ]);
-
-  if (!tournament) notFound();
-  const t = tournament as Tournament;
+  const data = await loadStatsTournamentByAdmin(id);
+  if (!data) notFound();
 
   // Validate division param is within range
-  const thresholds: number[] = t.pair_division_thresholds ?? [];
+  const thresholds: number[] = data.tournament.pair_division_thresholds ?? [];
   const maxDivision = thresholds.length + 1;
   if (!Number.isFinite(division) || division < 1 || division > maxDivision) {
     notFound();
   }
 
-  const teamIdList = (teamsRes.data ?? []).map((x) => x.id);
-  const pairsRes = teamIdList.length
-    ? await sb
-        .from("pairs")
-        .select(
-          "*, player1:team_players!player_id_1(*), player2:team_players!player_id_2(*)"
-        )
-        .in("team_id", teamIdList)
-        .order("created_at")
-    : { data: [] };
-
-  const teams: Team[] = (teamsRes.data ?? []) as Team[];
-  const allMatches: Match[] = (matchesRes.data ?? []) as Match[];
-  const pairs: PairWithPlayers[] = (pairsRes.data ?? []) as unknown as PairWithPlayers[];
-
   // Filter pairs belonging to this division
   const divisionPairs =
     thresholds.length > 0
-      ? pairs.filter(
+      ? data.pairs.filter(
           (p) => computePairDivision(parsePairLevel(p.pair_level), thresholds) === division
         )
-      : pairs; // no split → all pairs
+      : data.pairs; // no split → all pairs
 
-  const competitorById = buildCompetitorMap("pair", teams, pairs);
-  const stats = computeDivisionStats({ division, pairs, matches: allMatches, thresholds });
-  const settings = parseSettings(t.settings);
+  const stats = computeDivisionStats({
+    division,
+    pairs: data.pairs,
+    matches: data.matches,
+    thresholds,
+  });
 
   return (
-    <TournamentLiveWrapper tournamentId={t.id} realtimeEnabled={settings.realtime_enabled}>
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-        <Link
-          href={`/tournaments/${id}?tab=pair`}
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          กลับ
-        </Link>
-
-        <DivisionStatsView
-          stats={stats}
-          division={division}
-          divisionPairs={divisionPairs}
-          competitorById={competitorById}
-        />
-      </div>
-    </TournamentLiveWrapper>
+    <StatsPageShell
+      tournamentId={data.tournament.id}
+      realtimeEnabled={data.settings.realtime_enabled}
+      backHref={data.backHref}
+    >
+      <DivisionStatsView
+        stats={stats}
+        division={division}
+        divisionPairs={divisionPairs}
+        competitorById={data.competitorById}
+      />
+    </StatsPageShell>
   );
 }
