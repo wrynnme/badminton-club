@@ -461,8 +461,9 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 | `audit_log_enabled`                | `true`  | `writeAuditLog` fetches settings + early-returns when `false` (1 extra column read per write — acceptable for the current write volume)                       |
 | `match_cooldown_minutes` (0-30)    | `0`     | `startMatchAction` reads latest `audit_logs` row with `event_type='match_started'` for this tournament; rejects if `now - created_at < cooldown`              |
 | `require_court_to_start`           | `false` | `startMatchAction` (server gate) + `match-queue.tsx` (button disabled + tooltip)                                                                              |
+| `require_checkin`                  | `false` | `startMatchAction` (server gate — blocks if any player has `checked_in_at IS NULL`) + `recordMatchScoreAction` auto-advance filter (skips candidates with unready players) — see Phase 12. |
 
-**Cut from Phase 11**: `require_checkin` — needs new `team_players.checked_in_at` column + check-in flow → Phase 12.
+**Cut from Phase 11**: `require_checkin` — implemented in Phase 12 (see below).
 
 ### Notifier helper
 
@@ -535,7 +536,43 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ## Todo
 
-- Phase 12 — `require_checkin` flag + `team_players.checked_in_at` + UI check-in flow
+(Phase 12 DONE — see below.)
+
+## Phase 12 — `require_checkin` (DONE 2026-05-24)
+
+**Goal**: Block `startMatchAction` until every player on both sides has `team_players.checked_in_at IS NOT NULL` when the setting is on. Mirrors the existing `require_court_to_start` pattern but gates per-player.
+
+**DB**:
+- migration `20260524000100_add_team_players_checked_in_at` — `ALTER TABLE team_players ADD COLUMN checked_in_at timestamptz` + partial index `idx_team_players_checked_in ON team_players(team_id) WHERE checked_in_at IS NOT NULL`. Applied to prod via Supabase MCP.
+
+**Settings**:
+- `tournaments.settings.require_checkin: boolean` (default `false`) added to `TournamentSettingsSchema` in `src/lib/tournament/settings.ts`.
+
+**Types** (`src/lib/types.ts`):
+- `TeamPlayer.checked_in_at: string | null` added (after `csv_id`, before `created_at`). Existing `team_players(*)` selects in `/tournaments/[id]/page.tsx` + `/t/[token]/page.tsx` pick it up automatically.
+
+**Server actions** (`src/lib/actions/tournaments.ts`):
+- `toggleTeamPlayerCheckInAction({ playerId, tournamentId })` — `assertCanEdit` (owner + co-admin); validates player.team.tournament_id; flips `checked_in_at` between `now()` and `null`; audit log `player_checked_in` / `player_checked_out`; revalidates owner + share + tv paths.
+- `bulkCheckInTeamAction({ teamId, tournamentId, checkIn })` — same auth; bulk update all `team_players.team_id = teamId`; audit `team_bulk_checked_in` / `team_bulk_checked_out` with count in description.
+- `revalidateAllTournamentPaths(sb, tournamentId)` private helper — looks up `share_token` and revalidates owner + `/t/[token]` + `/t/[token]/tv` (mirrors the matches.ts helper without cross-file import).
+
+**Gate** (`src/lib/actions/matches.ts`):
+- New internal helpers `collectMatchPlayerIds(sb, match)` (returns team_player ids for both sides, pair-mode-aware via `pairs.player_id_1/2`, team-mode via `team_players.team_id`) + `findUncheckedPlayerNames(sb, ids)`.
+- `startMatchAction` adds a block after the `require_court_to_start` gate: when `settings.require_checkin` is true, collect player IDs, fetch unchecked names, reject `{ error: "รอเช็คอิน: <names>" }` if any.
+- `recordMatchScoreAction` auto-advance path filters candidates: when `require_checkin`, iterates the queue window and skips any candidate with unready players; promotes the first fully-ready match instead of the first populated one.
+
+**UI** (`src/components/tournament/team-manager.tsx`):
+- `PlayerRow` — per-player "เช็คอิน" / "พร้อม" Button (default outline → green when checked in) with `useTransition` spinner; row container gets green tint + border when checked in (`bg-green-500/5 border-green-500/30`).
+- `TeamCard` header — count Badge "X/N พร้อม" (amber-tinted while partial, solid green when 100%); icon-button `CheckCheck` (toggles all) gated by `team.players.length > 0`; uses `bulkCheckInTeamAction`. Title row gains `min-w-0 truncate` to keep the new badges from pushing the layout.
+
+**Settings tab** (`src/components/tournament/settings-manager.tsx`):
+- New `ToggleRow` under "การจัดคิว" section, after `require_court_to_start`. Wired via `commit(...)` like other toggles.
+
+**No match-queue client gate** (deferred): client doesn't have per-player check-in state in the queue tree. The server gate + toast on `เริ่ม` failure (with the unready player names) is sufficient UX for the first cut. Future polish could thread a `Map<matchId, ready>` from the page.
+
+**Audit events** added: `player_checked_in`, `player_checked_out`, `team_bulk_checked_in`, `team_bulk_checked_out`.
+
+**Tests**: `settings.test.ts` updated — `require_checkin` default false. `competitor.test.ts` + `entity-stats.test.ts` fixtures updated with `checked_in_at: null`. Vitest 269/269 passing; `tsc --noEmit` clean.
 
 ### Phase 13 — Competition mode (multi-class, team-aware grouping)
 

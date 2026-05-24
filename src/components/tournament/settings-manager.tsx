@@ -321,6 +321,13 @@ export function SettingsManager({
             checked={settings.require_court_to_start}
             onChange={(v) => commit({ require_court_to_start: v }, { ...settings, require_court_to_start: v })}
           />
+          <ToggleRow
+            id="require_checkin"
+            label="ต้องเช็คอินก่อนเริ่มแมตช์"
+            description="ผู้เล่นทุกคนในแมตช์ต้องเช็คอินก่อน กดเริ่มถึงไม่ติด (แท็บทีม)"
+            checked={settings.require_checkin}
+            onChange={(v) => commit({ require_checkin: v }, { ...settings, require_checkin: v })}
+          />
           <div className="flex items-center justify-between gap-3 py-1">
             <div className="flex flex-col gap-0.5">
               <Label htmlFor="queue-division-order" className="text-sm">ลำดับ Division ใน auto-rotate</Label>

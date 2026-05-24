@@ -6,6 +6,10 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 (none)
 
+### 2026-05-24 — Phase 12 require_checkin shipped
+
+- vitest 269/269 pass · `tsc --noEmit` clean · migration `20260524000100_add_team_players_checked_in_at` applied to prod via MCP. Per-player + bulk check-in UI live in team tab; `startMatchAction` + auto-advance gated by `settings.require_checkin`.
+
 ## Resolved
 
 ### 2026-05-24 — `57c5606` Extra-high effort code review (15 findings)

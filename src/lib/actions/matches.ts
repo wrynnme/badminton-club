@@ -103,6 +103,41 @@ async function getNextMatchNumber(
   return (data?.match_number ?? 0) + 1;
 }
 
+async function collectMatchPlayerIds(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  match: { team_a_id: string | null; team_b_id: string | null; pair_a_id: string | null; pair_b_id: string | null },
+): Promise<string[]> {
+  const isPair = !!(match.pair_a_id || match.pair_b_id);
+  if (isPair) {
+    const pairIds = [match.pair_a_id, match.pair_b_id].filter(Boolean) as string[];
+    if (pairIds.length === 0) return [];
+    const { data } = await sb.from("pairs").select("player_id_1, player_id_2").in("id", pairIds);
+    const ids = new Set<string>();
+    for (const p of data ?? []) {
+      if (p.player_id_1) ids.add(p.player_id_1);
+      if (p.player_id_2) ids.add(p.player_id_2);
+    }
+    return [...ids];
+  }
+  const teamIds = [match.team_a_id, match.team_b_id].filter(Boolean) as string[];
+  if (teamIds.length === 0) return [];
+  const { data } = await sb.from("team_players").select("id").in("team_id", teamIds);
+  return (data ?? []).map((p) => p.id);
+}
+
+async function findUncheckedPlayerNames(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  playerIds: string[],
+): Promise<string[]> {
+  if (playerIds.length === 0) return [];
+  const { data } = await sb
+    .from("team_players")
+    .select("display_name")
+    .in("id", playerIds)
+    .is("checked_in_at", null);
+  return (data ?? []).map((p) => p.display_name);
+}
+
 async function resetGroupTeamStandings(
   sb: Awaited<ReturnType<typeof createAdminClient>>,
   tournamentId: string,
@@ -1136,12 +1171,22 @@ export async function recordMatchScoreAction(input: {
         .order("queue_position", { ascending: true, nullsFirst: false })
         .order("match_number")
         .limit(20);
-      const nextPending = (candidates ?? []).find((m) => {
+      const populated = (candidates ?? []).filter((m) => {
         const isPairMatch = !!(m.pair_a_id || m.pair_b_id);
         return isPairMatch
           ? !!m.pair_a_id && !!m.pair_b_id
           : !!m.team_a_id && !!m.team_b_id;
       });
+      let nextPending: (typeof populated)[number] | undefined = populated[0];
+      // require_checkin: skip candidates with any unready player.
+      if (settings.require_checkin && populated.length > 0) {
+        nextPending = undefined;
+        for (const cand of populated) {
+          const playerIds = await collectMatchPlayerIds(sb, cand);
+          const notReady = await findUncheckedPlayerNames(sb, playerIds);
+          if (notReady.length === 0) { nextPending = cand; break; }
+        }
+      }
       if (nextPending?.id) {
         // Best-effort: respect court_strict via the DB unique index. On 23505 we silently skip.
         const { error: advanceErr } = await sb
@@ -1665,6 +1710,15 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
   // require_court_to_start gate: reject if flag is on and no court assigned.
   if (settings.require_court_to_start && !match.court) {
     return { error: "ต้องเลือกสนามก่อนเริ่มแมตช์" };
+  }
+
+  // require_checkin gate: every player on both sides must have checked_in_at set.
+  if (settings.require_checkin) {
+    const playerIds = await collectMatchPlayerIds(sb, match);
+    const notReady = await findUncheckedPlayerNames(sb, playerIds);
+    if (notReady.length > 0) {
+      return { error: `รอเช็คอิน: ${notReady.join(", ")}` };
+    }
   }
 
   if (settings.match_cooldown_minutes > 0) {

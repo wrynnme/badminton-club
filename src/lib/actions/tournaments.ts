@@ -691,3 +691,91 @@ export async function revokeShareTokenAction(tournamentId: string) {
   revalidatePath(`/tournaments/${tournamentId}`);
   return { ok: true };
 }
+
+// ============ CHECK-IN (Phase 12) ============
+
+async function revalidateAllTournamentPaths(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  tournamentId: string
+) {
+  revalidatePath(`/tournaments/${tournamentId}`);
+  const { data } = await sb.from("tournaments").select("share_token").eq("id", tournamentId).maybeSingle();
+  if (data?.share_token) {
+    revalidatePath(`/t/${data.share_token}`);
+    revalidatePath(`/t/${data.share_token}/tv`);
+  }
+}
+
+export async function toggleTeamPlayerCheckInAction(input: { playerId: string; tournamentId: string }) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+  const { data: player } = await sb
+    .from("team_players")
+    .select("id, display_name, checked_in_at, team:teams!inner(tournament_id)")
+    .eq("id", input.playerId)
+    .maybeSingle();
+  if (!player) return { error: "ไม่พบผู้เล่น" };
+  const team = Array.isArray(player.team) ? player.team[0] : player.team;
+  if (!team || team.tournament_id !== input.tournamentId) return { error: "ผู้เล่นไม่อยู่ในทัวร์นี้" };
+
+  const next = player.checked_in_at ? null : new Date().toISOString();
+  const { error } = await sb.from("team_players").update({ checked_in_at: next }).eq("id", input.playerId);
+  if (error) {
+    console.error("[toggleTeamPlayerCheckInAction]", error);
+    return { error: "บันทึกสถานะเช็คอินไม่สำเร็จ" };
+  }
+
+  await writeAuditLog({
+    tournament_id: input.tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: next ? "player_checked_in" : "player_checked_out",
+    entity_type: "team_player",
+    entity_id: input.playerId,
+    description: `${next ? "เช็คอิน" : "ยกเลิกเช็คอิน"}: ${player.display_name}`,
+  });
+
+  await revalidateAllTournamentPaths(sb, input.tournamentId);
+  return { ok: true };
+}
+
+export async function bulkCheckInTeamAction(input: { teamId: string; tournamentId: string; checkIn: boolean }) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+  const { data: team } = await sb
+    .from("teams")
+    .select("id, name, tournament_id")
+    .eq("id", input.teamId)
+    .maybeSingle();
+  if (!team || team.tournament_id !== input.tournamentId) return { error: "ไม่พบทีม" };
+
+  const next = input.checkIn ? new Date().toISOString() : null;
+  const { data: updated, error } = await sb
+    .from("team_players")
+    .update({ checked_in_at: next })
+    .eq("team_id", input.teamId)
+    .select("id");
+  if (error) {
+    console.error("[bulkCheckInTeamAction]", error);
+    return { error: "บันทึกสถานะเช็คอินไม่สำเร็จ" };
+  }
+
+  await writeAuditLog({
+    tournament_id: input.tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: input.checkIn ? "team_bulk_checked_in" : "team_bulk_checked_out",
+    entity_type: "team",
+    entity_id: input.teamId,
+    description: `${input.checkIn ? "เช็คอิน" : "ยกเลิกเช็คอิน"}ทีม ${team.name} (${updated?.length ?? 0} คน)`,
+  });
+
+  await revalidateAllTournamentPaths(sb, input.tournamentId);
+  return { ok: true, count: updated?.length ?? 0 };
+}

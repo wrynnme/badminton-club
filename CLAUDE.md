@@ -117,7 +117,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - Root `body` has `overflow-x-clip` (not `overflow-x-hidden`) — global horizontal-overflow guard for iOS Safari; `clip` chosen so `position:sticky` children keep working
 - `EntityLink` (`src/components/tournament/stats/entity-link.tsx`) derives its base href via `usePathname().startsWith()` guard — admin context → `/tournaments/[id]/stats/...`, public-token context → `/t/[token]/stats/...`. Short-circuits self-links (`pathname.endsWith("/stats/<type>/<id>")`). Callers must gate `entityType="division"` on `thresholds.length > 0` (no-split tournaments otherwise 404).
 
-## Tournament System (Phase 0–11 done; Phase 12 require_checkin + Phase 13 competition mode planned — see `spec.md`)
+## Tournament System (Phase 0–12 done; Phase 13 competition mode planned — see `spec.md`)
 
 ### Architecture
 
@@ -273,7 +273,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 ### Pre-tournament Settings (Phase 11)
 
 - `tournaments.settings jsonb` validated by `TournamentSettingsSchema`
-- Flags wired: `line_notify.{start,score,bracket,status}`, `auto_rotate_rest_gap` (0-5), `queue_division_order` (`sequential` | `interleaved` | `chunked`, replaces legacy `queue_bracket_preference`), `queue_division_priority` (`number[]` of division indices; `[]` = natural `1..N`), `queue_chunk_size` (1-50), `court_strict` (UI hint only — DB index always enforces), `color_summary`, `export_visible`, `allow_force_bracket_reset` (single-level cascade), `allow_manual_match_after_bracket`, `auto_advance_next` (filters out TBD matches), `realtime_enabled`, `audit_log_enabled`, `match_cooldown_minutes` (0-30, reads `matches.started_at`), `require_court_to_start` (server gate in `startMatchAction` + client `เริ่ม` button disabled when court empty)
+- Flags wired: `line_notify.{start,score,bracket,status}`, `auto_rotate_rest_gap` (0-5), `queue_division_order` (`sequential` | `interleaved` | `chunked`, replaces legacy `queue_bracket_preference`), `queue_division_priority` (`number[]` of division indices; `[]` = natural `1..N`), `queue_chunk_size` (1-50), `court_strict` (UI hint only — DB index always enforces), `color_summary`, `export_visible`, `allow_force_bracket_reset` (single-level cascade), `allow_manual_match_after_bracket`, `auto_advance_next` (filters out TBD matches), `realtime_enabled`, `audit_log_enabled`, `match_cooldown_minutes` (0-30, reads `matches.started_at`), `require_court_to_start` (server gate in `startMatchAction` + client `เริ่ม` button disabled when court empty), `require_checkin` (Phase 12 — `startMatchAction` server gate + auto-advance filter; UI per-player + bulk check-in in `team-manager.tsx`)
 - `notifyTournamentEvent(tournamentId, event, text, settings?)` in `src/lib/notification/line.ts` — reads settings (or accepts pre-fetched `settings?: TournamentSettings` to avoid re-fetch), short-circuits when `line_notify[event]=false`; callers like `recordMatchScoreAction` + `startMatchAction` hoist the settings fetch and pass it through to the fire-and-forget notify IIFE
 
 ### DB performance + page fetches (2026-05-21)

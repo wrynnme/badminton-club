@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { addTeamPlayerAction, createTeamAction, deleteTeamAction, removeTeamPlayerAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
+import { addTeamPlayerAction, bulkCheckInTeamAction, createTeamAction, deleteTeamAction, removeTeamPlayerAction, toggleTeamPlayerCheckInAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
 import { fieldErrors } from "@/lib/form-errors";
 import type { TeamWithPlayers } from "@/lib/types";
 import { useForm } from "@tanstack/react-form";
-import { Check, ChevronDown, ChevronUp, Loader2, Pencil, Plus, Trash2, UserMinus, X } from "lucide-react";
+import { Check, CheckCheck, ChevronDown, ChevronUp, Loader2, Pencil, Plus, Trash2, UserCheck, UserMinus, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -155,6 +155,13 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
   const [name, setName] = useState(p.display_name);
   const [level, setLevel] = useState(p.level ?? "");
   const [editPending, startEdit] = useTransition();
+  const [checkPending, startCheck] = useTransition();
+  const isCheckedIn = !!p.checked_in_at;
+
+  const toggleCheckIn = () => startCheck(async () => {
+    const res = await toggleTeamPlayerCheckInAction({ playerId: p.id, tournamentId });
+    if (res?.error) toast.error(res.error);
+  });
 
   const save = () => startEdit(async () => {
     const res = await updateTeamPlayerAction(p.id, { display_name: name, level: level || null }, tournamentId);
@@ -166,7 +173,7 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
   const cancel = () => { setEditing(false); setName(p.display_name); setLevel(p.level ?? ""); };
 
   return (
-    <li className="flex items-center gap-2 text-sm">
+    <li className={`flex items-center gap-2 text-sm rounded px-1 py-0.5 ${isCheckedIn ? "bg-green-500/5 border border-green-500/30" : ""}`}>
       {p.role === "captain" && <Badge className="text-xs px-1 py-0 shrink-0">หัวหน้า</Badge>}
       {editing ? (
         <>
@@ -184,6 +191,14 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
         <>
           <span className="flex-1 truncate">{name}</span>
           {p.level && <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">{p.level}</Badge>}
+          {isOwner && (
+            <Button variant={isCheckedIn ? "default" : "outline"} size="sm"
+              className={`h-6 px-2 text-[10px] shrink-0 ${isCheckedIn ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
+              aria-label={isCheckedIn ? `ยกเลิกเช็คอิน ${name}` : `เช็คอิน ${name}`}
+              disabled={checkPending} onClick={toggleCheckIn}>
+              {checkPending ? <Loader2 className="h-3 w-3 animate-spin" /> : isCheckedIn ? <><UserCheck className="h-3 w-3 mr-1" />พร้อม</> : "เช็คอิน"}
+            </Button>
+          )}
           {isOwner && (
             <>
               <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
@@ -209,17 +224,38 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
   const [addingMember, setAddingMember] = useState(false);
   const [delPending, startDel] = useTransition();
   const [removePending, startRemove] = useTransition();
+  const [bulkPending, startBulk] = useTransition();
+  const checkedInCount = team.players.filter((p) => p.checked_in_at).length;
+  const allCheckedIn = team.players.length > 0 && checkedInCount === team.players.length;
+
+  const toggleBulk = () => startBulk(async () => {
+    const res = await bulkCheckInTeamAction({ teamId: team.id, tournamentId, checkIn: !allCheckedIn });
+    if (res?.error) toast.error(res.error);
+    else toast.success(allCheckedIn ? `ยกเลิกเช็คอินทีม ${team.name}` : `เช็คอินทีม ${team.name} (${res.count} คน)`);
+  });
 
   return (
     <Card>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             {team.color && <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: team.color }} />}
-            <CardTitle className="text-sm">{team.name}</CardTitle>
-            <Badge variant="outline" className="text-xs">{team.players.length} คน</Badge>
+            <CardTitle className="text-sm truncate">{team.name}</CardTitle>
+            <Badge variant="outline" className="text-xs shrink-0">{team.players.length} คน</Badge>
+            {checkedInCount > 0 && (
+              <Badge className={`text-xs shrink-0 ${allCheckedIn ? "bg-green-600 text-white" : "bg-green-500/15 text-green-700 dark:text-green-400"}`}>
+                {checkedInCount}/{team.players.length} พร้อม
+              </Badge>
+            )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
+            {isOwner && team.players.length > 0 && (
+              <Button variant="ghost" size="icon" className="h-7 w-7"
+                aria-label={allCheckedIn ? `ยกเลิกเช็คอินทีม ${team.name}` : `เช็คอินทุกคนในทีม ${team.name}`}
+                disabled={bulkPending} onClick={toggleBulk}>
+                {bulkPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCheck className={`h-3.5 w-3.5 ${allCheckedIn ? "text-green-600" : "text-muted-foreground"}`} />}
+              </Button>
+            )}
             <Button variant="ghost" size="icon" className="h-7 w-7"
               aria-label={open ? "เลื่อนขึ้น" : "เลื่อนลง"}
               onClick={() => { setOpen(!open); setAddingMember(false); }}>
