@@ -538,6 +538,10 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 (Phase 12 DONE — see below.)
 
+### UX polish backlog
+
+- **`cursor: pointer` ทุก clickable** — รวมทุก `<button>`, icon-only Buttons, drag handles, color swatches, tab triggers, EntityLink wrappers, sortable rows. Tailwind v4 default ลบ `cursor-pointer` ออกจาก `<button>` แล้ว ต้องใส่ class ทุกตัวเอง. Audit pass: grep `<Button|<button|onClick=|role="button"` แล้ว apply `cursor-pointer` ที่ shadcn Button base + ที่อื่นที่ตกหล่น (DnD handles, color swatches, custom div onClick).
+
 ## Phase 12 — `require_checkin` (DONE 2026-05-24)
 
 **Goal**: Block `startMatchAction` until every player on both sides has `team_players.checked_in_at IS NOT NULL` when the setting is on. Mirrors the existing `require_court_to_start` pattern but gates per-player.
@@ -568,7 +572,20 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 **Settings tab** (`src/components/tournament/settings-manager.tsx`):
 - New `ToggleRow` under "การจัดคิว" section, after `require_court_to_start`. Wired via `commit(...)` like other toggles.
 
-**No match-queue client gate** (deferred): client doesn't have per-player check-in state in the queue tree. The server gate + toast on `เริ่ม` failure (with the unready player names) is sufficient UX for the first cut. Future polish could thread a `Map<matchId, ready>` from the page.
+**No match-queue client gate** (deferred): client doesn't have per-player check-in state in the queue tree. The server gate + toast on `เริ่ม` failure (with the unready count) is sufficient UX for the first cut. Future polish could thread a `Map<matchId, ready>` from the page.
+
+### Phase 12 Wave A — code-review P0 hardening (2026-05-24)
+
+Closes the 4 most-severe findings from the max-effort review of commit `618e829`:
+
+- migration `20260524000200_rpc_start_match_atomic` — new RPC `start_match_atomic(p_match_id uuid, p_player_ids uuid[]) RETURNS jsonb`. `SECURITY INVOKER` + `search_path = ''`, executable by `service_role` only. Locks the match row with `FOR UPDATE`, re-checks `team_players.checked_in_at IS NULL` count under a row lock, then atomically transitions `pending → in_progress`. Returns `{ ok, reason?, count? }` with reasons `not_found | completed | in_progress | unchecked | status_changed`. Closes the TOCTOU window between the JS-level gate and the prior bare `UPDATE`.
+- `src/lib/actions/matches.ts`:
+  - `collectMatchPlayerIds` now returns a discriminated `MatchPlayerCollection = { ok: true; ids } | { ok: false; reason: "tbd" | "empty_roster" }`. The `isPair` heuristic was changed: a pair-mode match must have BOTH `pair_a_id` AND `pair_b_id` set; same for team mode. Half-populated TBD slots and empty rosters now return explicit reasons. Both DB queries destructure `error` and **throw** on failure (no more silent `[]` defaults).
+  - Replaced `findUncheckedPlayerNames` (returned names) with `countUncheckedPlayers` (`{ count: 'exact', head: true }`) — no PII leak in errors, no extra bandwidth fetching names. Error messages now read `รอเช็คอิน N คน — เปิดแท็บทีมเพื่อเช็คอิน` (count only).
+  - `startMatchAction` — `require_checkin` block now wraps in `try/catch`; explicit error messages for TBD slot and empty roster; the final `UPDATE { status: 'in_progress' }` was replaced with `sb.rpc("start_match_atomic", { p_match_id, p_player_ids })`. Court 23505 collision still surfaces correctly; the RPC's reason union translates to per-case Thai errors.
+  - `recordMatchScoreAction` auto-advance — same atomic RPC for promote; counts `skippedDueToCheckin` and appends it to the audit description (e.g., `... ข้ามคิว 3 แมตช์ (รอเช็คอิน)`); when every candidate is unready, writes a new `auto_advance_skipped` audit row so the queue silence is traceable. Court inherit moved to a follow-up update post-RPC (the RPC sets status + started_at only; the partial unique index on `(tournament_id, court) WHERE status='in_progress'` still guards collisions on the follow-up).
+
+**Findings still open** (Wave B/C): roster-wide gate in team mode (V1), bulk overwrite of timestamps (V5), cross-device bulk race (S7), CSV upsert preserves stale check-in (S4), N+1 auto-advance (V9), `revalidateAllTournamentPaths` error swallow + drift (V8), missing court/stats path revalidation (S8). See review notes from the 2026-05-24 audit.
 
 **Audit events** added: `player_checked_in`, `player_checked_out`, `team_bulk_checked_in`, `team_bulk_checked_out`.
 

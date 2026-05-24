@@ -10,6 +10,17 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 - vitest 269/269 pass · `tsc --noEmit` clean · migration `20260524000100_add_team_players_checked_in_at` applied to prod via MCP. Per-player + bulk check-in UI live in team tab; `startMatchAction` + auto-advance gated by `settings.require_checkin`.
 
+### 2026-05-24 — Phase 12 Wave A code-review P0 hardening
+
+- vitest 269/269 pass · `tsc --noEmit` clean · migration `20260524000200_rpc_start_match_atomic` applied via MCP. Closes 4 P0 from the max-effort review of commit `618e829`:
+  - **P0 #1 (matches.ts:137)** Helper DB error swallow → `collectMatchPlayerIds` + `countUncheckedPlayers` now `throw` on error; `startMatchAction` catches and returns "ตรวจสอบสถานะเช็คอินไม่สำเร็จ".
+  - **P0 #2 (matches.ts:1763)** Start-action TOCTOU → atomic RPC `start_match_atomic` row-locks the match + re-verifies check-in under the lock + transitions status in one transaction.
+  - **P0 #3 (matches.ts:1720)** PII leak via display_name list → replaced names with count (`รอเช็คอิน N คน`); `findUncheckedPlayerNames` removed in favor of `countUncheckedPlayers` (head:true, no rows fetched).
+  - **P0 #4 (matches.ts:110)** `isPair` conflate → discriminated `MatchPlayerCollection` requires BOTH sides populated; TBD slot and empty-roster cases now surface as explicit errors ("ยังกำหนดทั้งสองฝั่งไม่ครบ" / "ทีมไม่มีผู้เล่น").
+  - Bonus: auto-advance now writes audit description `ข้ามคิว N แมตช์ (รอเช็คอิน)` when it skipped queue items; emits `auto_advance_skipped` audit row when every candidate was unready.
+
+Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upsert preserves check-in, N+1 auto-advance, revalidate error swallow, court/stats revalidate gap) still open — see spec.md "Phase 12 Wave A" section.
+
 ## Resolved
 
 ### 2026-05-24 — `57c5606` Extra-high effort code review (15 findings)
