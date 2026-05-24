@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
-import { gameWinner, sumGameScores, computeStandings } from "@/lib/tournament/scoring";
+import { gameWinner, computeStandings } from "@/lib/tournament/scoring";
 import type { DivisionStats } from "@/lib/tournament/entity-stats";
 import type { PairWithPlayers, Match } from "@/lib/types";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
@@ -19,12 +19,11 @@ function RecentMatchRow({
   const sideA = match.pair_a_id ? competitorById.get(match.pair_a_id) : undefined;
   const sideB = match.pair_b_id ? competitorById.get(match.pair_b_id) : undefined;
   const rawWinner = gameWinner(match.games);
-  const totals = sumGameScores(match.games);
 
   const gamesScore = match.games.map((g) => `${g.a}-${g.b}`).join(", ");
 
   return (
-    <div className="grid grid-cols-[2rem_1fr_auto_1fr] sm:grid-cols-[2rem_1fr_auto_1fr_auto] items-center gap-x-2 px-4 py-2.5 border-b last:border-b-0 text-sm">
+    <div className="grid grid-cols-[2rem_1fr_auto_1fr] items-center gap-x-2 px-4 py-2.5 border-b last:border-b-0 text-sm">
       <span className="text-muted-foreground text-xs tabular-nums">#{match.match_number}</span>
       <span
         className={`truncate min-w-0 ${rawWinner === "a" ? "font-semibold" : "text-muted-foreground"}`}
@@ -37,8 +36,8 @@ function RecentMatchRow({
           "—"
         )}
       </span>
-      <span className="tabular-nums text-center font-medium px-1">
-        {totals.a}–{totals.b}
+      <span className="tabular-nums text-center text-xs text-muted-foreground px-1">
+        {gamesScore || "—"}
       </span>
       <span
         className={`truncate min-w-0 text-right ${rawWinner === "b" ? "font-semibold" : "text-muted-foreground"}`}
@@ -51,7 +50,6 @@ function RecentMatchRow({
           "—"
         )}
       </span>
-      <span className="text-xs text-muted-foreground hidden sm:block text-right">{gamesScore}</span>
     </div>
   );
 }
@@ -225,12 +223,11 @@ export function DivisionStatsView({
             <CardTitle className="text-base">แมตช์ล่าสุด</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="grid grid-cols-[2rem_1fr_auto_1fr] sm:grid-cols-[2rem_1fr_auto_1fr_auto] gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium">
+            <div className="grid grid-cols-[2rem_1fr_auto_1fr] gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium">
               <span>#</span>
               <span>คู่ A</span>
-              <span className="text-center px-1">คะแนน</span>
+              <span className="text-center px-1">เกม</span>
               <span className="text-right">คู่ B</span>
-              <span className="hidden sm:block text-right">เกม</span>
             </div>
             {recentMatches.map((m) => (
               <RecentMatchRow key={m.id} match={m} competitorById={competitorById} />
