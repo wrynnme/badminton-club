@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { generatePairMatchesAction } from "@/lib/actions/matches";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { computeStandings, aggregatePairStandingsToTeams } from "@/lib/tournament/scoring";
 import type { Match, PairWithPlayers, Team, TeamWithPlayers } from "@/lib/types";
 import { ChevronDown, Loader2, Swords } from "lucide-react";
@@ -257,7 +258,9 @@ export function PairStage({
                   return (
                     <div key={String(divKey)}>
                       <p className={`text-xs font-medium mb-2 ${tone.text}`}>
-                        {divisionLabelTh(divKey!)}
+                        <EntityLink entityType="division" entityId={String(divKey)}>
+                          {divisionLabelTh(divKey!)}
+                        </EntityLink>
                       </p>
                       <Card>
                         <CardContent className="pt-3">

@@ -4,6 +4,7 @@ import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { addTeamPlayerAction, bulkCheckInTeamAction, createTeamAction, deleteTeamAction, removeTeamPlayerAction, resetAllCheckInsAction, toggleTeamPlayerCheckInAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
@@ -246,7 +247,9 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 min-w-0">
             {team.color && <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: team.color }} />}
-            <CardTitle className="text-sm truncate">{team.name}</CardTitle>
+            <CardTitle className="text-sm truncate">
+              <EntityLink entityType="team" entityId={team.id}>{team.name}</EntityLink>
+            </CardTitle>
             <Badge variant="outline" className="text-xs shrink-0">{team.players.length} คน</Badge>
             {checkedInCount > 0 && (
               <Badge className={`text-xs shrink-0 ${allCheckedIn ? "bg-green-600 text-white" : "bg-green-500/15 text-green-700 dark:text-green-400"}`}>
