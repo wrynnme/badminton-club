@@ -21,6 +21,18 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upsert preserves check-in, N+1 auto-advance, revalidate error swallow, court/stats revalidate gap) still open — see spec.md "Phase 12 Wave A" section.
 
+### 2026-05-24 — Phase 12 Wave B+C correctness + perf
+
+- vitest 269/269 pass · `tsc --noEmit` clean. Closes 6 findings from the 2026-05-24 review:
+  - **V5/S7 — Bulk idempotent**: `bulkCheckInTeamAction` adds `.is("checked_in_at", null)` / `.not(...)` predicates → preserves arrival timestamps; cross-device race becomes harmless. Returns `{ noop: true }` when nothing changed; client toasts "ทุกคนพร้อมอยู่แล้ว".
+  - **S4 — Reset lifecycle**: new `resetAllCheckInsAction` + "รีเซ็ตเช็คอิน" Button in TeamManager header (owner+co-admin, confirm prompt with current count). Audit event `tournament_checkins_reset`.
+  - **V8 — Revalidate error**: `revalidateAllTournamentPaths` now logs the share_token lookup error and early-returns (mirrors matches.ts pattern).
+  - **S8 — Path coverage**: `revalidatePath('/t/[token]', 'layout')` invalidates the entire token subtree — court/bracket/stats included automatically.
+  - **V9 — Batch auto-advance**: 3 round-trips replace up to 40. Pre-fetch pair compositions + team rosters + unchecked set, intersect per candidate in JS. Worst-case latency ~1.2-3.2s → ~50-200ms.
+  - **V1 — Roster-wide gate**: documented as design intent. Mitigated via `bulkCheckInTeamAction` + `resetAllCheckInsAction`. No code change.
+
+All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
+
 ## Resolved
 
 ### 2026-05-24 — `57c5606` Extra-high effort code review (15 findings)

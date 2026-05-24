@@ -699,10 +699,15 @@ async function revalidateAllTournamentPaths(
   tournamentId: string
 ) {
   revalidatePath(`/tournaments/${tournamentId}`);
-  const { data } = await sb.from("tournaments").select("share_token").eq("id", tournamentId).maybeSingle();
+  const { data, error } = await sb.from("tournaments").select("share_token").eq("id", tournamentId).maybeSingle();
+  if (error) {
+    console.error("revalidateAllTournamentPaths share_token lookup:", error);
+    return;
+  }
   if (data?.share_token) {
-    revalidatePath(`/t/${data.share_token}`);
-    revalidatePath(`/t/${data.share_token}/tv`);
+    // 'layout' invalidates the entire /t/[token] subtree — covers /tv,
+    // /bracket, /court/[n], and /stats/{pair|player|team|division}/[id].
+    revalidatePath(`/t/${data.share_token}`, "layout");
   }
 }
 
@@ -756,14 +761,21 @@ export async function bulkCheckInTeamAction(input: { teamId: string; tournamentI
   if (!team || team.tournament_id !== input.tournamentId) return { error: "ไม่พบทีม" };
 
   const next = input.checkIn ? new Date().toISOString() : null;
-  const { data: updated, error } = await sb
+  // Idempotent: only touch rows whose current state differs. Preserves existing
+  // arrival timestamps (V5) and makes the action safe under cross-device races (S7).
+  let q = sb
     .from("team_players")
     .update({ checked_in_at: next })
-    .eq("team_id", input.teamId)
-    .select("id");
+    .eq("team_id", input.teamId);
+  q = input.checkIn ? q.is("checked_in_at", null) : q.not("checked_in_at", "is", null);
+  const { data: updated, error } = await q.select("id");
   if (error) {
     console.error("[bulkCheckInTeamAction]", error);
     return { error: "บันทึกสถานะเช็คอินไม่สำเร็จ" };
+  }
+  const count = updated?.length ?? 0;
+  if (count === 0) {
+    return { ok: true, count: 0, noop: true };
   }
 
   await writeAuditLog({
@@ -773,9 +785,52 @@ export async function bulkCheckInTeamAction(input: { teamId: string; tournamentI
     event_type: input.checkIn ? "team_bulk_checked_in" : "team_bulk_checked_out",
     entity_type: "team",
     entity_id: input.teamId,
-    description: `${input.checkIn ? "เช็คอิน" : "ยกเลิกเช็คอิน"}ทีม ${team.name} (${updated?.length ?? 0} คน)`,
+    description: `${input.checkIn ? "เช็คอิน" : "ยกเลิกเช็คอิน"}ทีม ${team.name} (${count} คน)`,
   });
 
   await revalidateAllTournamentPaths(sb, input.tournamentId);
-  return { ok: true, count: updated?.length ?? 0 };
+  return { ok: true, count };
+}
+
+export async function resetAllCheckInsAction(tournamentId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+  const { data: teams, error: teamsErr } = await sb
+    .from("teams")
+    .select("id")
+    .eq("tournament_id", tournamentId);
+  if (teamsErr) {
+    console.error("[resetAllCheckInsAction] teams lookup:", teamsErr);
+    return { error: "โหลดทีมไม่สำเร็จ" };
+  }
+  const teamIds = (teams ?? []).map((t) => t.id);
+  if (teamIds.length === 0) return { ok: true, count: 0, noop: true };
+
+  const { data: updated, error } = await sb
+    .from("team_players")
+    .update({ checked_in_at: null })
+    .in("team_id", teamIds)
+    .not("checked_in_at", "is", null)
+    .select("id");
+  if (error) {
+    console.error("[resetAllCheckInsAction]", error);
+    return { error: "รีเซ็ตเช็คอินไม่สำเร็จ" };
+  }
+  const count = updated?.length ?? 0;
+
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "tournament_checkins_reset",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: `รีเซ็ตเช็คอินทั้งหมด (${count} คน)`,
+  });
+
+  await revalidateAllTournamentPaths(sb, tournamentId);
+  return { ok: true, count };
 }

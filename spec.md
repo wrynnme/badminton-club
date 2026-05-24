@@ -587,6 +587,40 @@ Closes the 4 most-severe findings from the max-effort review of commit `618e829`
 
 **Findings still open** (Wave B/C): roster-wide gate in team mode (V1), bulk overwrite of timestamps (V5), cross-device bulk race (S7), CSV upsert preserves stale check-in (S4), N+1 auto-advance (V9), `revalidateAllTournamentPaths` error swallow + drift (V8), missing court/stats path revalidation (S8). See review notes from the 2026-05-24 audit.
 
+### Phase 12 Wave B+C — code-review correctness + perf (2026-05-24)
+
+Closes Wave B (correctness) and Wave C (perf) findings.
+
+**V5 + S7 — Bulk idempotent UPDATE** (`tournaments.ts`):
+- `bulkCheckInTeamAction` now appends `.is("checked_in_at", null)` when `checkIn=true` and `.not("checked_in_at", "is", null)` when `checkIn=false`. Existing arrival timestamps survive subsequent bulk presses (V5). Cross-device race (S7) is harmless — both calls become idempotent. New return shape `{ ok: true, count: 0, noop: true }` when nothing changed; client surfaces "ทุกคนพร้อมอยู่แล้ว" / "ยังไม่มีคนพร้อม" via `toast.info`.
+- `toggleBulk` captures `intendCheckIn = !allCheckedIn` at click time before await so the resolved toast reads the intent at dispatch, not stale post-refresh state.
+
+**S4 — Manual check-in lifecycle reset** (`tournaments.ts` + `team-manager.tsx`):
+- New action `resetAllCheckInsAction(tournamentId)` — owner+co-admin, sets all `team_players.checked_in_at` to NULL across every team in the tournament. Returns `{ ok, count, noop? }`. Audit event `tournament_checkins_reset` with row count.
+- `TeamManager` header gains "รีเซ็ตเช็คอิน" Button (visible only when `totalCheckedIn > 0`) with `confirm()` prompt naming the current count.
+- New "Total พร้อม" Badge in the header next to the team count Badge.
+- Note: `importPlayersCsvAction` UPSERT already preserves `checked_in_at` (the update specifies columns explicitly, not `**spread`); the reset action gives the owner a manual lever between tournaments.
+
+**V8 — `revalidateAllTournamentPaths` error capture + S8 broaden paths** (`tournaments.ts`):
+- Now destructures `error` and `console.error("revalidateAllTournamentPaths share_token lookup:", error)` + early-returns when the lookup fails (mirrors `revalidateTournamentPaths` in `matches.ts`).
+- Replaced the explicit `revalidatePath('/t/X')` + `revalidatePath('/t/X/tv')` pair with a single `revalidatePath('/t/X', 'layout')` so the entire token subtree is invalidated — covers `/court/[n]`, `/bracket`, and `/stats/{pair|player|team|division}/[id]` automatically (S8).
+
+**V9 — Batch auto-advance check-in** (`matches.ts`):
+- The auto-advance loop previously fired `collectMatchPlayerIds` (1 RTT) + `countUncheckedPlayers` (1 RTT) per candidate, up to 20 candidates = 40 sequential round-trips per score.
+- New batched pre-fetch: 3 round-trips total when `require_checkin=true`:
+  1. `pairs WHERE id IN (...all candidate pair ids)` — composition map
+  2. `team_players WHERE team_id IN (...all candidate team ids)` — roster map
+  3. `team_players WHERE id IN (...all involved players) AND checked_in_at IS NULL` — unchecked set
+- Then iterates `populated` in JS, picks the first candidate with zero `unchecked.has(id)`. Same `nextPending` semantics, same `skippedDueToCheckin` accounting, same audit log behaviour. Worst-case latency drops from ~1.2-3.2s to ~50-200ms.
+- Falls through safely on any batch query failure — `nextPending` remains undefined, auto-advance silently skips that score.
+
+**V1 — Roster-wide gate (DESIGN, no code change)**:
+- In team mode, `require_checkin` gates on the full roster of both teams (every `team_players.team_id` row). This is intentional: there's no "lineup" concept in the schema, and the flag's invariant ("nobody plays until everyone is checked in") is uniform across pair + team modes. Mitigation already in place via `bulkCheckInTeamAction` (one click checks in the whole team) + `resetAllCheckInsAction` (one click resets). UI exposes both. If a tournament wants partial-roster gating, recommended workflow is to leave bench-only members un-checked-in by design — but they will currently block the start. Documented as known tradeoff; do not "fix" without an explicit lineup feature.
+
+**New event types**: `tournament_checkins_reset`, plus existing `team_bulk_checked_in/out` semantics tightened (count reflects only rows actually changed).
+
+Tests: 269/269 vitest pass; tsc clean.
+
 **Audit events** added: `player_checked_in`, `player_checked_out`, `team_bulk_checked_in`, `team_bulk_checked_out`.
 
 **Tests**: `settings.test.ts` updated — `require_checkin` default false. `competitor.test.ts` + `entity-stats.test.ts` fixtures updated with `checked_in_at: null`. Vitest 269/269 passing; `tsc --noEmit` clean.

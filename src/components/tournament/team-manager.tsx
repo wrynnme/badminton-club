@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { addTeamPlayerAction, bulkCheckInTeamAction, createTeamAction, deleteTeamAction, removeTeamPlayerAction, toggleTeamPlayerCheckInAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
+import { addTeamPlayerAction, bulkCheckInTeamAction, createTeamAction, deleteTeamAction, removeTeamPlayerAction, resetAllCheckInsAction, toggleTeamPlayerCheckInAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
 import { fieldErrors } from "@/lib/form-errors";
 import type { TeamWithPlayers } from "@/lib/types";
 import { useForm } from "@tanstack/react-form";
-import { Check, CheckCheck, ChevronDown, ChevronUp, Loader2, Pencil, Plus, Trash2, UserCheck, UserMinus, X } from "lucide-react";
+import { Check, CheckCheck, ChevronDown, ChevronUp, Loader2, Pencil, Plus, RotateCcw, Trash2, UserCheck, UserMinus, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import * as z from "zod";
@@ -228,11 +228,17 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
   const checkedInCount = team.players.filter((p) => p.checked_in_at).length;
   const allCheckedIn = team.players.length > 0 && checkedInCount === team.players.length;
 
-  const toggleBulk = () => startBulk(async () => {
-    const res = await bulkCheckInTeamAction({ teamId: team.id, tournamentId, checkIn: !allCheckedIn });
-    if (res?.error) toast.error(res.error);
-    else toast.success(allCheckedIn ? `ยกเลิกเช็คอินทีม ${team.name}` : `เช็คอินทีม ${team.name} (${res.count} คน)`);
-  });
+  const toggleBulk = () => {
+    // Capture intent at click time — `allCheckedIn` may shift between the
+    // async dispatch and resolution under realtime / cross-device updates.
+    const intendCheckIn = !allCheckedIn;
+    startBulk(async () => {
+      const res = await bulkCheckInTeamAction({ teamId: team.id, tournamentId, checkIn: intendCheckIn });
+      if (res?.error) { toast.error(res.error); return; }
+      if (res.noop) { toast.info(intendCheckIn ? "ทุกคนพร้อมอยู่แล้ว" : "ยังไม่มีคนพร้อม"); return; }
+      toast.success(intendCheckIn ? `เช็คอินทีม ${team.name} (${res.count} คน)` : `ยกเลิกเช็คอินทีม ${team.name} (${res.count} คน)`);
+    });
+  };
 
   return (
     <Card>
@@ -316,7 +322,19 @@ export function TeamManager({ tournamentId, teams, isOwner, teamCount }: {
   teamCount: number;
 }) {
   const [adding, setAdding] = useState(false);
+  const [resetPending, startReset] = useTransition();
   const remaining = teamCount - teams.length;
+  const totalCheckedIn = teams.reduce((n, t) => n + t.players.filter((p) => p.checked_in_at).length, 0);
+
+  const resetAll = () => {
+    if (!confirm(`รีเซ็ตเช็คอินทุกทีมในทัวร์นี้? (${totalCheckedIn} คนปัจจุบัน)`)) return;
+    startReset(async () => {
+      const res = await resetAllCheckInsAction(tournamentId);
+      if (res?.error) toast.error(res.error);
+      else if (res.noop) toast.info("ไม่มีใครพร้อมอยู่ตอนนี้");
+      else toast.success(`รีเซ็ตเช็คอิน ${res.count} คน`);
+    });
+  };
 
   return (
     <div className="space-y-3">
@@ -324,9 +342,18 @@ export function TeamManager({ tournamentId, teams, isOwner, teamCount }: {
         <div className="flex items-center gap-2">
           <h2 className="font-semibold">ทีม</h2>
           <Badge variant="outline">{teams.length}/{teamCount}</Badge>
+          {totalCheckedIn > 0 && (
+            <Badge className="bg-green-500/15 text-green-700 dark:text-green-400">{totalCheckedIn} พร้อม</Badge>
+          )}
         </div>
         {isOwner && (
           <div className="flex items-center gap-2">
+            {totalCheckedIn > 0 && (
+              <Button size="sm" variant="outline" disabled={resetPending} onClick={resetAll}>
+                {resetPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-1" />}
+                รีเซ็ตเช็คอิน
+              </Button>
+            )}
             <CsvImportDialog tournamentId={tournamentId} onlyMode="players" />
             {remaining > 0 && !adding && (
               <Button size="sm" variant="outline" onClick={() => setAdding(true)}>

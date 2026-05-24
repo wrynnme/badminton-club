@@ -1194,21 +1194,91 @@ export async function recordMatchScoreAction(input: {
       let nextPending: (typeof populated)[number] | undefined;
       let promotedPlayerIds: string[] = [];
       let skippedDueToCheckin = 0;
-      for (const cand of populated) {
-        if (settings.require_checkin) {
-          try {
-            const collected = await collectMatchPlayerIds(sb, cand);
-            if (!collected.ok) { skippedDueToCheckin++; continue; }
-            const notReadyCount = await countUncheckedPlayers(sb, collected.ids);
-            if (notReadyCount > 0) { skippedDueToCheckin++; continue; }
-            promotedPlayerIds = collected.ids;
-          } catch (err) {
-            console.error("[auto_advance_next] checkin probe failed:", err);
-            continue;
+
+      // Batch check-in resolution (V9 fix): pre-fetch pair compositions,
+      // team rosters, and unchecked player IDs in 3 round-trips total, then
+      // iterate `populated` in JS. Was 40 sequential awaits per score.
+      const candPlayerIds = new Map<string, string[]>();
+      if (settings.require_checkin && populated.length > 0) {
+        try {
+          const allPairIds = [...new Set(
+            populated.flatMap((c) => [c.pair_a_id, c.pair_b_id].filter(Boolean) as string[])
+          )];
+          const allTeamIds = [...new Set(
+            populated.flatMap((c) => [c.team_a_id, c.team_b_id].filter(Boolean) as string[])
+          )];
+
+          const pairPlayers = new Map<string, string[]>();
+          if (allPairIds.length > 0) {
+            const { data, error } = await sb
+              .from("pairs")
+              .select("id, player_id_1, player_id_2")
+              .in("id", allPairIds);
+            if (error) throw new Error(`auto-advance pairs: ${error.message}`);
+            for (const p of data ?? []) {
+              const ids: string[] = [];
+              if (p.player_id_1) ids.push(p.player_id_1);
+              if (p.player_id_2) ids.push(p.player_id_2);
+              pairPlayers.set(p.id, ids);
+            }
           }
+
+          const teamRoster = new Map<string, string[]>();
+          if (allTeamIds.length > 0) {
+            const { data, error } = await sb
+              .from("team_players")
+              .select("id, team_id")
+              .in("team_id", allTeamIds);
+            if (error) throw new Error(`auto-advance team_players: ${error.message}`);
+            for (const tp of data ?? []) {
+              const arr = teamRoster.get(tp.team_id) ?? [];
+              arr.push(tp.id);
+              teamRoster.set(tp.team_id, arr);
+            }
+          }
+
+          const involved = new Set<string>();
+          for (const c of populated) {
+            const hasPair = !!(c.pair_a_id || c.pair_b_id);
+            const ids = new Set<string>();
+            if (hasPair) {
+              if (c.pair_a_id) pairPlayers.get(c.pair_a_id)?.forEach((id) => ids.add(id));
+              if (c.pair_b_id) pairPlayers.get(c.pair_b_id)?.forEach((id) => ids.add(id));
+            } else {
+              if (c.team_a_id) (teamRoster.get(c.team_a_id) ?? []).forEach((id) => ids.add(id));
+              if (c.team_b_id) (teamRoster.get(c.team_b_id) ?? []).forEach((id) => ids.add(id));
+            }
+            const arr = [...ids];
+            candPlayerIds.set(c.id, arr);
+            for (const id of arr) involved.add(id);
+          }
+
+          const uncheckedSet = new Set<string>();
+          if (involved.size > 0) {
+            const { data, error } = await sb
+              .from("team_players")
+              .select("id")
+              .in("id", [...involved])
+              .is("checked_in_at", null);
+            if (error) throw new Error(`auto-advance unchecked: ${error.message}`);
+            for (const tp of data ?? []) uncheckedSet.add(tp.id);
+          }
+
+          for (const cand of populated) {
+            const ids = candPlayerIds.get(cand.id) ?? [];
+            if (ids.length === 0) { skippedDueToCheckin++; continue; }
+            const hasUnchecked = ids.some((id) => uncheckedSet.has(id));
+            if (hasUnchecked) { skippedDueToCheckin++; continue; }
+            nextPending = cand;
+            promotedPlayerIds = ids;
+            break;
+          }
+        } catch (err) {
+          console.error("[auto_advance_next] batch checkin probe failed:", err);
+          // Fall through with nextPending undefined; auto-advance skips safely.
         }
-        nextPending = cand;
-        break;
+      } else {
+        nextPending = populated[0];
       }
       if (nextPending?.id) {
         // Atomic promote: row lock + (optional) checkin re-verify + status update.
