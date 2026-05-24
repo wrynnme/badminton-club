@@ -82,7 +82,10 @@ export function TeamStatsView({
   }
 
   const pairRows = Array.from(pairStatsMap.values()).sort(
-    (a, b) => b.wins - a.wins || b.played - a.played
+    (a, b) =>
+      b.leaguePoints - a.leaguePoints ||
+      b.wins - a.wins ||
+      b.played - a.played
   );
 
   // H2H vs opponent teams

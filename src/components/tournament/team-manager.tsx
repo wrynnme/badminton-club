@@ -237,7 +237,7 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
       const res = await bulkCheckInTeamAction({ teamId: team.id, tournamentId, checkIn: intendCheckIn });
       if (res?.error) { toast.error(res.error); return; }
       if (res.noop) { toast.info(intendCheckIn ? "ทุกคนพร้อมอยู่แล้ว" : "ยังไม่มีคนพร้อม"); return; }
-      toast.success(intendCheckIn ? `เช็คอินทีม ${team.name} (${res.count} คน)` : `ยกเลิกเช็คอินทีม ${team.name} (${res.count} คน)`);
+      toast.success(intendCheckIn ? `เช็คอินทีม ${team.name} +${res.count} คน` : `ยกเลิกเช็คอินทีม ${team.name} -${res.count} คน`);
     });
   };
 

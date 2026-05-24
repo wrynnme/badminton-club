@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
-import { gameWinner, computeStandings } from "@/lib/tournament/scoring";
+import { gameWinner, sumGameScores, computeStandings } from "@/lib/tournament/scoring";
 import type { DivisionStats } from "@/lib/tournament/entity-stats";
 import type { PairWithPlayers, Match, Team } from "@/lib/types";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
@@ -84,8 +84,9 @@ export function DivisionStatsView({
         )
       : [];
 
-  // Team breakdown: aggregate the standings rows by pair.team_id so the
-  // page shows which teams contributed to this division and how they scored.
+  // Team breakdown: aggregate from raw matches so intra-team matches
+  // (both pairs in same team) count exactly ONCE per team, not double-
+  // counted via the per-pair standings rows.
   const pairTeamById = new Map(divisionPairs.map((p) => [p.id, p.team_id]));
   type TeamRow = {
     teamId: string;
@@ -100,11 +101,11 @@ export function DivisionStatsView({
     pointDiff: number;
   };
   const teamMap = new Map<string, TeamRow>();
-  for (const row of standings) {
-    const tId = pairTeamById.get(row.competitorId);
-    if (!tId) continue;
+  const ensureTeamRow = (tId: string): TeamRow => {
+    const cached = teamMap.get(tId);
+    if (cached) return cached;
     const t = teamById?.get(tId);
-    const ex = teamMap.get(tId) ?? {
+    const row: TeamRow = {
       teamId: tId,
       name: t?.name ?? tId,
       color: t?.color ?? null,
@@ -116,14 +117,44 @@ export function DivisionStatsView({
       leaguePoints: 0,
       pointDiff: 0,
     };
-    ex.pairs += 1;
-    ex.played += row.played;
-    ex.wins += row.wins;
-    ex.losses += row.losses;
-    ex.draws += row.draws;
-    ex.leaguePoints += row.leaguePoints;
-    ex.pointDiff += row.pointDiff;
-    teamMap.set(tId, ex);
+    teamMap.set(tId, row);
+    return row;
+  };
+  // Pair count = pairs from this team that appear in the division roster.
+  for (const p of divisionPairs) {
+    if (p.team_id) ensureTeamRow(p.team_id).pairs += 1;
+  }
+  // Walk completed matches in the division; skip intra-team. For inter-team,
+  // attribute played/W/L/D + pointDiff to each side's team exactly once per match.
+  for (const m of stats.matches) {
+    if (m.games.length === 0) continue;
+    if (!m.pair_a_id || !m.pair_b_id) continue;
+    const teamA = pairTeamById.get(m.pair_a_id);
+    const teamB = pairTeamById.get(m.pair_b_id);
+    if (!teamA || !teamB) continue;
+    if (teamA === teamB) continue; // intra-team: skip
+    const rowA = ensureTeamRow(teamA);
+    const rowB = ensureTeamRow(teamB);
+    const winner = gameWinner(m.games);
+    const totals = sumGameScores(m.games);
+    rowA.played += 1;
+    rowB.played += 1;
+    rowA.pointDiff += totals.a - totals.b;
+    rowB.pointDiff += totals.b - totals.a;
+    if (winner === "a") {
+      rowA.wins += 1;
+      rowB.losses += 1;
+      rowA.leaguePoints += 3;
+    } else if (winner === "b") {
+      rowB.wins += 1;
+      rowA.losses += 1;
+      rowB.leaguePoints += 3;
+    } else {
+      rowA.draws += 1;
+      rowB.draws += 1;
+      rowA.leaguePoints += 1;
+      rowB.leaguePoints += 1;
+    }
   }
   const teamRows = [...teamMap.values()].sort(
     (a, b) => b.leaguePoints - a.leaguePoints || b.pointDiff - a.pointDiff

@@ -275,11 +275,10 @@ export async function updateTournamentSettingsAction(
     });
   }
 
-  revalidatePath(`/tournaments/${tournamentId}`);
-  if (row.share_token) {
-    revalidatePath(`/t/${row.share_token}`);
-    revalidatePath(`/t/${row.share_token}/tv`);
-  }
+  // Use layout-mode revalidate so the entire /t/[token] subtree refreshes —
+  // covers /tv, /bracket, /court/[n], and /stats/{...}/[id] (settings affect
+  // realtime, line_notify, color_summary, etc. across all of those).
+  await revalidateAllTournamentPaths(sb, tournamentId);
   return { ok: true, settings: merged };
 }
 
@@ -775,6 +774,9 @@ export async function bulkCheckInTeamAction(input: { teamId: string; tournamentI
   }
   const count = updated?.length ?? 0;
   if (count === 0) {
+    // Still revalidate so any client looking at a stale snapshot
+    // (cross-device race) gets a fresh render after dispatch.
+    await revalidateAllTournamentPaths(sb, input.tournamentId);
     return { ok: true, count: 0, noop: true };
   }
 
@@ -785,7 +787,7 @@ export async function bulkCheckInTeamAction(input: { teamId: string; tournamentI
     event_type: input.checkIn ? "team_bulk_checked_in" : "team_bulk_checked_out",
     entity_type: "team",
     entity_id: input.teamId,
-    description: `${input.checkIn ? "เช็คอิน" : "ยกเลิกเช็คอิน"}ทีม ${team.name} (${count} คน)`,
+    description: `${input.checkIn ? "เช็คอิน" : "ยกเลิกเช็คอิน"}ทีม ${team.name} ${input.checkIn ? "+" : "-"}${count} คน`,
   });
 
   await revalidateAllTournamentPaths(sb, input.tournamentId);
@@ -820,6 +822,11 @@ export async function resetAllCheckInsAction(tournamentId: string) {
     return { error: "รีเซ็ตเช็คอินไม่สำเร็จ" };
   }
   const count = updated?.length ?? 0;
+  if (count === 0) {
+    // Nobody was checked in — skip audit + revalidate noise. Signal noop so
+    // the client surfaces toast.info instead of toast.success "0 คน".
+    return { ok: true, count: 0, noop: true };
+  }
 
   await writeAuditLog({
     tournament_id: tournamentId,
