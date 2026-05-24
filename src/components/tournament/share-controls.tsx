@@ -20,10 +20,17 @@ export function ShareControls({
   tournamentId,
   shareToken,
   appUrl,
+  isOwner = true,
 }: {
   tournamentId: string;
   shareToken: string | null;
   appUrl: string;
+  /**
+   * When false, the component is read-only — co-admins see + copy + QR
+   * but the generate/revoke buttons are hidden. Server actions still
+   * enforce owner-only at the action layer.
+   */
+  isOwner?: boolean;
 }) {
   const [token, setToken] = useState(shareToken);
   const [copied, setCopied] = useState(false);
@@ -80,15 +87,19 @@ export function ShareControls({
               </div>
             </DialogContent>
           </Dialog>
-          <Button size="sm" variant="outline" className="h-8 shrink-0 text-destructive hover:text-destructive" aria-label="เพิกถอนลิงก์" onClick={revoke}>
-            <Link2Off className="h-3.5 w-3.5" />
-          </Button>
+          {isOwner && (
+            <Button size="sm" variant="outline" className="h-8 shrink-0 text-destructive hover:text-destructive" aria-label="เพิกถอนลิงก์" onClick={revoke} disabled={isPending}>
+              <Link2Off className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
-      ) : (
+      ) : isOwner ? (
         <Button size="sm" variant="outline" onClick={generate} className="self-start" disabled={isPending}>
           {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
           {isPending ? "กำลังสร้าง..." : "สร้างลิงก์แชร์"}
         </Button>
+      ) : (
+        <p className="text-xs text-muted-foreground">ยังไม่ได้สร้างลิงก์แชร์ — ขอเจ้าของทัวร์สร้างให้</p>
       )}
       {shareUrl && (
         <p className="text-xs text-muted-foreground">ลิงก์นี้ดูได้โดยไม่ต้อง login</p>
