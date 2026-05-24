@@ -83,7 +83,7 @@ function MatchHistoryRow({
           <span className="text-muted-foreground">—</span>
         )}
       </span>
-      <span className={RESULT_TEXT_CLASS[result]}>{RESULT_LABEL_TH[result]}</span>
+      <span className={`text-center ${RESULT_TEXT_CLASS[result]}`}>{RESULT_LABEL_TH[result]}</span>
       <span className="tabular-nums text-right font-medium">
         {myPoints}–{oppPoints}
       </span>
@@ -149,7 +149,7 @@ export function MatchHistoryList({
               <span>#</span>
               {hasMyCol && <span>{myColumnLabel ?? ""}</span>}
               <span>คู่แข่ง</span>
-              <span>ผล</span>
+              <span className="text-center">ผล</span>
               <span className="text-right">คะแนน</span>
               <span className="hidden sm:block">เกม</span>
             </div>
