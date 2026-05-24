@@ -4,44 +4,61 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-### 2026-05-24 — Code review pass (entity stats + per-court ref view)
-
-**P1 — Bugs**
-
-- **[P1] BYE matches counted as draws in entity-stats** — `src/lib/tournament/entity-stats.ts:58-101, 170-295, 324-426`. `gameWinner([])` returns `"draw"` because `aWins=0===bWins=0`. BYE walkovers have `games=[]` + `status=completed`, so `computePairStats` / `computePlayerStats` / `computeTeamStats` increment `draws++` and `streak={"D"}` for every BYE the entity received. `computeStandings` in scoring.ts is correct because of `if (!aId || !bId) continue` guard. Fix: skip BYE in each loop — `if (m.games.length === 0) continue;` Add regression test.
-
-**P1 — UI dedup refactor (~750 LOC removable)**
-
-- **[P1] Dedup stats view components** — 8 patterns repeated 3-5 sites each across `pair-stats-view.tsx` / `player-stats-view.tsx` / `team-stats-view.tsx` / `division-stats-view.tsx`. Extract: `streak-pill.tsx`, `stat-header-cards.tsx`, `match-history-list.tsx`, `stats-table.tsx`. Plus `src/lib/tournament/result-display.ts` for `RESULT_LABEL_TH` / `RESULT_TEXT_CLASS` / `formatWinRate` / `formatWlLabel`.
-- **[P1] Dedup stats page boilerplate (8 pages × ~70 LOC)** — admin + public × 4 entities. Extract `loadStatsTournamentByAdmin(id, session)` / `loadStatsTournamentByToken(token)` + `<StatsPageShell tournamentId backHref>`.
-
-**P2 — Bugs**
-
-- **[P2] `decodeURIComponent` throws URIError on malformed `%XX` → 500 instead of 404** — `src/app/(public)/t/[token]/court/[n]/page.tsx:190`, `src/app/(app)/tournaments/[id]/stats/division/[divKey]/page.tsx:22`, `src/app/(public)/t/[token]/stats/division/[divKey]/page.tsx:21`. Fix: wrap in `try { ... } catch { notFound(); }`.
-- **[P2] Progress bar hangs when clicking already-active tab** — `src/lib/hooks/use-tab-sync.ts:99-112`. `progress.start()` fires; `router.replace()` to same URL → React may skip the transition → `isPending` never flips → progress.stop never called. Fix: `if (next === active) return;` at top of `onChange`.
-- **[P2] Division stats page silent zero-results with thresholds=[]** — `src/lib/tournament/entity-stats.ts:455` + 2 division page files. Tournament with no thresholds → all matches have `division=null`, but page accepts `divKey=1` because `maxDivision=0+1=1`. Fix: `if (thresholds.length === 0) notFound();` in page, OR handle empty thresholds as "all matches" in `computeDivisionStats`.
-
-**P2 — Design**
-
-- **[P2] `entity-stats.ts` `headToHead: Map` crosses RSC→client boundary** — fragile (React 19 Flight serializes Maps but may change). Fix: return `Record<string, ...>` or `Array<[string, ...]>`.
-- **[P2] `EntityStats.partnerBreakdown?` type leak** — only populated for player. Fix: discriminated union per `entityType`.
-- **[P2] EntityLink URL detection via regex** — couples to route literals. Fix: `useParams<{ id?, token? }>()` instead.
-- **[P2] `computeDivisionStats` `wins++; losses++;` in both `if/else` branches reads as copy-paste bug** — `entity-stats.ts:499-505`. Intentional (each match = +1W +1L) but confusing. Fix: collapse to `if (rawWinner === "draw") { draws += 2 } else { wins++; losses++; }` + JSDoc clarification.
-- **[P2] computeDivisionStats `headToHead` semantically overloaded** — stores per-pair standings, not opponent-vs-opponent. Rename to `pairBreakdown` (cleanest via discriminated union from above).
-
-**P3 — Nits**
-
-- **[P3] Self-match anomaly (`pair_a_id === pair_b_id`) double-counts in `computeDivisionStats`** — `entity-stats.ts:508-521`. Guard.
-- **[P3] computePlayerStats: player as both player_id_1 and player_id_2 → self as own partner** — `entity-stats.ts:192-196`. Filter `p.player_id_1 !== p.player_id_2`.
-- **[P3] EntityLink generates self-link on same page** — `entity-link.tsx:29-33`. `if (pathname.includes(entityId)) return <>{children}</>`.
-- **[P3] Team header renders color dot + badge twice (redundant)** — `team-stats-view.tsx:174-199`. Drop one.
-- **[P3] Pair stats division badge inferred from first match instead of `computePairDivision`** — `pair-stats-view.tsx:106-108`. Use authoritative lookup.
-
-### 2026-05-22 — Performance audit (deferred — NOW DONE 2026-05-23)
-
-- **[P1] Redundant `getTournamentSettings` calls within one action** — RESOLVED via commit `6932ffe` (cross-file fix in `notifyTournamentEvent`). Moved to Resolved log.
+(none)
 
 ## Resolved
+
+### 2026-05-24 — `57c5606` Extra-high effort code review (15 findings)
+
+GROUP A — Division stats logic:
+- **[P1] computeDivisionStats headToHead leaks pairs from other divisions** — Fix: `divisionPairIds` set now filters both `relevant` matches and `ensurePairEntry` calls.
+- **[P1] Division winRate always ~0.5** — Fix: pinned to 0 in DivisionStats; `StatHeaderCards.hideWinRate` prop swaps to 3-col grid.
+- **[P1] Team intra-team matches polluted streak + UI list** — Fix: filtered out at predicate, not loop continue → matches[]/streak/W-L-D consistent.
+
+GROUP B — EntityLink cluster:
+- **[P1] MatchHistoryList opponent name no EntityLink wrap** — Fix: `renderOpponentName?` prop with default EntityLink wrap.
+- **[P1] HeadToHeadTable opponent name no EntityLink wrap** — Fix: `entityType?` + `renderName?` props.
+- **[P1] DivisionStatsView standings + RecentMatchRow no EntityLink** — Fix: wrapped in `<EntityLink entityType="pair">`.
+- **[P2] Division EntityLink → 404 for no-split tournament** — Fix: JSDoc warns callers to gate on `thresholds.length > 0`.
+
+GROUP C — Cache/perf:
+- **[P1] matchesKey hash misses court/started_at/team_*_score** — Fix: extended hash includes all 4 fields.
+- **[P1] content-visibility CLS on court status Card** — Fix: removed style (1-4 row grid, perf gain negligible vs CLS cost).
+
+GROUP D — Player edge + UX:
+- **[P2] Player in both pair_a + pair_b same match (anomaly)** — Fix: `computePlayerStats` filter excludes matches where player owns both pairs.
+- **[P2] backHref always ?tab=pair** — Fix: `loadStatsTournamentByAdmin(id, fromTab?)` optional param.
+
+GROUP E — Misc:
+- **[P2] notifyTournamentEvent stale settings** — Fix: JSDoc warns about snapshot caveat (no code change — acceptable per-request scope).
+- **[P2] tv-match-card court name overflow** — Fix: `truncate max-w-[200px]` + parent `min-w-0`.
+- **[P2] EntityLink useParams brittle for future routes** — Fix: `usePathname().startsWith()` guard added.
+- **[P3] EntityLink self-link** — Fix: short-circuit when `pathname.endsWith("/stats/<type>/<id>")`.
+
++9 regression tests (260 → 269 pass).
+
+### 2026-05-24 — `9ddf197` P2 review batch (7 fixes)
+
+- **[P2] decodeURIComponent throws → 500** → wrap in try/catch + notFound() (court + 2 division pages)
+- **[P2] Progress bar hang same-tab click** → `if (next === active) return;` in use-tab-sync onChange
+- **[P2] Division thresholds=[] silent empty** → `notFound()` guard
+- **[P2] EntityStats headToHead Map → Record** (RSC serialization-safe)
+- **[P2] partnerBreakdown? type leak** → discriminated union PairStats|PlayerStats|TeamStats|DivisionStats
+- **[P2] EntityLink regex → useParams** (changed to startsWith guard in later batch)
+- **[P2] computeDivisionStats wins++/losses++ collapsed** + JSDoc
+
+### 2026-05-24 — `8320a7b` P1 #3: dedup stats page boilerplate
+
+- **[P1] 8 stat pages × ~70 LOC duplicated** → extracted `loadStatsTournamentByAdmin` + `loadStatsTournamentByToken` + `<StatsPageShell>`. Pages now ~30-65 LOC each.
+
+### 2026-05-24 — `a3da9c9` P1 #1+#2: BYE bug + dedup stats view UI
+
+- **[P1] BYE matches counted as draws (CRITICAL)** — `gameWinner([])` returns "draw". Fix: skip `games.length===0` in all compute*Stats main loops + 4 regression tests.
+- **[P1] Dedup stats view components (~250 LOC)** — extracted `result-display.ts` + 4 shared primitives (streak-pill, stat-header-cards, match-history-list, head-to-head-table).
+
+### 2026-05-24 — unit tests (Phase B player stats)
+
+- 246/246 pass (+12 new `computePlayerStats` tests; 0 regressions)
 
 ### 2026-05-24 — unit tests (Phase B player stats)
 
