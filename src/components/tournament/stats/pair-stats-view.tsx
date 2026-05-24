@@ -47,7 +47,7 @@ export function PairStatsView({
     <div className="space-y-6 max-w-3xl mx-auto">
       {/* Header card */}
       <Card>
-        <CardContent className="pt-6 space-y-3">
+        <CardContent className="space-y-3">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <h1 className="text-xl font-bold">{pairName}</h1>
