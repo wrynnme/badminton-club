@@ -797,7 +797,7 @@ function QueueRowBody({
 
       {match.status === "completed" && totals && (
         <div className="px-3 pb-2 text-xs text-muted-foreground">
-          ผล: {match.team_a_score ?? 0}:{match.team_b_score ?? 0} (รวม {totals.a}-{totals.b}) ·
+          ผล: {match.team_a_score ?? 0}:{match.team_b_score ?? 0} ({match.games.length > 0 ? `${match.games.map((g) => `${g.a}-${g.b}`).join(", ")} · ` : ""}รวม {totals.a}-{totals.b}) ·
           {" "}ผู้ชนะ:{" "}
           {completedWinner === "draw"
             ? "เสมอ"

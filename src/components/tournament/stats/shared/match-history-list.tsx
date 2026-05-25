@@ -6,6 +6,14 @@ import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { RESULT_LABEL_TH, RESULT_TEXT_CLASS } from "@/lib/tournament/result-display";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import type { Match } from "@/lib/types";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export type CompetitorEntry = { id: string; name: string; color?: string | null };
 
@@ -62,33 +70,38 @@ function MatchHistoryRow({
     .join(", ");
 
   const hasMyCol = renderMyColumn !== null;
-  const gridCols = hasMyCol
-    ? "grid-cols-[2rem_minmax(0,8rem)_minmax(0,8rem)_3rem_4rem] sm:grid-cols-[2rem_minmax(0,8rem)_minmax(0,8rem)_3rem_4rem_auto]"
-    : "grid-cols-[2rem_minmax(0,12rem)_3rem_4rem] sm:grid-cols-[2rem_minmax(0,14rem)_3rem_4rem_auto]";
 
   return (
-    <div
-      className={`grid ${gridCols} items-center gap-x-2 px-4 py-2.5 border-b last:border-b-0 text-sm`}
-    >
-      <span className="text-muted-foreground text-xs tabular-nums">#{match.match_number}</span>
+    <TableRow>
+      <TableCell className="text-muted-foreground text-xs tabular-nums py-2.5 w-8">
+        #{match.match_number}
+      </TableCell>
       {hasMyCol && (
-        <span className="truncate min-w-0 text-xs text-muted-foreground">
-          {renderMyColumn(match, isSideA)}
-        </span>
+        <TableCell className="text-xs text-muted-foreground py-2.5 max-w-[8rem] whitespace-normal">
+          <span className="block truncate">
+            {renderMyColumn(match, isSideA)}
+          </span>
+        </TableCell>
       )}
-      <span className="truncate min-w-0">
-        {opponent && opponentId ? (
-          renderOpponentName(opponent.name, opponentId)
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </span>
-      <span className={`text-center ${RESULT_TEXT_CLASS[result]}`}>{RESULT_LABEL_TH[result]}</span>
-      <span className="tabular-nums text-right font-medium">
+      <TableCell className="py-2.5 whitespace-normal max-w-0 w-full">
+        <span className="block truncate">
+          {opponent && opponentId ? (
+            renderOpponentName(opponent.name, opponentId)
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )}
+        </span>
+      </TableCell>
+      <TableCell className={`text-right py-2.5 w-12 ${RESULT_TEXT_CLASS[result]}`}>
+        {RESULT_LABEL_TH[result]}
+      </TableCell>
+      <TableCell className="tabular-nums text-right font-medium py-2.5 w-14">
         {myPoints}–{oppPoints}
-      </span>
-      <span className="text-xs text-muted-foreground hidden sm:block">{gamesScore}</span>
-    </div>
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground tabular-nums text-right py-2.5 hidden sm:table-cell">
+        {gamesScore}
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -129,9 +142,6 @@ export function MatchHistoryList({
   renderOpponentName?: OpponentNameRenderer;
 }) {
   const hasMyCol = renderMyColumn !== null;
-  const gridCols = hasMyCol
-    ? "grid-cols-[2rem_minmax(0,8rem)_minmax(0,8rem)_3rem_4rem] sm:grid-cols-[2rem_minmax(0,8rem)_minmax(0,8rem)_3rem_4rem_auto]"
-    : "grid-cols-[2rem_minmax(0,12rem)_3rem_4rem] sm:grid-cols-[2rem_minmax(0,14rem)_3rem_4rem_auto]";
 
   return (
     <Card>
@@ -142,28 +152,44 @@ export function MatchHistoryList({
         {matches.length === 0 ? (
           <p className="text-sm text-muted-foreground px-6 pb-6">{emptyText}</p>
         ) : (
-          <div>
-            <div
-              className={`grid ${gridCols} gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium`}
-            >
-              <span>#</span>
-              {hasMyCol && <span>{myColumnLabel ?? ""}</span>}
-              <span>คู่แข่ง</span>
-              <span className="text-center">ผล</span>
-              <span className="text-right">คะแนน</span>
-              <span className="hidden sm:block">เกม</span>
-            </div>
-            {matches.map((m) => (
-              <MatchHistoryRow
-                key={m.id}
-                match={m}
-                isSideA={isSideA(m)}
-                competitorById={competitorById}
-                renderMyColumn={renderMyColumn}
-                renderOpponentName={renderOpponentName}
-              />
-            ))}
-          </div>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40 hover:bg-muted/40">
+                <TableHead className="text-muted-foreground font-medium text-xs h-9 w-8">
+                  #
+                </TableHead>
+                {hasMyCol && (
+                  <TableHead className="text-muted-foreground font-medium text-xs h-9 max-w-[8rem]">
+                    {myColumnLabel ?? ""}
+                  </TableHead>
+                )}
+                <TableHead className="text-muted-foreground font-medium text-xs h-9">
+                  คู่แข่ง
+                </TableHead>
+                <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-12">
+                  ผล
+                </TableHead>
+                <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-14">
+                  คะแนน
+                </TableHead>
+                <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 hidden sm:table-cell">
+                  เกม
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {matches.map((m) => (
+                <MatchHistoryRow
+                  key={m.id}
+                  match={m}
+                  isSideA={isSideA(m)}
+                  competitorById={competitorById}
+                  renderMyColumn={renderMyColumn}
+                  renderOpponentName={renderOpponentName}
+                />
+              ))}
+            </TableBody>
+          </Table>
         )}
       </CardContent>
     </Card>

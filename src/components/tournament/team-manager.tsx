@@ -63,7 +63,7 @@ function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: (
                 <button key={c} type="button"
                   aria-label={`สี ${c}`}
                   aria-pressed={field.state.value === c}
-                  className={`w-7 h-7 rounded-full border-2 transition-all ${field.state.value === c ? "border-foreground scale-110" : "border-transparent"}`}
+                  className={`w-7 h-7 cursor-pointer rounded-full border-2 transition-all ${field.state.value === c ? "border-foreground scale-110" : "border-transparent"}`}
                   style={{ backgroundColor: c }}
                   onClick={() => field.handleChange(c)} />
               ))}

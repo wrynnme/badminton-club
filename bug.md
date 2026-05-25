@@ -6,6 +6,10 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 (none)
 
+### 2026-05-25 — UX polish: cursor-pointer audit
+
+- Tailwind v4 cursor-pointer audit shipped. `cursor-pointer` added to `buttonVariants` base + `ui/tabs.tsx`/`ui/select.tsx`/`ui/checkbox.tsx` triggers + raw color-swatch `<button>` in `team-manager.tsx`. DnD handles keep `cursor-grab`; listbox items keep `cursor-default`. `tsc --noEmit` clean. No new findings.
+
 ### 2026-05-24 — Phase 12 require_checkin shipped
 
 - vitest 269/269 pass · `tsc --noEmit` clean · migration `20260524000100_add_team_players_checked_in_at` applied to prod via MCP. Per-player + bulk check-in UI live in team tab; `startMatchAction` + auto-advance gated by `settings.require_checkin`.

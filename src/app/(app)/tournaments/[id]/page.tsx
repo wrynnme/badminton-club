@@ -141,7 +141,7 @@ export default async function TournamentDetailPage({
 
         {/* Info card */}
         <Card>
-          <CardContent className="grid sm:grid-cols-2 gap-3 pt-6 text-sm">
+          <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
             {t.venue && (
               <div className="flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-muted-foreground" />

@@ -540,7 +540,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ### UX polish backlog
 
-- **`cursor: pointer` ทุก clickable** — รวมทุก `<button>`, icon-only Buttons, drag handles, color swatches, tab triggers, EntityLink wrappers, sortable rows. Tailwind v4 default ลบ `cursor-pointer` ออกจาก `<button>` แล้ว ต้องใส่ class ทุกตัวเอง. Audit pass: grep `<Button|<button|onClick=|role="button"` แล้ว apply `cursor-pointer` ที่ shadcn Button base + ที่อื่นที่ตกหล่น (DnD handles, color swatches, custom div onClick).
+- **`cursor: pointer` ทุก clickable** — ✅ DONE 2026-05-25. `cursor-pointer` ใส่ที่ `buttonVariants` base (`ui/button.tsx`) → คุม `<Button>` ทั้ง app; เพิ่มที่ `ui/tabs.tsx` (TabsTrigger), `ui/select.tsx` (SelectTrigger), `ui/checkbox.tsx`, และ raw color-swatch `<button>` ใน `team-manager.tsx`. DnD drag handles ใช้ `cursor-grab active:cursor-grabbing` อยู่แล้ว (ถูกต้อง); `SelectItem`/`CommandItem` คง `cursor-default` ตาม base-ui listbox convention. tsc clean.
 - **i18n ไทย/อังกฤษ** — ทั้งหมดของ UI strings ตอนนี้ hard-coded เป็นภาษาไทย. เพิ่ม locale switcher (TH/EN) ใน SiteHeader.
   - แนวทาง: `next-intl` หรือ `next-international` (server-component friendly สำหรับ Next 16 App Router) — เลือกตัวที่ static-export-safe.
   - File structure: `src/locales/th.json` + `src/locales/en.json` แยก keys ตาม namespace (`common`, `tournament`, `match`, `stats`, `settings`, `audit_events`, `errors`).
