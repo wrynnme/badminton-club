@@ -663,12 +663,12 @@ function QueueRowBody({
                   disabled={courtPending || match.status === "completed"}
                 >
                   <SelectTrigger className="h-7 w-24 text-xs px-2">
-                    <SelectValue placeholder="ว่าง">
-                      {(v: string | null) => (v && v !== "__none" ? v : "ว่าง")}
+                    <SelectValue placeholder="-">
+                      {(v: string | null) => (v && v !== "__none" ? v : "-")}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none">ว่าง</SelectItem>
+                    <SelectItem value="__none">-</SelectItem>
                     {courts.map((c) => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
                     ))}
@@ -680,7 +680,7 @@ function QueueRowBody({
                   onChange={(e) => setCourt(e.target.value)}
                   onBlur={saveCourt}
                   onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                  placeholder="ว่าง"
+                  placeholder="-"
                   maxLength={40}
                   disabled={courtPending || match.status === "completed"}
                   className="h-7 w-16 text-xs px-1.5 text-center"
