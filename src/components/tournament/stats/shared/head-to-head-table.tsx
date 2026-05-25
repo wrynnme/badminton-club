@@ -96,7 +96,7 @@ export function HeadToHeadTable({
           </TableHeader>
           <TableBody>
             {rows.map((row) => (
-              <TableRow key={row.id}>
+              <TableRow key={row.id} className="hover:bg-transparent">
                 <TableCell className="py-2.5 whitespace-normal max-w-0 w-full">
                   <span className="flex items-center gap-1.5 min-w-0">
                     {row.color && (

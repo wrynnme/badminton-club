@@ -72,7 +72,7 @@ function MatchHistoryRow({
   const hasMyCol = renderMyColumn !== null;
 
   return (
-    <TableRow>
+    <TableRow className="hover:bg-transparent">
       <TableCell className="text-muted-foreground text-xs tabular-nums py-2.5 w-8">
         #{match.match_number}
       </TableCell>
