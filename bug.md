@@ -6,6 +6,13 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 (none)
 
+### 2026-05-26 — max-effort code review of theme/table migration (3 findings, all resolved)
+
+- **[P2] HeadToHead name column overflow (regression from `<Table>` migration)** — Context: `head-to-head-table.tsx` migrated grid→shadcn `<Table>` (auto-layout). Repro: long competitor name at ≤390px viewport. Cause: name `<TableCell>` had `truncate` but no width bound; auto-layout sizes cell to content, so `truncate` never clips → table 521px > 390px viewport, แมตช์/ชนะ/แพ้/เสมอ scroll off-screen (sibling match-history opponent cell was correct via `max-w-0 w-full`). Fix: `head-to-head-table.tsx:100` add `max-w-0 w-full`. Validated via Playwright @390px + long-name fixture: name cell 368px→84px, table 521px→236px, last col right 537px→313px (in-viewport); before/after toggle confirmed load-bearing.
+- **[P2] Light primary teal-600 + white text = 3.5:1, fails WCAG AA normal text** — Fix: light `--primary`/`--ring`/`--sidebar-primary`/`--sidebar-ring` teal-600 `oklch(0.6 0.118 184.704)` → teal-700 `oklch(0.511 0.096 186.391)` (~5:1, passes AA). Dark teal-500 already 7.3:1.
+- **[P3] `globals.css` missing trailing newline** — Fix: appended.
+- Logic clean (per-game scores, `Match.games` non-null, BYE walkover non-empty, callers API-stable). `tsc --noEmit` clean.
+
 ### 2026-05-25 — UX polish: cursor-pointer audit
 
 - Tailwind v4 cursor-pointer audit shipped. `cursor-pointer` added to `buttonVariants` base + `ui/tabs.tsx`/`ui/select.tsx`/`ui/checkbox.tsx` triggers + raw color-swatch `<button>` in `team-manager.tsx`. DnD handles keep `cursor-grab`; listbox items keep `cursor-default`. `tsc --noEmit` clean. No new findings.

@@ -7,7 +7,7 @@
 - Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1
 - Supabase Postgres (service role, bypass RLS) · MCP connected
 - Auth: LINE Login + Guest (HMAC-signed `bc_session` cookie)
-- Theme: **Teal primary + Zinc base color** (2026-05-26) — applied via CSS vars in `src/app/globals.css` `:root`/`.dark` only (no component overwrite). Light primary/ring = teal-600 `oklch(0.6 0.118 184.704)`; dark = teal-500 `oklch(0.704 0.14 182.503)`; neutrals = Zinc (hue ~285). Charts kept Zinc grayscale.
+- Theme: **Teal primary + Zinc base color** (2026-05-26) — applied via CSS vars in `src/app/globals.css` `:root`/`.dark` only (no component overwrite). Light primary/ring = teal-700 `oklch(0.511 0.096 186.391)` (teal-600 failed WCAG AA at 3.5:1 white-on-teal; teal-700 ≈ 5:1); dark = teal-500 `oklch(0.704 0.14 182.503)` (7.3:1); neutrals = Zinc (hue ~285). Charts kept Zinc grayscale.
 
 ### Key Data Flow
 
