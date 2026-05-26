@@ -4,6 +4,7 @@ import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
 import { ManualMatchDialog } from "@/components/tournament/manual-match-dialog";
 import { MatchList } from "@/components/tournament/match-list";
 import { PairManager } from "@/components/tournament/pair-manager";
+import { ScoreMatrix } from "@/components/tournament/score-matrix";
 import { StandingsTable } from "@/components/tournament/standings-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,29 @@ export function PairStage({
     [matchesByDivision],
   );
 
+  // Stable per-division competitor arrays so <ScoreMatrix> useMemo doesn't
+  // re-run every render (inline getDivisionCompetitors() returns a fresh array).
+  const divisionCompetitorsByKey = useMemo(() => {
+    const m = new Map<number | null, typeof pairCompetitors>();
+    for (const [k, list] of matchesByDivision) {
+      const pairIds = [
+        ...new Set(
+          [
+            ...list.map((mt) => mt.pair_a_id),
+            ...list.map((mt) => mt.pair_b_id),
+          ].filter(Boolean) as string[],
+        ),
+      ];
+      m.set(
+        k,
+        pairIds
+          .map((id) => pairCompetitorMap.get(id))
+          .filter(Boolean) as typeof pairCompetitors,
+      );
+    }
+    return m;
+  }, [matchesByDivision, pairCompetitorMap]);
+
   // Aggregate team-level standings from pair matches
   const pairStandings = useMemo(
     () => computeStandings(matches, "pair", pairs.map((p) => p.id)),
@@ -99,6 +123,17 @@ export function PairStage({
       const next = new Set(prev);
       const s = String(k);
       if (open) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+
+  // matrixDivs tracks which division cards are in "Matrix" view (key = String(divKey))
+  const [matrixDivs, setMatrixDivs] = useState<Set<string>>(() => new Set());
+  const toggleDivMatrix = (k: number | null) =>
+    setMatrixDivs((prev) => {
+      const next = new Set(prev);
+      const s = String(k);
+      if (next.has(s)) next.delete(s);
       else next.add(s);
       return next;
     });
@@ -222,15 +257,41 @@ export function PairStage({
                         <span className="ml-1">({completedCount}/{matchList.length})</span>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="pt-2">
-                          <MatchList
-                            matches={matchList}
-                            competitorById={pairCompetitorMap}
-                            tournamentId={tournamentId}
-                            isOwner={isOwner}
-                            unit="pair"
-                            size={matchRowSize}
-                          />
+                        <div className="pt-2 space-y-2">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className={`h-6 px-2 text-xs ${!matrixDivs.has(String(divKey)) ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                              onClick={() => matrixDivs.has(String(divKey)) && toggleDivMatrix(divKey)}>
+                              ตาราง
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className={`h-6 px-2 text-xs ${matrixDivs.has(String(divKey)) ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                              onClick={() => !matrixDivs.has(String(divKey)) && toggleDivMatrix(divKey)}>
+                              Matrix
+                            </Button>
+                          </div>
+                          {matrixDivs.has(String(divKey)) ? (
+                            <ScoreMatrix
+                              matches={matchList}
+                              competitors={divisionCompetitorsByKey.get(divKey) ?? []}
+                              unit="pair"
+                            />
+                          ) : (
+                            <MatchList
+                              matches={matchList}
+                              competitorById={pairCompetitorMap}
+                              tournamentId={tournamentId}
+                              isOwner={isOwner}
+                              unit="pair"
+                              size={matchRowSize}
+                            />
+                          )}
                         </div>
                       </CollapsibleContent>
                     </Collapsible>
