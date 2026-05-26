@@ -190,7 +190,7 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
         </>
       ) : (
         <>
-          <span className="flex-1 truncate">{name}</span>
+          <EntityLink entityType="player" entityId={p.id} className="flex-1 truncate">{name}</EntityLink>
           {p.level && <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">{p.level}</Badge>}
           {isOwner && (
             <Button variant={isCheckedIn ? "default" : "outline"} size="sm"

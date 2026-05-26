@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createPairAction, deletePairAction } from "@/lib/actions/pairs";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
 import type { TeamWithPlayers, PairWithPlayers } from "@/lib/types";
 
 function CreatePairForm({ teamId, availablePlayers, onDone }: {
@@ -79,7 +80,6 @@ function PairItem({ pair, isOwner, color }: {
   const [delPending, startDel] = useTransition();
   const p1 = pair.player1;
   const p2 = pair.player2;
-  const names = [p1?.display_name, p2?.display_name].filter(Boolean).join(" / ");
   const levels = [p1?.level, p2?.level].filter(Boolean);
 
   return (
@@ -91,7 +91,21 @@ function PairItem({ pair, isOwner, color }: {
           {pair.display_pair_name && <span className="font-medium truncate">{pair.display_pair_name}</span>}
           {pair.pair_level && <Badge className="text-[10px] px-1.5 py-0 shrink-0">{pair.pair_level}</Badge>}
         </div>
-        <div className="text-xs text-muted-foreground truncate">{names || "—"}</div>
+        <div className="text-xs text-muted-foreground truncate">
+          {p1 || p2 ? (
+            <>
+              {p1 && (
+                <EntityLink entityType="player" entityId={p1.id}>{p1.display_name}</EntityLink>
+              )}
+              {p1 && p2 && " / "}
+              {p2 && (
+                <EntityLink entityType="player" entityId={p2.id}>{p2.display_name}</EntityLink>
+              )}
+            </>
+          ) : (
+            "—"
+          )}
+        </div>
         {levels.length > 0 && (
           <div className="flex gap-1 mt-0.5">
             {levels.map((lv, i) => (

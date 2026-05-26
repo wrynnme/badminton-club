@@ -1,6 +1,7 @@
 import { Trophy } from "lucide-react";
 import { computeStandings } from "@/lib/tournament/scoring";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
@@ -17,6 +18,7 @@ export function StandingsTable({
   const compById = new Map(competitors.map((c) => [c.id, c]));
 
   return (
+    <>
     <table className="w-full text-xs">
       <thead>
         <tr className="text-muted-foreground border-b">
@@ -26,7 +28,18 @@ export function StandingsTable({
           <th className="text-center pb-1 font-normal w-7">D</th>
           <th className="text-center pb-1 font-normal w-7">L</th>
           <th className="text-center pb-1 font-normal w-10">+/-</th>
-          <th className="text-center pb-1 font-normal w-8">Pts</th>
+          <th className="text-center pb-1 font-normal w-8">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <span className="cursor-help underline decoration-dotted decoration-muted-foreground/40">
+                    Pts
+                  </span>
+                }
+              />
+              <TooltipContent>ชนะ = 3 · เสมอ = 1 · แพ้ = 0</TooltipContent>
+            </Tooltip>
+          </th>
         </tr>
       </thead>
       <tbody>
@@ -55,5 +68,9 @@ export function StandingsTable({
         })}
       </tbody>
     </table>
+      <p className="mt-1.5 text-[10px] text-muted-foreground">
+        เกณฑ์จัดอันดับ: คะแนน → ผลต่างแต้ม → แต้มที่ได้
+      </p>
+    </>
   );
 }
