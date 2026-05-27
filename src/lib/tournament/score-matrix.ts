@@ -19,6 +19,8 @@ export type CellResult =
  * - All statuses are accepted (to distinguish `scheduled` from `none`).
  * - Matches are processed sorted by `match_number` ASC so the highest
  *   match_number wins on duplicate fixture (deterministic last-write).
+ *   When two matches share the same match_number, last-write follows
+ *   input array order (stable sort).
  * - BYE walkovers (completed but games.length === 0) are treated as
  *   `scheduled` (never downgrade an existing `score` cell).
  * - Diagonal entries (rowId === colId) are NOT stored — the component

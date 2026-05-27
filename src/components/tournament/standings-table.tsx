@@ -5,6 +5,14 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
+export function StandingsSortKeyNote() {
+  return (
+    <p className="mt-1.5 text-[10px] text-muted-foreground">
+      เกณฑ์จัดอันดับ: คะแนน → ผลต่างแต้ม → แต้มที่ได้
+    </p>
+  );
+}
+
 export function StandingsTable({
   matches,
   competitors,
@@ -32,7 +40,7 @@ export function StandingsTable({
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <span className="cursor-help underline decoration-dotted decoration-muted-foreground/40">
+                  <span tabIndex={0} className="cursor-help underline decoration-dotted decoration-muted-foreground/40">
                     Pts
                   </span>
                 }
@@ -68,9 +76,6 @@ export function StandingsTable({
         })}
       </tbody>
     </table>
-      <p className="mt-1.5 text-[10px] text-muted-foreground">
-        เกณฑ์จัดอันดับ: คะแนน → ผลต่างแต้ม → แต้มที่ได้
-      </p>
     </>
   );
 }

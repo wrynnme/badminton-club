@@ -92,13 +92,13 @@ function PairItem({ pair, isOwner, color }: {
           {pair.pair_level && <Badge className="text-[10px] px-1.5 py-0 shrink-0">{pair.pair_level}</Badge>}
         </div>
         <div className="text-xs text-muted-foreground truncate">
-          {p1 || p2 ? (
+          {p1?.display_name || p2?.display_name ? (
             <>
-              {p1 && (
+              {p1?.display_name && (
                 <EntityLink entityType="player" entityId={p1.id}>{p1.display_name}</EntityLink>
               )}
-              {p1 && p2 && " / "}
-              {p2 && (
+              {p1?.display_name && p2?.display_name && " / "}
+              {p2?.display_name && (
                 <EntityLink entityType="player" entityId={p2.id}>{p2.display_name}</EntityLink>
               )}
             </>

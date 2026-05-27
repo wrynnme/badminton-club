@@ -41,7 +41,9 @@ export function ScoreMatrix({
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           {/* Corner cell */}
-          <TableHead className="text-xs text-muted-foreground font-medium h-9 min-w-[8rem] max-w-[12rem]" />
+          <TableHead className="text-xs text-muted-foreground font-medium h-9 min-w-[8rem] max-w-[12rem]">
+            <span className="sr-only">{unit === "pair" ? "คู่" : "ทีม"}</span>
+          </TableHead>
           {competitors.map((c) => (
             <TableHead
               key={c.id}
@@ -51,6 +53,7 @@ export function ScoreMatrix({
               <div className="flex flex-col items-center gap-0.5">
                 {c.color && (
                   <span
+                    aria-hidden="true"
                     className="inline-block w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: c.color }}
                   />
@@ -73,6 +76,7 @@ export function ScoreMatrix({
               <span className="flex items-center gap-1.5 min-w-0">
                 {rowC.color && (
                   <span
+                    aria-hidden="true"
                     className="inline-block w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: rowC.color }}
                   />
@@ -97,7 +101,7 @@ export function ScoreMatrix({
                     key={colC.id}
                     className="text-center text-muted-foreground text-sm py-2"
                   >
-                    —
+                    <span aria-hidden="true">—</span>
                   </TableCell>
                 );
               }

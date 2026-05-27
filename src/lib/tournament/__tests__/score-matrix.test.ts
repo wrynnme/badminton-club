@@ -448,3 +448,221 @@ describe("buildScoreMatrix — unit='team' ignores pair IDs (null team side → 
     expect(cellState(grid.get(B)?.get(A))).toBe("none");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Case 11 — tie game: single game where a === b (e.g. {a:21, b:21})
+// gameWinner returns "draw", gamesA and gamesB are both 0 (strict > used for
+// game-won counting — tied individual games count for neither side).
+// ---------------------------------------------------------------------------
+describe("buildScoreMatrix — tie game (a===b in every game)", () => {
+  const tieGames: Game[] = [{ a: 21, b: 21 }];
+  const grid = buildScoreMatrix(
+    [makeMatch({ id: "m1", team_a_id: A, team_b_id: B, games: tieGames })],
+    [A, B],
+    "team",
+  );
+
+  it("A→B result is 'D' and games-won are both 0", () => {
+    const cell = grid.get(A)?.get(B);
+    expect(cell).toEqual({
+      state: "score",
+      rowGames: 0,
+      colGames: 0,
+      rowPoints: 21,
+      colPoints: 21,
+      result: "D",
+    });
+  });
+
+  it("B→A result is also 'D' and games-won are both 0 (symmetric)", () => {
+    const cell = grid.get(B)?.get(A);
+    expect(cell).toEqual({
+      state: "score",
+      rowGames: 0,
+      colGames: 0,
+      rowPoints: 21,
+      colPoints: 21,
+      result: "D",
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Case 12 — all-ties multi-game: every game is a draw
+// Still produces gamesA=0, gamesB=0 and result="D"
+// ---------------------------------------------------------------------------
+describe("buildScoreMatrix — all-ties multi-game", () => {
+  const allTieGames: Game[] = [
+    { a: 21, b: 21 },
+    { a: 15, b: 15 },
+  ];
+  const grid = buildScoreMatrix(
+    [makeMatch({ id: "m1", team_a_id: A, team_b_id: B, games: allTieGames })],
+    [A, B],
+    "team",
+  );
+
+  it("A→B gamesA=0, gamesB=0, result='D'", () => {
+    const cell = grid.get(A)?.get(B);
+    expect(cell?.state).toBe("score");
+    if (cell?.state === "score") {
+      expect(cell.rowGames).toBe(0);
+      expect(cell.colGames).toBe(0);
+      expect(cell.result).toBe("D");
+    }
+  });
+
+  it("B→A gamesA=0, gamesB=0, result='D'", () => {
+    const cell = grid.get(B)?.get(A);
+    expect(cell?.state).toBe("score");
+    if (cell?.state === "score") {
+      expect(cell.rowGames).toBe(0);
+      expect(cell.colGames).toBe(0);
+      expect(cell.result).toBe("D");
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Case 13 — 3-competitor full matrix: [A,B,C] with A-B completed, A-C pending,
+// B-C has no match at all.
+// Verifies all 6 off-diagonal cells independently.
+// ---------------------------------------------------------------------------
+describe("buildScoreMatrix — 3-competitor full matrix", () => {
+  const gamesAB: Game[] = [{ a: 21, b: 10 }, { a: 21, b: 15 }]; // A wins 2-0
+
+  const grid = buildScoreMatrix(
+    [
+      makeMatch({
+        id: "m1",
+        match_number: 1,
+        team_a_id: A,
+        team_b_id: B,
+        status: "completed",
+        games: gamesAB,
+      }),
+      makeMatch({
+        id: "m2",
+        match_number: 2,
+        team_a_id: A,
+        team_b_id: C,
+        status: "pending",
+        games: [],
+      }),
+      // No match between B and C
+    ],
+    [A, B, C],
+    "team",
+  );
+
+  it("A→B is 'score' (W)", () => {
+    const cell = grid.get(A)?.get(B);
+    expect(cell?.state).toBe("score");
+    if (cell?.state === "score") expect(cell.result).toBe("W");
+  });
+
+  it("B→A is 'score' (L)", () => {
+    const cell = grid.get(B)?.get(A);
+    expect(cell?.state).toBe("score");
+    if (cell?.state === "score") expect(cell.result).toBe("L");
+  });
+
+  it("A→C is 'scheduled'", () => {
+    expect(cellState(grid.get(A)?.get(C))).toBe("scheduled");
+  });
+
+  it("C→A is 'scheduled'", () => {
+    expect(cellState(grid.get(C)?.get(A))).toBe("scheduled");
+  });
+
+  it("B→C is 'none' (no match record exists)", () => {
+    expect(cellState(grid.get(B)?.get(C))).toBe("none");
+  });
+
+  it("C→B is 'none' (no match record exists)", () => {
+    expect(cellState(grid.get(C)?.get(B))).toBe("none");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Case 14 — completed match overwrites prior scheduled cell (reverse input order)
+// A pending match (match_number=1) appears FIRST in the input array; a completed
+// match (match_number=2) appears second. After ASC sort the completed match is
+// processed last, so it must overwrite the scheduled state.
+// Companion to Case 6: proves score CAN promote from scheduled (not just the
+// reverse direction).
+// ---------------------------------------------------------------------------
+describe("buildScoreMatrix — completed overwrites prior scheduled (score promotes)", () => {
+  const games: Game[] = [{ a: 21, b: 15 }, { a: 21, b: 10 }]; // A wins 2-0
+
+  const grid = buildScoreMatrix(
+    [
+      // Pending first in array, lower match_number
+      makeMatch({
+        id: "m1",
+        match_number: 1,
+        team_a_id: A,
+        team_b_id: B,
+        status: "pending",
+        games: [],
+      }),
+      // Completed second in array, higher match_number → processed after pending
+      makeMatch({
+        id: "m2",
+        match_number: 2,
+        team_a_id: A,
+        team_b_id: B,
+        status: "completed",
+        games,
+      }),
+    ],
+    [A, B],
+    "team",
+  );
+
+  it("A→B is 'score' (completed overrode scheduled)", () => {
+    expect(cellState(grid.get(A)?.get(B))).toBe("score");
+  });
+
+  it("A→B result is 'W'", () => {
+    const cell = grid.get(A)?.get(B);
+    if (cell?.state === "score") expect(cell.result).toBe("W");
+  });
+
+  it("B→A is 'score' (completed overrode scheduled)", () => {
+    expect(cellState(grid.get(B)?.get(A))).toBe("score");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Case 15 — input immutability: buildScoreMatrix must not mutate the caller's
+// matches array (the internal [...matches].sort must not sort in place).
+// ---------------------------------------------------------------------------
+describe("buildScoreMatrix — input array immutability", () => {
+  it("does not mutate the caller's matches array", () => {
+    const input = [
+      makeMatch({
+        id: "m2",
+        match_number: 2,
+        team_a_id: A,
+        team_b_id: B,
+        status: "completed",
+        games: [{ a: 21, b: 10 }, { a: 21, b: 10 }],
+      }),
+      makeMatch({
+        id: "m1",
+        match_number: 1,
+        team_a_id: A,
+        team_b_id: B,
+        status: "pending",
+        games: [],
+      }),
+    ];
+    const snapshot = JSON.parse(JSON.stringify(input)) as typeof input;
+
+    buildScoreMatrix(input, [A, B], "team");
+
+    // Array order and contents must be identical to before the call
+    expect(input).toEqual(snapshot);
+  });
+});

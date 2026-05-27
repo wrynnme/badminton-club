@@ -11,7 +11,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupInput } from "@/components/ui/input-group";
 import { MatchList } from "@/components/tournament/match-list";
 import { ScoreMatrix } from "@/components/tournament/score-matrix";
-import { StandingsTable } from "@/components/tournament/standings-table";
+import { StandingsTable, StandingsSortKeyNote } from "@/components/tournament/standings-table";
 import {
   generateGroupsAction,
   generateGroupMatchesAction,
@@ -144,6 +144,7 @@ function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
                     type="button"
                     variant="ghost"
                     size="sm"
+                    aria-pressed={view === "list"}
                     className={`h-6 px-2 text-xs ${view === "list" ? "text-foreground font-medium" : "text-muted-foreground"}`}
                     onClick={() => setView("list")}>
                     ตาราง
@@ -152,6 +153,7 @@ function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
                     type="button"
                     variant="ghost"
                     size="sm"
+                    aria-pressed={view === "matrix"}
                     className={`h-6 px-2 text-xs ${view === "matrix" ? "text-foreground font-medium" : "text-muted-foreground"}`}
                     onClick={() => setView("matrix")}>
                     Matrix
@@ -260,11 +262,14 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize,
       )}
 
       {hasGroups ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {groups.map((g) => (
-            <GroupCard key={g.id} group={g} teams={teams} tournamentId={tournamentId} isOwner={isOwner} matchRowSize={matchRowSize} />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {groups.map((g) => (
+              <GroupCard key={g.id} group={g} teams={teams} tournamentId={tournamentId} isOwner={isOwner} matchRowSize={matchRowSize} />
+            ))}
+          </div>
+          {completedMatches > 0 && <StandingsSortKeyNote />}
+        </>
       ) : (
         !isOwner && <p className="text-sm text-muted-foreground">ยังไม่มีการแบ่งกลุ่ม</p>
       )}

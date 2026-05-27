@@ -5,7 +5,7 @@ import { ManualMatchDialog } from "@/components/tournament/manual-match-dialog";
 import { MatchList } from "@/components/tournament/match-list";
 import { PairManager } from "@/components/tournament/pair-manager";
 import { ScoreMatrix } from "@/components/tournament/score-matrix";
-import { StandingsTable } from "@/components/tournament/standings-table";
+import { StandingsTable, StandingsSortKeyNote } from "@/components/tournament/standings-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -147,14 +147,6 @@ export function PairStage({
   const showStandings = hasMatches && completedMatches > 0;
   const hasDivisions = divisionKeys.some((k) => k !== null);
 
-  function getDivisionCompetitors(divMatches: Match[]) {
-    const pairIds = [...new Set([
-      ...divMatches.map((m) => m.pair_a_id),
-      ...divMatches.map((m) => m.pair_b_id),
-    ].filter(Boolean) as string[])];
-    return pairIds.map((id) => pairCompetitorMap.get(id)).filter(Boolean) as typeof pairCompetitors;
-  }
-
   return (
     <Tabs defaultValue="pairs" className="space-y-4">
       <TabsList className="w-full flex-wrap h-auto">
@@ -263,6 +255,7 @@ export function PairStage({
                               type="button"
                               variant="ghost"
                               size="sm"
+                              aria-pressed={!matrixDivs.has(String(divKey))}
                               className={`h-6 px-2 text-xs ${!matrixDivs.has(String(divKey)) ? "text-foreground font-medium" : "text-muted-foreground"}`}
                               onClick={() => matrixDivs.has(String(divKey)) && toggleDivMatrix(divKey)}>
                               ตาราง
@@ -271,6 +264,7 @@ export function PairStage({
                               type="button"
                               variant="ghost"
                               size="sm"
+                              aria-pressed={matrixDivs.has(String(divKey))}
                               className={`h-6 px-2 text-xs ${matrixDivs.has(String(divKey)) ? "text-foreground font-medium" : "text-muted-foreground"}`}
                               onClick={() => !matrixDivs.has(String(divKey)) && toggleDivMatrix(divKey)}>
                               Matrix
@@ -314,7 +308,7 @@ export function PairStage({
               <div className="space-y-4">
                 {divisionKeys.filter((k) => k !== null).map((divKey) => {
                   const divMatches = matchesByDivision.get(divKey) ?? [];
-                  const divCompetitors = getDivisionCompetitors(divMatches);
+                  const divCompetitors = divisionCompetitorsByKey.get(divKey) ?? [];
                   const tone = divisionTone(divKey!);
                   return (
                     <div key={String(divKey)}>
@@ -379,6 +373,7 @@ export function PairStage({
                 </Card>
               </div>
             )}
+            <StandingsSortKeyNote />
           </>
         )}
       </TabsContent>
