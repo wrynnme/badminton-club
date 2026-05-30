@@ -16,6 +16,7 @@ import {
   ListChecks,
   Activity,
   MapPin,
+  CalendarClock,
 } from "lucide-react";
 import {
   Card,
@@ -45,6 +46,8 @@ import {
 } from "@/lib/tournament/divisions";
 import { OrientableBarAxes, orientableBarLayout } from "@/components/tournament/charts/orientable-bar";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
+import { PairScheduleLink } from "@/components/tournament/pair-schedule-link";
 import { TeamSummary } from "@/components/tournament/team-summary";
 import { parseSettings } from "@/lib/tournament/settings";
 import { truncate } from "@/lib/utils";
@@ -404,13 +407,27 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
             style={{ backgroundColor: c.color }}
           />
         )}
-        <span className="flex-1 min-w-0 truncate text-sm">{c?.name ?? "—"}</span>
+        <span className="flex-1 min-w-0 truncate text-sm">
+          <EntityLink entityType={unit === "team" ? "team" : "pair"} entityId={c?.id}>
+            {c?.name ?? "—"}
+          </EntityLink>
+        </span>
         <span className="text-xs text-muted-foreground tabular-nums shrink-0">
           ชนะ {s.wins}
         </span>
         <span className="text-sm font-semibold tabular-nums shrink-0">
           {valueLabel} {value}
         </span>
+        {/* my-matches-link: ดูตารางแข่ง (pair only) — ลบ block นี้เพื่อถอด entry point */}
+        {unit === "pair" && (
+          <PairScheduleLink
+            pairId={c?.id}
+            className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
+          >
+            <CalendarClock className="h-3.5 w-3.5" aria-label="ดูตารางแข่ง" />
+          </PairScheduleLink>
+        )}
+        {/* end my-matches-link */}
       </li>
     );
   };

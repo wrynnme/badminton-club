@@ -1,7 +1,10 @@
-import { Trophy } from "lucide-react";
+import { Trophy, CalendarClock } from "lucide-react";
 import { computeStandings } from "@/lib/tournament/scoring";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+/* my-matches-link: ดูแมตช์ entry point — ลบ block นี้ (+ matching <th>) เพื่อถอด entry point */
+import { PairScheduleLink } from "@/components/tournament/pair-schedule-link";
+/* end my-matches-link */
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
@@ -48,6 +51,8 @@ export function StandingsTable({
               <TooltipContent>ชนะ = 3 · เสมอ = 1 · แพ้ = 0</TooltipContent>
             </Tooltip>
           </th>
+          {/* my-matches-link: ดูแมตช์ header (pair only) — ลบ <th> นี้คู่กับ <td> ด้านล่างเพื่อถอด entry point */}
+          {unit === "pair" && <th className="w-6 pb-1 font-normal" aria-label="ดูแมตช์" />}
         </tr>
       </thead>
       <tbody>
@@ -71,6 +76,17 @@ export function StandingsTable({
               <td className="text-center tabular-nums">{r.losses}</td>
               <td className="text-center tabular-nums">{r.pointDiff > 0 ? "+" : ""}{r.pointDiff}</td>
               <td className="text-center font-semibold tabular-nums">{r.leaguePoints}</td>
+              {/* my-matches-link: ดูแมตช์ cell (pair only) — ลบ <td> นี้คู่กับ <th> ด้านบนเพื่อถอด entry point */}
+              {unit === "pair" && (
+                <td className="text-center">
+                  <PairScheduleLink
+                    pairId={c?.id}
+                    className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground align-middle"
+                  >
+                    <CalendarClock className="h-3.5 w-3.5" aria-label="ดูแมตช์" />
+                  </PairScheduleLink>
+                </td>
+              )}
             </tr>
           );
         })}

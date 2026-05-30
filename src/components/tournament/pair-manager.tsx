@@ -2,13 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, X, Loader2 } from "lucide-react";
+import { Plus, X, Loader2, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createPairAction, deletePairAction } from "@/lib/actions/pairs";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
+import { PairScheduleLink } from "@/components/tournament/pair-schedule-link";
 import type { TeamWithPlayers, PairWithPlayers } from "@/lib/types";
 
 function CreatePairForm({ teamId, availablePlayers, onDone }: {
@@ -114,6 +115,11 @@ function PairItem({ pair, isOwner, color }: {
           </div>
         )}
       </div>
+      {/* my-matches-link: ดูแมตช์ entry point — ลบ block นี้เพื่อถอด entry point */}
+      <PairScheduleLink pairId={pair.id} className="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+        <ListChecks className="h-3 w-3" aria-label="ดูแมตช์" />
+      </PairScheduleLink>
+      {/* end my-matches-link */}
       {isOwner && (
         <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"
           aria-label="ลบคู่"
