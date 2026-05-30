@@ -71,15 +71,19 @@ export function buildPairDivisionMap(
   return map;
 }
 
+// Division palette → theme-aware tokens (--div-1..8 registered in globals.css @theme).
+// Tailwind v4 only generates utilities for literal class strings, so each entry is
+// spelled out (no template interpolation). `text-div-N` carries its own light/dark
+// value, so no `dark:` variant is needed; bg lifted to /14 for stronger dark contrast.
 export const DIVISION_COLORS: Array<{ border: string; bg: string; text: string }> = [
-  { border: "border-amber-500/40",   bg: "bg-amber-500/10",   text: "text-amber-700 dark:text-amber-300" },
-  { border: "border-sky-500/40",     bg: "bg-sky-500/10",     text: "text-sky-700 dark:text-sky-300" },
-  { border: "border-emerald-500/40", bg: "bg-emerald-500/10", text: "text-emerald-700 dark:text-emerald-300" },
-  { border: "border-violet-500/40",  bg: "bg-violet-500/10",  text: "text-violet-700 dark:text-violet-300" },
-  { border: "border-rose-500/40",    bg: "bg-rose-500/10",    text: "text-rose-700 dark:text-rose-300" },
-  { border: "border-cyan-500/40",    bg: "bg-cyan-500/10",    text: "text-cyan-700 dark:text-cyan-300" },
-  { border: "border-pink-500/40",    bg: "bg-pink-500/10",    text: "text-pink-700 dark:text-pink-300" },
-  { border: "border-lime-500/40",    bg: "bg-lime-500/10",    text: "text-lime-700 dark:text-lime-300" },
+  { border: "border-div-1/40", bg: "bg-div-1/14", text: "text-div-1" },
+  { border: "border-div-2/40", bg: "bg-div-2/14", text: "text-div-2" },
+  { border: "border-div-3/40", bg: "bg-div-3/14", text: "text-div-3" },
+  { border: "border-div-4/40", bg: "bg-div-4/14", text: "text-div-4" },
+  { border: "border-div-5/40", bg: "bg-div-5/14", text: "text-div-5" },
+  { border: "border-div-6/40", bg: "bg-div-6/14", text: "text-div-6" },
+  { border: "border-div-7/40", bg: "bg-div-7/14", text: "text-div-7" },
+  { border: "border-div-8/40", bg: "bg-div-8/14", text: "text-div-8" },
 ];
 
 export function divisionTone(n: number): (typeof DIVISION_COLORS)[number] {

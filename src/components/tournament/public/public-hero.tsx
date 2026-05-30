@@ -9,19 +9,19 @@ import type { Tournament, TeamWithPlayers, Match } from "@/lib/types";
 const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   draft: {
     label: "แบบร่าง",
-    cls: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
+    cls: "bg-muted text-muted-foreground",
   },
   registering: {
     label: "เปิดรับสมัคร",
-    cls: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+    cls: "bg-primary/12 text-primary",
   },
   ongoing: {
     label: "กำลังแข่ง",
-    cls: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-300",
+    cls: "bg-success/15 text-success",
   },
   completed: {
     label: "จบแล้ว",
-    cls: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+    cls: "bg-secondary text-secondary-foreground",
   },
 };
 
@@ -71,17 +71,17 @@ export function PublicHero({
     totalMatches === 0 ? "—" : `${completedMatches}/${totalMatches}`;
 
   return (
-    <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-amber-50 via-background to-orange-50 dark:from-amber-950/30 dark:via-background dark:to-orange-950/20">
+    <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/8 via-background to-brand/8">
       {/* Champion accent stripe */}
-      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 via-yellow-500 to-orange-500" />
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary via-live to-brand" />
       {/* Decorative bg trophy */}
-      <Trophy className="absolute -right-8 -top-8 size-56 text-amber-500/[0.04] dark:text-amber-300/[0.04] rotate-12 pointer-events-none select-none" />
+      <Trophy className="absolute -right-8 -top-8 size-56 text-brand/[0.05] rotate-12 pointer-events-none select-none" />
 
       <div className="relative p-5 sm:p-7 space-y-4 sm:space-y-5">
         {/* Title + TV button */}
         <div className="flex items-start justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <Trophy className="h-8 w-8 sm:h-10 sm:w-10 shrink-0 text-amber-500" />
+            <Trophy className="h-8 w-8 sm:h-10 sm:w-10 shrink-0 text-brand" />
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight leading-tight truncate">
               {t.name}
             </h1>
