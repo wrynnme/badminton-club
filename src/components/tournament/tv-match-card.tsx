@@ -1,13 +1,11 @@
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
+import {
+  MATCH_STATUS_LABEL_TH,
+  MATCH_STATUS_PILL_CLASS,
+} from "@/lib/tournament/status-display";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
-
-const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
-  pending: { text: "รอแข่ง", cls: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/30" },
-  in_progress: { text: "กำลังเล่น", cls: "bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/30" },
-  completed: { text: "จบแล้ว", cls: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300 border-zinc-500/30" },
-};
 
 export function TvMatchCard({
   match,
@@ -30,11 +28,12 @@ export function TvMatchCard({
   const gamesA = match.team_a_score ?? 0;
   const gamesB = match.team_b_score ?? 0;
 
-  const status = STATUS_LABEL[match.status] ?? STATUS_LABEL.pending;
+  const statusLabel = MATCH_STATUS_LABEL_TH[match.status] ?? MATCH_STATUS_LABEL_TH.pending;
+  const statusCls = MATCH_STATUS_PILL_CLASS[match.status] ?? MATCH_STATUS_PILL_CLASS.pending;
 
   const sideClass = (isWinner: boolean, isLoser: boolean) =>
     isWinner
-      ? "text-green-600 dark:text-green-400 font-bold"
+      ? "text-winner font-bold"
       : isLoser
         ? "text-muted-foreground line-through"
         : "font-semibold";
@@ -52,8 +51,8 @@ export function TvMatchCard({
   return (
     <div className={`rounded-xl border bg-card p-2 lg:p-3 2xl:p-4 ${fillHeight ? "h-full flex flex-col gap-2" : "space-y-2"}`}>
       <div className={`${fillHeight ? "shrink-0" : ""} flex items-center justify-between gap-3 text-sm lg:text-base 2xl:text-lg`}>
-        <span className={`px-2 py-0.5 rounded-full border text-xs lg:text-sm 2xl:text-base font-medium shrink-0 ${status.cls}`}>
-          {status.text}
+        <span className={`px-2 py-0.5 rounded-full border text-xs lg:text-sm 2xl:text-base font-medium shrink-0 ${statusCls}`}>
+          {statusLabel}
         </span>
         <div className="flex items-center gap-2 min-w-0 ml-auto">
           <span className="text-muted-foreground font-mono shrink-0">#{match.match_number}</span>

@@ -50,20 +50,14 @@ import {
 } from "@/lib/actions/matches";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { parseDivision, divisionTone } from "@/lib/tournament/divisions";
+import { MATCH_STATUS_LABEL_TH, MATCH_STATUS_PILL_CLASS } from "@/lib/tournament/status-display";
 import type { Match, MatchUnit } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
-const STATUS_LABEL: Record<Match["status"], string> = {
-  pending: "รอแข่ง",
-  in_progress: "กำลังแข่ง",
-  completed: "จบแล้ว",
-};
-
-const STATUS_TONE: Record<Match["status"], string> = {
-  pending: "bg-muted text-muted-foreground",
-  in_progress: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200",
-  completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200",
-};
+// Canonical labels + pill tones now live in status-display.ts (shared with
+// tv-match-card). Local aliases keep existing call sites unchanged.
+const STATUS_LABEL = MATCH_STATUS_LABEL_TH;
+const STATUS_TONE = MATCH_STATUS_PILL_CLASS;
 
 // Sort: group matches before knockout (round_type alphabetical 'group' < 'knockout'),
 // then by match_number. Mirrors server-side `.order("round_type").order("match_number")`
@@ -185,7 +179,7 @@ export function MatchQueue({
                   <div
                     key={courtName}
                     className={`rounded-md border p-2 text-xs ${
-                      occ ? "border-amber-500/40 bg-amber-50/40 dark:bg-amber-950/20" : "border-green-500/30 bg-green-50/40 dark:bg-green-950/20"
+                      occ ? "border-warning/40 bg-warning/10" : "border-success/30 bg-success/10"
                     }`}
                   >
                     <div className="font-medium flex items-center justify-between gap-1">
@@ -193,7 +187,7 @@ export function MatchQueue({
                       {occ ? (
                         <Badge variant="outline" className="text-[10px] px-1 py-0">#{occ.match_number}</Badge>
                       ) : (
-                        <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0" />
+                        <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
                       )}
                     </div>
                     <div className="mt-0.5 truncate text-muted-foreground">
@@ -394,7 +388,7 @@ function DivisionBadge({ match }: { match: Match }) {
         <Tooltip>
           <TooltipTrigger
             render={
-              <span className="text-[10px] px-1 py-0.5 rounded border font-medium cursor-help border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+              <span className="text-[10px] px-1 py-0.5 rounded border font-medium cursor-help border-warning/40 bg-warning/10 text-warning">
                 KO
               </span>
             }
