@@ -30,6 +30,7 @@ export function TvMatchCard({
 
   const statusLabel = MATCH_STATUS_LABEL_TH[match.status] ?? MATCH_STATUS_LABEL_TH.pending;
   const statusCls = MATCH_STATUS_PILL_CLASS[match.status] ?? MATCH_STATUS_PILL_CLASS.pending;
+  const isLive = match.status === "in_progress";
 
   const sideClass = (isWinner: boolean, isLoser: boolean) =>
     isWinner
@@ -49,9 +50,10 @@ export function TvMatchCard({
   };
 
   return (
-    <div className={`rounded-xl border bg-card p-2 lg:p-3 2xl:p-4 ${fillHeight ? "h-full flex flex-col gap-2" : "space-y-2"}`}>
+    <div className={`rounded-xl border bg-card p-2 lg:p-3 2xl:p-4 ${isLive ? "bc-live-card" : ""} ${fillHeight ? "h-full flex flex-col gap-2" : "space-y-2"}`}>
       <div className={`${fillHeight ? "shrink-0" : ""} flex items-center justify-between gap-3 text-sm lg:text-base 2xl:text-lg`}>
-        <span className={`px-2 py-0.5 rounded-full border text-xs lg:text-sm 2xl:text-base font-medium shrink-0 ${statusCls}`}>
+        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs lg:text-sm 2xl:text-base font-medium shrink-0 ${statusCls}`}>
+          {isLive && <span className="bc-live-dot inline-block w-2 h-2 2xl:w-2.5 2xl:h-2.5 rounded-full bg-live" />}
           {statusLabel}
         </span>
         <div className="flex items-center gap-2 min-w-0 ml-auto">
@@ -82,8 +84,14 @@ export function TvMatchCard({
         <div className="text-center shrink-0 px-2 lg:px-4">
           {match.status === "completed" ? (
             <>
-              <div className="font-bold tabular-nums text-xl lg:text-3xl 2xl:text-4xl">
-                {gamesA} : {gamesB}
+              <div className="flex items-center gap-1 leading-none">
+                <span className={`font-display font-bold tabular-nums w-14 sm:w-20 text-right leading-none text-5xl sm:text-7xl${isLive ? " text-primary drop-shadow-[0_0_16px_color-mix(in_oklch,var(--color-primary)_60%,transparent)]" : ""}`}>
+                  {gamesA}
+                </span>
+                <span className="text-3xl sm:text-4xl font-bold text-muted-foreground">:</span>
+                <span className={`font-display font-bold tabular-nums w-14 sm:w-20 text-left leading-none text-5xl sm:text-7xl${isLive ? " text-primary drop-shadow-[0_0_16px_color-mix(in_oklch,var(--color-primary)_60%,transparent)]" : ""}`}>
+                  {gamesB}
+                </span>
               </div>
               {totals && (
                 <div className="text-muted-foreground tabular-nums mt-1 text-xs lg:text-sm 2xl:text-base">
@@ -92,7 +100,7 @@ export function TvMatchCard({
               )}
             </>
           ) : (
-            <div className="text-muted-foreground font-bold text-lg lg:text-2xl 2xl:text-3xl">VS</div>
+            <div className="font-heading text-muted-foreground font-bold text-2xl lg:text-4xl 2xl:text-5xl">VS</div>
           )}
         </div>
 
