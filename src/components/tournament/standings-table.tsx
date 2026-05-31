@@ -62,7 +62,7 @@ export function StandingsTable({
             <tr key={r.competitorId} className={i === 0 ? "font-semibold" : ""}>
               <td className="py-0.5">
                 <div className="flex items-center gap-1.5">
-                  {i === 0 && r.played > 0 && <Trophy className="h-3 w-3 text-yellow-500 shrink-0" />}
+                  {i === 0 && r.played > 0 && <Trophy className="h-3 w-3 text-brand shrink-0" />}
                   {c?.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: c.color }} />}
                   <EntityLink entityType={unit === "team" ? "team" : "pair"} entityId={c?.id}>
                     <span className="truncate">{c?.name ?? "—"}</span>
@@ -81,9 +81,10 @@ export function StandingsTable({
                 <td className="text-center">
                   <PairScheduleLink
                     pairId={c?.id}
+                    label="ดูแมตช์"
                     className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground align-middle"
                   >
-                    <CalendarClock className="h-3.5 w-3.5" aria-label="ดูแมตช์" />
+                    <CalendarClock className="h-3.5 w-3.5" />
                   </PairScheduleLink>
                 </td>
               )}

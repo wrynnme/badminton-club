@@ -26,10 +26,13 @@ import type { ReactNode } from "react";
 export function PairScheduleLink({
   pairId,
   className,
+  label,
   children,
 }: {
   pairId: string | null | undefined;
   className?: string;
+  /** Accessible name for the anchor — required when children are icon-only. */
+  label?: string;
   children: ReactNode;
 }): React.JSX.Element {
   const pathname = usePathname();
@@ -54,7 +57,12 @@ export function PairScheduleLink({
   if (pathname === href) return <>{children}</>;
 
   return (
-    <Link href={href} className={`hover:underline ${className ?? ""}`}>
+    <Link
+      href={href}
+      className={`hover:underline ${className ?? ""}`}
+      aria-label={label}
+      title={label}
+    >
       {children}
     </Link>
   );

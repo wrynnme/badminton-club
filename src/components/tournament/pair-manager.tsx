@@ -116,8 +116,8 @@ function PairItem({ pair, isOwner, color }: {
         )}
       </div>
       {/* my-matches-link: ดูแมตช์ entry point — ลบ block นี้เพื่อถอด entry point */}
-      <PairScheduleLink pairId={pair.id} className="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-        <ListChecks className="h-3 w-3" aria-label="ดูแมตช์" />
+      <PairScheduleLink pairId={pair.id} label="ดูแมตช์" className="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+        <ListChecks className="h-3 w-3" />
       </PairScheduleLink>
       {/* end my-matches-link */}
       {isOwner && (

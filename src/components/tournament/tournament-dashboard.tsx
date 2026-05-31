@@ -397,7 +397,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
       <li key={s.competitorId} className="flex items-center gap-2 py-1.5">
         <span className="w-5 text-xs tabular-nums text-muted-foreground">{idx + 1}</span>
         {idx === 0 ? (
-          <Trophy className="h-3.5 w-3.5 text-yellow-500 shrink-0" />
+          <Trophy className="h-3.5 w-3.5 text-brand shrink-0" />
         ) : (
           <span className="w-3.5 shrink-0" />
         )}
@@ -422,9 +422,10 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
         {unit === "pair" && (
           <PairScheduleLink
             pairId={c?.id}
+            label="ดูตารางแข่ง"
             className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
           >
-            <CalendarClock className="h-3.5 w-3.5" aria-label="ดูตารางแข่ง" />
+            <CalendarClock className="h-3.5 w-3.5" />
           </PairScheduleLink>
         )}
         {/* end my-matches-link */}
@@ -498,7 +499,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Trophy className="h-4 w-4 text-yellow-500" />
+              <Trophy className="h-4 w-4 text-brand" />
               อันดับสูงสุด
             </CardTitle>
             <CardDescription className="text-xs">เรียงตามคะแนนรวม</CardDescription>

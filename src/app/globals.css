@@ -100,7 +100,7 @@
 
   /* semantic — canonical status + result colors (theme-aware, no dark: needed at call sites) */
   --success: oklch(0.5 0.14 150);
-  --warning: oklch(0.6 0.16 70);
+  --warning: oklch(0.52 0.16 70);
   --live: oklch(0.66 0.22 145);
   --winner: oklch(0.48 0.15 150);
   --brand: oklch(0.62 0.2 32);

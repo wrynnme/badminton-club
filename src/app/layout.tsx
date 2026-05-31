@@ -19,8 +19,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Display font for headings / scoreboard numerals — adopted per-surface in phase 2
-// via the `font-heading` utility (maps to --font-heading in globals.css @theme).
+// Display font for headings / scoreboard numerals via the `font-heading`
+// utility (maps to --font-heading in globals.css @theme). Already applied to
+// CardTitle + DialogTitle; phase 2 extends it to scoreboard numerals.
 const chakraPetch = Chakra_Petch({
   variable: "--font-chakra",
   subsets: ["thai", "latin"],
