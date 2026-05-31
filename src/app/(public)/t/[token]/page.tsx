@@ -91,7 +91,7 @@ export default async function PublicTournamentPage({
 
   return (
     <TournamentLiveWrapper tournamentId={t.id} realtimeEnabled={settings.realtime_enabled}>
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
+      <div className="max-w-5xl w-full min-w-0 mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
         <PublicHero
           tournament={t}
           token={token}
