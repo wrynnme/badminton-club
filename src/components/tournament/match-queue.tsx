@@ -695,7 +695,7 @@ function QueueRowBody({
                   <Button
                     size="sm"
                     variant="default"
-                    className="h-7 text-xs px-2 gap-1"
+                    className="min-h-11 sm:min-h-8 text-xs px-2 gap-1"
                     disabled={
                       startPending ||
                       (requireCourtToStart && !match.court) ||
@@ -730,7 +730,7 @@ function QueueRowBody({
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-xs px-2 gap-1"
+                      className="min-h-11 sm:min-h-8 text-xs px-2 gap-1"
                       disabled={cancelPending}
                       onClick={() => startCancel(async () => {
                         const res = await cancelMatchAction(match.id, tournamentId);
@@ -751,7 +751,7 @@ function QueueRowBody({
                     <Button
                       size="sm"
                       variant="default"
-                      className="h-7 text-xs px-2 gap-1"
+                      className="min-h-11 sm:min-h-8 text-xs px-2 gap-1"
                       onClick={() => setEditing(true)}
                     >
                       <ClipboardEdit className="h-3 w-3" />จบแข่ง
@@ -770,7 +770,7 @@ function QueueRowBody({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-7 text-xs px-2 gap-1"
+                    className="min-h-11 sm:min-h-8 text-xs px-2 gap-1"
                     aria-label="รีเซ็ตผล"
                     disabled={resetPending}
                     onClick={() => startReset(async () => {

@@ -50,26 +50,26 @@ export function PublicTournamentShell({
         variant="line"
         className="w-full justify-start gap-0 rounded-none border-b bg-transparent pb-0 h-auto flex-wrap"
       >
-        <TabsTrigger value="dashboard" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
+        <TabsTrigger value="dashboard" className="min-h-11 px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
           แดชบอร์ด
         </TabsTrigger>
         {showGroups && (
-          <TabsTrigger value="groups" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
+          <TabsTrigger value="groups" className="min-h-11 px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
             กลุ่ม
           </TabsTrigger>
         )}
         {showPairs && (
-          <TabsTrigger value="pairs" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
+          <TabsTrigger value="pairs" className="min-h-11 px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
             คู่
           </TabsTrigger>
         )}
         {showKnockout && (
-          <TabsTrigger value="knockout" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
+          <TabsTrigger value="knockout" className="min-h-11 px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
             สาย
           </TabsTrigger>
         )}
         {showQueue && (
-          <TabsTrigger value="queue" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
+          <TabsTrigger value="queue" className="min-h-11 px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
             ตารางคิว
           </TabsTrigger>
         )}
