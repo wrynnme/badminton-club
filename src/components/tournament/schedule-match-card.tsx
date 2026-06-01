@@ -125,9 +125,10 @@ export function ScheduleMatchCard({
 
   const isLarge = size === "large";
 
-  // Canonical status label + pill — shared with match-queue + tv-match-card.
-  const statusLabel = MATCH_STATUS_LABEL_TH[match.status];
-  const statusCls = MATCH_STATUS_PILL_CLASS[match.status];
+  // Canonical status label + pill — shared with match-queue + tv-match-card
+  // (same `?? pending` defensive fallback as tv-match-card).
+  const statusLabel = MATCH_STATUS_LABEL_TH[match.status] ?? MATCH_STATUS_LABEL_TH.pending;
+  const statusCls = MATCH_STATUS_PILL_CLASS[match.status] ?? MATCH_STATUS_PILL_CLASS.pending;
 
   // Division badge — text identical to the old inline `Division {n}`; tone color
   // only when coloredDivision is on (court page passes false → unchanged outline).
