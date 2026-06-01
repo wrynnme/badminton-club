@@ -275,7 +275,7 @@ export function CsvImportDialog({
                     <Badge variant="secondary" className="text-xs">{new Set(playerRows.map((r) => r.team)).size} ทีม</Badge>
                     <Badge variant="secondary" className="text-xs">{playerRows.length} คน</Badge>
                   </div>
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                  <p className="text-xs text-warning">
                     ⚠ id_player ซ้ำ = อัพเดทชื่อ/role, id_player ใหม่ = สร้างผู้เล่นใหม่
                   </p>
                   <Button className="w-full" onClick={handleImportPlayers} disabled={pending}>

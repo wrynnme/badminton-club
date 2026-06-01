@@ -21,7 +21,7 @@ function Side({
     : null;
 
   return (
-    <div className={`flex items-center gap-1.5 px-2 py-1.5 ${isWinner ? "bg-primary/10" : ""}`}>
+    <div className={`flex items-center gap-1.5 px-2 py-1.5 ${isWinner ? "bg-winner/10" : ""}`}>
       {competitor?.color && (
         <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: competitor.color }} />
       )}
