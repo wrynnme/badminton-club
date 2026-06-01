@@ -600,7 +600,7 @@ function QueueRowBody({
   return (
     <div className="rounded-lg border bg-card">
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 sm:p-2.5">
-        <div className="flex items-center gap-2 min-w-0">
+        <div className="flex items-center gap-2 min-w-0 sm:flex-1">
         {dragHandleProps && (
           <Tooltip>
             <TooltipTrigger
