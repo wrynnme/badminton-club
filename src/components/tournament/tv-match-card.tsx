@@ -82,7 +82,7 @@ export function TvMatchCard({
         </div>
 
         <div className="text-center shrink-0 px-2 lg:px-4">
-          {match.status === "completed" ? (
+          {match.status !== "pending" ? (
             <>
               <div className="flex items-center gap-1 leading-none">
                 <span className={`font-display font-bold tabular-nums w-14 sm:w-20 text-right leading-none text-5xl sm:text-7xl${isLive ? " text-primary drop-shadow-[0_0_16px_color-mix(in_oklch,var(--color-primary)_60%,transparent)]" : ""}`}>

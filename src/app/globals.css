@@ -106,7 +106,7 @@
   --winner: oklch(0.48 0.15 150);
   --brand: oklch(0.62 0.2 32);
 
-  /* division palette (1 = top tier) — registered as colors so bg-div-N/12 etc. work */
+  /* division palette (1 = top tier) — registered as colors so bg-div-N/14 etc. work */
   --div-1: oklch(0.5 0.18 150);
   --div-2: oklch(0.5 0.16 235);
   --div-3: oklch(0.52 0.18 300);
