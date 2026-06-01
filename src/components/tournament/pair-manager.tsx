@@ -2,12 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Plus, X, Loader2 } from "lucide-react";
+import { Plus, X, Loader2, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { createPairAction, deletePairAction } from "@/lib/actions/pairs";
+import { EntityLink } from "@/components/tournament/stats/entity-link";
+import { PairScheduleLink } from "@/components/tournament/pair-schedule-link";
 import type { TeamWithPlayers, PairWithPlayers } from "@/lib/types";
 
 function CreatePairForm({ teamId, availablePlayers, onDone }: {
@@ -79,7 +81,6 @@ function PairItem({ pair, isOwner, color }: {
   const [delPending, startDel] = useTransition();
   const p1 = pair.player1;
   const p2 = pair.player2;
-  const names = [p1?.display_name, p2?.display_name].filter(Boolean).join(" / ");
   const levels = [p1?.level, p2?.level].filter(Boolean);
 
   return (
@@ -91,7 +92,21 @@ function PairItem({ pair, isOwner, color }: {
           {pair.display_pair_name && <span className="font-medium truncate">{pair.display_pair_name}</span>}
           {pair.pair_level && <Badge className="text-[10px] px-1.5 py-0 shrink-0">{pair.pair_level}</Badge>}
         </div>
-        <div className="text-xs text-muted-foreground truncate">{names || "—"}</div>
+        <div className="text-xs text-muted-foreground truncate">
+          {p1?.display_name || p2?.display_name ? (
+            <>
+              {p1?.display_name && (
+                <EntityLink entityType="player" entityId={p1.id}>{p1.display_name}</EntityLink>
+              )}
+              {p1?.display_name && p2?.display_name && " / "}
+              {p2?.display_name && (
+                <EntityLink entityType="player" entityId={p2.id}>{p2.display_name}</EntityLink>
+              )}
+            </>
+          ) : (
+            "—"
+          )}
+        </div>
         {levels.length > 0 && (
           <div className="flex gap-1 mt-0.5">
             {levels.map((lv, i) => (
@@ -100,6 +115,11 @@ function PairItem({ pair, isOwner, color }: {
           </div>
         )}
       </div>
+      {/* my-matches-link: ดูแมตช์ entry point — ลบ block นี้เพื่อถอด entry point */}
+      <PairScheduleLink pairId={pair.id} label="ดูแมตช์" className="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+        <ListChecks className="h-3 w-3" />
+      </PairScheduleLink>
+      {/* end my-matches-link */}
       {isOwner && (
         <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"
           aria-label="ลบคู่"

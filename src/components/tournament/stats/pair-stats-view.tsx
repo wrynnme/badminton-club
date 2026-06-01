@@ -9,6 +9,8 @@ import { StreakPill } from "./shared/streak-pill";
 import { StatHeaderCards } from "./shared/stat-header-cards";
 import { MatchHistoryList, type CompetitorEntry } from "./shared/match-history-list";
 import { HeadToHeadTable, type HeadToHeadRow } from "./shared/head-to-head-table";
+import { PairScheduleLink } from "@/components/tournament/pair-schedule-link";
+import { CalendarClock } from "lucide-react";
 
 export function PairStatsView({
   stats,
@@ -71,6 +73,13 @@ export function PairStatsView({
               <span className="font-medium text-foreground">{pair.pair_level}</span>
             </p>
           )}
+
+          {/* my-matches-link: ดูตารางแข่ง cross-link — ลบ block นี้เพื่อถอด entry point */}
+          <PairScheduleLink pairId={stats.entityId} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <CalendarClock className="size-3.5" />
+            ดูตารางแข่ง
+          </PairScheduleLink>
+          {/* end my-matches-link */}
         </CardContent>
       </Card>
 

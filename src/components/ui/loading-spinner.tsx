@@ -1,4 +1,3 @@
-import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export function LoadingSpinner({
@@ -11,12 +10,12 @@ export function LoadingSpinner({
   return (
     <div
       className={cn(
-        "flex items-center justify-center",
+        "flex items-center justify-center text-muted-foreground",
         fullscreen ? "min-h-screen" : "min-h-[60vh]",
         className,
       )}
     >
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <span className="loader" role="status" aria-label="กำลังโหลด" />
     </div>
   );
 }

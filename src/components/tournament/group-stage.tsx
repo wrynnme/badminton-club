@@ -10,7 +10,8 @@ import { Separator } from "@/components/ui/separator";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupInput } from "@/components/ui/input-group";
 import { MatchList } from "@/components/tournament/match-list";
-import { StandingsTable } from "@/components/tournament/standings-table";
+import { ScoreMatrix } from "@/components/tournament/score-matrix";
+import { StandingsTable, StandingsSortKeyNote } from "@/components/tournament/standings-table";
 import {
   generateGroupsAction,
   generateGroupMatchesAction,
@@ -108,6 +109,7 @@ function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
   matchRowSize?: "compact" | "comfortable";
 }) {
   const [showMatches, setShowMatches] = useState(true);
+  const [view, setView] = useState<"list" | "matrix">("list");
 
   const competitors = useMemo(() => {
     const groupTeamIds = group.group_teams.map((gt) => gt.team_id);
@@ -126,24 +128,56 @@ function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
         {group.matches.length > 0 && (
           <>
             <Separator />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={() => setShowMatches(!showMatches)}>
-              {showMatches ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-              แมตช์ ({group.matches.length})
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
+                onClick={() => setShowMatches(!showMatches)}>
+                {showMatches ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                แมตช์ ({group.matches.length})
+              </Button>
+              {showMatches && (
+                <div className="flex items-center gap-1 ml-auto">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-pressed={view === "list"}
+                    className={`h-6 px-2 text-xs ${view === "list" ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                    onClick={() => setView("list")}>
+                    ตาราง
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-pressed={view === "matrix"}
+                    className={`h-6 px-2 text-xs ${view === "matrix" ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                    onClick={() => setView("matrix")}>
+                    Matrix
+                  </Button>
+                </div>
+              )}
+            </div>
             {showMatches && (
-              <MatchList
-                matches={group.matches}
-                competitorById={competitorMap}
-                tournamentId={tournamentId}
-                isOwner={isOwner}
-                unit="team"
-                size={matchRowSize}
-              />
+              view === "matrix" ? (
+                <ScoreMatrix
+                  matches={group.matches}
+                  competitors={competitors}
+                  unit="team"
+                />
+              ) : (
+                <MatchList
+                  matches={group.matches}
+                  competitorById={competitorMap}
+                  tournamentId={tournamentId}
+                  isOwner={isOwner}
+                  unit="team"
+                  size={matchRowSize}
+                />
+              )
             )}
           </>
         )}
@@ -228,11 +262,14 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize,
       )}
 
       {hasGroups ? (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {groups.map((g) => (
-            <GroupCard key={g.id} group={g} teams={teams} tournamentId={tournamentId} isOwner={isOwner} matchRowSize={matchRowSize} />
-          ))}
-        </div>
+        <>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {groups.map((g) => (
+              <GroupCard key={g.id} group={g} teams={teams} tournamentId={tournamentId} isOwner={isOwner} matchRowSize={matchRowSize} />
+            ))}
+          </div>
+          {completedMatches > 0 && <StandingsSortKeyNote />}
+        </>
       ) : (
         !isOwner && <p className="text-sm text-muted-foreground">ยังไม่มีการแบ่งกลุ่ม</p>
       )}

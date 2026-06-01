@@ -4,7 +4,30 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-(none)
+### 2026-05-27 — max-effort code review (score matrix + player-link/tiebreak, commits 80ae63a..f94ccb8) — ALL FIXED same-day
+
+0 P0 · 0 P1-correctness. `buildScoreMatrix` logic verified byte-identical to `gameWinner`; BYE/2-direction/guards all correct + tested. Findings below were a11y, dead-code, and test-gap — all resolved 2026-05-27 (tsc clean · 293→307 vitest pass).
+
+**Fix:** #1 `pair-stage.tsx` standings now uses `divisionCompetitorsByKey`, deleted dead `getDivisionCompetitors`. #2 `aria-pressed` on view toggles (group-stage + pair-stage). #3 `standings-table.tsx` Pts tooltip span `tabIndex={0}`. #4 footer extracted as `StandingsSortKeyNote` export; GroupStage/PairStage render it once per section (no more per-table dup). #5 +14 vitest (tie game, all-ties, 3-competitor full matrix, scheduled→score promote, input immutability). #6 `score-matrix.tsx` aria-hidden dots/diagonal + corner `sr-only` label. nit: `pair-manager.tsx` gates EntityLink on `display_name` truthy. docstring: equal-`match_number` → array-order note. (Not fixed — out of scope: `RESULT_TEXT_CLASS.D` yellow WCAG contrast — shared theme token; score format `2:1` vs MatchRow — compact intentional.)
+
+- **[P1] PairStage standings path recomputes competitors + dead `getDivisionCompetitors`** — Context: `pair-stage.tsx` matrix path now routes through memoized `divisionCompetitorsByKey`, but standings path (L317) still calls `getDivisionCompetitors(divMatches)` (L115-121), recomputing a fresh array each render → `StandingsTable` `competitors` ref unstable. Repro: render pair-stage standings tab, profile re-renders. Suspected cause: incomplete migration when the memo was added. Suggested fix: route L317 through `divisionCompetitorsByKey.get(divKey) ?? []` and delete `getDivisionCompetitors`.
+- **[P1] View toggle missing `aria-pressed`** — Context: ตาราง/Matrix toggle in `group-stage.tsx` (L143-158) + `pair-stage.tsx` (L262-277) signals active state via color/weight only. Repro: SR/keyboard user can't tell which view is active. Suspected cause: plain `<Button>` pair, no pressed semantics. Suggested fix: add `aria-pressed` to both buttons (or migrate to shadcn `ToggleGroup`, also dedups the copy-pasted markup).
+- **[P2] Pts tooltip not keyboard-accessible** — Context: `standings-table.tsx:32-42` `TooltipTrigger render={<span class="cursor-help">}` — base-ui replaces host element → non-focusable `<span>` (no tabIndex). Repro: tab to Pts header → can't open tooltip. Suspected cause: rendered to bare span (other repo tooltips render to `<Button>`: court-manager.tsx:152, match-queue.tsx:233). Suggested fix: `tabIndex={0}` on the span (or render to ghost Button).
+- **[P2] Standings footer duplicates per group/division** — Context: `standings-table.tsx:71-73` footer "เกณฑ์จัดอันดับ: …" renders inside `StandingsTable`, which is looped per group (`group-stage.tsx`) + per division (`pair-stage.tsx`). Repro: 4-group page → identical footer ×4. Suspected cause: footer baked into the per-table component. Suggested fix: lift to parent (render once) or `showSortKey?: boolean` prop default false.
+- **[P2] score-matrix.test.ts coverage gaps** — Context: 24 cases miss (a) tie game `{a:21,b:21}` → `0:0`/`D`, (b) 3+ competitor full matrix (mixed score/scheduled/none in one row), (c) reverse of case 6 (pending mn=1 then completed mn=2 → must promote to score). Repro: n/a (test gap). Suspected cause: cases written for 2-competitor shape. Suggested fix: add the 3 cases.
+- **[P2] score-matrix.tsx a11y polish** — Context: color dots + diagonal `—` exposed to AT with no meaning; empty corner `<TableHead>` has no accessible name. Suggested fix: `aria-hidden` on dots + diagonal glyph; `<span class="sr-only">ทีม/คู่</span>` in corner cell (gate on `unit`).
+- **[nit] misc** — empty-string `display_name` → empty link (`pair-manager.tsx:97`, old `.filter(Boolean)` dropped it); `EntityLink` fallback drops `className` if reused off tournament path (`team-manager.tsx:193`); matrix score format `2:1`/`42-38` diverges from MatchRow `2 : 1`/`(42–38)`; `buildScoreMatrix` docstring over-promises determinism on equal `match_number` (relies on stable-sort + array order); standings fragment children not re-indented (prettier). RESULT_TEXT_CLASS.D yellow may fail WCAG AA (shared token, out of scope).
+
+### 2026-05-26 — max-effort code review of theme/table migration (3 findings, all resolved)
+
+- **[P2] HeadToHead name column overflow (regression from `<Table>` migration)** — Context: `head-to-head-table.tsx` migrated grid→shadcn `<Table>` (auto-layout). Repro: long competitor name at ≤390px viewport. Cause: name `<TableCell>` had `truncate` but no width bound; auto-layout sizes cell to content, so `truncate` never clips → table 521px > 390px viewport, แมตช์/ชนะ/แพ้/เสมอ scroll off-screen (sibling match-history opponent cell was correct via `max-w-0 w-full`). Fix: `head-to-head-table.tsx:100` add `max-w-0 w-full`. Validated via Playwright @390px + long-name fixture: name cell 368px→84px, table 521px→236px, last col right 537px→313px (in-viewport); before/after toggle confirmed load-bearing.
+- **[P2] Light primary teal-600 + white text = 3.5:1, fails WCAG AA normal text** — Fix: light `--primary`/`--ring`/`--sidebar-primary`/`--sidebar-ring` teal-600 `oklch(0.6 0.118 184.704)` → teal-700 `oklch(0.511 0.096 186.391)` (~5:1, passes AA). Dark teal-500 already 7.3:1.
+- **[P3] `globals.css` missing trailing newline** — Fix: appended.
+- Logic clean (per-game scores, `Match.games` non-null, BYE walkover non-empty, callers API-stable). `tsc --noEmit` clean.
+
+### 2026-05-25 — UX polish: cursor-pointer audit
+
+- Tailwind v4 cursor-pointer audit shipped. `cursor-pointer` added to `buttonVariants` base + `ui/tabs.tsx`/`ui/select.tsx`/`ui/checkbox.tsx` triggers + raw color-swatch `<button>` in `team-manager.tsx`. DnD handles keep `cursor-grab`; listbox items keep `cursor-default`. `tsc --noEmit` clean. No new findings.
 
 ### 2026-05-24 — Phase 12 require_checkin shipped
 
@@ -34,6 +57,10 @@ Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upse
 All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
 
 ## Resolved
+
+### 2026-06-01 — `cfbab56` Match-queue mobile readability
+
+- **[P2] ตารางคิว competitor names hidden on mobile** — RESOLVED 2026-06-01 (`cfbab56`). `match-queue.tsx` QueueRowBody was a single horizontal flex; the court `Select` + เริ่ม/จบ/ยกเลิก cluster claimed the width at ≤390px, squeezing the `flex-1 min-w-0` names grid to ~0 so both pair names truncated away. Fix: outer row → `flex-col sm:flex-row` — mobile line 1 = drag/#/division + names (full width, both pairs visible), line 2 = court + actions (`flex-wrap`); desktop single row unchanged + row height grows on mobile. Verified Playwright @390 (names shown, scrollWidth==clientWidth) + @768 (single row). tsc clean.
 
 ### 2026-05-24 — `57c5606` Extra-high effort code review (15 findings)
 

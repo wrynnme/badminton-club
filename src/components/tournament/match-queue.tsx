@@ -50,20 +50,14 @@ import {
 } from "@/lib/actions/matches";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { parseDivision, divisionTone } from "@/lib/tournament/divisions";
+import { MATCH_STATUS_LABEL_TH, MATCH_STATUS_PILL_CLASS } from "@/lib/tournament/status-display";
 import type { Match, MatchUnit } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
-const STATUS_LABEL: Record<Match["status"], string> = {
-  pending: "รอแข่ง",
-  in_progress: "กำลังแข่ง",
-  completed: "จบแล้ว",
-};
-
-const STATUS_TONE: Record<Match["status"], string> = {
-  pending: "bg-muted text-muted-foreground",
-  in_progress: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200",
-  completed: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200",
-};
+// Canonical labels + pill tones now live in status-display.ts (shared with
+// tv-match-card). Local aliases keep existing call sites unchanged.
+const STATUS_LABEL = MATCH_STATUS_LABEL_TH;
+const STATUS_TONE = MATCH_STATUS_PILL_CLASS;
 
 // Sort: group matches before knockout (round_type alphabetical 'group' < 'knockout'),
 // then by match_number. Mirrors server-side `.order("round_type").order("match_number")`
@@ -185,7 +179,7 @@ export function MatchQueue({
                   <div
                     key={courtName}
                     className={`rounded-md border p-2 text-xs ${
-                      occ ? "border-amber-500/40 bg-amber-50/40 dark:bg-amber-950/20" : "border-green-500/30 bg-green-50/40 dark:bg-green-950/20"
+                      occ ? "border-warning/40 bg-warning/10" : "border-success/30 bg-success/10"
                     }`}
                   >
                     <div className="font-medium flex items-center justify-between gap-1">
@@ -193,7 +187,7 @@ export function MatchQueue({
                       {occ ? (
                         <Badge variant="outline" className="text-[10px] px-1 py-0">#{occ.match_number}</Badge>
                       ) : (
-                        <CheckCircle2 className="h-3 w-3 text-green-600 shrink-0" />
+                        <CheckCircle2 className="h-3 w-3 text-success shrink-0" />
                       )}
                     </div>
                     <div className="mt-0.5 truncate text-muted-foreground">
@@ -394,7 +388,7 @@ function DivisionBadge({ match }: { match: Match }) {
         <Tooltip>
           <TooltipTrigger
             render={
-              <span className="text-[10px] px-1 py-0.5 rounded border font-medium cursor-help border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
+              <span className="text-[10px] px-1 py-0.5 rounded border font-medium cursor-help border-warning/40 bg-warning/10 text-warning">
                 KO
               </span>
             }
@@ -605,38 +599,40 @@ function QueueRowBody({
 
   return (
     <div className="rounded-lg border bg-card">
-      <div className="flex items-center gap-2 p-2 sm:p-2.5">
-        {dragHandleProps && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  {...dragHandleProps}
-                  aria-label="ลากเพื่อจัดลำดับ"
-                  className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
-                >
-                  <GripVertical className="h-4 w-4" />
-                </button>
-              }
-            />
-            <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
-          </Tooltip>
-        )}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 sm:p-2.5">
+        <div className="flex items-center gap-2 min-w-0 sm:flex-1">
+          {dragHandleProps && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    {...dragHandleProps}
+                    aria-label="ลากเพื่อจัดลำดับ"
+                    className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </button>
+                }
+              />
+              <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
+            </Tooltip>
+          )}
 
-        <div className="text-xs font-mono text-muted-foreground w-10 sm:w-12 shrink-0">
-          #{match.match_number}
+          <div className="text-xs font-mono text-muted-foreground w-10 sm:w-12 shrink-0">
+            #{match.match_number}
+          </div>
+
+          <DivisionBadge match={match} />
+
+          <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_1fr] items-center gap-x-1">
+            <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_a_id : match.team_a_id} />
+            <span className="text-muted-foreground text-xs">vs</span>
+            <CompetitorLine c={b} unknownLabel={unknownLabel} align="left" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_b_id : match.team_b_id} />
+          </div>
         </div>
 
-        <DivisionBadge match={match} />
-
-        <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_1fr] items-center gap-x-1">
-          <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_a_id : match.team_a_id} />
-          <span className="text-muted-foreground text-xs">vs</span>
-          <CompetitorLine c={b} unknownLabel={unknownLabel} align="left" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_b_id : match.team_b_id} />
-        </div>
-
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-start justify-end">
           {canEdit ? (
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-muted-foreground">สนาม</span>
@@ -663,12 +659,12 @@ function QueueRowBody({
                   disabled={courtPending || match.status === "completed"}
                 >
                   <SelectTrigger className="h-7 w-24 text-xs px-2">
-                    <SelectValue placeholder="ว่าง">
-                      {(v: string | null) => (v && v !== "__none" ? v : "ว่าง")}
+                    <SelectValue placeholder="-">
+                      {(v: string | null) => (v && v !== "__none" ? v : "-")}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none">ว่าง</SelectItem>
+                    <SelectItem value="__none">-</SelectItem>
                     {courts.map((c) => (
                       <SelectItem key={c} value={c}>{c}</SelectItem>
                     ))}
@@ -680,7 +676,7 @@ function QueueRowBody({
                   onChange={(e) => setCourt(e.target.value)}
                   onBlur={saveCourt}
                   onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-                  placeholder="ว่าง"
+                  placeholder="-"
                   maxLength={40}
                   disabled={courtPending || match.status === "completed"}
                   className="h-7 w-16 text-xs px-1.5 text-center"
@@ -701,7 +697,7 @@ function QueueRowBody({
                   <Button
                     size="sm"
                     variant="default"
-                    className="h-7 text-xs px-2 gap-1"
+                    className="min-h-11 sm:min-h-8 text-xs px-2 gap-1"
                     disabled={
                       startPending ||
                       (requireCourtToStart && !match.court) ||
@@ -736,7 +732,7 @@ function QueueRowBody({
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-7 text-xs px-2 gap-1"
+                      className="min-h-11 sm:min-h-8 text-xs px-2 gap-1"
                       disabled={cancelPending}
                       onClick={() => startCancel(async () => {
                         const res = await cancelMatchAction(match.id, tournamentId);
@@ -757,7 +753,7 @@ function QueueRowBody({
                     <Button
                       size="sm"
                       variant="default"
-                      className="h-7 text-xs px-2 gap-1"
+                      className="min-h-11 sm:min-h-8 text-xs px-2 gap-1"
                       onClick={() => setEditing(true)}
                     >
                       <ClipboardEdit className="h-3 w-3" />จบแข่ง
@@ -776,7 +772,7 @@ function QueueRowBody({
                   <Button
                     size="sm"
                     variant="ghost"
-                    className="h-7 text-xs px-2 gap-1"
+                    className="min-h-11 sm:min-h-8 text-xs px-2 gap-1"
                     aria-label="รีเซ็ตผล"
                     disabled={resetPending}
                     onClick={() => startReset(async () => {
@@ -797,7 +793,7 @@ function QueueRowBody({
 
       {match.status === "completed" && totals && (
         <div className="px-3 pb-2 text-xs text-muted-foreground">
-          ผล: {match.team_a_score ?? 0}:{match.team_b_score ?? 0} (รวม {totals.a}-{totals.b}) ·
+          ผล: {match.team_a_score ?? 0}:{match.team_b_score ?? 0} ({match.games.length > 0 ? `${match.games.map((g) => `${g.a}-${g.b}`).join(", ")} · ` : ""}รวม {totals.a}-{totals.b}) ·
           {" "}ผู้ชนะ:{" "}
           {completedWinner === "draw"
             ? "เสมอ"

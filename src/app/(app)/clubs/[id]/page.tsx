@@ -97,7 +97,7 @@ export default async function ClubDetailPage({
       </div>
 
       <Card>
-        <CardContent className="grid sm:grid-cols-2 gap-3 pt-6 text-sm">
+        <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
           <Info label={<MapPin className="h-4 w-4" />} text={club.venue} />
           <Info
             label={<CalendarDays className="h-4 w-4" />}

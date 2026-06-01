@@ -1,13 +1,11 @@
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
+import {
+  MATCH_STATUS_LABEL_TH,
+  MATCH_STATUS_PILL_CLASS,
+} from "@/lib/tournament/status-display";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
-
-const STATUS_LABEL: Record<string, { text: string; cls: string }> = {
-  pending: { text: "รอแข่ง", cls: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/30" },
-  in_progress: { text: "กำลังเล่น", cls: "bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/30" },
-  completed: { text: "จบแล้ว", cls: "bg-zinc-500/15 text-zinc-600 dark:text-zinc-300 border-zinc-500/30" },
-};
 
 export function TvMatchCard({
   match,
@@ -30,11 +28,13 @@ export function TvMatchCard({
   const gamesA = match.team_a_score ?? 0;
   const gamesB = match.team_b_score ?? 0;
 
-  const status = STATUS_LABEL[match.status] ?? STATUS_LABEL.pending;
+  const statusLabel = MATCH_STATUS_LABEL_TH[match.status] ?? MATCH_STATUS_LABEL_TH.pending;
+  const statusCls = MATCH_STATUS_PILL_CLASS[match.status] ?? MATCH_STATUS_PILL_CLASS.pending;
+  const isLive = match.status === "in_progress";
 
   const sideClass = (isWinner: boolean, isLoser: boolean) =>
     isWinner
-      ? "text-green-600 dark:text-green-400 font-bold"
+      ? "text-winner font-bold"
       : isLoser
         ? "text-muted-foreground line-through"
         : "font-semibold";
@@ -50,10 +50,11 @@ export function TvMatchCard({
   };
 
   return (
-    <div className={`rounded-xl border bg-card p-2 lg:p-3 2xl:p-4 ${fillHeight ? "h-full flex flex-col gap-2" : "space-y-2"}`}>
+    <div className={`rounded-xl border bg-card p-2 lg:p-3 2xl:p-4 ${isLive ? "bc-live-card" : ""} ${fillHeight ? "h-full flex flex-col gap-2" : "space-y-2"}`}>
       <div className={`${fillHeight ? "shrink-0" : ""} flex items-center justify-between gap-3 text-sm lg:text-base 2xl:text-lg`}>
-        <span className={`px-2 py-0.5 rounded-full border text-xs lg:text-sm 2xl:text-base font-medium shrink-0 ${status.cls}`}>
-          {status.text}
+        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border text-xs lg:text-sm 2xl:text-base font-medium shrink-0 ${statusCls}`}>
+          {isLive && <span className="bc-live-dot inline-block w-2 h-2 2xl:w-2.5 2xl:h-2.5 rounded-full bg-live" />}
+          {statusLabel}
         </span>
         <div className="flex items-center gap-2 min-w-0 ml-auto">
           <span className="text-muted-foreground font-mono shrink-0">#{match.match_number}</span>
@@ -81,10 +82,16 @@ export function TvMatchCard({
         </div>
 
         <div className="text-center shrink-0 px-2 lg:px-4">
-          {match.status === "completed" ? (
+          {match.status !== "pending" ? (
             <>
-              <div className="font-bold tabular-nums text-xl lg:text-3xl 2xl:text-4xl">
-                {gamesA} : {gamesB}
+              <div className="flex items-center gap-1 leading-none">
+                <span className={`font-display font-bold tabular-nums w-14 sm:w-20 text-right leading-none text-5xl sm:text-7xl${isLive ? " text-primary drop-shadow-[0_0_16px_color-mix(in_oklch,var(--color-primary)_60%,transparent)]" : ""}`}>
+                  {gamesA}
+                </span>
+                <span className="text-3xl sm:text-4xl font-bold text-muted-foreground">:</span>
+                <span className={`font-display font-bold tabular-nums w-14 sm:w-20 text-left leading-none text-5xl sm:text-7xl${isLive ? " text-primary drop-shadow-[0_0_16px_color-mix(in_oklch,var(--color-primary)_60%,transparent)]" : ""}`}>
+                  {gamesB}
+                </span>
               </div>
               {totals && (
                 <div className="text-muted-foreground tabular-nums mt-1 text-xs lg:text-sm 2xl:text-base">
@@ -93,7 +100,7 @@ export function TvMatchCard({
               )}
             </>
           ) : (
-            <div className="text-muted-foreground font-bold text-lg lg:text-2xl 2xl:text-3xl">VS</div>
+            <div className="font-heading text-muted-foreground font-bold text-2xl lg:text-4xl 2xl:text-5xl">VS</div>
           )}
         </div>
 

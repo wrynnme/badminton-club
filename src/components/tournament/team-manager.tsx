@@ -63,7 +63,7 @@ function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: (
                 <button key={c} type="button"
                   aria-label={`สี ${c}`}
                   aria-pressed={field.state.value === c}
-                  className={`w-7 h-7 rounded-full border-2 transition-all ${field.state.value === c ? "border-foreground scale-110" : "border-transparent"}`}
+                  className={`w-7 h-7 cursor-pointer rounded-full border-2 transition-all ${field.state.value === c ? "border-foreground scale-110" : "border-transparent"}`}
                   style={{ backgroundColor: c }}
                   onClick={() => field.handleChange(c)} />
               ))}
@@ -190,7 +190,7 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
         </>
       ) : (
         <>
-          <span className="flex-1 truncate">{name}</span>
+          <EntityLink entityType="player" entityId={p.id} className="flex-1 truncate">{name}</EntityLink>
           {p.level && <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">{p.level}</Badge>}
           {isOwner && (
             <Button variant={isCheckedIn ? "default" : "outline"} size="sm"

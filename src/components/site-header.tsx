@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { MobileNav } from "@/components/mobile-nav";
 
 export async function SiteHeader() {
   const session = await getSession();
@@ -16,7 +17,7 @@ export async function SiteHeader() {
             v{process.env.NEXT_PUBLIC_APP_VERSION} ({process.env.NEXT_PUBLIC_GIT_COMMIT})
           </Badge>
         </Link>
-        <nav className="flex items-center gap-3">
+        <nav className="hidden sm:flex items-center gap-3">
           <ThemeToggle />
           <Link href="/clubs" className="text-sm hover:underline">
             ก๊วน
@@ -51,6 +52,20 @@ export async function SiteHeader() {
             </Link>
           )}
         </nav>
+        <div className="flex sm:hidden items-center gap-1">
+          <ThemeToggle />
+          {session && (
+            <Avatar className="h-8 w-8">
+              {session.pictureUrl && <AvatarImage src={session.pictureUrl} />}
+              <AvatarFallback>{session.displayName.slice(0, 1)}</AvatarFallback>
+            </Avatar>
+          )}
+          <MobileNav
+            loggedIn={!!session}
+            isGuest={session?.isGuest ?? false}
+            displayName={session?.displayName}
+          />
+        </div>
       </div>
     </header>
   );

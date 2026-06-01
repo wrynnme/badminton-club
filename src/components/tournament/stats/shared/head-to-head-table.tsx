@@ -3,6 +3,14 @@
 import type { ReactNode } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 export type HeadToHeadRow = {
   id: string;
@@ -22,7 +30,7 @@ export type HeadToHeadRow = {
 export type RowNameRenderer = (name: string, id: string) => ReactNode;
 
 /**
- * Generic "small h2h table" with a 5-column grid (label / P / W / L / D).
+ * Generic "small h2h table" with a 5-column layout (label / P / W / L / D).
  * Used by:
  *  - pair view (h2h vs opponent pairs) — entityType="pair"
  *  - player view (h2h vs opponent pairs) — entityType="pair"
@@ -57,48 +65,67 @@ export function HeadToHeadTable({
           </EntityLink>
         )
       : (name) => name);
+
   if (rows.length === 0) return null;
+
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <div className="grid grid-cols-[1fr_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium">
-          <span>{nameLabel}</span>
-          <span className="text-right">แมตช์</span>
-          <span className="text-right">ชนะ</span>
-          <span className="text-right">แพ้</span>
-          <span className="text-right">เสมอ</span>
-        </div>
-        {rows.map((row) => (
-          <div
-            key={row.id}
-            className="grid grid-cols-[1fr_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2.5 border-b last:border-b-0 text-sm items-center"
-          >
-            <span className="flex items-center gap-1.5 truncate min-w-0">
-              {row.color && (
-                <span
-                  className="inline-block w-2 h-2 rounded-full shrink-0"
-                  style={{ backgroundColor: row.color }}
-                />
-              )}
-              <span className="truncate min-w-0">
-                {renderRowName(row.name, row.id)}
-              </span>
-            </span>
-            <span className="text-right tabular-nums">{row.played}</span>
-            <span className="text-right tabular-nums text-green-600 dark:text-green-400">
-              {row.wins}
-            </span>
-            <span className="text-right tabular-nums text-red-600 dark:text-red-400">
-              {row.losses}
-            </span>
-            <span className="text-right tabular-nums text-yellow-600 dark:text-yellow-400">
-              {row.draws}
-            </span>
-          </div>
-        ))}
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/40 hover:bg-muted/40">
+              <TableHead className="text-muted-foreground font-medium text-xs h-9">
+                {nameLabel}
+              </TableHead>
+              <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-12">
+                แมตช์
+              </TableHead>
+              <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-12">
+                ชนะ
+              </TableHead>
+              <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-12">
+                แพ้
+              </TableHead>
+              <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-12">
+                เสมอ
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={row.id} className="hover:bg-transparent">
+                <TableCell className="py-2.5 whitespace-normal max-w-0 w-full">
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    {row.color && (
+                      <span
+                        className="inline-block w-2 h-2 rounded-full shrink-0"
+                        style={{ backgroundColor: row.color }}
+                      />
+                    )}
+                    <span className="truncate min-w-0 text-sm">
+                      {renderRowName(row.name, row.id)}
+                    </span>
+                  </span>
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-sm py-2.5">
+                  {row.played}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-sm py-2.5 text-green-600 dark:text-green-400">
+                  {row.wins}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-sm py-2.5 text-red-600 dark:text-red-400">
+                  {row.losses}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-sm py-2.5 text-yellow-600 dark:text-yellow-400">
+                  {row.draws}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </CardContent>
     </Card>
   );

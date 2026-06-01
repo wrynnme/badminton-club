@@ -15,18 +15,19 @@ export const RESULT_LABEL_TH: Record<"W" | "L" | "D", string> = {
  * Used for the inline result column in match-history rows.
  */
 export const RESULT_TEXT_CLASS: Record<"W" | "L" | "D", string> = {
-  W: "text-green-600 dark:text-green-400 font-semibold",
-  L: "text-red-600 dark:text-red-400 font-semibold",
-  D: "text-yellow-600 dark:text-yellow-400 font-semibold",
+  W: "text-winner font-semibold",
+  L: "text-destructive font-semibold",
+  D: "text-warning font-semibold",
 };
 
 /**
  * Tailwind pill (bg + text) classes per result — used by `<StreakPill>`.
+ * Semantic tokens are theme-aware (light/dark baked into the var) — no `dark:` needed.
  */
 export const RESULT_PILL_CLASS: Record<"W" | "L" | "D", string> = {
-  W: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
-  L: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
-  D: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
+  W: "bg-winner/15 text-winner",
+  L: "bg-destructive/15 text-destructive",
+  D: "bg-warning/15 text-warning",
 };
 
 /**

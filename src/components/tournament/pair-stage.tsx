@@ -4,7 +4,8 @@ import { CsvImportDialog } from "@/components/tournament/csv-import-dialog";
 import { ManualMatchDialog } from "@/components/tournament/manual-match-dialog";
 import { MatchList } from "@/components/tournament/match-list";
 import { PairManager } from "@/components/tournament/pair-manager";
-import { StandingsTable } from "@/components/tournament/standings-table";
+import { ScoreMatrix } from "@/components/tournament/score-matrix";
+import { StandingsTable, StandingsSortKeyNote } from "@/components/tournament/standings-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,6 +82,29 @@ export function PairStage({
     [matchesByDivision],
   );
 
+  // Stable per-division competitor arrays so <ScoreMatrix> useMemo doesn't
+  // re-run every render (inline getDivisionCompetitors() returns a fresh array).
+  const divisionCompetitorsByKey = useMemo(() => {
+    const m = new Map<number | null, typeof pairCompetitors>();
+    for (const [k, list] of matchesByDivision) {
+      const pairIds = [
+        ...new Set(
+          [
+            ...list.map((mt) => mt.pair_a_id),
+            ...list.map((mt) => mt.pair_b_id),
+          ].filter(Boolean) as string[],
+        ),
+      ];
+      m.set(
+        k,
+        pairIds
+          .map((id) => pairCompetitorMap.get(id))
+          .filter(Boolean) as typeof pairCompetitors,
+      );
+    }
+    return m;
+  }, [matchesByDivision, pairCompetitorMap]);
+
   // Aggregate team-level standings from pair matches
   const pairStandings = useMemo(
     () => computeStandings(matches, "pair", pairs.map((p) => p.id)),
@@ -103,6 +127,17 @@ export function PairStage({
       return next;
     });
 
+  // matrixDivs tracks which division cards are in "Matrix" view (key = String(divKey))
+  const [matrixDivs, setMatrixDivs] = useState<Set<string>>(() => new Set());
+  const toggleDivMatrix = (k: number | null) =>
+    setMatrixDivs((prev) => {
+      const next = new Set(prev);
+      const s = String(k);
+      if (next.has(s)) next.delete(s);
+      else next.add(s);
+      return next;
+    });
+
   const totalMatches = matches.length;
   const completedMatches = matches.filter((m) => m.status === "completed").length;
   const hasMatches = totalMatches > 0;
@@ -111,14 +146,6 @@ export function PairStage({
 
   const showStandings = hasMatches && completedMatches > 0;
   const hasDivisions = divisionKeys.some((k) => k !== null);
-
-  function getDivisionCompetitors(divMatches: Match[]) {
-    const pairIds = [...new Set([
-      ...divMatches.map((m) => m.pair_a_id),
-      ...divMatches.map((m) => m.pair_b_id),
-    ].filter(Boolean) as string[])];
-    return pairIds.map((id) => pairCompetitorMap.get(id)).filter(Boolean) as typeof pairCompetitors;
-  }
 
   return (
     <Tabs defaultValue="pairs" className="space-y-4">
@@ -222,15 +249,43 @@ export function PairStage({
                         <span className="ml-1">({completedCount}/{matchList.length})</span>
                       </CollapsibleTrigger>
                       <CollapsibleContent>
-                        <div className="pt-2">
-                          <MatchList
-                            matches={matchList}
-                            competitorById={pairCompetitorMap}
-                            tournamentId={tournamentId}
-                            isOwner={isOwner}
-                            unit="pair"
-                            size={matchRowSize}
-                          />
+                        <div className="pt-2 space-y-2">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-pressed={!matrixDivs.has(String(divKey))}
+                              className={`h-6 px-2 text-xs ${!matrixDivs.has(String(divKey)) ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                              onClick={() => matrixDivs.has(String(divKey)) && toggleDivMatrix(divKey)}>
+                              ตาราง
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              aria-pressed={matrixDivs.has(String(divKey))}
+                              className={`h-6 px-2 text-xs ${matrixDivs.has(String(divKey)) ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                              onClick={() => !matrixDivs.has(String(divKey)) && toggleDivMatrix(divKey)}>
+                              Matrix
+                            </Button>
+                          </div>
+                          {matrixDivs.has(String(divKey)) ? (
+                            <ScoreMatrix
+                              matches={matchList}
+                              competitors={divisionCompetitorsByKey.get(divKey) ?? []}
+                              unit="pair"
+                            />
+                          ) : (
+                            <MatchList
+                              matches={matchList}
+                              competitorById={pairCompetitorMap}
+                              tournamentId={tournamentId}
+                              isOwner={isOwner}
+                              unit="pair"
+                              size={matchRowSize}
+                            />
+                          )}
                         </div>
                       </CollapsibleContent>
                     </Collapsible>
@@ -253,7 +308,7 @@ export function PairStage({
               <div className="space-y-4">
                 {divisionKeys.filter((k) => k !== null).map((divKey) => {
                   const divMatches = matchesByDivision.get(divKey) ?? [];
-                  const divCompetitors = getDivisionCompetitors(divMatches);
+                  const divCompetitors = divisionCompetitorsByKey.get(divKey) ?? [];
                   const tone = divisionTone(divKey!);
                   return (
                     <div key={String(divKey)}>
@@ -318,6 +373,7 @@ export function PairStage({
                 </Card>
               </div>
             )}
+            <StandingsSortKeyNote />
           </>
         )}
       </TabsContent>
