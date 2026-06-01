@@ -601,35 +601,35 @@ function QueueRowBody({
     <div className="rounded-lg border bg-card">
       <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 sm:p-2.5">
         <div className="flex items-center gap-2 min-w-0 sm:flex-1">
-        {dragHandleProps && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <button
-                  type="button"
-                  {...dragHandleProps}
-                  aria-label="ลากเพื่อจัดลำดับ"
-                  className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
-                >
-                  <GripVertical className="h-4 w-4" />
-                </button>
-              }
-            />
-            <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
-          </Tooltip>
-        )}
+          {dragHandleProps && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <button
+                    type="button"
+                    {...dragHandleProps}
+                    aria-label="ลากเพื่อจัดลำดับ"
+                    className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </button>
+                }
+              />
+              <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
+            </Tooltip>
+          )}
 
-        <div className="text-xs font-mono text-muted-foreground w-10 sm:w-12 shrink-0">
-          #{match.match_number}
-        </div>
+          <div className="text-xs font-mono text-muted-foreground w-10 sm:w-12 shrink-0">
+            #{match.match_number}
+          </div>
 
-        <DivisionBadge match={match} />
+          <DivisionBadge match={match} />
 
-        <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_1fr] items-center gap-x-1">
-          <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_a_id : match.team_a_id} />
-          <span className="text-muted-foreground text-xs">vs</span>
-          <CompetitorLine c={b} unknownLabel={unknownLabel} align="left" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_b_id : match.team_b_id} />
-        </div>
+          <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_1fr] items-center gap-x-1">
+            <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_a_id : match.team_a_id} />
+            <span className="text-muted-foreground text-xs">vs</span>
+            <CompetitorLine c={b} unknownLabel={unknownLabel} align="left" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_b_id : match.team_b_id} />
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-start justify-end">

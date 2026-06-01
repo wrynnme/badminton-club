@@ -103,7 +103,11 @@
   --success: oklch(0.5 0.14 150);
   --warning: oklch(0.52 0.16 70);
   --live: oklch(0.66 0.22 145);
-  --winner: oklch(0.48 0.15 150);
+  /* winner = warm grass-green (hue 142) — kept distinct from the cool blue-green
+     primary/success/live (148–150). Light-mode text-AA caps L≤0.5, so hue 142 is the
+     most-distinct green that stays in sRGB gamut + AA on card AND on the W-result pill
+     (bg-winner/15 text-winner → 5.1:1). See result-display.ts. */
+  --winner: oklch(0.47 0.15 142);
   --brand: oklch(0.62 0.2 32);
 
   /* division palette (1 = top tier) — registered as colors so bg-div-N/14 etc. work */
@@ -160,7 +164,7 @@
   --success: oklch(0.78 0.2 148);
   --warning: oklch(0.8 0.16 80);
   --live: oklch(0.82 0.24 145);
-  --winner: oklch(0.82 0.21 148);
+  --winner: oklch(0.84 0.2 140);
   --brand: oklch(0.74 0.19 40);
 
   --div-1: oklch(0.8 0.2 150);

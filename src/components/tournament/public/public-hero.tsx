@@ -13,7 +13,7 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   },
   registering: {
     label: "เปิดรับสมัคร",
-    cls: "bg-primary/12 text-primary",
+    cls: "bg-warning/15 text-warning",
   },
   ongoing: {
     label: "กำลังแข่ง",
@@ -21,7 +21,7 @@ const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
   },
   completed: {
     label: "จบแล้ว",
-    cls: "bg-secondary text-secondary-foreground",
+    cls: "bg-foreground/10 text-foreground",
   },
 };
 
