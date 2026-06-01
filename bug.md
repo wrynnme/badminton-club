@@ -4,8 +4,6 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-(none)
-
 ### 2026-05-27 — max-effort code review (score matrix + player-link/tiebreak, commits 80ae63a..f94ccb8) — ALL FIXED same-day
 
 0 P0 · 0 P1-correctness. `buildScoreMatrix` logic verified byte-identical to `gameWinner`; BYE/2-direction/guards all correct + tested. Findings below were a11y, dead-code, and test-gap — all resolved 2026-05-27 (tsc clean · 293→307 vitest pass).
@@ -59,6 +57,10 @@ Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upse
 All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
 
 ## Resolved
+
+### 2026-06-01 — `cfbab56` Match-queue mobile readability
+
+- **[P2] ตารางคิว competitor names hidden on mobile** — RESOLVED 2026-06-01 (`cfbab56`). `match-queue.tsx` QueueRowBody was a single horizontal flex; the court `Select` + เริ่ม/จบ/ยกเลิก cluster claimed the width at ≤390px, squeezing the `flex-1 min-w-0` names grid to ~0 so both pair names truncated away. Fix: outer row → `flex-col sm:flex-row` — mobile line 1 = drag/#/division + names (full width, both pairs visible), line 2 = court + actions (`flex-wrap`); desktop single row unchanged + row height grows on mobile. Verified Playwright @390 (names shown, scrollWidth==clientWidth) + @768 (single row). tsc clean.
 
 ### 2026-05-24 — `57c5606` Extra-high effort code review (15 findings)
 
