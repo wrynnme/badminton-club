@@ -599,7 +599,8 @@ function QueueRowBody({
 
   return (
     <div className="rounded-lg border bg-card">
-      <div className="flex items-center gap-2 p-2 sm:p-2.5">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 p-2 sm:p-2.5">
+        <div className="flex items-center gap-2 min-w-0">
         {dragHandleProps && (
           <Tooltip>
             <TooltipTrigger
@@ -629,8 +630,9 @@ function QueueRowBody({
           <span className="text-muted-foreground text-xs">vs</span>
           <CompetitorLine c={b} unknownLabel={unknownLabel} align="left" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_b_id : match.team_b_id} />
         </div>
+        </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-start justify-end">
           {canEdit ? (
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-muted-foreground">สนาม</span>
