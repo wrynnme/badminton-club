@@ -19,6 +19,7 @@ function makeMatch(
     id: "m1",
     tournament_id: "t1",
     group_id: null,
+    class_id: null,
     round_type: "group",
     round_number: 1,
     match_number: 1,

@@ -12,6 +12,7 @@ function makeMatch(overrides: Partial<Match> & { games: Game[] }): Match {
     id: `m${_matchCounter}`,
     tournament_id: "t1",
     group_id: null,
+    class_id: null,
     round_type: "group",
     round_number: 1,
     match_number: _matchCounter,
@@ -290,6 +291,7 @@ function makePair(
   return {
     id,
     team_id: "team-1",
+    class_id: null,
     player_id_1: player1Id,
     player_id_2: player2Id,
     display_pair_name: null,
@@ -555,6 +557,7 @@ function makeTeamPair(id: string, teamId: string): PairWithPlayers {
   return {
     id,
     team_id: teamId,
+    class_id: null,
     player_id_1: `player-${id}-1`,
     player_id_2: `player-${id}-2`,
     display_pair_name: null,
@@ -726,6 +729,7 @@ function makeDivPair(id: string, level: string): PairWithPlayers {
   return {
     id,
     team_id: TEAM_A,
+    class_id: null,
     player_id_1: `p1-${id}`,
     player_id_2: `p2-${id}`,
     display_pair_name: null,

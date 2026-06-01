@@ -787,6 +787,11 @@ Edge cases:
 - Manual match in pair mode — restrict to same class? Default: **yes**.
 - Cross-team rule: when truly infeasible (one team dominates a class), allow override flag `allow_intra_team_group: true` in `tournament_classes`? Default: **off**; document workaround as "ลด pairs_per_group" first.
 
+#### Implementation status
+
+- **Slice 1 — DB foundation DONE (2026-06-02, develop)**: migrations `20260602000100_add_tournament_classes` (table + RLS read-all policy mirroring peer tables + `idx_tournament_classes_tournament`) and `20260602000200_add_class_id_to_pairs_groups_matches` (nullable `class_id` FK on pairs `ON DELETE SET NULL`, groups/matches `ON DELETE CASCADE` + partial indexes) applied to prod via MCP. **Schema deviation from spec above**: `format`/`match_format` are `text` + CHECK (not a `tournament_format` enum — the project has no pg enums; `tournament.format` is text), and added guard CHECKs (`pairs_per_group > 0`, `advance_count >= 0`, `pair_capacity >= 0`). Types: `TournamentClass` + `MatchFormat` added to `src/lib/types.ts`; nullable `class_id` added to `Pair`/`Group`/`Match`; 6 test fixtures updated (`class_id: null`). tsc clean · 315 vitest pass · backward-compat (existing sports_day rows keep `class_id = NULL`).
+- Remaining slices (server actions · `balancedTeamGroupAssignment` + tests · ClassManager UI · per-class tabs · CSV `class_code` · `gameWinner(format)` · mode selector + upgrade action) — not started.
+
 ### From real-world reference (วีนฉ่ำ #2 xlsx)
 
 Excel `/Users/x/Desktop/กำหนดการแข่งขันและผลคะแนน รายการวีนฉ่ำ ครั้งที่ 2.xlsx` (130 pairs, 5 classes NB/BG/N/S/P-, 6 courts, sheets: รายชื่อรวม/กติกา/ตารางเวลา/RunMatch/Class _/KO-_/สรุปรายการรางวัล) — patterns to adopt:
