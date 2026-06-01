@@ -4,6 +4,19 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
+_No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
+
+### 2026-06-02 — verification: 4 stale "status unknown" bugs confirmed RESOLVED (code inspection)
+
+Re-checked the four lingering items from 2026-05-23 against current `master`; all four root causes are gone:
+
+- **[P1] BYE counted as draw in entity-stats** — RESOLVED. `m.games.length > 0` guard present in every `compute*Stats` filter (`entity-stats.ts` L73/238/382/511); BYE walkovers skipped.
+- **[P2] `decodeURIComponent('%ZZ')` → 500 instead of 404** — RESOLVED. `try { … } catch { notFound() }` wraps every decode: `court/[n]/page.tsx` L26-30, `pair/[code]` (app+public), `stats/division/[divKey]` (app+public).
+- **[P2] `use-tab-sync` progress bar hangs on same-tab click** — RESOLVED. `onChange` early-returns `if (next === active) return;` before `progress.start()` (`use-tab-sync.ts` L104).
+- **[P2] division stats `thresholds=[]` silently empty** — RESOLVED. `if (thresholds.length === 0) notFound();` (`stats/division/[divKey]/page.tsx` L36).
+
+No code change needed. tsc/tests unaffected.
+
 ### 2026-05-27 — max-effort code review (score matrix + player-link/tiebreak, commits 80ae63a..f94ccb8) — ALL FIXED same-day
 
 0 P0 · 0 P1-correctness. `buildScoreMatrix` logic verified byte-identical to `gameWinner`; BYE/2-direction/guards all correct + tested. Findings below were a11y, dead-code, and test-gap — all resolved 2026-05-27 (tsc clean · 293→307 vitest pass).
