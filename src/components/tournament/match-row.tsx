@@ -51,7 +51,7 @@ function MatchRowImpl({
   return (
     <div className={isComfy ? "py-3 space-y-2 overflow-hidden" : "py-2 space-y-2 overflow-hidden"}>
       <div className={`flex items-center gap-2 ${rowText}`}>
-        <div className={`flex-1 min-w-0 text-right ${winner === "a" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
+        <div className={`flex-1 min-w-0 text-right ${winner === "a" ? "text-winner font-semibold" : "font-medium"}`}>
           {a?.color && <span className={colorDot} style={{ backgroundColor: a.color }} />}
           <EntityLink entityType={unit === "pair" ? "pair" : "team"} entityId={aId}>
             <span className="truncate block">{a?.name ?? unknownLabel}</span>
@@ -68,7 +68,7 @@ function MatchRowImpl({
           <span className={`${vsText} shrink-0`}>vs</span>
         )}
 
-        <div className={`flex-1 min-w-0 ${winner === "b" ? "text-green-600 dark:text-green-400 font-semibold" : "font-medium"}`}>
+        <div className={`flex-1 min-w-0 ${winner === "b" ? "text-winner font-semibold" : "font-medium"}`}>
           {b?.color && <span className={colorDot} style={{ backgroundColor: b.color }} />}
           <EntityLink entityType={unit === "pair" ? "pair" : "team"} entityId={bId}>
             <span className="truncate block">{b?.name ?? unknownLabel}</span>

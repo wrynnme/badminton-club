@@ -142,7 +142,7 @@ export function TvStandingsCarousel({ pages, intervalMs = 8000, fontSize = "md" 
                 {current.rows.map((row, i) => (
                   <tr
                     key={row.competitorId}
-                    className={i === 0 ? "font-bold text-green-600 dark:text-green-400" : ""}
+                    className={i === 0 ? "font-bold text-winner" : ""}
                   >
                     <td className="py-1 tabular-nums">{i + 1}</td>
                     <td className={`py-1 truncate ${FONT_SIZE_CLASS[fontSize].rowMaxName}`}>

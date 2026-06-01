@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
+import { MATCH_STATUS_LABEL_TH, MATCH_STATUS_PILL_CLASS } from "@/lib/tournament/status-display";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
@@ -48,7 +49,7 @@ function CompetitorBlock({
   align?: "left" | "right";
 }) {
   const nameColor = isWinner
-    ? "text-green-600 dark:text-green-400"
+    ? "text-winner"
     : isLoser
       ? "text-muted-foreground line-through"
       : "text-foreground";
@@ -124,19 +125,10 @@ export function ScheduleMatchCard({
 
   const isLarge = size === "large";
 
-  const statusLabel =
-    match.status === "in_progress"
-      ? "กำลังเล่น"
-      : match.status === "completed"
-        ? "จบแล้ว"
-        : "รอแข่ง";
-
-  const statusCls =
-    match.status === "in_progress"
-      ? "bg-green-500/15 text-green-700 dark:text-green-300 border-green-500/30"
-      : match.status === "completed"
-        ? "bg-zinc-500/15 text-zinc-600 dark:text-zinc-400 border-zinc-500/30"
-        : "bg-yellow-500/15 text-yellow-700 dark:text-yellow-300 border-yellow-500/30";
+  // Canonical status label + pill — shared with match-queue + tv-match-card
+  // (same `?? pending` defensive fallback as tv-match-card).
+  const statusLabel = MATCH_STATUS_LABEL_TH[match.status] ?? MATCH_STATUS_LABEL_TH.pending;
+  const statusCls = MATCH_STATUS_PILL_CLASS[match.status] ?? MATCH_STATUS_PILL_CLASS.pending;
 
   // Division badge — text identical to the old inline `Division {n}`; tone color
   // only when coloredDivision is on (court page passes false → unchanged outline).
@@ -156,7 +148,7 @@ export function ScheduleMatchCard({
           </span>
           <div className="flex items-center gap-2 text-muted-foreground font-mono">
             {elapsed && (
-              <span className="text-green-600 dark:text-green-400 font-semibold">{elapsed}</span>
+              <span className="text-success font-semibold">{elapsed}</span>
             )}
             <span>#{match.match_number}</span>
           </div>
