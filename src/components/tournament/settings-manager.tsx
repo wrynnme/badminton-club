@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Bell, ListOrdered, EyeOff, Loader2, Tv } from "lucide-react";
+import { Bell, ListOrdered, EyeOff, Loader2, Tv, Swords } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,8 @@ import {
   type TournamentSettings,
   type LineNotifyFlags,
 } from "@/lib/tournament/settings";
+import { MATCH_FORMAT_LABEL_TH } from "@/lib/tournament/match-format";
+import type { MatchFormat } from "@/lib/types";
 import { divisionCount } from "@/lib/tournament/divisions";
 
 const DEBOUNCE_MS = 500;
@@ -378,6 +380,39 @@ export function SettingsManager({
             checked={settings.allow_manual_match_after_bracket}
             onChange={(v) => update("allow_manual_match_after_bracket", v)}
           />
+        </section>
+
+        <section className="space-y-1 border-t pt-4">
+          <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <Swords className="h-3.5 w-3.5" /> การแข่งขัน
+          </h3>
+          <div className="flex items-center justify-between gap-3 py-1">
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor="default-match-format" className="text-sm">รูปแบบแมตช์เริ่มต้น</Label>
+              <p className="text-xs text-muted-foreground">
+                ใช้เมื่อ class ไม่ได้กำหนดรูปแบบเอง (sports_day หรือ class ที่ไม่ระบุ)
+              </p>
+            </div>
+            <Select
+              value={settings.default_match_format}
+              onValueChange={(v) => update("default_match_format", v as MatchFormat)}
+            >
+              <SelectTrigger id="default-match-format" className="w-44 h-8 text-xs">
+                <SelectValue>
+                  {(value: string) => MATCH_FORMAT_LABEL_TH[value as MatchFormat] ?? value}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {(Object.entries(MATCH_FORMAT_LABEL_TH) as [MatchFormat, string][]).map(
+                  ([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ),
+                )}
+              </SelectContent>
+            </Select>
+          </div>
         </section>
 
         <section className="space-y-1 border-t pt-4">
