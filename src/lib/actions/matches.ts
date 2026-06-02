@@ -1891,7 +1891,7 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
   const sb = await createAdminClient();
   const { data: match } = await sb
     .from("matches")
-    .select("id, status, court, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id, round_type, round_number, division")
+    .select("id, status, court, match_number, team_a_id, team_b_id, pair_a_id, pair_b_id, round_type, round_number, division, class_id")
     .eq("id", matchId)
     .eq("tournament_id", tournamentId)
     .maybeSingle();
@@ -1899,8 +1899,10 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
   if (match.status === "completed") return { error: "แมตช์นี้จบแล้ว" };
   if (match.status === "in_progress") return { error: "แมตช์นี้กำลังแข่งอยู่" };
 
-  // Knockout R1 cannot start until all group matches of the same division are completed.
-  // For team mode / undivided pair mode (match.division IS NULL), check ALL group matches.
+  // Knockout R1 cannot start until all group matches of the same scope are completed.
+  // Competition mode: scope by class_id (class matches carry division=NULL, so each
+  // class's KO gates only on its own group matches). Sports_day: scope by division
+  // (or ALL group matches for team mode / undivided pair mode where division IS NULL).
   if (match.round_type === "knockout" && match.round_number === 1) {
     let groupQuery = sb
       .from("matches")
@@ -1908,7 +1910,9 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
       .eq("tournament_id", tournamentId)
       .eq("round_type", "group")
       .neq("status", "completed");
-    if (match.division) {
+    if (match.class_id) {
+      groupQuery = groupQuery.eq("class_id", match.class_id);
+    } else if (match.division) {
       groupQuery = groupQuery.eq("division", match.division);
     }
     const { count: pendingGroups } = await groupQuery;
