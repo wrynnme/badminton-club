@@ -34,6 +34,10 @@ export const TournamentSettingsSchema = z.object({
   realtime_enabled: z.boolean().default(true),
   audit_log_enabled: z.boolean().default(true),
   match_cooldown_minutes: z.number().int().min(0).max(30).default(0),
+  // Default best-of format for matches. Competition-mode classes override per-class
+  // via tournament_classes.match_format. fixed_2 = 2 games (1-1 draw allowed);
+  // best_of_3 = first to 2; best_of_5 = first to 3. See match-format.ts.
+  default_match_format: z.enum(["fixed_2", "best_of_3", "best_of_5"]).default("best_of_3"),
 
   // TV display
   tv_show_team_chart: z.boolean().default(true),
