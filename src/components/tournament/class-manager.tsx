@@ -686,27 +686,27 @@ export function ClassManager({ tournamentId, classes: initialClasses, isOwner }:
               ยังไม่มี class — กด &quot;เพิ่ม class&quot; เพื่อเริ่ม
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b text-xs text-muted-foreground">
-                    <th className="w-8" />
-                    <th className="text-left py-1.5 px-2">รหัส</th>
-                    <th className="text-left py-1.5 px-2">ชื่อ</th>
-                    <th className="text-center py-1.5 px-2">ความจุ</th>
-                    <th className="text-center py-1.5 px-2">คู่/กลุ่ม</th>
-                    <th className="text-left py-1.5 px-2 hidden sm:table-cell">รูปแบบ</th>
-                    <th className="text-center py-1.5 px-2 hidden sm:table-cell">ผ่าน</th>
-                    <th className="text-left py-1.5 px-2 hidden md:table-cell">แมตช์</th>
-                    <th className="text-right py-1.5 pr-2">Actions</th>
-                  </tr>
-                </thead>
-                <DndContext
-                  id="class-manager-dnd"
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={onDragEnd}
-                >
+            <DndContext
+              id="class-manager-dnd"
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={onDragEnd}
+            >
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b text-xs text-muted-foreground">
+                      <th className="w-8" />
+                      <th className="text-left py-1.5 px-2">รหัส</th>
+                      <th className="text-left py-1.5 px-2">ชื่อ</th>
+                      <th className="text-center py-1.5 px-2">ความจุ</th>
+                      <th className="text-center py-1.5 px-2">คู่/กลุ่ม</th>
+                      <th className="text-left py-1.5 px-2 hidden sm:table-cell">รูปแบบ</th>
+                      <th className="text-center py-1.5 px-2 hidden sm:table-cell">ผ่าน</th>
+                      <th className="text-left py-1.5 px-2 hidden md:table-cell">แมตช์</th>
+                      <th className="text-right py-1.5 pr-2">Actions</th>
+                    </tr>
+                  </thead>
                   <SortableContext items={classes.map((c) => c.id)} strategy={verticalListSortingStrategy}>
                     <tbody>
                       {classes.map((cls) => (
@@ -720,9 +720,9 @@ export function ClassManager({ tournamentId, classes: initialClasses, isOwner }:
                       ))}
                     </tbody>
                   </SortableContext>
-                </DndContext>
-              </table>
-            </div>
+                </table>
+              </div>
+            </DndContext>
           )}
         </CardContent>
       </Card>
