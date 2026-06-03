@@ -16,6 +16,7 @@ export function ScoreForm({
   competitorB,
   initialGames,
   onDone,
+  maxGames,
 }: {
   matchId: string;
   tournamentId: string;
@@ -23,16 +24,19 @@ export function ScoreForm({
   competitorB: Competitor | undefined;
   initialGames: Game[];
   onDone: () => void;
+  maxGames?: number;
 }) {
   const [games, setGames] = useState<Game[]>(
     initialGames.length ? initialGames : [{ a: 0, b: 0 }]
   );
   const [pending, setPending] = useState(false);
 
+  const atMax = maxGames != null && games.length >= maxGames;
+
   const updateGame = (i: number, side: "a" | "b", value: number) => {
     setGames((g) => g.map((gm, idx) => (idx === i ? { ...gm, [side]: Math.max(0, Math.min(99, value)) } : gm)));
   };
-  const addGame = () => setGames((g) => [...g, { a: 0, b: 0 }]);
+  const addGame = () => setGames((g) => (maxGames != null && g.length >= maxGames ? g : [...g, { a: 0, b: 0 }]));
   const removeGame = (i: number) => setGames((g) => g.filter((_, idx) => idx !== i));
 
   const allZero = games.every((g) => g.a === 0 && g.b === 0);
@@ -81,9 +85,11 @@ export function ScoreForm({
         <p className="text-xs text-destructive">ต้องกรอกอย่างน้อย 1 เกม</p>
       )}
       <div className="flex gap-2">
-        <Button type="button" size="sm" variant="outline" onClick={addGame} className="h-7 text-xs">
-          <Plus className="h-3 w-3 mr-1" />เพิ่มเกม
-        </Button>
+        {!atMax && (
+          <Button type="button" size="sm" variant="outline" onClick={addGame} className="h-7 text-xs">
+            <Plus className="h-3 w-3 mr-1" />เพิ่มเกม
+          </Button>
+        )}
         <div className="flex-1" />
         <Button type="button" size="sm" variant="ghost" onClick={onDone}>ยกเลิก</Button>
         <Button type="button" size="sm" onClick={submit} disabled={!canSubmit}>

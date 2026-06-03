@@ -1,7 +1,7 @@
 "use client";
 
 import { MatchRow } from "@/components/tournament/match-row";
-import type { Match } from "@/lib/types";
+import type { Match, MatchFormat } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
 type Props = {
@@ -11,6 +11,7 @@ type Props = {
   isOwner: boolean;
   unit: "team" | "pair";
   size?: "compact" | "comfortable";
+  matchFormatById?: Map<string, MatchFormat>;
 };
 
 // Full DOM (Ctrl+F + print friendly) + `content-visibility: auto` so the
@@ -24,6 +25,7 @@ export function MatchList({
   isOwner,
   unit,
   size,
+  matchFormatById,
 }: Props) {
   const intrinsicH = size === "comfortable" ? 76 : 60;
   return (
@@ -43,6 +45,7 @@ export function MatchList({
             isOwner={isOwner}
             unit={unit}
             size={size}
+            matchFormatById={matchFormatById}
           />
         </div>
       ))}

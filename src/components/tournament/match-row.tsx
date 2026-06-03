@@ -8,7 +8,8 @@ import { ScoreForm } from "@/components/tournament/score-form";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { resetMatchScoreAction } from "@/lib/actions/matches";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
-import type { Match } from "@/lib/types";
+import { maxGamesForFormat } from "@/lib/tournament/match-format";
+import type { Match, MatchFormat } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
 function MatchRowImpl({
@@ -18,6 +19,7 @@ function MatchRowImpl({
   isOwner,
   unit,
   size = "compact",
+  matchFormatById,
 }: {
   match: Match;
   competitorById: Map<string, Competitor>;
@@ -25,9 +27,13 @@ function MatchRowImpl({
   isOwner: boolean;
   unit: "team" | "pair";
   size?: "compact" | "comfortable";
+  matchFormatById?: Map<string, MatchFormat>;
 }) {
   const [editing, setEditing] = useState(false);
   const [resetPending, startReset] = useTransition();
+
+  const fmt = match.class_id ? matchFormatById?.get(match.class_id) : undefined;
+  const maxGames = fmt ? maxGamesForFormat(fmt) : undefined;
 
   const aId = unit === "team" ? match.team_a_id : match.pair_a_id;
   const bId = unit === "team" ? match.team_b_id : match.pair_b_id;
@@ -106,6 +112,7 @@ function MatchRowImpl({
           competitorB={b}
           initialGames={match.games}
           onDone={() => setEditing(false)}
+          maxGames={maxGames}
         />
       )}
     </div>
@@ -118,7 +125,8 @@ export const MatchRow = memo(MatchRowImpl, (prev, next) => {
     prev.isOwner !== next.isOwner ||
     prev.unit !== next.unit ||
     prev.size !== next.size ||
-    prev.competitorById !== next.competitorById
+    prev.competitorById !== next.competitorById ||
+    prev.matchFormatById !== next.matchFormatById
   ) {
     return false;
   }

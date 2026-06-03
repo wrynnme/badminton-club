@@ -32,6 +32,7 @@ export async function createPairAction(input: {
   teamId: string;
   playerIds: [string, string];
   name?: string;
+  classId?: string;
 }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -41,6 +42,17 @@ export async function createPairAction(input: {
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
+
+  // Validate class belongs to this tournament (if provided)
+  if (input.classId) {
+    const { data: cls } = await sb
+      .from("tournament_classes")
+      .select("id")
+      .eq("id", input.classId)
+      .eq("tournament_id", tournamentId)
+      .maybeSingle();
+    if (!cls) return { error: "ไม่พบ class นี้ในรายการแข่ง" };
+  }
 
   // Verify both players belong to this team + get levels for auto-compute
   const { data: players } = await sb
@@ -66,6 +78,7 @@ export async function createPairAction(input: {
     player_id_2: input.playerIds[1],
     display_pair_name: input.name || null,
     pair_level: computePairLevel(p1data?.level, p2data?.level),
+    class_id: input.classId || null,
   });
   if (error) return { error: "สร้างคู่ไม่สำเร็จ" };
 

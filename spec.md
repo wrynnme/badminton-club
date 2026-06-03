@@ -565,6 +565,34 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 (Phase 12 DONE — see below.)
 
+### ระบบก๊วน (Club session) — create form + rotation queue + cost split  [PLANNED]
+
+ก๊วนแบดแบบเล่นสนุก (casual session) — แยกจาก tournament. ตอนสร้างก๊วนมีฟอร์มตั้งค่า + ระบบหมุนคิว + หารค่าใช้จ่าย. ตั้งค่าทุกตัวแก้ได้ภายหลังในหน้า settings ของก๊วน.
+
+**Create form / Settings:**
+
+1. **จำนวนสนาม** (`court_count`) — แก้ได้ที่ settings
+2. **ผู้เล่นต่อทีม** (`players_per_team`) — `1`–`2` (เดี่ยว / คู่)
+3. **รูปแบบการหมุน** (`rotation_mode`) — `fair_queue` (Fair Queue) | `winner_stays` (Winner Stays — ผู้ชนะอยู่ต่อ)
+4. **โหมดคิว** (`queue_mode`) — `rest_longest` พักนานไปก่อน (default · แนะนำ) | `fifo` เข้าก่อนออกก่อน | `level_match` จับคู่ตามระดับ | `smart` คำนวณจากหลายปัจจัย
+5. **โหมดระดับฝีมือ** (`skill_level_enabled`) — on/off; เปิด = ใช้ระดับฝีมือใน `level_match`/`smart` + ตอนผู้เล่นลงชื่อ
+6. **จำกัดเวลาต่อเกม** (`game_time_limit_min`) — นาที/เกม (`0` = ไม่จำกัด)
+7. **เมื่อผู้เล่นไม่พร้อม** (`not_ready_action`) — `requeue` ต่อท้ายคิว | `skip` ข้าม
+
+**ค่าใช้จ่าย (cost split):**
+
+1. **ค่าสนาม** (`court_fee` บาท) — `split_even` หารเท่า | `by_time` ตามเวลาที่อยู่
+2. **ค่าลูกแบด** (`shuttle_fee` บาท) — `split_even` หารเท่า | `by_games` ตามจำนวนเกมที่เล่น
+
+**ผู้เล่นลงชื่อ** — เลือกระดับความเก่งได้ตอนลงชื่อ/check-in (gate ด้วย `skill_level_enabled`).
+
+**Open decisions (ยังไม่ฟิกซ์ — ถามก่อน implement):**
+- reuse `clubs` / `club_players` / `club_expenses` (ปัจจุบันมี `total_cost` หารเท่าตัวเดียว) หรือ schema ใหม่/ขยาย? cost-split 2 รายการ (court + shuttle) + วิธีแบ่งต่างกัน ต้องเก็บแยก
+- `by_time` ค่าสนาม → ต้อง track เวลาเข้า/ออก per player; `by_games` ค่าลูก → ต้อง count เกมที่เล่นจริง per player
+- queue algo `smart` — ปัจจัยอะไรบ้าง (เวลาพัก, จำนวนเกม, ระดับฝีมือ, เพื่อนร่วม/คู่ตรงข้ามซ้ำ)? reuse `autoRotateQueueAction` logic จาก tournament ได้แค่ไหน
+- `winner_stays` — กติกาผู้ชนะอยู่ต่อกี่เกมติด, เปลี่ยนคู่ฝั่งไหน
+- skill-level scale — เลขอิสระเหมือน tournament `level` หรือ fixed scale
+
 ### UX polish backlog
 
 - **`cursor: pointer` ทุก clickable** — ✅ DONE 2026-05-25. `cursor-pointer` ใส่ที่ `buttonVariants` base (`ui/button.tsx`) → คุม `<Button>` ทั้ง app; เพิ่มที่ `ui/tabs.tsx` (TabsTrigger), `ui/select.tsx` (SelectTrigger), `ui/checkbox.tsx`, และ raw color-swatch `<button>` ใน `team-manager.tsx`. DnD drag handles ใช้ `cursor-grab active:cursor-grabbing` อยู่แล้ว (ถูกต้อง); `SelectItem`/`CommandItem` คง `cursor-default` ตาม base-ui listbox convention. tsc clean.
@@ -796,7 +824,17 @@ Edge cases:
   - Known follow-up: `match_format` per-class is stored but `gameWinner` does not yet branch on it (Slice 4); `allow_drop_to_lower` independent-lower-bracket path is team-mode-only (class KO uses `buildDoubleBracket` when `has_lower_bracket`).
 - **Slice 4 — match-format logic DONE (2026-06-02, develop)**: `src/lib/tournament/match-format.ts` — `MATCH_FORMAT_BOUNDS` (fixed_2: 2 games, draw OK; best_of_3: first to 2; best_of_5: first to 3), `MATCH_FORMAT_LABEL_TH`, `maxGamesForFormat`, `isMatchComplete(games, format)` validator. `default_match_format` added to `TournamentSettingsSchema` (default `best_of_3`). 11 vitest cases. **Deviation from spec**: `gameWinner` is NOT given a `format` param — its "most games won → winner; tie → draw" counting is already format-agnostic (fixed_2's 1-1 draw and bo3/bo5 majority both fall out of the same count), so a format arg would be a no-op. Format constrains game COUNT (enforced via `maxGamesForFormat`/`isMatchComplete` in ScoreForm + record validation — wired in Slice 5/6), not the winner calc.
 - **Slice 5 — ClassManager UI DONE (2026-06-02, develop)**: `src/components/tournament/class-manager.tsx` — table (code/name/capacity/pairs_per_group/format/advance/match_format) + add/edit Dialog (TanStack Form v1 + zod, format-conditional fields) + delete (confirm + surfaces server guard error) + @dnd-kit reorder (mirrors court-manager debounce/serialized writes). Owner-gated; Tooltip-wrapped actions; SelectValue render-child (Base UI). Wired in `page.tsx` (fetch `tournament_classes` ordered by position; render in Settings tab **only when `tournament.mode === "competition"`**) + `default_match_format` Select added to `settings-manager.tsx`. tsc clean · 350 vitest pass. **Visually verified** (2026-06-02) via reversible mode-flip: temporarily set NOMKONZ `mode=competition` + 2 sample classes, screenshotted Settings @1280/390 (zero overflow) + add-class dialog (Selects show labels, format-conditional fields, TanStack form), then reverted DB. **Hydration-error fix during verification**: `<DndContext>` was nested INSIDE `<table>` (between thead/tbody) — dnd-kit renders hidden screen-reader live-region `<div>`s at the context position, and a `<div>` inside `<table>` is invalid HTML → hydration mismatch. Moved `<DndContext>` to wrap the whole `<table>`; `<SortableContext>` still wraps `<tbody>` (renders no DOM). ScoreForm format-clamp deferred to Slice 6 (needs match→class→format thread).
-- Remaining slices: Slice 6 per-class group/knockout tabs + pair-tab class filter + queue prefix + ScoreForm format clamp · Slice 7 CSV `class_code` · Slice 8 mode selector (new/edit form) + upgrade-to-competition action — not started.
+- **Slice 6 — per-class tabs + class assignment + queue prefix + format clamp DONE (2026-06-03, develop)**: wires the Slice 2 generate actions into the UI so competition mode is reachable + viewable end-to-end. Architecture (per advisor): **isolate the competition path, gate every branch on `mode === "competition"`, reuse leaf components — never retrofit the team-only `GroupStage` (it reads `group_teams` + hard-codes `unit="team"`, so pair-groups would render empty).**
+  - **Tab gating (`page.tsx`)**: `showGroups`/`showKnockout` now branch on `isCompetition` — in competition (match_unit=pair) they gate on whether ANY class uses that stage (`anyClassHasGroup`/`anyClassHasKnockout`), so the กลุ่ม + น็อคเอ้า tabs appear for pair tournaments. Threads `classes`, `pairs`, `classById` (Map<id,TournamentClass>), `matchFormatById` (Map<id,MatchFormat>) to the stages. groupsTab/knockoutTab render the competition component when `isCompetition`, else the existing sports_day stage.
+  - **NEW `class-group-stage.tsx` (`ClassGroupStage`)**: competition group view — class sub-tabs (shadcn Tabs by class code); each class scopes `groups.filter(g => g.class_id === cls.id)` and renders pair-group cards. `PairGroupCard` derives competitors from the group's own matches (`pair_a_id`/`pair_b_id`) and computes standings via `computeStandings(matches,"pair",ids)` (no `group_teams` rows for pair-groups). Reuses `StandingsTable`/`MatchList`/`ScoreMatrix` (unit="pair"). Per-class buttons → `generateGroupsForClassAction` (สุ่มกลุ่ม) + `generatePairMatchesForClassAction` (สร้างตารางใหม่).
+  - **NEW `class-knockout-stage.tsx` (`ClassKnockoutStage`)**: thin per-class wrapper — class sub-tabs; each renders the existing `<KnockoutStage>` fed class-filtered matches/pairs + class `advance_count`/`format` + class-scoped group counts. Class matches carry `division=NULL` → KnockoutStage's single null-division bracket path renders them cleanly (no parallel renderer needed). KnockoutStage gained optional `classId?` prop → generate button swaps to `generateKnockoutForClassAction(classId)`.
+  - **Pair tab class assignment (`pair-stage.tsx` + `pair-manager.tsx`)**: in competition the คู่ tab is class-assignment only (the division-based แข่งขัน/คะแนน sub-tabs are omitted — group matches live in the กลุ่ม tab). `CreatePairForm` gains a required class `Select` (Base UI render-child); `createPairAction` extended with optional `classId` (validates class∈tournament, inserts `class_id`). `PairItem` shows a class-code badge.
+  - **Queue class prefix (`match-queue.tsx`)**: `MatchQueue` accepts `classById`; `DivisionBadge` renders a `[CODE]` tag (primary-tinted, Tooltip=class name) before the division/KO badges when `match.class_id` is set. Early-return guard fixed (`div==null && !isKO && !cls`) so competition group matches (no division, not KO) still show the class badge.
+  - **ScoreForm format clamp (`score-form.tsx` + `match-row.tsx` + `match-list.tsx` + `match-queue.tsx`)**: `ScoreForm` gains optional `maxGames?` — hides/guards the "เพิ่มเกม" button at the cap (never truncates existing games). Resolved from `match.class_id → class.match_format → maxGamesForFormat`, threaded via `matchFormatById`/`classById` maps. **Gated on `class_id != null` only** — sports_day matches stay free-form (avoids capping legacy 2-game draws / unlimited entry). MatchRow memo comparator extended for the new map prop.
+  - tsc clean · vitest **350 pass** (no regression) · production build OK · **live browser smoke PASS** (Playwright, throwaway competition tournament seeded in prod Supabase then deleted — create-then-cleanup, verified count=0). 4/4 assertions: (A) generate-groups → 2 group cards with non-empty pair standings (PairGroupCard render — the load-bearing claim); (B) queue `[BG]` class badge; (C) ScoreForm clamp at 3 rows (best_of_3) + saved a 2-game result; (D) generate-knockout → single bracket (`division=null`, no multi-division layout). **Console/hydration clean — 0 errors, 0 hydration mismatches.**
+  - **Deferred to polish (not blocking)**: pair-tab top `Class: [All|…]` filter + per-class `X/cap` registration-progress display (spec L772); class-color coding in queue prefix (classes have no color column — using primary tint); bracket page (`/tournaments/[id]/bracket`) still shows all classes' brackets mixed.
+  - **Follow-ups noted (see bug.md)**: (1) [P2] queue tab renders 0 rows on the FIRST hard-nav right after a class generate action — reload fixes; RSC route-cache staleness, masked by soft-nav/Realtime in normal use. (2) `recordMatchScoreAction` validates only `games.length >= 1` server-side — the format clamp (`isMatchComplete`/`maxGamesForFormat`) is client-only; a best_of_3 could still be saved with 1 game via a direct action call. Out of Slice 6 "clamp" scope; candidate for server-side completeness hardening.
+- Remaining slices: Slice 7 CSV `class_code` · Slice 8 mode selector (new/edit form) + upgrade-to-competition action — not started.
 
 ### From real-world reference (วีนฉ่ำ #2 xlsx)
 

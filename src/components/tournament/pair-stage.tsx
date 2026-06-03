@@ -16,7 +16,7 @@ import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { computeStandings, aggregatePairStandingsToTeams } from "@/lib/tournament/scoring";
-import type { Match, PairWithPlayers, Team, TeamWithPlayers } from "@/lib/types";
+import type { Match, PairWithPlayers, Team, TeamWithPlayers, TournamentClass } from "@/lib/types";
 import { ChevronDown, Loader2, Swords } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -29,6 +29,7 @@ export function PairStage({
   isOwner,
   pairDivisionThresholds = [],
   matchRowSize,
+  classes = [],
 }: {
   tournamentId: string;
   teams: TeamWithPlayers[];
@@ -37,7 +38,11 @@ export function PairStage({
   isOwner: boolean;
   pairDivisionThresholds?: number[];
   matchRowSize?: "compact" | "comfortable";
+  /** Competition-mode classes. When present, the pair tab is class-assignment
+   *  only — group matches + standings live in the กลุ่ม / น็อคเอ้า tabs. */
+  classes?: TournamentClass[];
 }) {
+  const isCompetition = classes.length > 0;
   const [genPending, startGen] = useTransition();
 
   const flatTeams: Team[] = useMemo(
@@ -146,6 +151,38 @@ export function PairStage({
 
   const showStandings = hasMatches && completedMatches > 0;
   const hasDivisions = divisionKeys.some((k) => k !== null);
+
+  // Competition mode: the pair tab is class-assignment only. Group matches +
+  // standings render in the กลุ่ม / น็อคเอ้า tabs (per-class), so the
+  // division-based แข่งขัน / คะแนน sub-tabs are intentionally omitted here.
+  if (isCompetition) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">จับคู่ + กำหนด Class</h2>
+          {isOwner && <CsvImportDialog tournamentId={tournamentId} onlyMode="pairs" />}
+        </div>
+        {teams.length === 0 ? (
+          <p className="text-sm text-muted-foreground">เพิ่มทีมก่อนจัดคู่</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {teams.map((t) => (
+              <PairManager
+                key={t.id}
+                team={t}
+                pairs={pairsByTeam.get(t.id) ?? []}
+                isOwner={isOwner}
+                classes={classes}
+              />
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground">
+          จัดกลุ่ม + สร้างตารางแข่ง ที่แท็บ “กลุ่ม” · สายน็อคเอ้า ที่แท็บ “น็อคเอ้า” (แยกตาม class)
+        </p>
+      </div>
+    );
+  }
 
   return (
     <Tabs defaultValue="pairs" className="space-y-4">

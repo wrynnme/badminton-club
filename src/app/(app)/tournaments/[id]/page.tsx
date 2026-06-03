@@ -8,8 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { TeamManager } from "@/components/tournament/team-manager";
 import { GroupStage } from "@/components/tournament/group-stage";
+import { ClassGroupStage } from "@/components/tournament/class-group-stage";
 import { PairStage } from "@/components/tournament/pair-stage";
 import { KnockoutStage } from "@/components/tournament/knockout-stage";
+import { ClassKnockoutStage } from "@/components/tournament/class-knockout-stage";
 import { TournamentStatusControl } from "@/components/tournament/tournament-status-control";
 import { ExportButtons } from "@/components/tournament/export-buttons";
 import { ShareControls } from "@/components/tournament/share-controls";
@@ -24,7 +26,7 @@ import { ClassManager } from "@/components/tournament/class-manager";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { EditTournamentForm } from "@/components/tournament/edit-tournament-form";
 import { SettingsManager } from "@/components/tournament/settings-manager";
-import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match, TournamentClass } from "@/lib/types";
+import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match, TournamentClass, MatchFormat } from "@/lib/types";
 import type { TournamentAdmin } from "@/lib/actions/admins";
 import { parseSettings } from "@/lib/tournament/settings";
 import { parseTournamentThresholds } from "@/lib/tournament/divisions";
@@ -120,11 +122,22 @@ export default async function TournamentDetailPage({
   const canEdit = isOwner || isCoAdmin;
 
   const settings = parseSettings(t.settings);
-  const showGroups = t.match_unit === "team" && (t.format === "group_only" || t.format === "group_knockout");
+  // Competition mode (match_unit=pair) gates group/knockout tabs on whether ANY
+  // class uses that stage — pairs are grouped per-class, not by division.
+  const isCompetition = t.mode === "competition";
+  const anyClassHasGroup = classes.some((c) => c.format === "group_only" || c.format === "group_knockout");
+  const anyClassHasKnockout = classes.some((c) => c.format === "group_knockout" || c.format === "knockout_only");
+  const showGroups = isCompetition
+    ? anyClassHasGroup
+    : t.match_unit === "team" && (t.format === "group_only" || t.format === "group_knockout");
   const showPairs = t.match_unit === "pair";
-  const showKnockout = t.format === "group_knockout" || t.format === "knockout_only";
+  const showKnockout = isCompetition
+    ? anyClassHasKnockout
+    : t.format === "group_knockout" || t.format === "knockout_only";
   const showQueue = allMatches.length > 0;
   const competitorById = buildCompetitorMap(t.match_unit, flatTeams, pairs);
+  const classById = new Map<string, TournamentClass>(classes.map((c) => [c.id, c]));
+  const matchFormatById = new Map<string, MatchFormat>(classes.map((c) => [c.id, c.match_format]));
   const knockoutMatches = allMatches.filter((m) => m.round_type === "knockout");
   const groupMatches = allMatches.filter((m) => m.round_type === "group");
   const groupMatchCompleted = groupMatches.filter((m) => m.status === "completed").length;
@@ -207,7 +220,19 @@ export default async function TournamentDetailPage({
             />
           }
           groupsTab={
-            <GroupStage tournamentId={t.id} groups={groups} teams={flatTeams} isOwner={canEdit} showColorSummary={settings.color_summary} />
+            isCompetition ? (
+              <ClassGroupStage
+                tournamentId={t.id}
+                classes={classes}
+                groups={groups}
+                pairs={pairs}
+                teams={flatTeams}
+                isOwner={canEdit}
+                matchFormatById={matchFormatById}
+              />
+            ) : (
+              <GroupStage tournamentId={t.id} groups={groups} teams={flatTeams} isOwner={canEdit} showColorSummary={settings.color_summary} />
+            )
           }
           pairsTab={
             <PairStage
@@ -217,22 +242,35 @@ export default async function TournamentDetailPage({
               matches={allMatches.filter((m) => m.pair_a_id)}
               isOwner={canEdit}
               pairDivisionThresholds={parseTournamentThresholds(t.pair_division_thresholds)}
+              classes={isCompetition ? classes : []}
             />
           }
           knockoutTab={
-            <KnockoutStage
-              tournamentId={t.id}
-              matches={knockoutMatches}
-              teams={flatTeams}
-              pairs={t.match_unit === "pair" ? pairs : undefined}
-              matchUnit={t.match_unit}
-              advanceCount={t.advance_count ?? 2}
-              isOwner={canEdit}
-              format={t.format}
-              groupCount={groups.length}
-              groupMatchTotal={groupMatches.length}
-              groupMatchCompleted={groupMatchCompleted}
-            />
+            isCompetition ? (
+              <ClassKnockoutStage
+                tournamentId={t.id}
+                classes={classes}
+                knockoutMatches={knockoutMatches}
+                groupMatches={groupMatches}
+                pairs={pairs}
+                teams={flatTeams}
+                isOwner={canEdit}
+              />
+            ) : (
+              <KnockoutStage
+                tournamentId={t.id}
+                matches={knockoutMatches}
+                teams={flatTeams}
+                pairs={t.match_unit === "pair" ? pairs : undefined}
+                matchUnit={t.match_unit}
+                advanceCount={t.advance_count ?? 2}
+                isOwner={canEdit}
+                format={t.format}
+                groupCount={groups.length}
+                groupMatchTotal={groupMatches.length}
+                groupMatchCompleted={groupMatchCompleted}
+              />
+            )
           }
           queueTab={
             <MatchQueue
@@ -244,6 +282,7 @@ export default async function TournamentDetailPage({
               courts={t.courts ?? []}
               requireCourtToStart={settings.require_court_to_start}
               courtStrict={settings.court_strict}
+              classById={classById}
             />
           }
           settingsTab={

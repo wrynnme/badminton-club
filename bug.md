@@ -6,6 +6,12 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-03 — Phase 13 Slice 6 (per-class tabs + class assignment + queue prefix + format clamp)
+
+All checks green: `tsc --noEmit` clean · vitest **350/350 pass** (no regression) · production `next build` OK · **live browser smoke PASS** (Playwright, throwaway competition tournament seeded in prod then deleted — create-then-cleanup, verified count=0 after). All 4 assertions passed: (A) generate-groups → 2 group cards with **non-empty pair standings** (PairGroupCard computes from matches — the load-bearing claim, since pair-groups have no `group_teams`); (B) queue `[BG]` class badge; (C) ScoreForm clamp at 3 game rows for best_of_3 + saved a 2-game result; (D) generate-knockout → **single bracket** (semifinals+final, `division=null`, no multi-division layout). **Console/hydration clean — 0 errors, 0 hydration mismatches** (the static-checks-can't-catch risk that bit Slice 5 is verified absent). One tsc error fixed during the pass (Base UI `Select.onValueChange` passes `string | null` → wrapped `(v) => setClassId(v ?? "")`).
+
+- **[P2 — watch] Queue tab shows 0 rows on the first hard navigation immediately after a generate action; a reload fixes it** — Context: during the smoke, the first hard `goto ?tab=queue` right after clicking "แบ่งกลุ่ม" rendered "รอแข่ง 0" although the 2 matches already existed in DB; a hard reload showed "รอแข่ง 2" correctly, and it did not recur on later navigations. Repro: generate groups, then hard-navigate (not soft tab-click) to the queue tab once. Suspected cause: RSC route-cache / `revalidatePath` staleness on the first post-mutation full navigation (orthogonal to Slice 6 — the failure was *all* matches missing, not the class-badge feature; badges render correctly once data is present). Suggested fix: confirm `revalidateTournamentPaths` in the class generate actions covers the queue render path, or investigate Next 16 dynamic-route cache freshness on first post-action hard-nav. Low severity — soft tab navigation + Realtime/`router.refresh()` mask it in normal use.
+
 ### 2026-06-02 — verification: 4 stale "status unknown" bugs confirmed RESOLVED (code inspection)
 
 Re-checked the four lingering items from 2026-05-23 against current `master`; all four root causes are gone:
