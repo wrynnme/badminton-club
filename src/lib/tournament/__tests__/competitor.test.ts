@@ -40,6 +40,7 @@ function makePair(overrides: Partial<PairWithPlayers> = {}): PairWithPlayers {
   return {
     id: "pair-1",
     team_id: "team-1",
+    class_id: null,
     player_id_1: "player-1",
     player_id_2: "player-2",
     display_pair_name: null,

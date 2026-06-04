@@ -40,6 +40,25 @@ export type TournamentFormat = "group_only" | "group_knockout" | "knockout_only"
 export type SeedingMethod = "random" | "by_group_score";
 export type TeamRole = "captain" | "member";
 export type MatchUnit = "team" | "pair";
+export type MatchFormat = "fixed_2" | "best_of_3" | "best_of_5";
+
+// Phase 13 — competition mode: event-scoped class (NB/BG/N/S/P-…). Carries the
+// per-class grouping/format config that sports_day expresses at tournament level.
+export type TournamentClass = {
+  id: string;
+  tournament_id: string;
+  code: string;
+  name: string;
+  pair_capacity: number | null;
+  pairs_per_group: number;
+  format: TournamentFormat;
+  advance_count: number;
+  has_lower_bracket: boolean;
+  allow_drop_to_lower: boolean;
+  match_format: MatchFormat;
+  position: number;
+  created_at: string;
+};
 
 export type Tournament = {
   id: string;
@@ -92,6 +111,7 @@ export type MatchStatus = "pending" | "in_progress" | "completed";
 export type Group = {
   id: string;
   tournament_id: string;
+  class_id: string | null;
   name: string;
   created_at: string;
 };
@@ -115,6 +135,7 @@ export type Match = {
   id: string;
   tournament_id: string;
   group_id: string | null;
+  class_id: string | null;
   round_type: MatchRoundType;
   round_number: number;
   match_number: number;
@@ -143,6 +164,7 @@ export type Match = {
 export type Pair = {
   id: string;
   team_id: string;
+  class_id: string | null;
   player_id_1: string | null;
   player_id_2: string | null;
   display_pair_name: string | null;

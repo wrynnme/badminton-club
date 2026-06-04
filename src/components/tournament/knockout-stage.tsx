@@ -11,6 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Separator } from "@/components/ui/separator";
 import { MatchRow } from "@/components/tournament/match-row";
 import { generateKnockoutAction } from "@/lib/actions/matches";
+import { generateKnockoutForClassAction } from "@/lib/actions/classes";
 import { buildCompetitorMap, teamToCompetitor } from "@/lib/tournament/competitor";
 import { roundLabel, lowerRoundLabel } from "@/lib/tournament/bracket";
 import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
@@ -119,6 +120,7 @@ export function KnockoutStage({
   groupMatchTotal,
   groupMatchCompleted,
   matchRowSize,
+  classId,
 }: {
   tournamentId: string;
   matches: Match[];
@@ -132,6 +134,9 @@ export function KnockoutStage({
   groupMatchTotal?: number;
   groupMatchCompleted?: number;
   matchRowSize?: "compact" | "comfortable";
+  /** When set, this stage is scoped to a competition class — generate uses the
+   *  per-class action instead of the tournament-wide one. */
+  classId?: string;
 }) {
   const [isPending, startGen] = useTransition();
 
@@ -247,7 +252,9 @@ export function KnockoutStage({
               disabled={!allReqsMet || isPending}
               onClick={() =>
                 startGen(async () => {
-                  const res = await generateKnockoutAction(tournamentId);
+                  const res = classId
+                    ? await generateKnockoutForClassAction(classId)
+                    : await generateKnockoutAction(tournamentId);
                   if ("error" in res) toast.error(res.error);
                   else toast.success(`สร้างสาย ${res.count} แมตช์แล้ว`);
                 })

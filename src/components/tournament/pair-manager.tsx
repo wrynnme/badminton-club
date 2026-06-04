@@ -7,19 +7,26 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createPairAction, deletePairAction } from "@/lib/actions/pairs";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { PairScheduleLink } from "@/components/tournament/pair-schedule-link";
-import type { TeamWithPlayers, PairWithPlayers } from "@/lib/types";
+import type { TeamWithPlayers, PairWithPlayers, TournamentClass } from "@/lib/types";
 
-function CreatePairForm({ teamId, availablePlayers, onDone }: {
+function CreatePairForm({ teamId, availablePlayers, classes = [], onDone }: {
   teamId: string;
   availablePlayers: TeamWithPlayers["players"];
+  classes?: TournamentClass[];
   onDone: () => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [name, setName] = useState("");
+  // When the tournament has classes, a class is required for the new pair.
+  // Pre-select the only class for convenience.
+  const [classId, setClassId] = useState<string>(classes.length === 1 ? classes[0].id : "");
   const [pending, setPending] = useState(false);
+
+  const classRequired = classes.length > 0;
 
   const toggle = (pid: string) => {
     setSelected((s) => {
@@ -31,8 +38,14 @@ function CreatePairForm({ teamId, availablePlayers, onDone }: {
 
   const submit = async () => {
     if (selected.length !== 2) { toast.error("เลือก 2 คน"); return; }
+    if (classRequired && !classId) { toast.error("เลือก class ก่อน"); return; }
     setPending(true);
-    const res = await createPairAction({ teamId, playerIds: [selected[0], selected[1]], name: name || undefined });
+    const res = await createPairAction({
+      teamId,
+      playerIds: [selected[0], selected[1]],
+      name: name || undefined,
+      classId: classId || undefined,
+    });
     setPending(false);
     if (res?.error) toast.error(res.error);
     else { toast.success("จับคู่แล้ว"); setSelected([]); setName(""); onDone(); }
@@ -44,6 +57,26 @@ function CreatePairForm({ teamId, availablePlayers, onDone }: {
         <Input value={name} onChange={(e) => setName(e.target.value)}
           placeholder="ชื่อคู่ (optional)" className="text-sm flex-1" />
       </div>
+      {classRequired && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">Class:</p>
+          <Select value={classId} onValueChange={(v) => setClassId(v ?? "")}>
+            <SelectTrigger className="w-full h-8 text-xs">
+              <SelectValue placeholder="เลือก class">
+                {(value) => {
+                  const c = classes.find((x) => x.id === value);
+                  return c ? `${c.code} — ${c.name}` : "เลือก class";
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {classes.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.code} — {c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <div className="space-y-1">
         <p className="text-xs text-muted-foreground">เลือก 2 คน:</p>
         {availablePlayers.length === 0 ? (
@@ -73,10 +106,11 @@ function CreatePairForm({ teamId, availablePlayers, onDone }: {
   );
 }
 
-function PairItem({ pair, isOwner, color }: {
+function PairItem({ pair, isOwner, color, classCode }: {
   pair: PairWithPlayers;
   isOwner: boolean;
   color?: string | null;
+  classCode?: string;
 }) {
   const [delPending, startDel] = useTransition();
   const p1 = pair.player1;
@@ -88,6 +122,9 @@ function PairItem({ pair, isOwner, color }: {
       {color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
+          {classCode && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 border-primary/40 bg-primary/10 text-primary">{classCode}</Badge>
+          )}
           <span className="text-xs text-muted-foreground font-mono shrink-0">{pair.id.slice(0, 6)}</span>
           {pair.display_pair_name && <span className="font-medium truncate">{pair.display_pair_name}</span>}
           {pair.pair_level && <Badge className="text-[10px] px-1.5 py-0 shrink-0">{pair.pair_level}</Badge>}
@@ -136,14 +173,16 @@ function PairItem({ pair, isOwner, color }: {
   );
 }
 
-export function PairManager({ team, pairs, isOwner }: {
+export function PairManager({ team, pairs, isOwner, classes = [] }: {
   team: TeamWithPlayers;
   pairs: PairWithPlayers[];
   isOwner: boolean;
+  classes?: TournamentClass[];
 }) {
   const [adding, setAdding] = useState(false);
   const pairedIds = new Set(pairs.flatMap((p) => [p.player_id_1, p.player_id_2].filter(Boolean) as string[]));
   const available = team.players.filter((p) => !pairedIds.has(p.id));
+  const classCodeById = new Map(classes.map((c) => [c.id, c.code]));
 
   return (
     <Card>
@@ -167,12 +206,12 @@ export function PairManager({ team, pairs, isOwner }: {
         ) : (
           <div className="space-y-1">
             {pairs.map((p) => (
-              <PairItem key={p.id} pair={p} isOwner={isOwner} color={team.color} />
+              <PairItem key={p.id} pair={p} isOwner={isOwner} color={team.color} classCode={p.class_id ? classCodeById.get(p.class_id) : undefined} />
             ))}
           </div>
         )}
         {adding && (
-          <CreatePairForm teamId={team.id} availablePlayers={available} onDone={() => setAdding(false)} />
+          <CreatePairForm teamId={team.id} availablePlayers={available} classes={classes} onDone={() => setAdding(false)} />
         )}
       </CardContent>
     </Card>

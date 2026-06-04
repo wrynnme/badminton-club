@@ -51,7 +51,8 @@ import {
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { parseDivision, divisionTone } from "@/lib/tournament/divisions";
 import { MATCH_STATUS_LABEL_TH, MATCH_STATUS_PILL_CLASS } from "@/lib/tournament/status-display";
-import type { Match, MatchUnit } from "@/lib/types";
+import { maxGamesForFormat } from "@/lib/tournament/match-format";
+import type { Match, MatchUnit, TournamentClass } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
 // Canonical labels + pill tones now live in status-display.ts (shared with
@@ -79,6 +80,7 @@ export function MatchQueue({
   courts = [],
   requireCourtToStart = false,
   courtStrict = true,
+  classById,
 }: {
   matches: Match[];
   competitorById: Map<string, Competitor>;
@@ -88,6 +90,7 @@ export function MatchQueue({
   courts?: string[];
   requireCourtToStart?: boolean;
   courtStrict?: boolean;
+  classById?: Map<string, TournamentClass>;
 }) {
   const router = useRouter();
   const [items, setItems] = useState<Match[]>([]);
@@ -262,6 +265,7 @@ export function MatchQueue({
                       requireCourtToStart={requireCourtToStart}
                       courtStrict={courtStrict}
                       occupiedCourts={occupiedCourts}
+                      classById={classById}
                     />
                   ))}
                 </ul>
@@ -276,6 +280,7 @@ export function MatchQueue({
                   competitorById={competitorById}
                   unit={unit}
                   courts={courts}
+                  classById={classById}
                 />
               ))}
             </ul>
@@ -299,6 +304,7 @@ export function MatchQueue({
                   requireCourtToStart={requireCourtToStart}
                   courtStrict={courtStrict}
                   occupiedCourts={occupiedCourts}
+                  classById={classById}
                 />
               ))}
             </ul>
@@ -322,6 +328,7 @@ export function MatchQueue({
                   requireCourtToStart={requireCourtToStart}
                   courtStrict={courtStrict}
                   occupiedCourts={occupiedCourts}
+                  classById={classById}
                 />
               ))}
             </ul>
@@ -348,14 +355,22 @@ function getCompetitorNames(
   };
 }
 
-function DivisionBadge({ match }: { match: Match }) {
+function DivisionBadge({
+  match,
+  classById,
+}: {
+  match: Match;
+  classById?: Map<string, TournamentClass>;
+}) {
   const div = parseDivision(match.division);
   const isKO = match.round_type === "knockout";
+  const cls = match.class_id ? classById?.get(match.class_id) : undefined;
   const bracketLabel = !isKO
     ? null
     : match.bracket === "upper" ? "W" : match.bracket === "lower" ? "L" : match.bracket === "grand_final" ? "F" : null;
 
-  if (div == null && !isKO) return null;
+  // Only suppress when there is truly nothing to show.
+  if (div == null && !isKO && !cls) return null;
 
   const bracketTooltip = !isKO
     ? null
@@ -369,6 +384,18 @@ function DivisionBadge({ match }: { match: Match }) {
 
   return (
     <span className="flex items-center gap-0.5 shrink-0">
+      {cls && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="text-[10px] px-1.5 py-0.5 rounded border font-medium cursor-help border-primary/40 bg-primary/10 text-primary">
+                {cls.code}
+              </span>
+            }
+          />
+          <TooltipContent>{cls.name}</TooltipContent>
+        </Tooltip>
+      )}
       {div != null && (() => {
         const tone = divisionTone(div);
         return (
@@ -455,6 +482,7 @@ function SortableQueueRow(props: {
   requireCourtToStart: boolean;
   courtStrict: boolean;
   occupiedCourts: Set<string>;
+  classById?: Map<string, TournamentClass>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.match.id,
@@ -479,6 +507,7 @@ function SortableQueueRow(props: {
         requireCourtToStart={props.requireCourtToStart}
         courtStrict={props.courtStrict}
         occupiedCourts={props.occupiedCourts}
+        classById={props.classById}
       />
     </li>
   );
@@ -494,6 +523,7 @@ function NonDraggableRow(props: {
   requireCourtToStart: boolean;
   courtStrict: boolean;
   occupiedCourts: Set<string>;
+  classById?: Map<string, TournamentClass>;
 }) {
   return (
     <li>
@@ -508,6 +538,7 @@ function NonDraggableRow(props: {
         requireCourtToStart={props.requireCourtToStart}
         courtStrict={props.courtStrict}
         occupiedCourts={props.occupiedCourts}
+        classById={props.classById}
       />
     </li>
   );
@@ -518,6 +549,7 @@ function QueueRowReadOnly(props: {
   competitorById: Map<string, Competitor>;
   unit: MatchUnit;
   courts: string[];
+  classById?: Map<string, TournamentClass>;
 }) {
   return (
     <li>
@@ -532,6 +564,7 @@ function QueueRowReadOnly(props: {
         requireCourtToStart={false}
         courtStrict={true}
         occupiedCourts={new Set()}
+        classById={props.classById}
       />
     </li>
   );
@@ -548,6 +581,7 @@ function QueueRowBody({
   requireCourtToStart,
   courtStrict,
   occupiedCourts,
+  classById,
 }: {
   match: Match;
   competitorById: Map<string, Competitor>;
@@ -559,6 +593,7 @@ function QueueRowBody({
   requireCourtToStart: boolean;
   courtStrict: boolean;
   occupiedCourts: Set<string>;
+  classById?: Map<string, TournamentClass>;
 }) {
   const { a, b, unknownLabel } = getCompetitorNames(match, unit, competitorById);
   const isCourtOccupied = useMemo(
@@ -623,7 +658,7 @@ function QueueRowBody({
             #{match.match_number}
           </div>
 
-          <DivisionBadge match={match} />
+          <DivisionBadge match={match} classById={classById} />
 
           <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_1fr] items-center gap-x-1">
             <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_a_id : match.team_a_id} />
@@ -812,6 +847,10 @@ function QueueRowBody({
             competitorB={b}
             initialGames={match.games}
             onDone={() => setEditing(false)}
+            maxGames={(() => {
+              const fmt = match.class_id ? classById?.get(match.class_id)?.match_format : undefined;
+              return fmt ? maxGamesForFormat(fmt) : undefined;
+            })()}
           />
         </div>
       )}
