@@ -6,6 +6,14 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-04 — Phase 13 Slice 8 (mode selector + upgrade-to-competition) — Phase 13 COMPLETE
+
+All green, no new findings: `tsc --noEmit` clean · vitest **350/350** · prod `next build` OK · **live browser smoke PASS** (throwaway sports_day tournament with pairs+group+match seeded in prod, upgraded via edit-form button, deleted; verified count=0). Confirmed: `upgradeToCompetitionAction` creates MAIN class + flips mode=competition + migrates all 3 child types (groups/pairs/matches `class_id`) — DB-confirmed; competition tabs + MAIN sub-tab + ClassManager render; create-form Competition mode hides match_unit selector + division threshold. 0 console/hydration errors. One tsc error fixed mid-pass: `updateTournamentAction` input narrowed to `Omit<CreateTournamentInput,"mode">` (anti-downgrade — edit must never reset `mode`).
+
+### 2026-06-04 — Phase 13 Slice 7 (CSV class_code import)
+
+All green, no new findings: `tsc --noEmit` clean · vitest **350/350 pass** · production `next build` OK. `importPairsCsvAction` resolves `class_code` → `class_id` (unknown/empty → skip + `unknownClassCodes`); class-aware pair template + dialog hint/preview/toast. Static-verified only — no live import smoke (low-risk: class lookup is a Map.get over the already-live-tested `pairs` insert path; no new RSC/client boundary).
+
 ### 2026-06-03 — Phase 13 Slice 6 (per-class tabs + class assignment + queue prefix + format clamp)
 
 All checks green: `tsc --noEmit` clean · vitest **350/350 pass** (no regression) · production `next build` OK · **live browser smoke PASS** (Playwright, throwaway competition tournament seeded in prod then deleted — create-then-cleanup, verified count=0 after). All 4 assertions passed: (A) generate-groups → 2 group cards with **non-empty pair standings** (PairGroupCard computes from matches — the load-bearing claim, since pair-groups have no `group_teams`); (B) queue `[BG]` class badge; (C) ScoreForm clamp at 3 game rows for best_of_3 + saved a 2-game result; (D) generate-knockout → **single bracket** (semifinals+final, `division=null`, no multi-division layout). **Console/hydration clean — 0 errors, 0 hydration mismatches** (the static-checks-can't-catch risk that bit Slice 5 is verified absent). One tsc error fixed during the pass (Base UI `Select.onValueChange` passes `string | null` → wrapped `(v) => setClassId(v ?? "")`).

@@ -82,7 +82,7 @@ function parsePairCsv(text: string) {
       const id_player_1 = idx(h, "id_player_1", v);
       const id_player_2 = idx(h, "id_player_2", v);
       if (!id_player_1 || !id_player_2) return null;
-      return { team: idx(h, "team", v), pair_id: idx(h, "pair_id", v), id_player_1, id_player_2, pair_name: idx(h, "pair_name", v) };
+      return { team: idx(h, "team", v), pair_id: idx(h, "pair_id", v), id_player_1, id_player_2, pair_name: idx(h, "pair_name", v), class_code: idx(h, "class_code", v) };
     }
   );
 }
@@ -179,11 +179,24 @@ export function CsvImportDialog({
   tournamentId,
   defaultMode = "players",
   onlyMode,
+  classCodes = [],
 }: {
   tournamentId: string;
   defaultMode?: Mode;
   onlyMode?: Mode;
+  /** Competition-mode class codes. When non-empty, the pair import requires a
+   *  class_code column and surfaces unknown codes. */
+  classCodes?: string[];
 }) {
+  const hasClasses = classCodes.length > 0;
+  const pairTemplate = hasClasses
+    ? [
+        "team,pair_id,id_player_1,id_player_2,pair_name,class_code",
+        `ทีมแดง,,R1-1a,R1-1b,คู่ที่ 1,${classCodes[0]}`,
+        `ทีมแดง,,R1-2a,R1-2b,คู่ที่ 2,${classCodes[0]}`,
+        `ทีมเขียว,,G1-1a,G1-1b,G1-คู่ 1,${classCodes[0]}`,
+      ].join("\n")
+    : PAIR_TEMPLATE;
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>(onlyMode ?? defaultMode);
   const [playerRows, setPlayerRows] = useState<PlayerCsvRow[]>([]);
@@ -212,6 +225,9 @@ export function CsvImportDialog({
     if (res.updated) parts.push(`อัพเดท ${res.updated}`);
     if (res.skipped) parts.push(`ข้าม ${res.skipped}`);
     toast.success(parts.join(" · ") + " คู่");
+    if (res.unknownClassCodes.length) {
+      toast.error(`ไม่พบ class: ${res.unknownClassCodes.join(", ")} — แถวเหล่านั้นถูกข้าม`);
+    }
     reset(); setOpen(false);
   };
 
@@ -292,10 +308,13 @@ export function CsvImportDialog({
               <div className="flex items-center justify-between">
                 <div className="rounded-md border bg-muted/30 p-2.5 text-xs flex-1 space-y-0.5">
                   <p className="font-medium text-muted-foreground">Columns:</p>
-                  <p><code className="text-foreground">team</code> · <code className="text-foreground">pair_id</code> · <code className="text-foreground font-bold">id_player_1</code> * · <code className="text-foreground font-bold">id_player_2</code> * · <code className="text-foreground">pair_name</code></p>
+                  <p><code className="text-foreground">team</code> · <code className="text-foreground">pair_id</code> · <code className="text-foreground font-bold">id_player_1</code> * · <code className="text-foreground font-bold">id_player_2</code> * · <code className="text-foreground">pair_name</code>{hasClasses && <> · <code className="text-foreground font-bold">class_code</code> *</>}</p>
                   <p className="text-muted-foreground">1 แถว = 1 คู่ · ทั้งสองต้องอยู่ทีมเดียวกัน</p>
+                  {hasClasses && (
+                    <p className="text-muted-foreground">class_code: {classCodes.join(" · ")}</p>
+                  )}
                 </div>
-                <Button size="sm" variant="ghost" className="ml-2 h-7 text-xs gap-1 shrink-0" onClick={() => download(PAIR_TEMPLATE, "pairs_template.csv")}>
+                <Button size="sm" variant="ghost" className="ml-2 h-7 text-xs gap-1 shrink-0" onClick={() => download(pairTemplate, "pairs_template.csv")}>
                   <Download className="h-3 w-3" />Template
                 </Button>
               </div>
@@ -309,6 +328,7 @@ export function CsvImportDialog({
                   { key: "pair_id", label: "pair_id" },
                   { key: "id_player_1", label: "id_player_1" },
                   { key: "id_player_2", label: "id_player_2" },
+                  ...(hasClasses ? [{ key: "class_code" as const, label: "class" }] : []),
                 ]}
               />
 

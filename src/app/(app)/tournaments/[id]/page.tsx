@@ -302,13 +302,14 @@ export default async function TournamentDetailPage({
                   pairs={pairs}
                   matchUnit={t.match_unit}
                   isOwner={canEdit}
+                  classCodes={isCompetition ? classes.map((c) => c.code) : []}
                 />
               )}
               {canEdit && (
                 <>
                   <CourtManager tournamentId={t.id} initialCourts={t.courts ?? []} />
                   <SettingsManager tournamentId={t.id} initialSettings={t.settings} pairDivisionThresholds={parseTournamentThresholds(t.pair_division_thresholds)} />
-                  <EditTournamentForm tournament={t} existingTeamCount={teams.length} />
+                  <EditTournamentForm tournament={t} existingTeamCount={teams.length} isOwner={isOwner} />
                 </>
               )}
               {t.mode === "competition" && (

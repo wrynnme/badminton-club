@@ -3,15 +3,18 @@
 import { fieldErrors } from "@/lib/form-errors";
 import * as z from "zod";
 import { useForm } from "@tanstack/react-form";
+import { useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowUpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
 import { updateTournamentAction } from "@/lib/actions/tournaments";
+import { upgradeToCompetitionAction } from "@/lib/actions/classes";
 import type { Tournament, TournamentFormat, SeedingMethod, MatchUnit } from "@/lib/types";
 import { ThresholdChipList } from "./threshold-chip-list";
 
@@ -33,7 +36,8 @@ const formSchema = z.object({
 
 const TEAM_COUNT_PRESETS = [4, 6, 8, 12, 16];
 
-export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tournament: Tournament; existingTeamCount?: number }) {
+export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner = false }: { tournament: Tournament; existingTeamCount?: number; isOwner?: boolean }) {
+  const [upgrading, startUpgrade] = useTransition();
   const form = useForm({
     defaultValues: {
       name: tournament.name,
@@ -64,6 +68,33 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tour
         <CardTitle className="text-sm">ข้อมูลทัวร์นาเมนต์</CardTitle>
       </CardHeader>
       <CardContent>
+        {/* Mode — competition is a one-way upgrade (no downgrade) */}
+        {tournament.mode === "competition" ? (
+          <div className="mb-4 flex items-center gap-2 text-sm">
+            <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">Competition mode</Badge>
+            <span className="text-xs text-muted-foreground">หลายรุ่น (class) — กำหนด class ในแท็บตั้งค่า</span>
+          </div>
+        ) : isOwner ? (
+          <div className="mb-4 rounded-md border border-dashed p-3 space-y-2">
+            <p className="text-sm font-medium">โหมด: กีฬาสี / ทั่วไป</p>
+            <p className="text-xs text-muted-foreground">
+              อัปเกรดเป็น Competition (หลายรุ่น/class) — ย้ายทีม/คู่/กลุ่ม/แมตช์เดิมเข้า class &ldquo;MAIN&rdquo; อัตโนมัติ.{" "}
+              <span className="text-warning font-medium">เปลี่ยนกลับไม่ได้</span>
+            </p>
+            <Button type="button" size="sm" variant="outline" disabled={upgrading}
+              onClick={() => {
+                if (!confirm("อัปเกรดเป็น Competition mode? การกระทำนี้เปลี่ยนกลับไม่ได้")) return;
+                startUpgrade(async () => {
+                  const res = await upgradeToCompetitionAction(tournament.id);
+                  if ("error" in res) toast.error(res.error);
+                  else toast.success("อัปเกรดเป็น competition mode แล้ว");
+                });
+              }}>
+              {upgrading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ArrowUpCircle className="h-3.5 w-3.5 mr-1" />}
+              อัปเกรดเป็น Competition
+            </Button>
+          </div>
+        ) : null}
         <form
           onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }}
         >

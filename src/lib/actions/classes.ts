@@ -336,6 +336,89 @@ export async function reorderClassesAction(
   return { ok: true };
 }
 
+/**
+ * One-way upgrade: convert a sports_day tournament to competition mode.
+ * Creates a single default class "MAIN" mirroring the tournament's current
+ * format/advance/bracket settings, then assigns every existing pair, group, and
+ * match to it. Mode is flipped LAST so a partial-migration failure leaves the
+ * tournament in its original (sports_day) state. Owner-only; no downgrade path.
+ */
+export async function upgradeToCompetitionAction(
+  tournamentId: string,
+): Promise<{ ok: true; classId: string } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const sb = await createAdminClient();
+
+  const { data: t } = await sb
+    .from("tournaments")
+    .select("mode, format, advance_count, has_lower_bracket, allow_drop_to_lower, settings")
+    .eq("id", tournamentId)
+    .maybeSingle();
+  if (!t) return { error: "ไม่พบรายการแข่ง" };
+  if (t.mode === "competition") return { error: "อยู่ในโหมด competition อยู่แล้ว" };
+
+  const VALID_MF = ["fixed_2", "best_of_3", "best_of_5"];
+  const dmf = (t.settings as { default_match_format?: string } | null)?.default_match_format;
+  const matchFormat = dmf && VALID_MF.includes(dmf) ? dmf : "best_of_3";
+
+  // Create the single default class mirroring the tournament's current setup.
+  const { data: cls, error: clsErr } = await sb
+    .from("tournament_classes")
+    .insert({
+      tournament_id: tournamentId,
+      code: "MAIN",
+      name: "ทั่วไป",
+      pairs_per_group: 4,
+      format: t.format,
+      advance_count: t.advance_count ?? 2,
+      has_lower_bracket: t.has_lower_bracket ?? false,
+      allow_drop_to_lower: t.allow_drop_to_lower ?? false,
+      match_format: matchFormat,
+      position: 0,
+    })
+    .select("id")
+    .single();
+  if (clsErr || !cls) {
+    console.error("[upgradeToCompetitionAction] class", clsErr);
+    return { error: "สร้าง class เริ่มต้นไม่สำเร็จ" };
+  }
+  const classId = cls.id;
+
+  // Assign existing groups + matches (tournament-scoped) to MAIN.
+  await sb.from("groups").update({ class_id: classId }).eq("tournament_id", tournamentId).is("class_id", null);
+  await sb.from("matches").update({ class_id: classId }).eq("tournament_id", tournamentId).is("class_id", null);
+
+  // Pairs are scoped via their team — assign all pairs whose team is in this tournament.
+  const { data: teamRows } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
+  const teamIds = (teamRows ?? []).map((r) => r.id);
+  if (teamIds.length > 0) {
+    await sb.from("pairs").update({ class_id: classId }).in("team_id", teamIds).is("class_id", null);
+  }
+
+  // Flip mode last — only switch the UI once the data migration succeeded.
+  const { error: modeErr } = await sb.from("tournaments").update({ mode: "competition" }).eq("id", tournamentId);
+  if (modeErr) {
+    console.error("[upgradeToCompetitionAction] mode", modeErr);
+    return { error: "เปลี่ยนโหมดไม่สำเร็จ" };
+  }
+
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "tournament_upgraded_to_competition",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: `อัปเกรดเป็น competition mode — สร้าง class "MAIN" + ย้ายข้อมูลเดิมเข้า class`,
+  });
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  return { ok: true, classId };
+}
+
 // ============ GENERATE — GROUP STAGE (owner OR co-admin) ============
 
 /**

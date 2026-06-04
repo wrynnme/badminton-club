@@ -160,7 +160,7 @@ export function PairStage({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">จับคู่ + กำหนด Class</h2>
-          {isOwner && <CsvImportDialog tournamentId={tournamentId} onlyMode="pairs" />}
+          {isOwner && <CsvImportDialog tournamentId={tournamentId} onlyMode="pairs" classCodes={classes.map((c) => c.code)} />}
         </div>
         {teams.length === 0 ? (
           <p className="text-sm text-muted-foreground">เพิ่มทีมก่อนจัดคู่</p>
