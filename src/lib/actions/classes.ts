@@ -364,38 +364,57 @@ export async function upgradeToCompetitionAction(
   const dmf = (t.settings as { default_match_format?: string } | null)?.default_match_format;
   const matchFormat = dmf && VALID_MF.includes(dmf) ? dmf : "best_of_3";
 
-  // Create the single default class mirroring the tournament's current setup.
-  const { data: cls, error: clsErr } = await sb
-    .from("tournament_classes")
-    .insert({
-      tournament_id: tournamentId,
-      code: "MAIN",
-      name: "ทั่วไป",
-      pairs_per_group: 4,
-      format: t.format,
-      advance_count: t.advance_count ?? 2,
-      has_lower_bracket: t.has_lower_bracket ?? false,
-      allow_drop_to_lower: t.allow_drop_to_lower ?? false,
-      match_format: matchFormat,
-      position: 0,
-    })
-    .select("id")
-    .single();
-  if (clsErr || !cls) {
-    console.error("[upgradeToCompetitionAction] class", clsErr);
-    return { error: "สร้าง class เริ่มต้นไม่สำเร็จ" };
+  // Find-or-create the default class. A prior partial upgrade may have already
+  // created "MAIN" (UNIQUE on tournament_id+code), so reuse it — otherwise a retry
+  // would hit the unique constraint and could never complete.
+  let classId: string;
+  const { data: existingMain } = await sb
+    .from("tournament_classes").select("id")
+    .eq("tournament_id", tournamentId).eq("code", "MAIN").maybeSingle();
+  if (existingMain) {
+    classId = existingMain.id;
+  } else {
+    const { data: cls, error: clsErr } = await sb
+      .from("tournament_classes")
+      .insert({
+        tournament_id: tournamentId,
+        code: "MAIN",
+        name: "ทั่วไป",
+        pairs_per_group: 4,
+        format: t.format,
+        advance_count: t.advance_count ?? 2,
+        has_lower_bracket: t.has_lower_bracket ?? false,
+        allow_drop_to_lower: t.allow_drop_to_lower ?? false,
+        match_format: matchFormat,
+        position: 0,
+      })
+      .select("id")
+      .single();
+    if (clsErr || !cls) {
+      console.error("[upgradeToCompetitionAction] class", clsErr);
+      return { error: "สร้าง class เริ่มต้นไม่สำเร็จ" };
+    }
+    classId = cls.id;
   }
-  const classId = cls.id;
 
-  // Assign existing groups + matches (tournament-scoped) to MAIN.
-  await sb.from("groups").update({ class_id: classId }).eq("tournament_id", tournamentId).is("class_id", null);
-  await sb.from("matches").update({ class_id: classId }).eq("tournament_id", tournamentId).is("class_id", null);
-
-  // Pairs are scoped via their team — assign all pairs whose team is in this tournament.
+  // Assign existing groups + matches (tournament-scoped) + pairs (team-scoped) to MAIN.
+  // The `.is("class_id", null)` filters make every update idempotent across retries.
+  const { error: gErr } = await sb.from("groups").update({ class_id: classId }).eq("tournament_id", tournamentId).is("class_id", null);
+  const { error: mErr } = await sb.from("matches").update({ class_id: classId }).eq("tournament_id", tournamentId).is("class_id", null);
   const { data: teamRows } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
   const teamIds = (teamRows ?? []).map((r) => r.id);
+  let pErr = null;
   if (teamIds.length > 0) {
-    await sb.from("pairs").update({ class_id: classId }).in("team_id", teamIds).is("class_id", null);
+    pErr = (await sb.from("pairs").update({ class_id: classId }).in("team_id", teamIds).is("class_id", null)).error;
+  }
+
+  // If ANY child migration failed, DO NOT flip mode — the partial state (some
+  // children assigned, MAIN class present) is recoverable: a retry reuses the
+  // class and the null-filtered updates finish the rest. Flipping mode here would
+  // orphan the unassigned children out of every class with no way back.
+  if (gErr || mErr || pErr) {
+    console.error("[upgradeToCompetitionAction] migrate", gErr ?? mErr ?? pErr);
+    return { error: "ย้ายข้อมูลเข้า class ไม่สำเร็จ — ลองใหม่อีกครั้ง" };
   }
 
   // Flip mode last — only switch the UI once the data migration succeeded.

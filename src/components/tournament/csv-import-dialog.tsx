@@ -74,10 +74,10 @@ function parsePlayerCsv(text: string) {
   );
 }
 
-function parsePairCsv(text: string) {
+function parsePairCsv(text: string, requireClass = false) {
   return parseFile<PairCsvRow>(
     text,
-    ["id_player_1", "id_player_2"],
+    requireClass ? ["id_player_1", "id_player_2", "class_code"] : ["id_player_1", "id_player_2"],
     (h, v) => {
       const id_player_1 = idx(h, "id_player_1", v);
       const id_player_2 = idx(h, "id_player_2", v);
@@ -322,7 +322,7 @@ export function CsvImportDialog({
               <FilePicker<PairCsvRow>
                 accept=".csv,text/csv"
                 onParsed={setPairRows}
-                parseRow={parsePairCsv}
+                parseRow={(text) => parsePairCsv(text, hasClasses)}
                 previewCols={[
                   { key: "team", label: "ทีม" },
                   { key: "pair_id", label: "pair_id" },

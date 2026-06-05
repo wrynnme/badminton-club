@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
 import { updateTournamentAction } from "@/lib/actions/tournaments";
@@ -165,28 +165,38 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
               )}
             </form.Field>
 
-            <form.Field name="match_unit">
-              {(field) => (
-                <Field>
-                  <FieldLabel>หน่วยการแข่ง *</FieldLabel>
-                  <div className="flex flex-wrap gap-2">
-                    {([
-                      { value: "team", label: "ทีม vs ทีม" },
-                      { value: "pair", label: "คู่ vs คู่" },
-                    ] as const).map((opt) => (
-                      <Button key={opt.value} type="button" size="sm"
-                        variant={field.state.value === opt.value ? "default" : "outline"}
-                        onClick={() => field.handleChange(opt.value)}>
-                        {opt.label}
-                      </Button>
-                    ))}
-                  </div>
-                </Field>
-              )}
-            </form.Field>
+            {/* Competition is locked to pair vs pair — switching to team would drop
+                the คู่/class tabs and corrupt the pair-keyed competitor map. */}
+            {tournament.mode === "competition" ? (
+              <Field>
+                <FieldLabel>หน่วยการแข่ง</FieldLabel>
+                <FieldDescription>คู่ vs คู่ (ล็อคสำหรับ Competition)</FieldDescription>
+              </Field>
+            ) : (
+              <form.Field name="match_unit">
+                {(field) => (
+                  <Field>
+                    <FieldLabel>หน่วยการแข่ง *</FieldLabel>
+                    <div className="flex flex-wrap gap-2">
+                      {([
+                        { value: "team", label: "ทีม vs ทีม" },
+                        { value: "pair", label: "คู่ vs คู่" },
+                      ] as const).map((opt) => (
+                        <Button key={opt.value} type="button" size="sm"
+                          variant={field.state.value === opt.value ? "default" : "outline"}
+                          onClick={() => field.handleChange(opt.value)}>
+                          {opt.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
+              </form.Field>
+            )}
 
+            {/* Division thresholds — sports_day pair mode only (competition uses classes) */}
             <form.Subscribe selector={(s) => s.values.match_unit}>
-              {(unit) => unit === "pair" && (
+              {(unit) => unit === "pair" && tournament.mode !== "competition" && (
                 <form.Field name="pair_division_thresholds">
                   {(field) => (
                     <ThresholdChipList

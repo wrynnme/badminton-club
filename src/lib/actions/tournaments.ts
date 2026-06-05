@@ -141,9 +141,11 @@ export async function updateTournamentAction(input: Omit<CreateTournamentInput, 
 
   const changedFields: string[] = [];
   if (before) {
-    for (const key of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
+    // Compare only the fields actually written (updateData — `mode` is stripped).
+    // `before` doesn't select `mode`, so including it would flag every save.
+    for (const key of Object.keys(updateData) as Array<keyof typeof updateData>) {
       const prev = (before as Record<string, unknown>)[key as string];
-      const next = (parsed.data as Record<string, unknown>)[key as string];
+      const next = (updateData as Record<string, unknown>)[key as string];
       if (prev !== next) changedFields.push(key as string);
     }
   }
@@ -523,12 +525,18 @@ export async function importPairsCsvAction(
   const { data: teams } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
   const teamIdSet = new Set(teams?.map((t) => t.id) ?? []);
 
-  // Competition mode: resolve class_code → class_id. When the tournament has any
-  // class, class_code is required per row; sports_day tournaments ignore it.
+  // Competition mode REQUIRES a valid class_code per row (gate on mode, not on
+  // class existence — a competition tournament with zero classes must reject the
+  // import rather than silently inserting pairs with class_id = null).
+  const { data: tourn } = await sb
+    .from("tournaments").select("mode").eq("id", tournamentId).maybeSingle();
+  const requireClass = tourn?.mode === "competition";
   const { data: classRows } = await sb
     .from("tournament_classes").select("id, code").eq("tournament_id", tournamentId);
   const classByCode = new Map<string, string>((classRows ?? []).map((c) => [c.code, c.id]));
-  const hasClasses = classByCode.size > 0;
+  if (requireClass && classByCode.size === 0) {
+    return { error: "ยังไม่มี class — สร้าง class ในแท็บตั้งค่าก่อนนำเข้าคู่" };
+  }
   const unknownClassCodes = new Set<string>();
 
   const playerByCsvId = new Map<string, { id: string; teamId: string; level: string | null }>();
@@ -571,11 +579,13 @@ export async function importPairsCsvAction(
     if (!p1 || !p2) { skipped++; continue; }
     if (p1.teamId !== p2.teamId) { skipped++; continue; }
 
-    // Resolve class (competition mode). Required when classes exist; unknown code → skip + report.
+    // Resolve class (competition mode requires a valid class per row).
     let classId: string | null = null;
-    if (hasClasses) {
+    if (requireClass) {
       const code = r.class_code?.trim();
-      if (!code) { skipped++; continue; }
+      // Empty code is reported too (not just unknown) so the importer surfaces a
+      // clear error instead of a silent "ข้าม N".
+      if (!code) { skipped++; unknownClassCodes.add("(ไม่ระบุ)"); continue; }
       const cid = classByCode.get(code);
       if (!cid) { skipped++; unknownClassCodes.add(code); continue; }
       classId = cid;
