@@ -5,6 +5,7 @@ import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Field, FieldError, FieldGroup, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
@@ -112,29 +113,41 @@ export function CreateTournamentForm() {
           </form.Field>
         </div>
 
-        {/* Mode */}
+        {/* Mode — card selector (กีฬาสี / แข่งขัน), both selectable */}
         <form.Field name="mode">
           {(field) => (
             <Field>
               <FieldLabel>โหมด *</FieldLabel>
-              <div className="flex flex-wrap gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 {([
-                  { value: "sports_day", label: "กีฬาสี / ทั่วไป" },
-                  { value: "competition", label: "Competition (หลายรุ่น)" },
-                ] as const).map((opt) => (
-                  <Button key={opt.value} type="button" size="sm"
-                    variant={field.state.value === opt.value ? "default" : "outline"}
-                    onClick={() => {
-                      field.handleChange(opt.value);
-                      if (opt.value === "competition") form.setFieldValue("match_unit", "pair");
-                    }}>
-                    {opt.label}
-                  </Button>
-                ))}
+                  { value: "sports_day", title: "กีฬาสี", desc: "แบ่งทีม แข่งแบบกลุ่มหรือน็อคเอ้า" },
+                  { value: "competition", title: "แข่งขัน", desc: "หลายรุ่น (class) · คู่ vs คู่" },
+                ] as const).map((opt) => {
+                  const active = field.state.value === opt.value;
+                  return (
+                    <Button
+                      key={opt.value}
+                      type="button"
+                      variant="outline"
+                      aria-pressed={active}
+                      onClick={() => {
+                        field.handleChange(opt.value);
+                        if (opt.value === "competition") form.setFieldValue("match_unit", "pair");
+                      }}
+                      className={`h-auto flex-col items-start gap-1 p-3 text-left whitespace-normal ${active ? "border-primary ring-1 ring-primary bg-primary/5" : ""}`}
+                    >
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className="font-medium">{opt.title}</span>
+                        {active && <Badge className="text-[10px] px-1.5 py-0">เลือกอยู่</Badge>}
+                      </span>
+                      <span className="text-xs font-normal text-muted-foreground">{opt.desc}</span>
+                    </Button>
+                  );
+                })}
               </div>
               <FieldDescription>
                 {field.state.value === "competition"
-                  ? "หลายรุ่น (class) แบบคู่ vs คู่ — กำหนด class + แต่ละรุ่นในแท็บ “ตั้งค่า” หลังสร้าง"
+                  ? "หลายรุ่น (class) แบบคู่ vs คู่ — กำหนด class แต่ละรุ่นในแท็บ “ตั้งค่า” หลังสร้าง"
                   : "กีฬาสี / ทั่วไป — เลือกหน่วยเป็นทีม หรือ คู่ (แบ่ง division ได้)"}
               </FieldDescription>
             </Field>
