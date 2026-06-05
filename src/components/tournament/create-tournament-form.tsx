@@ -308,35 +308,47 @@ export function CreateTournamentForm() {
           )}
         </form.Field>
 
-        {/* Team count */}
-        <form.Field
-          name="team_count"
-          children={(field) => {
-            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
-            return (
-              <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={field.name}>จำนวนทีม *</FieldLabel>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {TEAM_COUNT_PRESETS.map((n) => (
-                    <Button key={n} type="button" size="sm" className="h-7 text-xs px-2"
-                      variant={field.state.value === n ? "default" : "outline"}
-                      onClick={() => field.handleChange(n)}>
-                      {n} ทีม
-                    </Button>
-                  ))}
-                </div>
-                <InputGroup>
-                  <Input id={field.name} type="number" min={2} max={64} value={field.state.value}
-                    onBlur={field.handleBlur} onChange={(e) => field.handleChange(Number(e.target.value))}
-                    aria-invalid={isInvalid}
-                    className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
-                  <InputGroupAddon align="inline-end"><InputGroupText>ทีม</InputGroupText></InputGroupAddon>
-                </InputGroup>
-                {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
-              </Field>
-            );
-          }}
-        />
+        {/* Team count — sports_day only. Competition adds teams + pairs later and
+            assigns them to classes, so no fixed count is required up front. */}
+        <form.Subscribe selector={(s) => s.values.mode}>
+          {(mode) => mode === "sports_day" ? (
+            <form.Field
+              name="team_count"
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>จำนวนทีม *</FieldLabel>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {TEAM_COUNT_PRESETS.map((n) => (
+                        <Button key={n} type="button" size="sm" className="h-7 text-xs px-2"
+                          variant={field.state.value === n ? "default" : "outline"}
+                          onClick={() => field.handleChange(n)}>
+                          {n} ทีม
+                        </Button>
+                      ))}
+                    </div>
+                    <InputGroup>
+                      <Input id={field.name} type="number" min={2} max={64} value={field.state.value}
+                        onBlur={field.handleBlur} onChange={(e) => field.handleChange(Number(e.target.value))}
+                        aria-invalid={isInvalid}
+                        className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
+                      <InputGroupAddon align="inline-end"><InputGroupText>ทีม</InputGroupText></InputGroupAddon>
+                    </InputGroup>
+                    {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
+                  </Field>
+                );
+              }}
+            />
+          ) : (
+            <Field>
+              <FieldLabel>ทีม / คู่</FieldLabel>
+              <FieldDescription>
+                เพิ่มทีม + จับคู่ภายหลังในแท็บ “ทีม” / “คู่” แล้วกำหนดเข้าแต่ละ class — ไม่ต้องระบุจำนวนตอนสร้าง
+              </FieldDescription>
+            </Field>
+          )}
+        </form.Subscribe>
 
         <form.Field name="notes">
           {(field) => (
