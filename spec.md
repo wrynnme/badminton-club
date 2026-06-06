@@ -578,7 +578,13 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 **Pure algorithm `buildNextMatch(pool, settings, stayingSide?)`** (`queue.ts`): pool = checked-in & not-currently-playing players. Ordering by `queue_mode`: `fifo` (position→joined_at), `rest_longest`/`smart`-v1 (last_finished_at asc, null=front → games_played → fifo), `level_match` (anchor = most-rested, fill nearest-level). Split into sides: `skill_level_enabled` → greedy level-balance; else pick-order. `winner_stays` → caller passes `stayingSide` (sideA kept, opponents drawn from pool); `winner_stays_max` streak cap enforced in action layer. Returns null when pool < 2×players_per_team. **smart v1 = rest_longest + level-balanced split** (documented simplification — factors tunable later w/o migration).
 
-**Actions/UI — PLANNED (Part A remainder):** server actions (build-next / start / finish→increment games_played + set last_finished_at / cancel + auto-rotate), create-form + settings fields, live queue panel, court views. Reuse tournament queue patterns where applicable.
+#### Part A actions + UI — ✅ IMPLEMENTED (2026-06-07, develop)
+
+**Server actions** (`clubs.ts`, owner/co-admin via `assertCanManageClub`): `updateClubQueueSettingsAction(clubId, patch)` (parse→shallow-merge→re-validate jsonb), `buildNextClubMatchAction(clubId, court)` (pool = checked-in & not-in-active-match; check-in gate only when ≥1 checked in; winner_stays staying-side via consecutive-win streak vs `winner_stays_max`; inserts pending row w/ queue_position tail), `startClubMatchAction(matchId)` (pending→in_progress; court-occupancy 23505 → friendly error), `finishClubMatchAction({matchId, winnerSide?, scoreA?, scoreB?})` (via RPC `finish_club_match` — atomic complete + bump games_played/last_finished_at, idempotent), `cancelClubMatchAction(matchId)` (→cancelled). RPC migration `20260607000100_club_finish_match_rpc` (SECURITY INVOKER, service_role grant, FOR UPDATE row-lock).
+
+**UI:** `club-queue-settings.tsx` (owner/co-admin card, 7 fields + winner_stays_max conditional, 500ms debounce + unmount-flush, mirror `settings-manager.tsx`) · `club-queue-panel.tsx` (Tabs รอแข่ง/กำลังแข่ง/จบแล้ว + count badges; per-court "สร้างแมตช์ถัดไป"; per-row เริ่ม/ยกเลิก/จบแข่ง→winner picker; `ElapsedTicker` mm:ss; `text-winner` highlight; useTransition + toast + router.refresh). Wired in `clubs/[id]/page.tsx` (matches fetch added to parallel block, `queueSettings = parseQueueSettings`, settings gated canManage, panel for all). tsc clean · vitest 383 · build OK.
+
+> create-form 7 fields **not added** — settings เป็น edit-later บนหน้า club detail (ตรง spec "แก้ได้ภายหลัง"); create ใช้ default จาก `queue_settings '{}'`. **ยังไม่ทำ:** auto-rotate-all-courts (สร้างทีละสนามด้วยปุ่ม), score entry (winner-only v1), not_ready_action wiring (UI hint), game_time_limit enforcement (UI hint), Realtime (manual refresh). **ยังไม่ live-smoke.**
 
 **Create form / Settings:**
 

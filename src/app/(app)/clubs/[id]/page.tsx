@@ -15,7 +15,11 @@ import { ClubCoAdminControls } from "@/components/club/club-co-admin-controls";
 import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
 import { HourlyHeadcount } from "@/components/club/hourly-headcount";
+import { ClubQueueSettings } from "@/components/club/club-queue-settings";
+import { ClubQueuePanel } from "@/components/club/club-queue-panel";
+import { parseQueueSettings } from "@/lib/club/queue-settings";
 import type { ClubExpense, ClubAdmin } from "@/lib/actions/clubs";
+import type { ClubMatch } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +40,7 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes, adminsRes] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -54,11 +58,17 @@ export default async function ClubDetailPage({
       .select("club_id, user_id, added_by, added_at, profile:profiles!club_admins_user_id_fkey(display_name, line_user_id)")
       .eq("club_id", id)
       .order("added_at", { ascending: true }),
+    sb
+      .from("club_matches")
+      .select("*")
+      .eq("club_id", id)
+      .order("queue_position", { ascending: true, nullsFirst: false }),
   ]);
 
   const owner = ownerRes.data;
   const players = playersRes.data ?? [];
   const expenses: ClubExpense[] = (expensesRes.data ?? []) as ClubExpense[];
+  const clubMatches: ClubMatch[] = (matchesRes.data ?? []) as ClubMatch[];
 
   type AdminRow = { club_id: string; user_id: string; added_by: string | null; added_at: string; profile: { display_name: string | null; line_user_id: string | null } | null };
   const coAdmins: ClubAdmin[] = ((adminsRes.data ?? []) as unknown as AdminRow[]).map((r) => ({
@@ -78,6 +88,8 @@ export default async function ClubDetailPage({
   const isOwner = session?.profileId === club.owner_id;
   const isCoAdmin = session ? coAdmins.some((a) => a.user_id === session.profileId) : false;
   const canManage = isOwner || isCoAdmin;
+
+  const queueSettings = parseQueueSettings(club.queue_settings);
 
   // Compute total from expenses; fall back to legacy total_cost
   const expenseTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
@@ -167,6 +179,10 @@ export default async function ClubDetailPage({
         </div>
       )}
 
+      {canManage && (
+        <ClubQueueSettings clubId={club.id} initial={queueSettings} />
+      )}
+
       <Separator />
 
       <section className="space-y-3">
@@ -204,6 +220,17 @@ export default async function ClubDetailPage({
           <HourlyHeadcount club={club} players={players} />
         </section>
       )}
+
+      <section className="space-y-3">
+        <h2 className="font-semibold">ระบบหมุนคิว</h2>
+        <ClubQueuePanel
+          clubId={club.id}
+          matches={clubMatches}
+          players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
+          settings={queueSettings}
+          canManage={canManage}
+        />
+      </section>
 
       {(club.court_fee > 0 || club.shuttle_fee > 0) && (
         <section className="space-y-2">

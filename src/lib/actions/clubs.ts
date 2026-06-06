@@ -6,6 +6,13 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
+import {
+  type ClubQueueSettings,
+  ClubQueueSettingsSchema,
+  parseQueueSettings,
+} from "@/lib/club/queue-settings";
+import { buildNextMatch, type QueuePlayer, type MatchSide } from "@/lib/club/queue";
+import type { ClubMatch } from "@/lib/types";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
@@ -601,4 +608,344 @@ export async function leaveClubAction(formData: FormData) {
     .eq("profile_id", session.profileId);
 
   revalidatePath(`/clubs/${clubId}`);
+}
+
+// ─── Rotation-Queue Actions ───────────────────────────────────────────────────
+
+/**
+ * Owner / co-admin updates the club's rotation-queue settings.
+ * Shallow-merges `patch` over the current settings, then re-validates the
+ * merged object so bad patches are rejected before writing.
+ */
+export async function updateClubQueueSettingsAction(
+  clubId: string,
+  patch: Partial<ClubQueueSettings>,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const { data: club, error: fetchError } = await sb
+    .from("clubs")
+    .select("queue_settings")
+    .eq("id", clubId)
+    .single();
+  if (fetchError || !club) return { error: "ไม่พบก๊วนนี้" };
+
+  const current = parseQueueSettings(club.queue_settings);
+  const merged = { ...current, ...patch };
+
+  let validated: ClubQueueSettings;
+  try {
+    validated = ClubQueueSettingsSchema.parse(merged);
+  } catch {
+    return { error: "การตั้งค่าคิวไม่ถูกต้อง" };
+  }
+
+  const { error: writeError } = await sb
+    .from("clubs")
+    .update({ queue_settings: validated })
+    .eq("id", clubId);
+  if (writeError) return { error: writeError.message };
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
+/**
+ * Owner / co-admin proposes the next match for a given court.
+ *
+ * Pool eligibility:
+ *  1. Exclude players currently assigned to a pending or in_progress match.
+ *  2. Check-in gate: if ANY player in the club is checked in, restrict the pool
+ *     to checked-in players only. Clubs that don't use check-in (nobody checked
+ *     in) continue using all players — this preserves backwards compatibility.
+ *
+ * winner_stays: the most recently completed match on this court is inspected.
+ * The winning side's streak is computed (consecutive wins by the same set of
+ * player ids). If the cap hasn't been reached and the winners are still
+ * pool-eligible, they stay on court as sideA and are removed from the pool
+ * before the opponents are drawn.
+ */
+export async function buildNextClubMatchAction(
+  clubId: string,
+  court: number,
+): Promise<{ ok: true; match: ClubMatch } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  // Validate court is a positive integer.
+  const courtInt = Math.trunc(court);
+  if (!Number.isFinite(courtInt) || courtInt < 1) return { error: "หมายเลขสนามไม่ถูกต้อง" };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  // Load settings.
+  const { data: clubRow, error: clubFetchError } = await sb
+    .from("clubs")
+    .select("queue_settings")
+    .eq("id", clubId)
+    .single();
+  if (clubFetchError || !clubRow) return { error: "ไม่พบก๊วนนี้" };
+  const settings = parseQueueSettings(clubRow.queue_settings);
+
+  // Load all players for this club.
+  const { data: allPlayers, error: playersFetchError } = await sb
+    .from("club_players")
+    .select("id, position, joined_at, level, games_played, last_finished_at, checked_in_at")
+    .eq("club_id", clubId);
+  if (playersFetchError || !allPlayers) return { error: "โหลดผู้เล่นไม่สำเร็จ" };
+
+  // Collect ids of players already in an active (pending or in_progress) match.
+  const { data: activeMatches } = await sb
+    .from("club_matches")
+    .select("side_a_player1, side_a_player2, side_b_player1, side_b_player2")
+    .eq("club_id", clubId)
+    .in("status", ["pending", "in_progress"]);
+
+  const activePlayers = new Set<string>();
+  for (const m of activeMatches ?? []) {
+    if (m.side_a_player1) activePlayers.add(m.side_a_player1);
+    if (m.side_a_player2) activePlayers.add(m.side_a_player2);
+    if (m.side_b_player1) activePlayers.add(m.side_b_player1);
+    if (m.side_b_player2) activePlayers.add(m.side_b_player2);
+  }
+
+  // Check-in gate: if at least one player is checked in, only checked-in players
+  // are pool-eligible. Clubs that don't use check-in (nobody is checked in) use
+  // all players so existing behavior is preserved.
+  const anyCheckedIn = allPlayers.some((p) => p.checked_in_at != null);
+
+  // Build pool-eligible set: not in active match + (check-in gate if applicable).
+  const eligiblePlayers = allPlayers.filter((p) => {
+    if (activePlayers.has(p.id)) return false;
+    if (anyCheckedIn && p.checked_in_at == null) return false;
+    return true;
+  });
+
+  // Map to QueuePlayer (NaN level → null).
+  const toQueuePlayer = (p: (typeof eligiblePlayers)[number]): QueuePlayer => {
+    const raw = p.level != null && p.level !== "" ? parseFloat(p.level) : null;
+    const level = raw != null && !Number.isNaN(raw) ? raw : null;
+    return {
+      id: p.id,
+      position: p.position,
+      joined_at: p.joined_at,
+      level,
+      games_played: p.games_played,
+      last_finished_at: p.last_finished_at,
+    };
+  };
+
+  let pool: QueuePlayer[] = eligiblePlayers.map(toQueuePlayer);
+  let stayingSide: MatchSide | undefined;
+
+  // winner_stays: determine if the most recent winners keep playing.
+  if (settings.rotation_mode === "winner_stays") {
+    const { data: recentMatches } = await sb
+      .from("club_matches")
+      .select(
+        "side_a_player1, side_a_player2, side_b_player1, side_b_player2, winner_side, ended_at",
+      )
+      .eq("club_id", clubId)
+      .eq("court", courtInt)
+      .eq("status", "completed")
+      .not("winner_side", "is", null)
+      .order("ended_at", { ascending: false })
+      .limit(20);
+
+    if (recentMatches && recentMatches.length > 0) {
+      const lastWin = recentMatches[0];
+
+      // Extract winning player ids from the latest match.
+      const winningIds =
+        lastWin.winner_side === "a"
+          ? [lastWin.side_a_player1, lastWin.side_a_player2]
+          : [lastWin.side_b_player1, lastWin.side_b_player2];
+      const winnerSet = new Set(winningIds.filter((id): id is string => id != null));
+      const sortedWinnerIds = [...winnerSet].sort();
+
+      // Compute streak: count how many consecutive completed matches (newest→older)
+      // were won by exactly the same set of player ids.
+      let streak = 0;
+      for (const match of recentMatches) {
+        const mWinIds =
+          match.winner_side === "a"
+            ? [match.side_a_player1, match.side_a_player2]
+            : [match.side_b_player1, match.side_b_player2];
+        const mWinSet = [...new Set(mWinIds.filter((id): id is string => id != null))].sort();
+        if (
+          mWinSet.length === sortedWinnerIds.length &&
+          mWinSet.every((id, i) => id === sortedWinnerIds[i])
+        ) {
+          streak++;
+        } else {
+          break;
+        }
+      }
+
+      // Check cap: 0 = unlimited, otherwise streak must be below the cap.
+      const capOk = settings.winner_stays_max === 0 || streak < settings.winner_stays_max;
+
+      // All winners must still be pool-eligible (not in another active match, and
+      // pass the check-in gate if applicable).
+      const eligibleIds = new Set(eligiblePlayers.map((p) => p.id));
+      const winnersEligible = [...winnerSet].every((id) => eligibleIds.has(id));
+
+      if (capOk && winnersEligible) {
+        // Winners stay: remove them from the pool before picking opponents.
+        const winnerIds1 =
+          lastWin.winner_side === "a" ? lastWin.side_a_player1 : lastWin.side_b_player1;
+        const winnerIds2 =
+          lastWin.winner_side === "a" ? lastWin.side_a_player2 : lastWin.side_b_player2;
+        stayingSide = { player1: winnerIds1, player2: winnerIds2 ?? null };
+        pool = pool.filter((p) => !winnerSet.has(p.id));
+      }
+    }
+  }
+
+  // Build the proposed match.
+  const proposed = buildNextMatch(pool, settings, stayingSide);
+  if (!proposed) return { error: "ผู้เล่นว่างไม่พอสำหรับสร้างแมตช์" };
+
+  // Compute next queue_position for this club's pending matches.
+  const { data: maxRow } = await sb
+    .from("club_matches")
+    .select("queue_position")
+    .eq("club_id", clubId)
+    .eq("status", "pending")
+    .order("queue_position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextQueuePosition = (maxRow?.queue_position ?? 0) + 1;
+
+  // Insert the match row.
+  const { data: newMatch, error: insertError } = await sb
+    .from("club_matches")
+    .insert({
+      club_id: clubId,
+      court: courtInt,
+      side_a_player1: proposed.sideA.player1,
+      side_a_player2: proposed.sideA.player2 ?? null,
+      side_b_player1: proposed.sideB.player1,
+      side_b_player2: proposed.sideB.player2 ?? null,
+      status: "pending",
+      queue_position: nextQueuePosition,
+    })
+    .select()
+    .single();
+
+  if (insertError || !newMatch) return { error: insertError?.message ?? "สร้างแมตช์ไม่สำเร็จ" };
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true, match: newMatch as ClubMatch };
+}
+
+/**
+ * Owner / co-admin starts a pending match (pending → in_progress).
+ * A partial UNIQUE index on (club_id, court) WHERE status='in_progress' ensures
+ * only one in_progress match per court; Postgres raises 23505 if violated.
+ */
+export async function startClubMatchAction(
+  matchId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+
+  // Fetch the match first to get club_id for auth.
+  const { data: match, error: fetchError } = await sb
+    .from("club_matches")
+    .select("id, club_id, status")
+    .eq("id", matchId)
+    .single();
+  if (fetchError || !match) return { error: "ไม่พบแมตช์" };
+
+  if (!(await assertCanManageClub(sb, match.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const { error: updateError } = await sb
+    .from("club_matches")
+    .update({ status: "in_progress", started_at: new Date().toISOString() })
+    .eq("id", matchId)
+    .eq("status", "pending");
+
+  if (updateError) {
+    if (updateError.code === "23505") return { error: "สนามนี้มีแมตช์กำลังเล่นอยู่" };
+    return { error: updateError.message };
+  }
+
+  revalidatePath(`/clubs/${match.club_id}`);
+  return { ok: true };
+}
+
+/**
+ * Owner / co-admin records the result and finishes a match.
+ * games_played + last_finished_at are incremented atomically inside the RPC —
+ * do NOT also update them here.
+ */
+export async function finishClubMatchAction(input: {
+  matchId: string;
+  winnerSide?: "a" | "b";
+  scoreA?: number;
+  scoreB?: number;
+}): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+
+  const { data: match, error: fetchError } = await sb
+    .from("club_matches")
+    .select("id, club_id")
+    .eq("id", input.matchId)
+    .single();
+  if (fetchError || !match) return { error: "ไม่พบแมตช์" };
+
+  if (!(await assertCanManageClub(sb, match.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const { error: rpcError } = await sb.rpc("finish_club_match", {
+    p_match_id: input.matchId,
+    p_winner_side: input.winnerSide ?? null,
+    p_score_a: input.scoreA ?? null,
+    p_score_b: input.scoreB ?? null,
+  });
+  if (rpcError) return { error: rpcError.message };
+
+  revalidatePath(`/clubs/${match.club_id}`);
+  return { ok: true };
+}
+
+/**
+ * Owner / co-admin cancels a pending or in_progress match.
+ */
+export async function cancelClubMatchAction(
+  matchId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+
+  const { data: match, error: fetchError } = await sb
+    .from("club_matches")
+    .select("id, club_id")
+    .eq("id", matchId)
+    .single();
+  if (fetchError || !match) return { error: "ไม่พบแมตช์" };
+
+  if (!(await assertCanManageClub(sb, match.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const { error: updateError } = await sb
+    .from("club_matches")
+    .update({ status: "cancelled" })
+    .eq("id", matchId)
+    .in("status", ["pending", "in_progress"]);
+  if (updateError) return { error: updateError.message };
+
+  revalidatePath(`/clubs/${match.club_id}`);
+  return { ok: true };
 }
