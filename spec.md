@@ -579,12 +579,71 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 6. **จำกัดเวลาต่อเกม** (`game_time_limit_min`) — นาที/เกม (`0` = ไม่จำกัด)
 7. **เมื่อผู้เล่นไม่พร้อม** (`not_ready_action`) — `requeue` ต่อท้ายคิว | `skip` ข้าม
 
-**ค่าใช้จ่าย (cost split):**
-
-1. **ค่าสนาม** (`court_fee` บาท) — `split_even` หารเท่า | `by_time` ตามเวลาที่อยู่
-2. **ค่าลูกแบด** (`shuttle_fee` บาท) — `split_even` หารเท่า | `by_games` ตามจำนวนเกมที่เล่น
-
 **ผู้เล่นลงชื่อ** — เลือกระดับความเก่งได้ตอนลงชื่อ/check-in (gate ด้วย `skill_level_enabled`).
+
+---
+
+#### ระบบคิดเงินก๊วน (Club cost split) — ✅ IMPLEMENTED (2026-06-06, develop)
+
+**Shipped:** `src/lib/club/cost-split.ts` `computeClubSplit()` pure helper (14 vitest, worked-example exact) · migration `20260606000100_club_cost_split` (clubs +5 cost fields, club_players +`start_time`/`end_time`/`games_played`) · `updateClubCostConfigAction` + `updateClubPlayerSessionAction` (owner/co-admin) · `ClubCostManager` (settings: fees + split toggles + gap policy) · `ClubCostBreakdown` (per-player table, owner-resolves profile_id→club_players.id for gap=owner) · per-player session editor in `sortable-player-list.tsx` · wired in `clubs/[id]/page.tsx`. tsc clean · vitest 364 · prod build OK · **live smoke PASS** (seeded club, SSR breakdown rendered court 200/200/320 + shuttle 73/91/136 + total 273/291/456 exact, then deleted). **Not yet built:** rotation queue (ส่วน A) → `games_played` auto-count (manual entry for now). Design below.
+
+**DESIGN (reference):**
+
+ค่าใช้จ่าย 2 ก้อนแยกกัน แต่ละก้อนเลือกวิธีหารอิสระ:
+- **ค่าสนาม** (`court_fee`) — `even` หารเท่า | `by_time` หารตามเวลาที่อยู่จริง
+- **ค่าลูกแบด** (`shuttle_fee`) — `even` หารเท่า | `by_games` หารตามจำนวนเกมที่ลงเล่น
+
+→ 4 combo ได้หมด (court even/time × shuttle even/games).
+
+**Data model:**
+- `clubs` (cost config): `court_fee numeric default 0`, `court_split text default 'even'` CHECK in (`even`,`by_time`), `shuttle_fee numeric default 0`, `shuttle_split text default 'even'` CHECK in (`even`,`by_games`), `court_gap_policy text default 'spread'` CHECK in (`spread`,`owner`,`ignore`). (`total_cost` เดิม = legacy; ค่อย deprecate หรือ mirror = court_fee+shuttle_fee. `club_expenses` คงไว้สำหรับ misc itemized)
+- `club_players` (per-player inputs): `start_time time null` (default = `club.start_time`), `end_time time null` (default = `club.end_time`), `games_played int not null default 0`. guest (จาก add-guest ที่เพิ่งทำ) กรอกได้เหมือนกัน
+
+**Algorithm — pure helper `computeClubSplit(input) → { playerId, court, shuttle, total }[]`** (testable, mirror tournament `scoring.ts` pattern):
+
+*ค่าสนาม:*
+- `even`: `court_fee / N` ทุกคน (N = จำนวนผู้เล่น)
+- `by_time` (segment method):
+  1. boundaries = sorted unique ของ {session.start, session.end, ทุก player.start, ทุก player.end} clamp ใน [session.start, session.end]
+  2. แต่ละ segment `[t1,t2)`: `segDur = t2−t1`; `present` = ผู้เล่นที่ `start ≤ t1 AND end ≥ t2`; `segCost = court_fee × segDur / sessionDur`; แบ่ง `segCost / |present|` ให้แต่ละคน present
+  3. share/คน = Σ segment ที่ตัวเองอยู่
+  4. **gap** (`|present| = 0`): `court_gap_policy` → `spread` เฉลี่ย segCost ให้ทุกคนเท่ากัน (default, รวมครบเสมอ) | `owner` เจ้าของรับ | `ignore` ไม่เก็บ (under-collect)
+
+*ค่าลูกแบด:*
+- `even`: `shuttle_fee / N`
+- `by_games`: `shuttle_fee × games_i / Σgames`; ถ้า `Σgames = 0` → fallback `even` + warn
+
+*Rounding:* คำนวณ exact → ปัด/คนเป็นจำนวนเต็มบาท → ส่วนต่างที่เหลือ (remainder) โยนให้คนจ่ายมากสุด เพื่อให้ `Σ = court_fee + shuttle_fee` พอดี
+
+**Worked example** — court 720, shuttle 300; A(18–20), B(19–21), C(18–21); games A=8 B=10 C=15 (Σ=33):
+
+| ผู้เล่น | court even | court by_time | shuttle even | shuttle by_games |
+|---|---|---|---|---|
+| A (2 ชม.) | 240 | 200 | 100 | 73 |
+| B (2 ชม.) | 240 | 200 | 100 | 91 |
+| C (3 ชม.) | 240 | 320 | 100 | 136 |
+| **รวม** | 720 | 720 | 300 | 300 |
+
+court by_time มาจาก: seg 18–19 {A,C}=240/2 · 19–20 {A,B,C}=240/3 · 20–21 {B,C}=240/2.
+
+**UI:**
+- Club settings (owner/co-admin): `court_fee` + toggle court_split, `shuttle_fee` + toggle shuttle_split, gap policy (advanced)
+- Per-player: time window (start/end, default = ก๊วนเต็ม) + `games_played` stepper บน add/edit (รวม guest). ถ้า rotation queue (ส่วน A) build แล้ว → `games_played` auto-count จากแมตช์
+- Cost breakdown Card: ตารางต่อคน (court share + shuttle share + total) + label วิธีหาร + grand-total reconciliation (โชว์ว่ารวมตรง)
+
+**Edge cases:** player window นอกช่วงก๊วน → clamp; 1 คน → จ่ายหมด; `by_games` 0 เกม → fallback even+warn; ครึ่งชั่วโมง → คิดเป็นนาที OK; ใครออกแล้วกลับ (2 ช่วง) → รองรับถ้าเก็บ window เป็น array (v2; v1 = 1 ช่วง/คน)
+
+**Pure helper signature:**
+```ts
+computeClubSplit(input: {
+  players: { id: string; start: string; end: string; games: number }[];
+  courtFee: number; courtSplit: "even" | "by_time";
+  shuttleFee: number; shuttleSplit: "even" | "by_games";
+  sessionStart: string; sessionEnd: string;
+  gapPolicy: "spread" | "owner" | "ignore"; ownerId?: string;
+}): { playerId: string; court: number; shuttle: number; total: number }[]
+```
+→ vitest ครอบ: 4 combo, gap, Σgames=0 fallback, rounding-sum-exact, clamp, 1-player.
 
 **Open decisions (ยังไม่ฟิกซ์ — ถามก่อน implement):**
 - reuse `clubs` / `club_players` / `club_expenses` (ปัจจุบันมี `total_cost` หารเท่าตัวเดียว) หรือ schema ใหม่/ขยาย? cost-split 2 รายการ (court + shuttle) + วิธีแบ่งต่างกัน ต้องเก็บแยก

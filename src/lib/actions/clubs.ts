@@ -191,6 +191,82 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
   return { ok: true };
 }
 
+// ─── Club cost split config ─────────────────────────────────────────────────────
+
+const CostConfigSchema = z.object({
+  court_fee: z.coerce.number().min(0).max(1_000_000),
+  court_split: z.enum(["even", "by_time"]),
+  shuttle_fee: z.coerce.number().min(0).max(1_000_000),
+  shuttle_split: z.enum(["even", "by_games"]),
+  court_gap_policy: z.enum(["spread", "owner", "ignore"]),
+});
+
+export type CostConfigInput = z.infer<typeof CostConfigSchema>;
+
+/** Owner / co-admin sets the club's court + shuttle fee and per-bucket split mode. */
+export async function updateClubCostConfigAction(clubId: string, input: CostConfigInput) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const parsed = CostConfigSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  }
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: "ไม่มีสิทธิ์" };
+  }
+
+  const { error } = await sb.from("clubs").update(parsed.data).eq("id", clubId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
+const PlayerSessionSchema = z.object({
+  start_time: z.string().optional().nullable(), // "HH:MM" | "" | null → null = use club window
+  end_time: z.string().optional().nullable(),
+  games_played: z.coerce.number().int().min(0).max(500),
+});
+
+export type PlayerSessionInput = z.infer<typeof PlayerSessionSchema>;
+
+/** Owner / co-admin sets a player's session window + games played (cost-split inputs). */
+export async function updateClubPlayerSessionAction(
+  clubId: string,
+  playerId: string,
+  input: PlayerSessionInput,
+) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const parsed = PlayerSessionSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  }
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: "ไม่มีสิทธิ์" };
+  }
+
+  const { error } = await sb
+    .from("club_players")
+    .update({
+      start_time: parsed.data.start_time?.trim() || null,
+      end_time: parsed.data.end_time?.trim() || null,
+      games_played: parsed.data.games_played,
+    })
+    .eq("id", playerId)
+    .eq("club_id", clubId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
 // ─── Club Expenses ────────────────────────────────────────────────────────────
 
 export type ClubExpense = {

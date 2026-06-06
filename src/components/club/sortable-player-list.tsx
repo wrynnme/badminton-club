@@ -2,10 +2,12 @@
 
 import { useState, useTransition, useId, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { RefreshCw, GripVertical, CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { RefreshCw, GripVertical, CheckCircle2, Circle, Loader2, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   DndContext,
   closestCenter,
@@ -25,7 +27,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { LeaveButton } from "@/components/club/leave-button";
 import { KickButton } from "@/components/club/kick-button";
-import { reorderPlayersAction, toggleCheckInAction } from "@/lib/actions/clubs";
+import { reorderPlayersAction, toggleCheckInAction, updateClubPlayerSessionAction } from "@/lib/actions/clubs";
 import type { ClubPlayer } from "@/lib/types";
 
 type Props = {
@@ -33,7 +35,12 @@ type Props = {
   players: ClubPlayer[];
   sessionProfileId: string | null;
   canManage: boolean;
+  /** Club session window — used as placeholder for player time inputs. */
+  sessionStart?: string; // "HH:MM:SS"
+  sessionEnd?: string;   // "HH:MM:SS"
 };
+
+// ─── Check-in button ─────────────────────────────────────────────────────────
 
 function CheckInButton({
   player,
@@ -88,18 +95,158 @@ function CheckInButton({
   );
 }
 
+// ─── Session editor (inline, canManage only) ──────────────────────────────────
+
+function SessionEditor({
+  player,
+  clubId,
+  sessionStart,
+  sessionEnd,
+}: {
+  player: ClubPlayer;
+  clubId: string;
+  sessionStart?: string;
+  sessionEnd?: string;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+
+  // Display values: player overrides when set, else blank (= inherit club window)
+  const [startVal, setStartVal] = useState(player.start_time?.slice(0, 5) ?? "");
+  const [endVal, setEndVal] = useState(player.end_time?.slice(0, 5) ?? "");
+  const [games, setGames] = useState(player.games_played);
+
+  // Keep in sync if parent re-renders with new player data
+  useEffect(() => {
+    setStartVal(player.start_time?.slice(0, 5) ?? "");
+    setEndVal(player.end_time?.slice(0, 5) ?? "");
+    setGames(player.games_played);
+  }, [player.start_time, player.end_time, player.games_played]);
+
+  const clubStartPlaceholder = sessionStart?.slice(0, 5) ?? "";
+  const clubEndPlaceholder = sessionEnd?.slice(0, 5) ?? "";
+
+  function handleSave() {
+    start(async () => {
+      const res = await updateClubPlayerSessionAction(clubId, player.id, {
+        // Blank string → null (inherit club window) per action's `?.trim() || null`
+        start_time: startVal || null,
+        end_time: endVal || null,
+        games_played: games,
+      });
+      if (res && "error" in res) {
+        toast.error(res.error);
+      } else {
+        toast.success("บันทึกข้อมูลแล้ว");
+        router.refresh();
+        setOpen(false);
+      }
+    });
+  }
+
+  if (!open) {
+    // Show a subtle summary when anything non-default is set
+    const hasOverride = player.start_time || player.end_time || player.games_played > 0;
+    return (
+      <Button
+        size="xs"
+        variant="ghost"
+        className="text-muted-foreground h-6 px-1.5 text-xs"
+        onClick={() => setOpen(true)}
+        title="แก้ไขเวลา/เกม"
+      >
+        <Clock className="h-3 w-3" />
+        {hasOverride ? (
+          <span className="ml-0.5 tabular-nums">
+            {player.games_played > 0 ? `${player.games_played}g` : ""}
+            {player.start_time || player.end_time ? " ⏱" : ""}
+          </span>
+        ) : null}
+      </Button>
+    );
+  }
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-end gap-2 rounded-md border bg-muted/30 p-2 text-xs">
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-[10px] text-muted-foreground">เริ่ม</Label>
+        <Input
+          type="time"
+          value={startVal}
+          placeholder={clubStartPlaceholder}
+          onChange={(e) => setStartVal(e.target.value)}
+          className="h-7 w-[100px] text-xs"
+        />
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-[10px] text-muted-foreground">เลิก</Label>
+        <Input
+          type="time"
+          value={endVal}
+          placeholder={clubEndPlaceholder}
+          onChange={(e) => setEndVal(e.target.value)}
+          className="h-7 w-[100px] text-xs"
+        />
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-[10px] text-muted-foreground">เกมที่เล่น</Label>
+        <Input
+          type="number"
+          min={0}
+          max={500}
+          value={games}
+          onChange={(e) => setGames(Math.max(0, parseInt(e.target.value, 10) || 0))}
+          className="h-7 w-[64px] text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+      </div>
+      <div className="flex items-end gap-1 pb-0.5">
+        <Button
+          type="button"
+          size="xs"
+          disabled={pending}
+          onClick={handleSave}
+          className="h-7 text-xs"
+        >
+          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : "บันทึก"}
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="h-7 text-xs"
+          onClick={() => setOpen(false)}
+        >
+          ยกเลิก
+        </Button>
+      </div>
+      {(clubStartPlaceholder || clubEndPlaceholder) && (
+        <p className="w-full text-[10px] text-muted-foreground">
+          ว่างไว้ = ใช้เวลาก๊วน ({clubStartPlaceholder}–{clubEndPlaceholder})
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Sortable row ─────────────────────────────────────────────────────────────
+
 function SortableItem({
   player,
   index,
   clubId,
   sessionProfileId,
   canManage,
+  sessionStart,
+  sessionEnd,
 }: {
   player: ClubPlayer;
   index: number;
   clubId: string;
   sessionProfileId: string | null;
   canManage: boolean;
+  sessionStart?: string;
+  sessionEnd?: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: player.id,
@@ -119,38 +266,60 @@ function SortableItem({
     <li
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 text-sm border rounded px-3 py-2 bg-background transition-colors ${
+      className={`flex flex-col border rounded px-3 py-2 bg-background transition-colors text-sm ${
         isCheckedIn ? "border-green-500/30 bg-green-500/5 dark:bg-green-500/5" : ""
       }`}
     >
-      {canManage && (
-        <button
-          {...attributes}
-          {...listeners}
-          className="cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
-          aria-label="ลาก"
-          type="button"
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
-      )}
-      <span className="text-muted-foreground w-6 tabular-nums">{index + 1}.</span>
-      <span className="font-medium">{player.display_name}</span>
-      {player.level && <Badge variant="outline">{player.level}</Badge>}
-      {player.note && (
-        <span className="text-muted-foreground text-xs hidden sm:inline">— {player.note}</span>
-      )}
+      {/* Main row */}
+      <div className="flex items-center gap-2">
+        {canManage && (
+          <button
+            {...attributes}
+            {...listeners}
+            className="cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
+            aria-label="ลาก"
+            type="button"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
+        <span className="text-muted-foreground w-6 tabular-nums">{index + 1}.</span>
+        <span className="font-medium">{player.display_name}</span>
+        {player.level && <Badge variant="outline">{player.level}</Badge>}
+        {player.note && (
+          <span className="text-muted-foreground text-xs hidden sm:inline">— {player.note}</span>
+        )}
 
-      <span className="ml-auto flex items-center gap-1.5">
-        <CheckInButton player={player} clubId={clubId} canToggle={canManage} />
-        {isSelf && <LeaveButton clubId={clubId} />}
-        {canManage && !isSelf && <KickButton clubId={clubId} playerId={player.id} />}
-      </span>
+        <span className="ml-auto flex items-center gap-1.5">
+          {canManage && (
+            <SessionEditor
+              player={player}
+              clubId={clubId}
+              sessionStart={sessionStart}
+              sessionEnd={sessionEnd}
+            />
+          )}
+          <CheckInButton player={player} clubId={clubId} canToggle={canManage} />
+          {isSelf && <LeaveButton clubId={clubId} />}
+          {canManage && !isSelf && <KickButton clubId={clubId} playerId={player.id} />}
+        </span>
+      </div>
+
+      {/* Inline session editor panel expands below the row */}
     </li>
   );
 }
 
-export function SortablePlayerList({ clubId, players, sessionProfileId, canManage }: Props) {
+// ─── Main list ────────────────────────────────────────────────────────────────
+
+export function SortablePlayerList({
+  clubId,
+  players,
+  sessionProfileId,
+  canManage,
+  sessionStart,
+  sessionEnd,
+}: Props) {
   const [items, setItems] = useState(players);
   const [, startTransition] = useTransition();
   const [refreshing, startRefresh] = useTransition();
@@ -243,6 +412,8 @@ export function SortablePlayerList({ clubId, players, sessionProfileId, canManag
                 clubId={clubId}
                 sessionProfileId={sessionProfileId}
                 canManage={canManage}
+                sessionStart={sessionStart}
+                sessionEnd={sessionEnd}
               />
             ))}
           </ol>

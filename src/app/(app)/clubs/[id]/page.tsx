@@ -12,6 +12,8 @@ import { EditClubForm } from "@/components/club/edit-club-form";
 import { SortablePlayerList } from "@/components/club/sortable-player-list";
 import { ExpenseManager } from "@/components/club/expense-manager";
 import { ClubCoAdminControls } from "@/components/club/club-co-admin-controls";
+import { ClubCostManager } from "@/components/club/club-cost-manager";
+import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
 import type { ClubExpense, ClubAdmin } from "@/lib/actions/clubs";
 
 export const dynamic = "force-dynamic";
@@ -149,6 +151,17 @@ export default async function ClubDetailPage({
             </CardContent>
           </Card>
 
+          <ClubCostManager
+            clubId={club.id}
+            initial={{
+              court_fee: club.court_fee,
+              court_split: club.court_split,
+              shuttle_fee: club.shuttle_fee,
+              shuttle_split: club.shuttle_split,
+              court_gap_policy: club.court_gap_policy,
+            }}
+          />
+
           <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />
         </div>
       )}
@@ -179,8 +192,21 @@ export default async function ClubDetailPage({
           players={players}
           sessionProfileId={session?.profileId ?? null}
           canManage={canManage}
+          sessionStart={club.start_time}
+          sessionEnd={club.end_time}
         />
       </section>
+
+      {(club.court_fee > 0 || club.shuttle_fee > 0) && (
+        <section className="space-y-2">
+          <h2 className="font-semibold">สรุปค่าใช้จ่าย</h2>
+          <Card>
+            <CardContent className="pt-4">
+              <ClubCostBreakdown club={club} players={players} />
+            </CardContent>
+          </Card>
+        </section>
+      )}
     </div>
   );
 }

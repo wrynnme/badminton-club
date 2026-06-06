@@ -20,7 +20,17 @@ export type Club = {
   shuttle_info: string | null;
   notes: string | null;
   created_at: string;
+  // Cost split (per-bucket, independently configurable)
+  court_fee: number;
+  court_split: CourtSplit;
+  shuttle_fee: number;
+  shuttle_split: ShuttleSplit;
+  court_gap_policy: GapPolicy;
 };
+
+export type CourtSplit = "even" | "by_time";
+export type ShuttleSplit = "even" | "by_games";
+export type GapPolicy = "spread" | "owner" | "ignore";
 
 export type ClubPlayer = {
   id: string;
@@ -32,6 +42,10 @@ export type ClubPlayer = {
   joined_at: string;
   position: number | null;
   checked_in_at: string | null;
+  // Cost split inputs — per-player session window + games played
+  start_time: string | null; // "HH:MM:SS" or null = use club window
+  end_time: string | null;
+  games_played: number;
 };
 
 export type TournamentMode = "sports_day" | "competition";
