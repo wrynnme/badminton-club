@@ -566,15 +566,25 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 (Phase 12 DONE — see below.)
 
-### ระบบก๊วน (Club session) — create form + rotation queue + cost split  [PLANNED]
+### ระบบก๊วน (Club session) — create form + rotation queue + cost split  [Part A: foundation DONE, actions/UI PLANNED]
 
 ก๊วนแบดแบบเล่นสนุก (casual session) — แยกจาก tournament. ตอนสร้างก๊วนมีฟอร์มตั้งค่า + ระบบหมุนคิว + หารค่าใช้จ่าย. ตั้งค่าทุกตัวแก้ได้ภายหลังในหน้า settings ของก๊วน.
+
+#### Part A foundation — ✅ IMPLEMENTED (2026-06-06, develop)
+
+**Shipped:** migration `20260606000300_club_rotation_queue` — `clubs +queue_settings jsonb` · `club_players +last_finished_at timestamptz` · ตารางใหม่ `club_matches` (id · club_id FK CASCADE · court int · **side_a_player1/2 + side_b_player1/2** = 4 nullable FK → club_players ON DELETE CASCADE, player2 null = singles · status pending/in_progress/completed/cancelled · queue_position · winner_side a/b · score_a/b · started_at · ended_at) + partial unique `uniq_club_matches_inprogress_court (club_id,court) WHERE status='in_progress'` + indexes (club_id,status)/(club_id,queue_position)/4×FK + RLS read-all SELECT. `src/lib/club/queue-settings.ts` (`ClubQueueSettingsSchema` zod + `parseQueueSettings()` per-field fallback, mirror tournament `settings.ts`) · `src/lib/club/queue.ts` pure `buildNextMatch(pool, settings, stayingSide?)` (19 vitest) · `Club.queue_settings` + `ClubPlayer.last_finished_at` + `ClubMatch`/`ClubMatchStatus` types. tsc clean · vitest 383 · prod build pending.
+
+> **Schema decision:** match sides = 4 FK columns (NOT `uuid[]`) — keeps FK/cascade integrity + per-player queries + matches tournament `pair_a_id`/`team_a_id` idiom (advisor-flagged). config = jsonb (extensible without DDL). `games_played` source-of-truth: **auto-incremented from completed `club_matches`** once rotation is used; manual entry = pre-queue fallback.
+
+**Pure algorithm `buildNextMatch(pool, settings, stayingSide?)`** (`queue.ts`): pool = checked-in & not-currently-playing players. Ordering by `queue_mode`: `fifo` (position→joined_at), `rest_longest`/`smart`-v1 (last_finished_at asc, null=front → games_played → fifo), `level_match` (anchor = most-rested, fill nearest-level). Split into sides: `skill_level_enabled` → greedy level-balance; else pick-order. `winner_stays` → caller passes `stayingSide` (sideA kept, opponents drawn from pool); `winner_stays_max` streak cap enforced in action layer. Returns null when pool < 2×players_per_team. **smart v1 = rest_longest + level-balanced split** (documented simplification — factors tunable later w/o migration).
+
+**Actions/UI — PLANNED (Part A remainder):** server actions (build-next / start / finish→increment games_played + set last_finished_at / cancel + auto-rotate), create-form + settings fields, live queue panel, court views. Reuse tournament queue patterns where applicable.
 
 **Create form / Settings:**
 
 1. **จำนวนสนาม** (`court_count`) — แก้ได้ที่ settings
 2. **ผู้เล่นต่อทีม** (`players_per_team`) — `1`–`2` (เดี่ยว / คู่)
-3. **รูปแบบการหมุน** (`rotation_mode`) — `fair_queue` (Fair Queue) | `winner_stays` (Winner Stays — ผู้ชนะอยู่ต่อ)
+3. **รูปแบบการหมุน** (`rotation_mode`) — `fair_queue` (Fair Queue) | `winner_stays` (Winner Stays — ผู้ชนะอยู่ต่อ; `winner_stays_max` = ชนะติดกี่เกมก่อนบังคับพัก, 0=∞)
 4. **โหมดคิว** (`queue_mode`) — `rest_longest` พักนานไปก่อน (default · แนะนำ) | `fifo` เข้าก่อนออกก่อน | `level_match` จับคู่ตามระดับ | `smart` คำนวณจากหลายปัจจัย
 5. **โหมดระดับฝีมือ** (`skill_level_enabled`) — on/off; เปิด = ใช้ระดับฝีมือใน `level_match`/`smart` + ตอนผู้เล่นลงชื่อ
 6. **จำกัดเวลาต่อเกม** (`game_time_limit_min`) — นาที/เกม (`0` = ไม่จำกัด)

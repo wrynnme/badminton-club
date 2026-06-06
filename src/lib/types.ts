@@ -26,6 +26,8 @@ export type Club = {
   shuttle_fee: number;
   shuttle_split: ShuttleSplit;
   court_gap_policy: GapPolicy;
+  // Rotation-queue config (raw jsonb; parse via parseQueueSettings in queue-settings.ts)
+  queue_settings: Record<string, unknown>;
 };
 
 export type CourtSplit = "even" | "by_time";
@@ -45,7 +47,29 @@ export type ClubPlayer = {
   // Cost split inputs — per-player session window + games played
   start_time: string | null; // "HH:MM:SS" or null = use club window
   end_time: string | null;
-  games_played: number;
+  games_played: number; // manual pre-queue fallback; auto-incremented from completed club_matches once rotation queue is used
+  last_finished_at: string | null; // ISO; rest-ordering input for queue_mode='rest_longest'
+};
+
+export type ClubMatchStatus = "pending" | "in_progress" | "completed" | "cancelled";
+
+// Live rotation-queue match. side_*_player2 null = singles (players_per_team=1).
+export type ClubMatch = {
+  id: string;
+  club_id: string;
+  court: number;
+  side_a_player1: string;
+  side_a_player2: string | null;
+  side_b_player1: string;
+  side_b_player2: string | null;
+  status: ClubMatchStatus;
+  queue_position: number | null;
+  winner_side: "a" | "b" | null;
+  score_a: number | null;
+  score_b: number | null;
+  started_at: string | null;
+  ended_at: string | null;
+  created_at: string;
 };
 
 export type TournamentMode = "sports_day" | "competition";
