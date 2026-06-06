@@ -274,6 +274,8 @@ export type ClubExpense = {
   club_id: string;
   label: string;
   amount: number;
+  /** Designated payers (club_players.id). Empty = charged to ALL players. */
+  payer_player_ids: string[];
   created_at: string;
 };
 
@@ -281,7 +283,20 @@ const ExpenseSchema = z.object({
   club_id: z.string().uuid(),
   label: z.string().min(1, "ระบุชื่อรายการ"),
   amount: z.coerce.number().min(0, "จำนวนเงินไม่ถูกต้อง"),
+  payer_player_ids: z.array(z.string().uuid()).default([]),
 });
+
+/** Keep only the payer ids that are real players of this club. */
+async function validClubPayerIds(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  clubId: string,
+  ids: string[],
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const { data } = await sb.from("club_players").select("id").eq("club_id", clubId).in("id", ids);
+  const valid = new Set((data ?? []).map((r) => r.id));
+  return ids.filter((id) => valid.has(id));
+}
 
 async function assertClubOwner(sb: Awaited<ReturnType<typeof createAdminClient>>, clubId: string, profileId: string) {
   const { data, error } = await sb.from("clubs").select("owner_id").eq("id", clubId).maybeSingle();
@@ -303,7 +318,7 @@ async function assertCanManageClub(sb: Awaited<ReturnType<typeof createAdminClie
   return data.owner_id === profileId || admins.length > 0;
 }
 
-export async function addExpenseAction(input: { club_id: string; label: string; amount: number }) {
+export async function addExpenseAction(input: { club_id: string; label: string; amount: number; payer_player_ids?: string[] }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
@@ -314,14 +329,20 @@ export async function addExpenseAction(input: { club_id: string; label: string; 
   if (!(await assertClubOwner(sb, parsed.data.club_id, session.profileId)))
     return { error: "ไม่มีสิทธิ์" };
 
-  const { error } = await sb.from("club_expenses").insert(parsed.data);
+  const payers = await validClubPayerIds(sb, parsed.data.club_id, parsed.data.payer_player_ids);
+  const { error } = await sb.from("club_expenses").insert({
+    club_id: parsed.data.club_id,
+    label: parsed.data.label,
+    amount: parsed.data.amount,
+    payer_player_ids: payers,
+  });
   if (error) return { error: error.message };
 
   revalidatePath(`/clubs/${parsed.data.club_id}`);
   return { ok: true };
 }
 
-export async function updateExpenseAction(input: { id: string; club_id: string; label: string; amount: number }) {
+export async function updateExpenseAction(input: { id: string; club_id: string; label: string; amount: number; payer_player_ids?: string[] }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
@@ -332,9 +353,10 @@ export async function updateExpenseAction(input: { id: string; club_id: string; 
   if (!(await assertClubOwner(sb, parsed.data.club_id, session.profileId)))
     return { error: "ไม่มีสิทธิ์" };
 
+  const payers = await validClubPayerIds(sb, parsed.data.club_id, parsed.data.payer_player_ids);
   const { error } = await sb
     .from("club_expenses")
-    .update({ label: parsed.data.label, amount: parsed.data.amount })
+    .update({ label: parsed.data.label, amount: parsed.data.amount, payer_player_ids: payers })
     .eq("id", input.id)
     .eq("club_id", parsed.data.club_id);
   if (error) return { error: error.message };

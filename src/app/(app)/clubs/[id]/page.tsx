@@ -14,6 +14,7 @@ import { ExpenseManager } from "@/components/club/expense-manager";
 import { ClubCoAdminControls } from "@/components/club/club-co-admin-controls";
 import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
+import { HourlyHeadcount } from "@/components/club/hourly-headcount";
 import type { ClubExpense, ClubAdmin } from "@/lib/actions/clubs";
 
 export const dynamic = "force-dynamic";
@@ -81,7 +82,6 @@ export default async function ClubDetailPage({
   // Compute total from expenses; fall back to legacy total_cost
   const expenseTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
   const displayTotal = expenseTotal > 0 ? expenseTotal : (club.total_cost ?? 0);
-  const perPerson = joined > 0 && displayTotal > 0 ? Math.ceil(displayTotal / joined) : null;
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -114,10 +114,10 @@ export default async function ClubDetailPage({
             label={<Users className="h-4 w-4" />}
             text={`${joined} / ${club.max_players} คน`}
           />
-          {perPerson && (
+          {displayTotal > 0 && (
             <Info
               label={<Wallet className="h-4 w-4" />}
-              text={`~${perPerson.toLocaleString()} บาท/คน (รวม ${displayTotal.toLocaleString()} บาท)`}
+              text={`รวมค่าใช้จ่าย ${displayTotal.toLocaleString()} บาท`}
             />
           )}
           {club.shuttle_info && <Info label="🏸" text={club.shuttle_info} />}
@@ -147,6 +147,7 @@ export default async function ClubDetailPage({
                 clubId={club.id}
                 expenses={expenses}
                 playerCount={joined}
+                players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
               />
             </CardContent>
           </Card>
@@ -196,6 +197,13 @@ export default async function ClubDetailPage({
           sessionEnd={club.end_time}
         />
       </section>
+
+      {players.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="font-semibold">จำนวนคนต่อช่วง</h2>
+          <HourlyHeadcount club={club} players={players} />
+        </section>
+      )}
 
       {(club.court_fee > 0 || club.shuttle_fee > 0) && (
         <section className="space-y-2">

@@ -356,14 +356,15 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 ### ค่าใช้จ่ายแบบแยกรายการ
 
-- **DB**: `club_expenses` — `id, club_id (FK → clubs CASCADE), label text, amount numeric(10,2), created_at`
-- **Actions** (owner only): `addExpenseAction`, `updateExpenseAction`, `deleteExpenseAction`; `ClubExpense` type exported; `setTotalCostAction` ยังคงไว้ (legacy)
+- **DB**: `club_expenses` — `id, club_id (FK → clubs CASCADE), label text, amount numeric(10,2), payer_player_ids uuid[] NOT NULL default '{}', created_at` (migration `20260606000200_club_expense_payers`). `payer_player_ids` = designated payers: ว่าง `{}` → หารทุกคน (legacy even-split); ไม่ว่าง → หารเฉพาะ club_players ที่ระบุ. **ต่างจาก cost-split** (court/shuttle หารตามเวลา/เกม) — expense = ค่าใช้จ่ายที่ผู้จัดออกให้ก่อน เก็บเฉพาะคนที่กำหนด [[s1-433]]
+- **Actions** (owner/co-admin via `assertCanManageClub`): `addExpenseAction`, `updateExpenseAction`, `deleteExpenseAction`; `ClubExpense` type (+`payer_player_ids: string[]`) exported; `setTotalCostAction` ยังคงไว้ (legacy). `ExpenseSchema` zod validate + `validClubPayerIds()` helper กรอง id ที่อยู่ใน club จริง
 - **`ExpenseManager`** (`src/components/club/expense-manager.tsx`) — client:
   - Shared `ExpenseForm` (TanStack Form + `z.number()`) สำหรับทั้ง add และ edit
   - Hover-reveal edit/delete buttons; aria-label ครบ
-  - Total = `expenses.reduce`; per-person = `Math.ceil(total / playerCount)`
+  - Payer checkbox multi-select ต่อ expense (ว่าง = ทุกคน) + per-expense payer sub-line
+  - `PlayerRollup` table — รวมยอดต่อหัวจาก payer assignment (ceil per head)
   - `router.refresh()` หลัง mutate
-- **Club detail page**: fetch parallel; per-person ใน info grid; fallback `total_cost` (legacy) ถ้า expenses ว่าง
+- **Club detail page**: fetch parallel; รวมยอด `รวมค่าใช้จ่าย {total}` ใน info grid (ตัด per-person averaged line ทิ้ง — misleading เมื่อมี designated payers); fallback `total_cost` (legacy) ถ้า expenses ว่าง; ส่ง `players` prop เข้า `ExpenseManager`
 
 ### Score Matrix View (2026-05-27)
 
@@ -586,6 +587,8 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 #### ระบบคิดเงินก๊วน (Club cost split) — ✅ IMPLEMENTED (2026-06-06, develop)
 
 **Shipped:** `src/lib/club/cost-split.ts` `computeClubSplit()` pure helper (14 vitest, worked-example exact) · migration `20260606000100_club_cost_split` (clubs +5 cost fields, club_players +`start_time`/`end_time`/`games_played`) · `updateClubCostConfigAction` + `updateClubPlayerSessionAction` (owner/co-admin) · `ClubCostManager` (settings: fees + split toggles + gap policy) · `ClubCostBreakdown` (per-player table, owner-resolves profile_id→club_players.id for gap=owner) · per-player session editor in `sortable-player-list.tsx` · wired in `clubs/[id]/page.tsx`. tsc clean · vitest 364 · prod build OK · **live smoke PASS** (seeded club, SSR breakdown rendered court 200/200/320 + shuttle 73/91/136 + total 273/291/456 exact, then deleted). **Not yet built:** rotation queue (ส่วน A) → `games_played` auto-count (manual entry for now). Design below.
+
+**Session-UI tweaks (2026-06-06, develop):** (1) partial-window label — `sortable-player-list.tsx` แสดง `<Clock/> เล่น {effStart}–{effEnd}` ใต้ชื่อ เมื่อ window ของผู้เล่น ≠ ช่วงเต็มก๊วน (`isPartial = !!(cs && ce) && (effStart !== cs || effEnd !== ce)`); (2) `SessionEditor` pre-fill เวลา default = ช่วงก๊วน, save `null` เมื่อ == ช่วงก๊วน; (3) `HourlyHeadcount` (`src/components/club/hourly-headcount.tsx`) — การ์ดนับจำนวนคนต่อช่วง 60 นาที (`18:00–19:00 : N คน`), pure/server-renderable, นับ player ที่ effective window คลุม slot, gated `players.length > 0` ในหน้า club detail; (4) expense designated-payers (ดู section "ค่าใช้จ่ายแบบแยกรายการ"). tsc clean · vitest 364 · build OK.
 
 **DESIGN (reference):**
 

@@ -112,27 +112,28 @@ function SessionEditor({
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
 
-  // Display values: player overrides when set, else blank (= inherit club window)
-  const [startVal, setStartVal] = useState(player.start_time?.slice(0, 5) ?? "");
-  const [endVal, setEndVal] = useState(player.end_time?.slice(0, 5) ?? "");
+  const clubStartPlaceholder = sessionStart?.slice(0, 5) ?? "";
+  const clubEndPlaceholder = sessionEnd?.slice(0, 5) ?? "";
+
+  // Pre-fill with the player's override, else the club's full window (not blank).
+  const [startVal, setStartVal] = useState(player.start_time?.slice(0, 5) ?? clubStartPlaceholder);
+  const [endVal, setEndVal] = useState(player.end_time?.slice(0, 5) ?? clubEndPlaceholder);
   const [games, setGames] = useState(player.games_played);
 
   // Keep in sync if parent re-renders with new player data
   useEffect(() => {
-    setStartVal(player.start_time?.slice(0, 5) ?? "");
-    setEndVal(player.end_time?.slice(0, 5) ?? "");
+    setStartVal(player.start_time?.slice(0, 5) ?? clubStartPlaceholder);
+    setEndVal(player.end_time?.slice(0, 5) ?? clubEndPlaceholder);
     setGames(player.games_played);
-  }, [player.start_time, player.end_time, player.games_played]);
-
-  const clubStartPlaceholder = sessionStart?.slice(0, 5) ?? "";
-  const clubEndPlaceholder = sessionEnd?.slice(0, 5) ?? "";
+  }, [player.start_time, player.end_time, player.games_played, clubStartPlaceholder, clubEndPlaceholder]);
 
   function handleSave() {
     start(async () => {
       const res = await updateClubPlayerSessionAction(clubId, player.id, {
-        // Blank string → null (inherit club window) per action's `?.trim() || null`
-        start_time: startVal || null,
-        end_time: endVal || null,
+        // A value equal to the club window means "no override" → store null so the
+        // partial-session label only shows when the player truly differs.
+        start_time: startVal && startVal !== clubStartPlaceholder ? startVal : null,
+        end_time: endVal && endVal !== clubEndPlaceholder ? endVal : null,
         games_played: games,
       });
       if (res && "error" in res) {
@@ -262,6 +263,13 @@ function SortableItem({
   const isSelf = sessionProfileId === player.profile_id;
   const isCheckedIn = !!player.checked_in_at;
 
+  // Partial session: player's effective window differs from the club's full window.
+  const cs = sessionStart?.slice(0, 5);
+  const ce = sessionEnd?.slice(0, 5);
+  const effStart = player.start_time?.slice(0, 5) ?? cs;
+  const effEnd = player.end_time?.slice(0, 5) ?? ce;
+  const isPartial = !!(cs && ce) && (effStart !== cs || effEnd !== ce);
+
   return (
     <li
       ref={setNodeRef}
@@ -305,7 +313,13 @@ function SortableItem({
         </span>
       </div>
 
-      {/* Inline session editor panel expands below the row */}
+      {/* Partial-session label under the name (shown to everyone) */}
+      {isPartial && (
+        <div className="flex items-center gap-1 pl-8 mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+          <Clock className="h-3 w-3 shrink-0" />
+          เล่น {effStart}–{effEnd}
+        </div>
+      )}
     </li>
   );
 }
