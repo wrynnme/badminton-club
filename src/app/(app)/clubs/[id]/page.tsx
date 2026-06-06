@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { JoinForm } from "@/components/club/join-form";
+import { AddGuestPlayer } from "@/components/club/add-guest-player";
 import { EditClubForm } from "@/components/club/edit-club-form";
 import { SortablePlayerList } from "@/components/club/sortable-player-list";
 import { ExpenseManager } from "@/components/club/expense-manager";
@@ -172,6 +173,7 @@ export default async function ClubDetailPage({
 
       <section className="space-y-2">
         <h2 className="font-semibold">รายชื่อผู้เล่น ({joined})</h2>
+        {canManage && <AddGuestPlayer clubId={club.id} full={full} />}
         <SortablePlayerList
           clubId={club.id}
           players={players}

@@ -132,6 +132,65 @@ export async function joinClubAction(input: JoinClubInput) {
   return { ok: true };
 }
 
+const GuestSchema = z.object({
+  club_id: z.string().uuid(),
+  display_name: z.string().min(1, "ระบุชื่อ").max(60, "ชื่อยาวเกินไป"),
+  level: z.string().optional().nullable(),
+  note: z.string().optional().nullable(),
+});
+
+export type AddGuestInput = z.infer<typeof GuestSchema>;
+
+/**
+ * Owner / co-admin adds a guest player to the club — a name-only row with
+ * profile_id = NULL (no LINE account needed). The UNIQUE(club_id, profile_id)
+ * constraint ignores NULLs, so any number of guests can be added.
+ */
+export async function addGuestPlayerAction(input: AddGuestInput) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const parsed = GuestSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  }
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, parsed.data.club_id, session.profileId))) {
+    return { error: "ไม่มีสิทธิ์" };
+  }
+
+  const { data: club } = await sb
+    .from("clubs")
+    .select("max_players")
+    .eq("id", parsed.data.club_id)
+    .single();
+  if (!club) return { error: "ไม่พบก๊วนนี้" };
+
+  const { count } = await sb
+    .from("club_players")
+    .select("*", { count: "exact", head: true })
+    .eq("club_id", parsed.data.club_id);
+
+  if ((count ?? 0) >= club.max_players) {
+    return { error: "ก๊วนเต็มแล้ว" };
+  }
+
+  const { error } = await sb.from("club_players").insert({
+    club_id: parsed.data.club_id,
+    profile_id: null,
+    display_name: parsed.data.display_name.trim(),
+    level: parsed.data.level || null,
+    note: parsed.data.note || null,
+    position: (count ?? 0) + 1,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${parsed.data.club_id}`);
+  return { ok: true };
+}
+
 // ─── Club Expenses ────────────────────────────────────────────────────────────
 
 export type ClubExpense = {
