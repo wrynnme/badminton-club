@@ -51,6 +51,17 @@ export type ClubPlayer = {
   last_finished_at: string | null; // ISO; rest-ordering input for queue_mode='rest_longest'
 };
 
+// Locked pair: two players forced to be teammates by the rotation queue.
+// games_remaining null = forever; N = lock for N more games played together.
+export type ClubLockedPair = {
+  id: string;
+  club_id: string;
+  player1_id: string;
+  player2_id: string;
+  games_remaining: number | null;
+  created_at: string;
+};
+
 export type ClubMatchStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
 // Live rotation-queue match. side_*_player2 null = singles (players_per_team=1).

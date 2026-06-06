@@ -17,9 +17,10 @@ import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
 import { HourlyHeadcount } from "@/components/club/hourly-headcount";
 import { ClubQueueSettings } from "@/components/club/club-queue-settings";
 import { ClubQueuePanel } from "@/components/club/club-queue-panel";
+import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
 import type { ClubExpense, ClubAdmin } from "@/lib/actions/clubs";
-import type { ClubMatch } from "@/lib/types";
+import type { ClubMatch, ClubLockedPair } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,7 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -63,12 +64,18 @@ export default async function ClubDetailPage({
       .select("*")
       .eq("club_id", id)
       .order("queue_position", { ascending: true, nullsFirst: false }),
+    sb
+      .from("club_locked_pairs")
+      .select("*")
+      .eq("club_id", id)
+      .order("created_at", { ascending: true }),
   ]);
 
   const owner = ownerRes.data;
   const players = playersRes.data ?? [];
   const expenses: ClubExpense[] = (expensesRes.data ?? []) as ClubExpense[];
   const clubMatches: ClubMatch[] = (matchesRes.data ?? []) as ClubMatch[];
+  const lockedPairs: ClubLockedPair[] = (lockedPairsRes.data ?? []) as ClubLockedPair[];
 
   type AdminRow = { club_id: string; user_id: string; added_by: string | null; added_at: string; profile: { display_name: string | null; line_user_id: string | null } | null };
   const coAdmins: ClubAdmin[] = ((adminsRes.data ?? []) as unknown as AdminRow[]).map((r) => ({
@@ -223,6 +230,14 @@ export default async function ClubDetailPage({
 
       <section className="space-y-3">
         <h2 className="font-semibold">ระบบหมุนคิว</h2>
+        {queueSettings.players_per_team === 2 && (
+          <ClubLockedPairs
+            clubId={club.id}
+            players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
+            locks={lockedPairs}
+            canManage={canManage}
+          />
+        )}
         <ClubQueuePanel
           clubId={club.id}
           matches={clubMatches}

@@ -807,8 +807,18 @@ export async function buildNextClubMatchAction(
     }
   }
 
+  // Load active locked pairs (teammate locks honored by the queue, doubles only).
+  const { data: lockRows } = await sb
+    .from("club_locked_pairs")
+    .select("player1_id, player2_id")
+    .eq("club_id", clubId);
+  const lockedPairs: [string, string][] = (lockRows ?? []).map((r) => [
+    r.player1_id,
+    r.player2_id,
+  ]);
+
   // Build the proposed match.
-  const proposed = buildNextMatch(pool, settings, stayingSide);
+  const proposed = buildNextMatch(pool, settings, stayingSide, lockedPairs);
   if (!proposed) return { error: "ผู้เล่นว่างไม่พอสำหรับสร้างแมตช์" };
 
   // Compute next queue_position for this club's pending matches.
@@ -947,5 +957,99 @@ export async function cancelClubMatchAction(
   if (updateError) return { error: updateError.message };
 
   revalidatePath(`/clubs/${match.club_id}`);
+  return { ok: true };
+}
+
+// ─── Locked-Pair Actions ──────────────────────────────────────────────────────
+
+/**
+ * Owner / co-admin locks two players as forced teammates for the rotation queue.
+ * `games` = null/omitted → locked forever; positive int → lock for N games then
+ * auto-release (decrement handled in finish_club_match RPC).
+ * Enforces 1-active-lock-per-player at the app layer (a player in one lock can't
+ * join another) — mirrors the tournament 1-person-1-pair rule.
+ */
+export async function createClubLockedPairAction(input: {
+  clubId: string;
+  player1Id: string;
+  player2Id: string;
+  games?: number | null;
+}): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const { clubId, player1Id, player2Id } = input;
+  if (player1Id === player2Id) return { error: "ต้องเลือกผู้เล่น 2 คนที่ต่างกัน" };
+
+  let games: number | null = null;
+  if (input.games != null) {
+    const g = Math.trunc(input.games);
+    if (!Number.isFinite(g) || g < 1) return { error: "จำนวนเกมไม่ถูกต้อง" };
+    games = g;
+  }
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  // Both players must belong to this club.
+  const { data: members } = await sb
+    .from("club_players")
+    .select("id")
+    .eq("club_id", clubId)
+    .in("id", [player1Id, player2Id]);
+  if (!members || members.length !== 2) return { error: "ไม่พบผู้เล่นในก๊วนนี้" };
+
+  // Neither player may already be in an active lock.
+  const { data: existing } = await sb
+    .from("club_locked_pairs")
+    .select("id")
+    .eq("club_id", clubId)
+    .or(
+      `player1_id.in.(${player1Id},${player2Id}),player2_id.in.(${player1Id},${player2Id})`,
+    )
+    .limit(1);
+  if (existing && existing.length > 0) {
+    return { error: "ผู้เล่นถูกล็อคคู่อยู่แล้ว — ปล่อยคู่เดิมก่อน" };
+  }
+
+  const { error: insertError } = await sb.from("club_locked_pairs").insert({
+    club_id: clubId,
+    player1_id: player1Id,
+    player2_id: player2Id,
+    games_remaining: games,
+  });
+  if (insertError) return { error: insertError.message };
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
+/**
+ * Owner / co-admin releases a locked pair (manual unlock before N-games expiry).
+ */
+export async function releaseClubLockedPairAction(
+  lockId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+
+  const { data: lock, error: fetchError } = await sb
+    .from("club_locked_pairs")
+    .select("id, club_id")
+    .eq("id", lockId)
+    .single();
+  if (fetchError || !lock) return { error: "ไม่พบคู่ที่ล็อค" };
+
+  if (!(await assertCanManageClub(sb, lock.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const { error: deleteError } = await sb
+    .from("club_locked_pairs")
+    .delete()
+    .eq("id", lockId);
+  if (deleteError) return { error: deleteError.message };
+
+  revalidatePath(`/clubs/${lock.club_id}`);
   return { ok: true };
 }

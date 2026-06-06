@@ -196,6 +196,96 @@ describe("buildNextMatch — winner_stays", () => {
   });
 });
 
+describe("buildNextMatch — locked pairs (doubles)", () => {
+  const s = settings({ players_per_team: 2, queue_mode: "fifo" });
+
+  function sideHas(side: MatchSide, x: string, y: string): boolean {
+    const ids = [side.player1, side.player2].sort();
+    return ids[0] === [x, y].sort()[0] && ids[1] === [x, y].sort()[1];
+  }
+
+  it("keeps a locked pair on the same side", () => {
+    const pool = [
+      player("a", { position: 1 }),
+      player("b", { position: 4 }), // far apart in fifo order but locked to a
+      player("c", { position: 2 }),
+      player("d", { position: 3 }),
+    ];
+    const m = buildNextMatch(pool, s, undefined, [["a", "b"]])!;
+    expect(m).not.toBeNull();
+    // a and b must be on the SAME side
+    const aSide = m.sideA.player1 === "a" || m.sideA.player2 === "a" ? m.sideA : m.sideB;
+    expect([aSide.player1, aSide.player2]).toContain("b");
+    // the other side is the two free players c, d
+    const other = aSide === m.sideA ? m.sideB : m.sideA;
+    expect([other.player1, other.player2].sort()).toEqual(["c", "d"]);
+  });
+
+  it("two locked pairs face each other", () => {
+    const pool = [
+      player("a", { position: 1 }),
+      player("c", { position: 2 }),
+      player("b", { position: 3 }),
+      player("d", { position: 4 }),
+    ];
+    const m = buildNextMatch(pool, s, undefined, [["a", "b"], ["c", "d"]])!;
+    const ab = sideHas(m.sideA, "a", "b") || sideHas(m.sideB, "a", "b");
+    const cd = sideHas(m.sideA, "c", "d") || sideHas(m.sideB, "c", "d");
+    expect(ab).toBe(true);
+    expect(cd).toBe(true);
+  });
+
+  it("strict: locked player waits when partner absent", () => {
+    // a locked to b, but b not in pool → a must wait. Only c,d,e free → not enough
+    // for a full doubles match (need 4) without a.
+    const pool = [
+      player("a", { position: 1 }), // locked to absent b
+      player("c", { position: 2 }),
+      player("d", { position: 3 }),
+    ];
+    expect(buildNextMatch(pool, s, undefined, [["a", "b"]])).toBeNull();
+  });
+
+  it("strict: absent-partner lock is skipped, others still play", () => {
+    // a(locked→absent b) waits; c,d,e,f free → match from the four frees.
+    const pool = [
+      player("a", { position: 1 }),
+      player("c", { position: 2 }),
+      player("d", { position: 3 }),
+      player("e", { position: 4 }),
+      player("f", { position: 5 }),
+    ];
+    const m = buildNextMatch(pool, s, undefined, [["a", "b"]])!;
+    const ids = [m.sideA.player1, m.sideA.player2, m.sideB.player1, m.sideB.player2];
+    expect(ids).not.toContain("a"); // a waited
+    expect(ids.filter(Boolean).sort()).toEqual(["c", "d", "e", "f"]);
+  });
+
+  it("winner_stays: opponents respect a lock", () => {
+    const ws = settings({ players_per_team: 2, rotation_mode: "winner_stays", queue_mode: "fifo" });
+    const staying: MatchSide = { player1: "w1", player2: "w2" };
+    const pool = [
+      player("a", { position: 1 }),
+      player("b", { position: 5 }),
+      player("z", { position: 2 }),
+    ];
+    // a-b locked; z is free but alone → opponents must be the locked a-b pair.
+    const m = buildNextMatch(pool, ws, staying, [["a", "b"]])!;
+    expect(m.sideA).toEqual(staying);
+    expect([m.sideB.player1, m.sideB.player2].sort()).toEqual(["a", "b"]);
+  });
+
+  it("singles ignores locked pairs", () => {
+    const single = settings({ players_per_team: 1, queue_mode: "fifo" });
+    const pool = [player("a", { position: 1 }), player("b", { position: 2 })];
+    const m = buildNextMatch(pool, single, undefined, [["a", "b"]])!;
+    // singles: each side one player; lock has no effect
+    expect(m.sideA.player2).toBeNull();
+    expect(m.sideB.player2).toBeNull();
+    expect([m.sideA.player1, m.sideB.player1].sort()).toEqual(["a", "b"]);
+  });
+});
+
 describe("parseQueueSettings", () => {
   it("empty -> all defaults", () => {
     expect(parseQueueSettings({})).toEqual(DEFAULT_QUEUE_SETTINGS);

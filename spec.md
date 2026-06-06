@@ -586,6 +586,18 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 > create-form 7 fields **not added** — settings เป็น edit-later บนหน้า club detail (ตรง spec "แก้ได้ภายหลัง"); create ใช้ default จาก `queue_settings '{}'`. **ยังไม่ทำ:** auto-rotate-all-courts (สร้างทีละสนามด้วยปุ่ม), score entry (winner-only v1), not_ready_action wiring (UI hint), game_time_limit enforcement (UI hint), Realtime (manual refresh). **ยังไม่ live-smoke.**
 
+#### ล็อคคู่ (locked teammate pairs) — ✅ IMPLEMENTED (2026-06-07, develop)
+
+บังคับ 2 คนเป็นคู่เดียวกัน (teammate, same side) ตอน queue จัดแมตช์ doubles. **Decisions:** teammate (ฝั่งเดียวกัน) + **strict** (คู่ไม่ว่าง → A รอ ไม่จับคนอื่น).
+- **DB** migration `20260607000200_club_locked_pairs`: ตาราง `club_locked_pairs` (player1_id/player2_id FK club_players CASCADE, `games_remaining int null` — null=ตลอด, N=ล็อค N เกมที่เล่นด้วยกัน แล้วปล่อยอัตโนมัติ; CHECK distinct + games≥0; RLS read-all). RPC `finish_club_match` extended: ลด `games_remaining` ของล็อคที่ทั้งคู่เล่นในแมตช์นั้น + DELETE เมื่อ ≤0 (atomic).
+- **queue.ts** `buildNextMatch(pool, settings, stayingSide?, lockedPairs?)`: doubles + locks → locked pair = 1 ฝั่งเต็ม; strict filter (locked member ที่ partner ไม่อยู่ pool ถูกตัดออก = รอ); `takeSides()` greedy assemble (locked pair / 2 frees per side). singles ignore locks. skill-balance ถูกข้ามเมื่อมี lock active. +6 vitest.
+- **Actions** (clubs.ts): `createClubLockedPairAction({clubId, player1Id, player2Id, games?})` (1-active-lock-per-player guard via OR-query) · `releaseClubLockedPairAction(lockId)`. `buildNextClubMatchAction` โหลด `club_locked_pairs` ส่งเข้า `buildNextMatch`.
+- **UI** `club-locked-pairs.tsx`: create form (2 player Selects + ตลอด/N-เกม toggle) + active-lock list (ตลอด / เหลือ N เกม + ปุ่มปล่อย); wired ใน `clubs/[id]/page.tsx` gated `players_per_team === 2`. `ClubLockedPair` type. tsc 0 · vitest 389 · build OK.
+
+#### Confirm dialog ลบผู้เล่น — ✅ IMPLEMENTED (2026-06-07, develop)
+
+`kick-button.tsx` เปลี่ยนจากลบทันที → Dialog (Base UI `@base-ui/react/dialog`) ยืนยันพร้อมอธิบายผลกระทบก่อนเรียก `kickPlayerAction`: แมตช์ที่ผู้เล่นอยู่ (รอ/กำลังแข่ง/จบ) ถูกลบตาม CASCADE · คู่ที่ล็อคถูกปล่อย · ถอดออกจากการหารค่าใช้จ่าย · "ลบถาวร". รับ prop `playerName` แสดงในหัว dialog (ส่งจาก `SortablePlayerList`).
+
 **Create form / Settings:**
 
 1. **จำนวนสนาม** (`court_count`) — แก้ได้ที่ settings

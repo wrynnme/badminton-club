@@ -128,6 +128,57 @@ function splitSides(chosen: QueuePlayer[], settings: ClubQueueSettings): Propose
   };
 }
 
+/** A locked pair: two club_players who must be teammates (same side). */
+export type LockedPair = readonly [string, string];
+
+/**
+ * Greedily form `sidesNeeded` complete sides from `ordered` (already in
+ * fairness order), honouring locked pairs: a locked pair always fills ONE side
+ * together, free players are buffered in twos (doubles) / ones (singles).
+ * Returns null if not enough units to fill the requested sides.
+ *
+ * Strict-lock precondition: the caller must already have removed any locked
+ * player whose partner is absent, so every locked player reached here has its
+ * partner present somewhere in `ordered`.
+ */
+function takeSides(
+  ordered: QueuePlayer[],
+  partnerOf: Map<string, string>,
+  sidesNeeded: number,
+  ppt: number,
+): MatchSide[] | null {
+  const used = new Set<string>();
+  const sides: MatchSide[] = [];
+  let freeBuf: QueuePlayer[] = [];
+
+  for (const p of ordered) {
+    if (sides.length >= sidesNeeded) break;
+    if (used.has(p.id)) continue;
+
+    const partner = partnerOf.get(p.id);
+    if (partner != null && ppt === 2) {
+      // Locked pair fills a whole side. Its partner has not been used yet:
+      // a player belongs to at most one lock, so if the partner had appeared
+      // earlier the pair would already have formed and `p` would be `used`.
+      sides.push({ player1: p.id, player2: partner });
+      used.add(p.id);
+      used.add(partner);
+    } else {
+      freeBuf.push(p);
+      used.add(p.id);
+      if (freeBuf.length === ppt) {
+        sides.push({
+          player1: freeBuf[0].id,
+          player2: ppt === 2 ? freeBuf[1].id : null,
+        });
+        freeBuf = [];
+      }
+    }
+  }
+
+  return sides.length >= sidesNeeded ? sides.slice(0, sidesNeeded) : null;
+}
+
 /**
  * Build the next match from `pool` (players available = checked-in & not currently
  * playing). Returns null if there are not enough players.
@@ -136,13 +187,48 @@ function splitSides(chosen: QueuePlayer[], settings: ClubQueueSettings): Propose
  *                     When provided, sideA = stayingSide and only the opponents are
  *                     drawn from the pool. The caller decides whether to pass this
  *                     (enforcing winner_stays_max via the streak it tracks).
+ * @param lockedPairs  doubles-only: pairs that must be teammates. Strict — a locked
+ *                     player whose partner is not in the pool waits (is dropped from
+ *                     selection) rather than playing with someone else. When any lock
+ *                     is active in a match, skill-balanced splitting is skipped (the
+ *                     locked pairing is fixed; opponents are taken in fairness order).
  */
 export function buildNextMatch(
   pool: QueuePlayer[],
   settings: ClubQueueSettings,
   stayingSide?: MatchSide,
+  lockedPairs: LockedPair[] = [],
 ): ProposedMatch | null {
   const ppt = settings.players_per_team;
+  const hasLocks = ppt === 2 && lockedPairs.length > 0;
+
+  if (hasLocks) {
+    const partnerOf = new Map<string, string>();
+    for (const [a, b] of lockedPairs) {
+      partnerOf.set(a, b);
+      partnerOf.set(b, a);
+    }
+    const poolIds = new Set(pool.map((p) => p.id));
+    // Strict: drop locked players whose partner is absent — they wait.
+    let selectable = pool.filter((p) => {
+      const partner = partnerOf.get(p.id);
+      return partner == null || poolIds.has(partner);
+    });
+
+    if (settings.rotation_mode === "winner_stays" && stayingSide) {
+      const stay = new Set(
+        [stayingSide.player1, stayingSide.player2].filter((x): x is string => x != null),
+      );
+      selectable = selectable.filter((p) => !stay.has(p.id));
+      const opp = takeSides(orderPool(selectable, settings), partnerOf, 1, ppt);
+      if (!opp) return null;
+      return { sideA: stayingSide, sideB: opp[0] };
+    }
+
+    const sides = takeSides(orderPool(selectable, settings), partnerOf, 2, ppt);
+    if (!sides) return null;
+    return { sideA: sides[0], sideB: sides[1] };
+  }
 
   if (settings.rotation_mode === "winner_stays" && stayingSide) {
     if (pool.length < ppt) return null;
