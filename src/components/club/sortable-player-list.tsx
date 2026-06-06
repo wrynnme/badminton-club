@@ -309,7 +309,7 @@ function SortableItem({
           )}
           <CheckInButton player={player} clubId={clubId} canToggle={canManage} />
           {isSelf && <LeaveButton clubId={clubId} />}
-          {canManage && !isSelf && <KickButton clubId={clubId} playerId={player.id} />}
+          {canManage && !isSelf && <KickButton clubId={clubId} playerId={player.id} playerName={player.display_name} />}
         </span>
       </div>
 
