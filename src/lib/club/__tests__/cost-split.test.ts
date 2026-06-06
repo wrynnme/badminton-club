@@ -179,3 +179,70 @@ describe("computeClubSplit — combined + rounding", () => {
     expect(r.C.total).toBe(0);
   });
 });
+
+describe("computeClubSplit — shuttle per_match", () => {
+  const players4 = [
+    { id: "A", start: "18:00", end: "21:00", games: 0 },
+    { id: "B", start: "18:00", end: "21:00", games: 0 },
+    { id: "C", start: "18:00", end: "21:00", games: 0 },
+    { id: "D", start: "18:00", end: "21:00", games: 0 },
+  ];
+  function pm(overrides: Partial<SplitInput> = {}): SplitInput {
+    return {
+      players: players4,
+      courtFee: 0,
+      courtSplit: "even",
+      shuttleFee: 0,
+      shuttleSplit: "per_match",
+      shuttlePrice: 80,
+      sessionStart: "18:00",
+      sessionEnd: "21:00",
+      matches: [{ playerIds: ["A", "B", "C", "D"], shuttles: 1 }],
+      ...overrides,
+    };
+  }
+
+  it("1 shuttle ÷ 4 players: 80/4 = 20 each", () => {
+    const r = byId(computeClubSplit(pm()));
+    expect([r.A.shuttle, r.B.shuttle, r.C.shuttle, r.D.shuttle]).toEqual([20, 20, 20, 20]);
+  });
+
+  it("shuttles_used scales the cost", () => {
+    const r = byId(computeClubSplit(pm({ matches: [{ playerIds: ["A", "B", "C", "D"], shuttles: 2 }] })));
+    expect(r.A.shuttle).toBe(40); // 2*80/4
+  });
+
+  it("accumulates across matches a player joined", () => {
+    const r = byId(computeClubSplit(pm({
+      matches: [
+        { playerIds: ["A", "B", "C", "D"], shuttles: 1 }, // 20 each
+        { playerIds: ["A", "B"], shuttles: 1 },             // A,B +40 each (80/2)
+      ],
+    })));
+    expect(r.A.shuttle).toBe(60); // 20 + 40
+    expect(r.C.shuttle).toBe(20); // only first match
+  });
+
+  it("price 0 → no shuttle cost", () => {
+    const r = byId(computeClubSplit(pm({ shuttlePrice: 0 })));
+    expect(r.A.shuttle).toBe(0);
+  });
+
+  it("no matches → no shuttle cost", () => {
+    const r = byId(computeClubSplit(pm({ matches: [] })));
+    expect(r.A.shuttle).toBe(0);
+  });
+
+  it("rounds to whole baht preserving collected total (price 70 ÷ 4)", () => {
+    const sum = computeClubSplit(pm({ shuttlePrice: 70 })).reduce((s, r) => s + r.shuttle, 0);
+    expect(sum).toBe(70); // 17.5 each → rounds, remainder dumped on largest
+  });
+
+  it("drops the share of a player not in the roster (under-collect)", () => {
+    const matches = [{ playerIds: ["A", "B", "C", "X"], shuttles: 1 }]; // X removed
+    const r = byId(computeClubSplit(pm({ matches })));
+    expect([r.A.shuttle, r.B.shuttle, r.C.shuttle, r.D.shuttle]).toEqual([20, 20, 20, 0]);
+    const sum = computeClubSplit(pm({ matches })).reduce((s, x) => s + x.shuttle, 0);
+    expect(sum).toBe(60); // X's 20 dropped
+  });
+});

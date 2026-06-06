@@ -1,15 +1,17 @@
 import { computeClubSplit } from "@/lib/club/cost-split";
-import type { Club, ClubPlayer } from "@/lib/types";
+import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
 
 type Props = {
   club: Club;
   players: ClubPlayer[];
+  matches: ClubMatch[];
 };
 
 const SPLIT_LABEL: Record<string, string> = {
   even: "หารเท่า",
   by_time: "ตามเวลา",
   by_games: "ตามเกม",
+  per_match: "หารตามแมตช์",
 };
 
 const GAP_LABEL: Record<string, string> = {
@@ -18,10 +20,14 @@ const GAP_LABEL: Record<string, string> = {
   ignore: "ไม่คิด",
 };
 
-export function ClubCostBreakdown({ club, players }: Props) {
-  const totalFee = club.court_fee + club.shuttle_fee;
+export function ClubCostBreakdown({ club, players, matches }: Props) {
+  // per_match mode: shuttle_fee can be 0; cost comes from shuttle_price × shuttles
+  const hasShuttle =
+    club.shuttle_fee > 0 ||
+    (club.shuttle_split === "per_match" && club.shuttle_price > 0);
+  const hasCourt = club.court_fee > 0;
 
-  if (totalFee === 0) {
+  if (!hasCourt && !hasShuttle) {
     return (
       <p className="text-sm text-muted-foreground">ยังไม่ได้ตั้งค่าใช้จ่าย</p>
     );
@@ -41,6 +47,19 @@ export function ClubCostBreakdown({ club, players }: Props) {
   // Resolve ownerId: helper keys by club_players.id, but club.owner_id is a profile_id
   const ownerPlayerId = players.find((p) => p.profile_id === club.owner_id)?.id;
 
+  // Build SplitMatch array from in_progress / completed matches
+  const splitMatches = matches
+    .filter((m) => m.status === "in_progress" || m.status === "completed")
+    .map((m) => ({
+      playerIds: [
+        m.side_a_player1,
+        m.side_a_player2,
+        m.side_b_player1,
+        m.side_b_player2,
+      ].filter((id): id is string => Boolean(id)),
+      shuttles: m.shuttles_used,
+    }));
+
   const rows = computeClubSplit({
     players: players.map((p) => ({
       id: p.id,
@@ -52,6 +71,8 @@ export function ClubCostBreakdown({ club, players }: Props) {
     courtSplit: club.court_split,
     shuttleFee: club.shuttle_fee,
     shuttleSplit: club.shuttle_split,
+    shuttlePrice: club.shuttle_price,
+    matches: splitMatches,
     sessionStart: club.start_time,
     sessionEnd: club.end_time,
     gapPolicy: club.court_gap_policy,
@@ -64,14 +85,16 @@ export function ClubCostBreakdown({ club, players }: Props) {
   const grandTotal = rows.reduce((s, r) => s + r.total, 0);
 
   const splitDesc = [
-    club.court_fee > 0
+    hasCourt
       ? `ค่าสนาม ${club.court_fee.toLocaleString()} ฿ · ${SPLIT_LABEL[club.court_split] ?? club.court_split}`
       : null,
     club.court_split === "by_time"
       ? `ช่วงว่าง: ${GAP_LABEL[club.court_gap_policy] ?? club.court_gap_policy}`
       : null,
-    club.shuttle_fee > 0
-      ? `ค่าลูก ${club.shuttle_fee.toLocaleString()} ฿ · ${SPLIT_LABEL[club.shuttle_split] ?? club.shuttle_split}`
+    hasShuttle
+      ? club.shuttle_split === "per_match"
+        ? `ค่าลูก ${club.shuttle_price.toLocaleString()} ฿/ลูก · หารตามแมตช์`
+        : `ค่าลูก ${club.shuttle_fee.toLocaleString()} ฿ · ${SPLIT_LABEL[club.shuttle_split] ?? club.shuttle_split}`
       : null,
   ]
     .filter(Boolean)
@@ -87,12 +110,12 @@ export function ClubCostBreakdown({ club, players }: Props) {
           <thead>
             <tr className="border-b text-muted-foreground text-xs">
               <th className="text-left py-1.5 pr-3 font-medium">ผู้เล่น</th>
-              {club.court_fee > 0 && (
+              {hasCourt && (
                 <th className="text-right py-1.5 px-2 font-medium tabular-nums">
                   ค่าสนาม
                 </th>
               )}
-              {club.shuttle_fee > 0 && (
+              {hasShuttle && (
                 <th className="text-right py-1.5 px-2 font-medium tabular-nums">
                   ค่าลูก
                 </th>
@@ -108,12 +131,12 @@ export function ClubCostBreakdown({ club, players }: Props) {
                 <td className="py-1.5 pr-3 font-medium">
                   {nameById.get(row.playerId) ?? row.playerId}
                 </td>
-                {club.court_fee > 0 && (
+                {hasCourt && (
                   <td className="py-1.5 px-2 text-right tabular-nums">
                     {row.court.toLocaleString()}
                   </td>
                 )}
-                {club.shuttle_fee > 0 && (
+                {hasShuttle && (
                   <td className="py-1.5 px-2 text-right tabular-nums">
                     {row.shuttle.toLocaleString()}
                   </td>
@@ -127,12 +150,12 @@ export function ClubCostBreakdown({ club, players }: Props) {
           <tfoot>
             <tr className="border-t-2 font-semibold">
               <td className="py-1.5 pr-3 text-sm">รวมทั้งหมด</td>
-              {club.court_fee > 0 && (
+              {hasCourt && (
                 <td className="py-1.5 px-2 text-right tabular-nums text-sm">
                   {totalCourt.toLocaleString()}
                 </td>
               )}
-              {club.shuttle_fee > 0 && (
+              {hasShuttle && (
                 <td className="py-1.5 px-2 text-right tabular-nums text-sm">
                   {totalShuttle.toLocaleString()}
                 </td>

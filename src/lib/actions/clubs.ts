@@ -204,7 +204,8 @@ const CostConfigSchema = z.object({
   court_fee: z.coerce.number().min(0).max(1_000_000),
   court_split: z.enum(["even", "by_time"]),
   shuttle_fee: z.coerce.number().min(0).max(1_000_000),
-  shuttle_split: z.enum(["even", "by_games"]),
+  shuttle_split: z.enum(["even", "by_games", "per_match"]),
+  shuttle_price: z.coerce.number().min(0).max(100_000),
   court_gap_policy: z.enum(["spread", "owner", "ignore"]),
 });
 
@@ -1052,4 +1053,118 @@ export async function releaseClubLockedPairAction(
 
   revalidatePath(`/clubs/${lock.club_id}`);
   return { ok: true };
+}
+
+/**
+ * Owner / co-admin sets the shuttle count a match consumed (used by
+ * shuttle_split="per_match" cost). UI "+ลูก" passes current + 1.
+ */
+export async function setClubMatchShuttlesAction(
+  matchId: string,
+  shuttles: number,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const n = Math.trunc(shuttles);
+  if (!Number.isFinite(n) || n < 0 || n > 99) return { error: "จำนวนลูกไม่ถูกต้อง" };
+
+  const sb = await createAdminClient();
+  const { data: match, error: fetchError } = await sb
+    .from("club_matches")
+    .select("id, club_id")
+    .eq("id", matchId)
+    .single();
+  if (fetchError || !match) return { error: "ไม่พบแมตช์" };
+
+  if (!(await assertCanManageClub(sb, match.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const { error: updateError } = await sb
+    .from("club_matches")
+    .update({ shuttles_used: n })
+    .eq("id", matchId);
+  if (updateError) return { error: updateError.message };
+
+  revalidatePath(`/clubs/${match.club_id}`);
+  return { ok: true };
+}
+
+/**
+ * Owner / co-admin manually creates a match (players who request to play each
+ * other), bypassing the auto rotation queue. sideA/sideB are 1 id (singles) or
+ * 2 ids (doubles) per the club's players_per_team. Inserted as pending at the
+ * queue tail. Does NOT block on players already in another queued match — the
+ * organizer's request wins.
+ */
+export async function createClubManualMatchAction(input: {
+  clubId: string;
+  court: number;
+  sideA: string[];
+  sideB: string[];
+}): Promise<{ ok: true; match: ClubMatch } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const { clubId, sideA, sideB } = input;
+  const courtInt = Math.trunc(input.court);
+  if (!Number.isFinite(courtInt) || courtInt < 1) return { error: "หมายเลขสนามไม่ถูกต้อง" };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  // Load players_per_team from settings to validate side sizes.
+  const { data: clubRow, error: clubErr } = await sb
+    .from("clubs")
+    .select("queue_settings")
+    .eq("id", clubId)
+    .single();
+  if (clubErr || !clubRow) return { error: "ไม่พบก๊วนนี้" };
+  const ppt = parseQueueSettings(clubRow.queue_settings).players_per_team;
+
+  const cleanA = sideA.filter(Boolean);
+  const cleanB = sideB.filter(Boolean);
+  if (cleanA.length !== ppt || cleanB.length !== ppt) {
+    return { error: ppt === 2 ? "ต้องเลือกฝั่งละ 2 คน" : "ต้องเลือกฝั่งละ 1 คน" };
+  }
+
+  const all = [...cleanA, ...cleanB];
+  if (new Set(all).size !== all.length) return { error: "ผู้เล่นซ้ำกัน" };
+
+  // All chosen players must belong to this club.
+  const { data: members } = await sb
+    .from("club_players")
+    .select("id")
+    .eq("club_id", clubId)
+    .in("id", all);
+  if (!members || members.length !== all.length) return { error: "ไม่พบผู้เล่นในก๊วนนี้" };
+
+  // queue_position = tail of pending.
+  const { data: maxRow } = await sb
+    .from("club_matches")
+    .select("queue_position")
+    .eq("club_id", clubId)
+    .eq("status", "pending")
+    .order("queue_position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextQueuePosition = (maxRow?.queue_position ?? 0) + 1;
+
+  const { data: newMatch, error: insertError } = await sb
+    .from("club_matches")
+    .insert({
+      club_id: clubId,
+      court: courtInt,
+      side_a_player1: cleanA[0],
+      side_a_player2: ppt === 2 ? cleanA[1] : null,
+      side_b_player1: cleanB[0],
+      side_b_player2: ppt === 2 ? cleanB[1] : null,
+      status: "pending",
+      queue_position: nextQueuePosition,
+    })
+    .select()
+    .single();
+  if (insertError || !newMatch) return { error: insertError?.message ?? "สร้างแมตช์ไม่สำเร็จ" };
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true, match: newMatch as ClubMatch };
 }

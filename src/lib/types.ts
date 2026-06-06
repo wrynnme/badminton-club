@@ -25,13 +25,14 @@ export type Club = {
   court_split: CourtSplit;
   shuttle_fee: number;
   shuttle_split: ShuttleSplit;
+  shuttle_price: number; // price per shuttle, used when shuttle_split = "per_match"
   court_gap_policy: GapPolicy;
   // Rotation-queue config (raw jsonb; parse via parseQueueSettings in queue-settings.ts)
   queue_settings: Record<string, unknown>;
 };
 
 export type CourtSplit = "even" | "by_time";
-export type ShuttleSplit = "even" | "by_games";
+export type ShuttleSplit = "even" | "by_games" | "per_match";
 export type GapPolicy = "spread" | "owner" | "ignore";
 
 export type ClubPlayer = {
@@ -74,6 +75,7 @@ export type ClubMatch = {
   side_b_player1: string;
   side_b_player2: string | null;
   status: ClubMatchStatus;
+  shuttles_used: number; // shuttles consumed by this match (for shuttle_split="per_match")
   queue_position: number | null;
   winner_side: "a" | "b" | null;
   score_a: number | null;

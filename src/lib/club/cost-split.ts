@@ -4,7 +4,7 @@
 // See spec.md "ระบบคิดเงินก๊วน (Club cost split)".
 
 export type CourtSplit = "even" | "by_time";
-export type ShuttleSplit = "even" | "by_games";
+export type ShuttleSplit = "even" | "by_games" | "per_match";
 export type GapPolicy = "spread" | "owner" | "ignore";
 
 export type SplitPlayer = {
@@ -13,6 +13,14 @@ export type SplitPlayer = {
   start: string;
   end: string;
   games: number;
+};
+
+/** One rotation-queue match's shuttle consumption (for shuttleSplit="per_match"). */
+export type SplitMatch = {
+  /** club_players ids on court for this match (2 singles / 4 doubles). */
+  playerIds: string[];
+  /** shuttles consumed by this match. */
+  shuttles: number;
 };
 
 export type SplitInput = {
@@ -26,6 +34,10 @@ export type SplitInput = {
   gapPolicy?: GapPolicy;
   /** Required only when gapPolicy === "owner". */
   ownerId?: string;
+  /** Price per shuttle — used only when shuttleSplit="per_match". */
+  shuttlePrice?: number;
+  /** Matches played — used only when shuttleSplit="per_match". */
+  matches?: SplitMatch[];
 };
 
 export type SplitRow = {
@@ -131,7 +143,25 @@ function computeShuttle(input: SplitInput): Map<string, number> {
   const { players, shuttleFee, shuttleSplit } = input;
   const out = new Map<string, number>(players.map((p) => [p.id, 0]));
   const n = players.length;
-  if (n === 0 || shuttleFee <= 0) return out;
+  if (n === 0) return out;
+
+  // per_match — each match's (shuttles × price) split among that match's players.
+  // Independent of shuttleFee. A removed player's share is dropped (under-collect).
+  if (shuttleSplit === "per_match") {
+    const price = input.shuttlePrice ?? 0;
+    if (price <= 0) return out;
+    for (const m of input.matches ?? []) {
+      const k = m.playerIds.length;
+      if (k === 0 || m.shuttles <= 0) continue;
+      const each = (m.shuttles * price) / k;
+      for (const id of m.playerIds) {
+        if (out.has(id)) out.set(id, (out.get(id) ?? 0) + each);
+      }
+    }
+    return out;
+  }
+
+  if (shuttleFee <= 0) return out;
 
   const totalGames = players.reduce((s, p) => s + Math.max(0, p.games), 0);
   // by_games with no games recorded falls back to even.

@@ -598,6 +598,14 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 `kick-button.tsx` เปลี่ยนจากลบทันที → Dialog (Base UI `@base-ui/react/dialog`) ยืนยันพร้อมอธิบายผลกระทบก่อนเรียก `kickPlayerAction`: แมตช์ที่ผู้เล่นอยู่ (รอ/กำลังแข่ง/จบ) ถูกลบตาม CASCADE · คู่ที่ล็อคถูกปล่อย · ถอดออกจากการหารค่าใช้จ่าย · "ลบถาวร". รับ prop `playerName` แสดงในหัว dialog (ส่งจาก `SortablePlayerList`).
 
+#### ค่าลูกต่อแมตช์ (per-match shuttle) — ✅ IMPLEMENTED (2026-06-07, develop)
+
+shuttle_split mode ที่ 3 = `per_match` (เพิ่มข้าง even/by_games ไม่แทน). migration `20260607000300`: `clubs.shuttle_price numeric` (ราคา/ลูก) + `club_matches.shuttles_used int default 1` (CHECK ≥0). cost-split: `SplitInput` รับ `shuttlePrice?` + `matches?: SplitMatch[]`; per_match → ต่อคน = Σ(`shuttles_used × price ÷ คนในแมตช์`) ของแมตช์ที่เล่น (คนถูกลบ → share หาย = under-collect); +7 vitest. `setClubMatchShuttlesAction(matchId, n)` (set/`+ลูก` = current+1). UI: `club-cost-manager` +ตัวเลือก per_match + `shuttle_price` input · `club-cost-breakdown` รับ `matches` (filter in_progress+completed → SplitMatch) ส่งเข้า computeClubSplit · `club-queue-panel` `ShuttleCounter` (+/−ลูก) บน row in_progress/completed · page guard cost-breakdown section รองรับ `per_match && shuttle_price>0`. `CostConfigSchema` +shuttle_price + per_match enum.
+
+#### เพิ่มแมตช์เอง (manual match) — ✅ IMPLEMENTED (2026-06-07, develop)
+
+`createClubManualMatchAction({clubId, court, sideA[], sideB[]})` — owner/co-admin, validate ฝั่งละ `players_per_team` คน + distinct + อยู่ในก๊วน, insert pending ที่ queue tail (ไม่บล็อกถ้าผู้เล่นอยู่ในคิวอื่น — organizer override). UI: ปุ่ม "เพิ่มแมตช์เอง" + Dialog (court input + player Selects ฝั่ง A/B 2-or-4 ตาม players_per_team) ใน `club-queue-panel`. tsc 0 · vitest 396 · build OK.
+
 **Create form / Settings:**
 
 1. **จำนวนสนาม** (`court_count`) — แก้ได้ที่ settings

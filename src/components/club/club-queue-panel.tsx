@@ -3,10 +3,28 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Play, X, Trophy, ChevronDown, ChevronUp } from "lucide-react";
+import { Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, PenLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -18,6 +36,8 @@ import {
   startClubMatchAction,
   finishClubMatchAction,
   cancelClubMatchAction,
+  setClubMatchShuttlesAction,
+  createClubManualMatchAction,
 } from "@/lib/actions/clubs";
 import type { ClubMatch } from "@/lib/types";
 import type { ClubQueueSettings } from "@/lib/club/queue-settings";
@@ -59,6 +79,78 @@ function ElapsedTicker({ startedAt }: { startedAt: string }) {
 
   return (
     <span className="text-xs tabular-nums text-muted-foreground">{display}</span>
+  );
+}
+
+// ─── Shuttle counter — compact +/- control ────────────────────────────────────
+
+function ShuttleCounter({
+  match,
+  canManage,
+  onRefresh,
+}: {
+  match: ClubMatch;
+  canManage: boolean;
+  onRefresh: () => void;
+}) {
+  const [busy, startTransition] = useTransition();
+
+  function adjust(delta: number) {
+    const next = Math.max(0, match.shuttles_used + delta);
+    startTransition(async () => {
+      const res = await setClubMatchShuttlesAction(match.id, next);
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        onRefresh();
+      }
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-1 shrink-0">
+      <span className="text-xs text-muted-foreground tabular-nums">
+        🏸 {match.shuttles_used}
+      </span>
+      {canManage && (
+        <>
+          {match.shuttles_used > 0 && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 w-6 p-0 text-muted-foreground"
+                    disabled={busy}
+                    onClick={() => adjust(-1)}
+                  >
+                    <Minus className="h-3 w-3" />
+                  </Button>
+                }
+              />
+              <TooltipContent>ลดลูกที่ใช้ในแมตช์นี้</TooltipContent>
+            </Tooltip>
+          )}
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-1.5 text-xs text-muted-foreground"
+                  disabled={busy}
+                  onClick={() => adjust(1)}
+                >
+                  +ลูก
+                </Button>
+              }
+            />
+            <TooltipContent>เพิ่มลูกที่ใช้ในแมตช์นี้</TooltipContent>
+          </Tooltip>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -197,6 +289,7 @@ function InProgressRow({
         {match.started_at && (
           <ElapsedTicker startedAt={match.started_at} />
         )}
+        <ShuttleCounter match={match} canManage={canManage} onRefresh={onRefresh} />
         {canManage && (
           <Tooltip>
             <TooltipTrigger
@@ -285,9 +378,13 @@ function InProgressRow({
 function CompletedRow({
   match,
   nameMap,
+  canManage,
+  onRefresh,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
+  canManage: boolean;
+  onRefresh: () => void;
 }) {
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
   const sideB = resolveSide(match.side_b_player1, match.side_b_player2, nameMap);
@@ -304,8 +401,11 @@ function CompletedRow({
       <span className="text-xs">vs</span>
       <span className={winnerB ? "text-winner font-medium" : ""}>{sideB}</span>
       {match.winner_side && (
-        <Trophy className="h-3.5 w-3.5 text-warning shrink-0 ml-auto" />
+        <Trophy className="h-3.5 w-3.5 text-warning shrink-0" />
       )}
+      <div className="ml-auto">
+        <ShuttleCounter match={match} canManage={canManage} onRefresh={onRefresh} />
+      </div>
     </div>
   );
 }
@@ -353,6 +453,204 @@ function BuildButton({
       />
       <TooltipContent>สร้างแมตช์ถัดไปสำหรับสนาม {court}</TooltipContent>
     </Tooltip>
+  );
+}
+
+// ─── Player select — module-level to avoid remount on every render ────────────
+
+function PlayerSelect({
+  id,
+  label,
+  value,
+  onChange,
+  players,
+  nameMap,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  players: { id: string; display_name: string }[];
+  nameMap: Map<string, string>;
+}) {
+  function renderName(v: string) {
+    return v ? (nameMap.get(v) ?? v) : "เลือกผู้เล่น";
+  }
+
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-xs text-muted-foreground">
+        {label}
+      </Label>
+      <Select value={value} onValueChange={(v) => { if (v) onChange(v); }}>
+        <SelectTrigger id={id} className="h-8 text-sm">
+          <SelectValue>{(v: string) => renderName(v)}</SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {players.map((p) => (
+            <SelectItem key={p.id} value={p.id}>
+              {p.display_name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+// ─── Manual match dialog ──────────────────────────────────────────────────────
+
+const UNSET = "";
+
+function ManualMatchDialog({
+  clubId,
+  players,
+  settings,
+  onRefresh,
+}: {
+  clubId: string;
+  players: { id: string; display_name: string }[];
+  settings: ClubQueueSettings;
+  onRefresh: () => void;
+}) {
+  const ppt = settings.players_per_team;
+  const [open, setOpen] = useState(false);
+  const [busy, startTransition] = useTransition();
+
+  const [court, setCourt] = useState(1);
+  const [sideA1, setSideA1] = useState(UNSET);
+  const [sideA2, setSideA2] = useState(UNSET);
+  const [sideB1, setSideB1] = useState(UNSET);
+  const [sideB2, setSideB2] = useState(UNSET);
+
+  const nameMap = new Map(players.map((p) => [p.id, p.display_name]));
+
+  function reset() {
+    setCourt(1);
+    setSideA1(UNSET);
+    setSideA2(UNSET);
+    setSideB1(UNSET);
+    setSideB2(UNSET);
+  }
+
+  function handleSubmit() {
+    const sideA = ppt === 2 ? [sideA1, sideA2] : [sideA1];
+    const sideB = ppt === 2 ? [sideB1, sideB2] : [sideB1];
+    const all = [...sideA, ...sideB];
+
+    if (all.some((id) => !id)) {
+      toast.error("กรุณาเลือกผู้เล่นให้ครบ");
+      return;
+    }
+    if (new Set(all).size !== all.length) {
+      toast.error("ผู้เล่นซ้ำกัน กรุณาเลือกใหม่");
+      return;
+    }
+
+    startTransition(async () => {
+      const res = await createClubManualMatchAction({
+        clubId,
+        court,
+        sideA,
+        sideB,
+      });
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        toast.success("เพิ่มแมตช์แล้ว");
+        reset();
+        setOpen(false);
+        onRefresh();
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
+      <DialogTrigger
+        render={
+          <Button size="sm" variant="outline" className="h-8 text-xs gap-1">
+            <PenLine className="h-3.5 w-3.5" />
+            เพิ่มแมตช์เอง
+          </Button>
+        }
+      />
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>เพิ่มแมตช์เอง</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-2">
+          {/* Court number */}
+          <div className="space-y-1">
+            <Label htmlFor="mm-court" className="text-sm font-medium">
+              สนาม
+            </Label>
+            <Input
+              id="mm-court"
+              type="number"
+              min={1}
+              value={court}
+              onChange={(e) => setCourt(Math.max(1, Math.trunc(Number(e.target.value)) || 1))}
+              className="h-8 w-24 text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+
+          {/* Side A */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">ฝั่ง A</p>
+            <PlayerSelect
+              id="mm-sideA1"
+              label={ppt === 2 ? "ผู้เล่น 1" : "ผู้เล่น"}
+              value={sideA1}
+              onChange={setSideA1}
+              players={players}
+              nameMap={nameMap}
+            />
+            {ppt === 2 && (
+              <PlayerSelect
+                id="mm-sideA2"
+                label="ผู้เล่น 2"
+                value={sideA2}
+                onChange={setSideA2}
+                players={players}
+                nameMap={nameMap}
+              />
+            )}
+          </div>
+
+          {/* Side B */}
+          <div className="space-y-2">
+            <p className="text-sm font-medium">ฝั่ง B</p>
+            <PlayerSelect
+              id="mm-sideB1"
+              label={ppt === 2 ? "ผู้เล่น 1" : "ผู้เล่น"}
+              value={sideB1}
+              onChange={setSideB1}
+              players={players}
+              nameMap={nameMap}
+            />
+            {ppt === 2 && (
+              <PlayerSelect
+                id="mm-sideB2"
+                label="ผู้เล่น 2"
+                value={sideB2}
+                onChange={setSideB2}
+                players={players}
+                nameMap={nameMap}
+              />
+            )}
+          </div>
+        </div>
+
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" disabled={busy}>ยกเลิก</Button>} />
+          <Button onClick={handleSubmit} disabled={busy}>
+            {busy ? "กำลังสร้าง…" : "เพิ่มแมตช์"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -438,7 +736,7 @@ export function ClubQueuePanel({
 
       {/* ── รอแข่ง tab ── */}
       <TabsContent value="pending" className="space-y-3 mt-0">
-        {canManage && courts.length > 0 && (
+        {canManage && (
           <div className="flex flex-wrap gap-2">
             {courts.map((c) => (
               <BuildButton
@@ -448,6 +746,12 @@ export function ClubQueuePanel({
                 onRefresh={onRefresh}
               />
             ))}
+            <ManualMatchDialog
+              clubId={clubId}
+              players={players}
+              settings={settings}
+              onRefresh={onRefresh}
+            />
           </div>
         )}
 
@@ -509,6 +813,8 @@ export function ClubQueuePanel({
                   key={m.id}
                   match={m}
                   nameMap={nameMap.current}
+                  canManage={canManage}
+                  onRefresh={onRefresh}
                 />
               ))
             )}

@@ -178,6 +178,7 @@ export default async function ClubDetailPage({
               court_split: club.court_split,
               shuttle_fee: club.shuttle_fee,
               shuttle_split: club.shuttle_split,
+              shuttle_price: club.shuttle_price,
               court_gap_policy: club.court_gap_policy,
             }}
           />
@@ -247,12 +248,14 @@ export default async function ClubDetailPage({
         />
       </section>
 
-      {(club.court_fee > 0 || club.shuttle_fee > 0) && (
+      {(club.court_fee > 0 ||
+        club.shuttle_fee > 0 ||
+        (club.shuttle_split === "per_match" && club.shuttle_price > 0)) && (
         <section className="space-y-2">
           <h2 className="font-semibold">สรุปค่าใช้จ่าย</h2>
           <Card>
             <CardContent className="pt-4">
-              <ClubCostBreakdown club={club} players={players} />
+              <ClubCostBreakdown club={club} players={players} matches={clubMatches} />
             </CardContent>
           </Card>
         </section>
