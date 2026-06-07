@@ -138,7 +138,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
 
         {/* Shuttle fee */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium">ค่าลูก (บาท/ต่อลูก)</Label>
+          <Label className="text-sm font-medium">ค่าลูก (บาท)</Label>
           <div className="relative max-w-[140px]">
             <Input
               type="number"
@@ -169,7 +169,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
               onClick={() => setShuttleSplit("per_match")}
               className="h-7 text-xs"
             >
-              ตามแมตช์
+              ต่อลูก
             </Button>
             <Button
               type="button"
@@ -178,11 +178,11 @@ export function ClubCostManager({ clubId, initial }: Props) {
               onClick={() => setShuttleSplit("per_player")}
               className="h-7 text-xs"
             >
-              ต่อคน (ไม่หาร)
+              ต่อแมตช์
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            ค่าลูกคิดจากลูกที่ใช้ในแต่ละแมตช์ (ปุ่ม +ลูก ในตารางคิว) — ต้องใช้ระบบหมุนคิว. หารเท่า = รวมทุกลูก ÷ ทุกคน · ตามแมตช์ = ลูกในแมตช์ ÷ คนในแมตช์ · ต่อคน = แต่ละคนจ่ายเต็มตามลูกที่ใช้ (ไม่หาร).
+            ค่าลูกคิดจากลูกที่ใช้ในแต่ละแมตช์ (ปุ่ม +ลูก ในตารางคิว) — ต้องใช้ระบบหมุนคิว. หารเท่า = รวมทุกลูก ÷ ทุกคน · ต่อลูก = ลูกในแมตช์ ÷ คนในแมตช์ · ต่อแมตช์ = แต่ละคนจ่ายเต็มตามลูกที่ใช้ (ไม่หาร).
           </p>
         </div>
 
