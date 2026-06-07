@@ -5,11 +5,12 @@ import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Field, FieldError, FieldGroup, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
 import { createTournamentAction } from "@/lib/actions/tournaments";
-import type { TournamentFormat, SeedingMethod, MatchUnit } from "@/lib/types";
+import type { TournamentFormat, SeedingMethod, MatchUnit, TournamentMode } from "@/lib/types";
 import { fieldErrors } from "@/lib/form-errors";
 import { ThresholdChipList } from "./threshold-chip-list";
 
@@ -19,6 +20,7 @@ const formSchema = z.object({
   start_date: z.string(),
   end_date: z.string(),
   format: z.enum(["group_only", "group_knockout", "knockout_only"]),
+  mode: z.enum(["sports_day", "competition"]),
   match_unit: z.enum(["team", "pair"]),
   has_lower_bracket: z.boolean(),
   allow_drop_to_lower: z.boolean(),
@@ -39,6 +41,7 @@ export function CreateTournamentForm() {
       start_date: "",
       end_date: "",
       format: "group_only" as TournamentFormat,
+      mode: "sports_day" as TournamentMode,
       match_unit: "team" as MatchUnit,
       has_lower_bracket: false,
       allow_drop_to_lower: false,
@@ -110,6 +113,47 @@ export function CreateTournamentForm() {
           </form.Field>
         </div>
 
+        {/* Mode — card selector (กีฬาสี / แข่งขัน), both selectable */}
+        <form.Field name="mode">
+          {(field) => (
+            <Field>
+              <FieldLabel>โหมด *</FieldLabel>
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  { value: "sports_day", title: "กีฬาสี", desc: "แบ่งทีม แข่งแบบกลุ่มหรือน็อคเอ้า" },
+                  { value: "competition", title: "แข่งขัน", desc: "หลายรุ่น (class) · คู่ vs คู่" },
+                ] as const).map((opt) => {
+                  const active = field.state.value === opt.value;
+                  return (
+                    <Button
+                      key={opt.value}
+                      type="button"
+                      variant="outline"
+                      aria-pressed={active}
+                      onClick={() => {
+                        field.handleChange(opt.value);
+                        if (opt.value === "competition") form.setFieldValue("match_unit", "pair");
+                      }}
+                      className={`h-auto flex-col items-start gap-1 p-3 text-left whitespace-normal ${active ? "border-primary ring-1 ring-primary bg-primary/5" : ""}`}
+                    >
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className="font-medium">{opt.title}</span>
+                        {active && <Badge className="text-[10px] px-1.5 py-0">เลือกอยู่</Badge>}
+                      </span>
+                      <span className="text-xs font-normal text-muted-foreground">{opt.desc}</span>
+                    </Button>
+                  );
+                })}
+              </div>
+              <FieldDescription>
+                {field.state.value === "competition"
+                  ? "หลายรุ่น (class) แบบคู่ vs คู่ — กำหนด class แต่ละรุ่นในแท็บ “ตั้งค่า” หลังสร้าง"
+                  : "กีฬาสี / ทั่วไป — เลือกหน่วยเป็นทีม หรือ คู่ (แบ่ง division ได้)"}
+              </FieldDescription>
+            </Field>
+          )}
+        </form.Field>
+
         {/* Format */}
         <form.Field name="format">
           {(field) => (
@@ -132,36 +176,45 @@ export function CreateTournamentForm() {
           )}
         </form.Field>
 
-        {/* Match unit */}
-        <form.Field name="match_unit">
-          {(field) => (
+        {/* Match unit — sports_day only; competition forces pair vs pair */}
+        <form.Subscribe selector={(s) => s.values.mode}>
+          {(mode) => mode === "sports_day" ? (
+            <form.Field name="match_unit">
+              {(field) => (
+                <Field>
+                  <FieldLabel>หน่วยการแข่ง *</FieldLabel>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { value: "team", label: "ทีม vs ทีม", desc: "ทั้งทีมเป็นหน่วยเดียว" },
+                      { value: "pair", label: "คู่ vs คู่", desc: "จับคู่ภายในทีม แข่งข้ามทีม" },
+                    ] as const).map((opt) => (
+                      <Button key={opt.value} type="button" size="sm"
+                        variant={field.state.value === opt.value ? "default" : "outline"}
+                        onClick={() => field.handleChange(opt.value)}
+                        title={opt.desc}>
+                        {opt.label}
+                      </Button>
+                    ))}
+                  </div>
+                  <FieldDescription>
+                    {field.state.value === "pair"
+                      ? "เจ้าของจัดคู่ภายในทีม → กำหนดการแข่งระหว่างคู่จากต่างทีม"
+                      : "ทีมแข่งเต็มทีมโดยตรง (เหมาะกับกีฬาเป็นทีม)"}
+                  </FieldDescription>
+                </Field>
+              )}
+            </form.Field>
+          ) : (
             <Field>
-              <FieldLabel>หน่วยการแข่ง *</FieldLabel>
-              <div className="flex flex-wrap gap-2">
-                {([
-                  { value: "team", label: "ทีม vs ทีม", desc: "ทั้งทีมเป็นหน่วยเดียว" },
-                  { value: "pair", label: "คู่ vs คู่", desc: "จับคู่ภายในทีม แข่งข้ามทีม" },
-                ] as const).map((opt) => (
-                  <Button key={opt.value} type="button" size="sm"
-                    variant={field.state.value === opt.value ? "default" : "outline"}
-                    onClick={() => field.handleChange(opt.value)}
-                    title={opt.desc}>
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
-              <FieldDescription>
-                {field.state.value === "pair"
-                  ? "เจ้าของจัดคู่ภายในทีม → กำหนดการแข่งระหว่างคู่จากต่างทีม"
-                  : "ทีมแข่งเต็มทีมโดยตรง (เหมาะกับกีฬาเป็นทีม)"}
-              </FieldDescription>
+              <FieldLabel>หน่วยการแข่ง</FieldLabel>
+              <FieldDescription>คู่ vs คู่ (กำหนดอัตโนมัติสำหรับ Competition)</FieldDescription>
             </Field>
           )}
-        </form.Field>
+        </form.Subscribe>
 
-        {/* Pair division thresholds — shown for pair mode */}
-        <form.Subscribe selector={(s) => s.values.match_unit}>
-          {(unit) => unit === "pair" && (
+        {/* Pair division thresholds — sports_day pair mode only (competition uses classes, not divisions) */}
+        <form.Subscribe selector={(s) => [s.values.match_unit, s.values.mode] as const}>
+          {([unit, mode]) => unit === "pair" && mode === "sports_day" && (
             <form.Field name="pair_division_thresholds">
               {(field) => (
                 <ThresholdChipList
@@ -255,35 +308,47 @@ export function CreateTournamentForm() {
           )}
         </form.Field>
 
-        {/* Team count */}
-        <form.Field
-          name="team_count"
-          children={(field) => {
-            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
-            return (
-              <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={field.name}>จำนวนทีม *</FieldLabel>
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {TEAM_COUNT_PRESETS.map((n) => (
-                    <Button key={n} type="button" size="sm" className="h-7 text-xs px-2"
-                      variant={field.state.value === n ? "default" : "outline"}
-                      onClick={() => field.handleChange(n)}>
-                      {n} ทีม
-                    </Button>
-                  ))}
-                </div>
-                <InputGroup>
-                  <Input id={field.name} type="number" min={2} max={64} value={field.state.value}
-                    onBlur={field.handleBlur} onChange={(e) => field.handleChange(Number(e.target.value))}
-                    aria-invalid={isInvalid}
-                    className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
-                  <InputGroupAddon align="inline-end"><InputGroupText>ทีม</InputGroupText></InputGroupAddon>
-                </InputGroup>
-                {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
-              </Field>
-            );
-          }}
-        />
+        {/* Team count — sports_day only. Competition adds teams + pairs later and
+            assigns them to classes, so no fixed count is required up front. */}
+        <form.Subscribe selector={(s) => s.values.mode}>
+          {(mode) => mode === "sports_day" ? (
+            <form.Field
+              name="team_count"
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>จำนวนทีม *</FieldLabel>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {TEAM_COUNT_PRESETS.map((n) => (
+                        <Button key={n} type="button" size="sm" className="h-7 text-xs px-2"
+                          variant={field.state.value === n ? "default" : "outline"}
+                          onClick={() => field.handleChange(n)}>
+                          {n} ทีม
+                        </Button>
+                      ))}
+                    </div>
+                    <InputGroup>
+                      <Input id={field.name} type="number" min={2} max={64} value={field.state.value}
+                        onBlur={field.handleBlur} onChange={(e) => field.handleChange(Number(e.target.value))}
+                        aria-invalid={isInvalid}
+                        className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
+                      <InputGroupAddon align="inline-end"><InputGroupText>ทีม</InputGroupText></InputGroupAddon>
+                    </InputGroup>
+                    {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
+                  </Field>
+                );
+              }}
+            />
+          ) : (
+            <Field>
+              <FieldLabel>ทีม / คู่</FieldLabel>
+              <FieldDescription>
+                เพิ่มทีม + จับคู่ภายหลังในแท็บ “ทีม” / “คู่” แล้วกำหนดเข้าแต่ละ class — ไม่ต้องระบุจำนวนตอนสร้าง
+              </FieldDescription>
+            </Field>
+          )}
+        </form.Subscribe>
 
         <form.Field name="notes">
           {(field) => (

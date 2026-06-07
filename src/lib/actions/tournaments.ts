@@ -40,6 +40,7 @@ const TournamentSchema = z.object({
   start_date: emptyToNull,
   end_date: emptyToNull,
   format: z.enum(["group_only", "group_knockout", "knockout_only"]),
+  mode: z.enum(["sports_day", "competition"]).default("sports_day"),
   match_unit: z.enum(["team", "pair"]).default("team"),
   has_lower_bracket: z.boolean().default(false),
   allow_drop_to_lower: z.boolean().default(false),
@@ -70,7 +71,7 @@ export async function createTournamentAction(input: CreateTournamentInput) {
   const sb = await createAdminClient();
   const { data, error } = await sb
     .from("tournaments")
-    .insert({ ...parsed.data, mode: "sports_day", owner_id: session.profileId })
+    .insert({ ...parsed.data, owner_id: session.profileId })
     .select("id")
     .single();
 
@@ -93,7 +94,8 @@ export async function createTournamentAction(input: CreateTournamentInput) {
   redirect(`/tournaments/${data.id}`);
 }
 
-export async function updateTournamentAction(input: CreateTournamentInput & { id: string }) {
+// `mode` is intentionally excluded — edits never change mode (one-way upgrade only).
+export async function updateTournamentAction(input: Omit<CreateTournamentInput, "mode"> & { id: string }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
@@ -128,7 +130,10 @@ export async function updateTournamentAction(input: CreateTournamentInput & { id
     }
   }
 
-  const { error } = await sb.from("tournaments").update(parsed.data).eq("id", id);
+  // `mode` is one-way (sports_day → competition via upgradeToCompetitionAction);
+  // never let an edit reset it, which would orphan a competition's classes.
+  const { mode: _omitMode, ...updateData } = parsed.data;
+  const { error } = await sb.from("tournaments").update(updateData).eq("id", id);
   if (error) {
     console.error("[updateTournamentAction]", error);
     return { error: "บันทึกการตั้งค่าไม่สำเร็จ" };
@@ -136,9 +141,11 @@ export async function updateTournamentAction(input: CreateTournamentInput & { id
 
   const changedFields: string[] = [];
   if (before) {
-    for (const key of Object.keys(parsed.data) as Array<keyof typeof parsed.data>) {
+    // Compare only the fields actually written (updateData — `mode` is stripped).
+    // `before` doesn't select `mode`, so including it would flag every save.
+    for (const key of Object.keys(updateData) as Array<keyof typeof updateData>) {
       const prev = (before as Record<string, unknown>)[key as string];
-      const next = (parsed.data as Record<string, unknown>)[key as string];
+      const next = (updateData as Record<string, unknown>)[key as string];
       if (prev !== next) changedFields.push(key as string);
     }
   }
@@ -494,12 +501,13 @@ export type PairCsvRow = {
   id_player_1: string;  // csv_id of first player
   id_player_2: string;  // csv_id of second player
   pair_name: string;    // display_pair_name (optional)
+  class_code: string;   // tournament_classes.code — required when tournament has classes (competition mode); tolerated empty for sports_day
 };
 
 export async function importPairsCsvAction(
   tournamentId: string,
   rows: PairCsvRow[]
-): Promise<{ ok: true; pairs: number; updated: number; skipped: number } | { error: string }> {
+): Promise<{ ok: true; pairs: number; updated: number; skipped: number; unknownClassCodes: string[] } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
@@ -516,6 +524,20 @@ export async function importPairsCsvAction(
 
   const { data: teams } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
   const teamIdSet = new Set(teams?.map((t) => t.id) ?? []);
+
+  // Competition mode REQUIRES a valid class_code per row (gate on mode, not on
+  // class existence — a competition tournament with zero classes must reject the
+  // import rather than silently inserting pairs with class_id = null).
+  const { data: tourn } = await sb
+    .from("tournaments").select("mode").eq("id", tournamentId).maybeSingle();
+  const requireClass = tourn?.mode === "competition";
+  const { data: classRows } = await sb
+    .from("tournament_classes").select("id, code").eq("tournament_id", tournamentId);
+  const classByCode = new Map<string, string>((classRows ?? []).map((c) => [c.code, c.id]));
+  if (requireClass && classByCode.size === 0) {
+    return { error: "ยังไม่มี class — สร้าง class ในแท็บตั้งค่าก่อนนำเข้าคู่" };
+  }
+  const unknownClassCodes = new Set<string>();
 
   const playerByCsvId = new Map<string, { id: string; teamId: string; level: string | null }>();
   for (const p of players ?? []) {
@@ -557,6 +579,18 @@ export async function importPairsCsvAction(
     if (!p1 || !p2) { skipped++; continue; }
     if (p1.teamId !== p2.teamId) { skipped++; continue; }
 
+    // Resolve class (competition mode requires a valid class per row).
+    let classId: string | null = null;
+    if (requireClass) {
+      const code = r.class_code?.trim();
+      // Empty code is reported too (not just unknown) so the importer surfaces a
+      // clear error instead of a silent "ข้าม N".
+      if (!code) { skipped++; unknownClassCodes.add("(ไม่ระบุ)"); continue; }
+      const cid = classByCode.get(code);
+      if (!cid) { skipped++; unknownClassCodes.add(code); continue; }
+      classId = cid;
+    }
+
     const pairLevel = (() => {
       const n1 = parseFloat(p1.level ?? "");
       const n2 = parseFloat(p2.level ?? "");
@@ -568,6 +602,7 @@ export async function importPairsCsvAction(
       player_id_2: p2.id,
       display_pair_name: r.pair_name || null,
       pair_level: pairLevel,
+      class_id: classId,
     };
 
     // Upsert by pair_id if provided and exists in DB
@@ -594,7 +629,7 @@ export async function importPairsCsvAction(
     entity_id: tournamentId,
     description: `นำเข้าคู่ ${pairsCreated + pairsUpdated} คู่`,
   });
-  return { ok: true, pairs: pairsCreated, updated: pairsUpdated, skipped };
+  return { ok: true, pairs: pairsCreated, updated: pairsUpdated, skipped, unknownClassCodes: [...unknownClassCodes] };
 }
 
 export async function updateTeamPlayerAction(

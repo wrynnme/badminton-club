@@ -3,15 +3,18 @@
 import { fieldErrors } from "@/lib/form-errors";
 import * as z from "zod";
 import { useForm } from "@tanstack/react-form";
+import { useTransition } from "react";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowUpCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
 import { updateTournamentAction } from "@/lib/actions/tournaments";
+import { upgradeToCompetitionAction } from "@/lib/actions/classes";
 import type { Tournament, TournamentFormat, SeedingMethod, MatchUnit } from "@/lib/types";
 import { ThresholdChipList } from "./threshold-chip-list";
 
@@ -33,7 +36,8 @@ const formSchema = z.object({
 
 const TEAM_COUNT_PRESETS = [4, 6, 8, 12, 16];
 
-export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tournament: Tournament; existingTeamCount?: number }) {
+export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner = false }: { tournament: Tournament; existingTeamCount?: number; isOwner?: boolean }) {
+  const [upgrading, startUpgrade] = useTransition();
   const form = useForm({
     defaultValues: {
       name: tournament.name,
@@ -64,6 +68,33 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tour
         <CardTitle className="text-sm">ข้อมูลทัวร์นาเมนต์</CardTitle>
       </CardHeader>
       <CardContent>
+        {/* Mode — competition is a one-way upgrade (no downgrade) */}
+        {tournament.mode === "competition" ? (
+          <div className="mb-4 flex items-center gap-2 text-sm">
+            <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">Competition mode</Badge>
+            <span className="text-xs text-muted-foreground">หลายรุ่น (class) — กำหนด class ในแท็บตั้งค่า</span>
+          </div>
+        ) : isOwner && tournament.match_unit === "pair" ? (
+          <div className="mb-4 rounded-md border border-dashed p-3 space-y-2">
+            <p className="text-sm font-medium">โหมด: กีฬาสี / ทั่วไป</p>
+            <p className="text-xs text-muted-foreground">
+              อัปเกรดเป็น Competition (หลายรุ่น/class) — ย้ายทีม/คู่/กลุ่ม/แมตช์เดิมเข้า class &ldquo;MAIN&rdquo; อัตโนมัติ.{" "}
+              <span className="text-warning font-medium">เปลี่ยนกลับไม่ได้</span>
+            </p>
+            <Button type="button" size="sm" variant="outline" disabled={upgrading}
+              onClick={() => {
+                if (!confirm("อัปเกรดเป็น Competition mode? การกระทำนี้เปลี่ยนกลับไม่ได้")) return;
+                startUpgrade(async () => {
+                  const res = await upgradeToCompetitionAction(tournament.id);
+                  if ("error" in res) toast.error(res.error);
+                  else toast.success("อัปเกรดเป็น competition mode แล้ว");
+                });
+              }}>
+              {upgrading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ArrowUpCircle className="h-3.5 w-3.5 mr-1" />}
+              อัปเกรดเป็น Competition
+            </Button>
+          </div>
+        ) : null}
         <form
           onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }}
         >
@@ -134,28 +165,38 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0 }: { tour
               )}
             </form.Field>
 
-            <form.Field name="match_unit">
-              {(field) => (
-                <Field>
-                  <FieldLabel>หน่วยการแข่ง *</FieldLabel>
-                  <div className="flex flex-wrap gap-2">
-                    {([
-                      { value: "team", label: "ทีม vs ทีม" },
-                      { value: "pair", label: "คู่ vs คู่" },
-                    ] as const).map((opt) => (
-                      <Button key={opt.value} type="button" size="sm"
-                        variant={field.state.value === opt.value ? "default" : "outline"}
-                        onClick={() => field.handleChange(opt.value)}>
-                        {opt.label}
-                      </Button>
-                    ))}
-                  </div>
-                </Field>
-              )}
-            </form.Field>
+            {/* Competition is locked to pair vs pair — switching to team would drop
+                the คู่/class tabs and corrupt the pair-keyed competitor map. */}
+            {tournament.mode === "competition" ? (
+              <Field>
+                <FieldLabel>หน่วยการแข่ง</FieldLabel>
+                <FieldDescription>คู่ vs คู่ (ล็อคสำหรับ Competition)</FieldDescription>
+              </Field>
+            ) : (
+              <form.Field name="match_unit">
+                {(field) => (
+                  <Field>
+                    <FieldLabel>หน่วยการแข่ง *</FieldLabel>
+                    <div className="flex flex-wrap gap-2">
+                      {([
+                        { value: "team", label: "ทีม vs ทีม" },
+                        { value: "pair", label: "คู่ vs คู่" },
+                      ] as const).map((opt) => (
+                        <Button key={opt.value} type="button" size="sm"
+                          variant={field.state.value === opt.value ? "default" : "outline"}
+                          onClick={() => field.handleChange(opt.value)}>
+                          {opt.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
+              </form.Field>
+            )}
 
+            {/* Division thresholds — sports_day pair mode only (competition uses classes) */}
             <form.Subscribe selector={(s) => s.values.match_unit}>
-              {(unit) => unit === "pair" && (
+              {(unit) => unit === "pair" && tournament.mode !== "competition" && (
                 <form.Field name="pair_division_thresholds">
                   {(field) => (
                     <ThresholdChipList

@@ -20,18 +20,78 @@ export type Club = {
   shuttle_info: string | null;
   notes: string | null;
   created_at: string;
+  // Cost split (per-bucket, independently configurable)
+  court_fee: number;
+  court_split: CourtSplit;
+  shuttle_split: ShuttleSplit;
+  shuttle_price: number; // price per shuttle — drives cost for all shuttle_split modes
+  court_gap_policy: GapPolicy;
+  // Rotation-queue config (raw jsonb; parse via parseQueueSettings in queue-settings.ts)
+  queue_settings: Record<string, unknown>;
 };
+
+// Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").
+export type Level = {
+  id: string;
+  real: number;
+  label: string;
+  sort_order: number;
+  created_at: string;
+};
+
+export type CourtSplit = "even" | "by_time";
+export type ShuttleSplit = "even" | "per_match" | "per_player";
+export type GapPolicy = "spread" | "owner" | "ignore";
 
 export type ClubPlayer = {
   id: string;
   club_id: string;
   profile_id: string | null;
   display_name: string;
-  level: string | null;
+  level_id: string | null; // FK → levels (skill level)
   note: string | null;
   joined_at: string;
   position: number | null;
   checked_in_at: string | null;
+  // Cost split inputs — per-player session window + games played
+  start_time: string | null; // "HH:MM:SS" or null = use club window
+  end_time: string | null;
+  games_played: number; // manual pre-queue fallback; auto-incremented from completed club_matches once rotation queue is used
+  last_finished_at: string | null; // ISO; rest-ordering input for queue_mode='rest_longest'
+  discount: number; // per-player discount subtracted from the cost-breakdown grand total
+};
+
+// Locked pair: two players forced to be teammates by the rotation queue.
+// games_remaining null = forever; N = lock for N more games played together.
+export type ClubLockedPair = {
+  id: string;
+  club_id: string;
+  player1_id: string;
+  player2_id: string;
+  games_remaining: number | null;
+  created_at: string;
+};
+
+export type ClubMatchStatus = "pending" | "in_progress" | "completed" | "cancelled";
+
+// Live rotation-queue match. side_*_player2 null = singles (players_per_team=1).
+export type ClubMatch = {
+  id: string;
+  club_id: string;
+  court: number;
+  side_a_player1: string;
+  side_a_player2: string | null;
+  side_b_player1: string;
+  side_b_player2: string | null;
+  status: ClubMatchStatus;
+  shuttles_used: number; // shuttles consumed by this match (for shuttle_split="per_match")
+  queue_position: number | null;
+  winner_side: "a" | "b" | null;
+  score_a: number | null;
+  score_b: number | null;
+  started_at: string | null;
+  ended_at: string | null;
+  created_at: string;
 };
 
 export type TournamentMode = "sports_day" | "competition";

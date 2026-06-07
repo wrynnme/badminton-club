@@ -13,6 +13,7 @@ export function ExportButtons({
   pairs,
   matchUnit,
   isOwner = false,
+  classCodes = [],
 }: {
   tournamentName: string;
   tournamentId: string;
@@ -21,6 +22,8 @@ export function ExportButtons({
   pairs: PairWithPlayers[];
   matchUnit: MatchUnit;
   isOwner?: boolean;
+  /** Competition-mode class codes — when set, the pair template includes a class_code column. */
+  classCodes?: string[];
 }) {
   const slug = tournamentName.replace(/\s+/g, "_");
 
@@ -35,7 +38,7 @@ export function ExportButtons({
   };
 
   const exportPairTemplate = () => {
-    const csv = generatePairImportTemplate(teams);
+    const csv = generatePairImportTemplate(teams, classCodes);
     downloadCsv(csv, `${slug}_pair_template.csv`);
   };
 

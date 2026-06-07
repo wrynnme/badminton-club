@@ -1,25 +1,15 @@
 "use client";
 
 import { fieldErrors } from "@/lib/form-errors";
-import * as React from "react";
 import * as z from "zod";
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
+import { UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Field,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupText,
-  InputGroupTextarea,
-} from "@/components/ui/input-group";
+import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
 import {
   Select,
   SelectContent,
@@ -27,38 +17,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { joinClubAction } from "@/lib/actions/clubs";
+import { addGuestPlayerAction } from "@/lib/actions/clubs";
 import type { Level } from "@/lib/types";
 
 const NONE_SENTINEL = "__none__";
 
 const formSchema = z.object({
-  display_name: z.string().min(2, "ชื่อสั้นไป"),
+  display_name: z.string().min(1, "ระบุชื่อ"),
   level_id: z.string(),
   note: z.string(),
 });
 
 type Props = {
   clubId: string;
-  defaultName: string;
   full: boolean;
-  alreadyJoined: boolean;
   levels: Level[];
 };
 
-export function JoinForm({ clubId, defaultName, full, alreadyJoined, levels }: Props) {
+/** Owner / co-admin only — adds a guest player (name only, no LINE account). */
+export function AddGuestPlayer({ clubId, full, levels }: Props) {
   const [open, setOpen] = useState(false);
 
   const form = useForm({
-    defaultValues: {
-      display_name: defaultName,
-      level_id: NONE_SENTINEL,
-      note: "",
-    },
+    defaultValues: { display_name: "", level_id: NONE_SENTINEL, note: "" },
     validators: { onSubmit: formSchema },
     onSubmit: async ({ value }) => {
       const level_id = value.level_id && value.level_id !== NONE_SENTINEL ? value.level_id : null;
-      const res = await joinClubAction({
+      const res = await addGuestPlayerAction({
         club_id: clubId,
         display_name: value.display_name,
         note: value.note || null,
@@ -66,31 +51,35 @@ export function JoinForm({ clubId, defaultName, full, alreadyJoined, levels }: P
       });
       if (res?.error) toast.error(res.error);
       else {
-        toast.success("ลงชื่อสำเร็จ");
-        setOpen(false);
+        toast.success("เพิ่มผู้เล่นแล้ว");
+        form.reset();
+        // keep the form open so multiple guests can be added in a row
       }
     },
   });
 
-  if (alreadyJoined) {
-    return <p className="text-sm text-green-600 font-medium">✓ คุณลงชื่อไว้แล้ว</p>;
-  }
   if (full) {
-    return <p className="text-sm text-destructive">ก๊วนเต็มแล้ว</p>;
+    return <p className="text-sm text-destructive">ก๊วนเต็มแล้ว — เพิ่มผู้เล่นไม่ได้</p>;
   }
+
   if (!open) {
-    return <Button onClick={() => setOpen(true)}>ลงชื่อเล่น</Button>;
+    return (
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        <UserPlus className="h-4 w-4 mr-1" />
+        เพิ่มผู้เล่น (guest)
+      </Button>
+    );
   }
 
   return (
     <form
-      id="join-club-form"
       onSubmit={(e) => {
         e.preventDefault();
         form.handleSubmit();
       }}
       className="border rounded-lg p-4"
     >
+      <p className="text-sm font-medium mb-3">เพิ่มผู้เล่น (guest) — ไม่ต้องมี LINE</p>
       <FieldGroup>
         <form.Field
           name="display_name"
@@ -106,10 +95,10 @@ export function JoinForm({ clubId, defaultName, full, alreadyJoined, levels }: P
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                   aria-invalid={isInvalid}
+                  placeholder="ชื่อเล่นผู้มาเล่น"
+                  autoFocus
                 />
-                {isInvalid && (
-                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                )}
+                {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
               </Field>
             );
           }}
@@ -157,7 +146,7 @@ export function JoinForm({ clubId, defaultName, full, alreadyJoined, levels }: P
                   value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
-                  placeholder="เช่น อาจมาสาย 30 นาที"
+                  placeholder="เช่น เพื่อนของพี่ A"
                   rows={2}
                   className="min-h-16 resize-none"
                 />
@@ -176,12 +165,12 @@ export function JoinForm({ clubId, defaultName, full, alreadyJoined, levels }: P
         <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
           {([canSubmit, isSubmitting]) => (
             <Button type="submit" disabled={!canSubmit || isSubmitting}>
-              {isSubmitting ? "กำลังบันทึก..." : "ยืนยัน"}
+              {isSubmitting ? "กำลังเพิ่ม..." : "เพิ่มผู้เล่น"}
             </Button>
           )}
         </form.Subscribe>
-        <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-          ยกเลิก
+        <Button type="button" variant="ghost" onClick={() => { form.reset(); setOpen(false); }}>
+          ปิด
         </Button>
       </Field>
     </form>
