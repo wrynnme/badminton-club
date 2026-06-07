@@ -6,6 +6,7 @@ import { headers } from "next/headers";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
+import type { Level } from "@/lib/types";
 import {
   type ClubQueueSettings,
   ClubQueueSettingsSchema,
@@ -89,6 +90,7 @@ const JoinSchema = z.object({
   club_id: z.string().uuid(),
   display_name: z.string().min(2, "ชื่อสั้นไป"),
   level: z.string().optional().nullable(),
+  level_id: z.string().uuid().optional().nullable(),
   note: z.string().optional().nullable(),
 });
 
@@ -126,6 +128,7 @@ export async function joinClubAction(input: JoinClubInput) {
     profile_id: session.profileId,
     display_name: parsed.data.display_name,
     level: parsed.data.level || null,
+    level_id: parsed.data.level_id || null,
     note: parsed.data.note || null,
     position: (count ?? 0) + 1,
   });
@@ -143,6 +146,7 @@ const GuestSchema = z.object({
   club_id: z.string().uuid(),
   display_name: z.string().min(1, "ระบุชื่อ").max(60, "ชื่อยาวเกินไป"),
   level: z.string().optional().nullable(),
+  level_id: z.string().uuid().optional().nullable(),
   note: z.string().optional().nullable(),
 });
 
@@ -188,6 +192,7 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
     profile_id: null,
     display_name: parsed.data.display_name.trim(),
     level: parsed.data.level || null,
+    level_id: parsed.data.level_id || null,
     note: parsed.data.note || null,
     position: (count ?? 0) + 1,
   });
@@ -693,10 +698,11 @@ export async function buildNextClubMatchAction(
   if (clubFetchError || !clubRow) return { error: "ไม่พบก๊วนนี้" };
   const settings = parseQueueSettings(clubRow.queue_settings);
 
-  // Load all players for this club.
+  // Load all players for this club (level resolved via the levels FK; legacy text
+  // level kept as a fallback for any unmigrated row).
   const { data: allPlayers, error: playersFetchError } = await sb
     .from("club_players")
-    .select("id, position, joined_at, level, games_played, last_finished_at, checked_in_at")
+    .select("id, position, joined_at, level, level_id, games_played, last_finished_at, checked_in_at, levels:level_id(real)")
     .eq("club_id", clubId);
   if (playersFetchError || !allPlayers) return { error: "โหลดผู้เล่นไม่สำเร็จ" };
 
@@ -727,10 +733,18 @@ export async function buildNextClubMatchAction(
     return true;
   });
 
-  // Map to QueuePlayer (NaN level → null).
+  // Map to QueuePlayer. Level = levels.real (via FK embed), falling back to the
+  // legacy text level for any unmigrated row. NaN → null.
   const toQueuePlayer = (p: (typeof eligiblePlayers)[number]): QueuePlayer => {
-    const raw = p.level != null && p.level !== "" ? parseFloat(p.level) : null;
-    const level = raw != null && !Number.isNaN(raw) ? raw : null;
+    const lvRow = Array.isArray(p.levels) ? p.levels[0] : p.levels;
+    let level: number | null = null;
+    if (lvRow?.real != null) {
+      const r = Number(lvRow.real);
+      level = Number.isNaN(r) ? null : r;
+    } else if (p.level != null && p.level !== "") {
+      const r = parseFloat(p.level);
+      level = Number.isNaN(r) ? null : r;
+    }
     return {
       id: p.id,
       position: p.position,
@@ -1232,5 +1246,94 @@ export async function deleteClubMatchAction(
   if (rpcError) return { error: rpcError.message };
 
   revalidatePath(`/clubs/${match.club_id}`);
+  return { ok: true };
+}
+
+// ─── Levels (global skill-level lookup) ───────────────────────────────────────
+
+const LevelSchema = z.object({
+  real: z.coerce.number().min(0).max(100),
+  label: z.string().trim().min(1, "ระบุชื่อระดับ").max(20),
+  sort_order: z.coerce.number().int().min(0).max(10_000).optional(),
+});
+
+/** Public read — levels list ordered for display. */
+export async function getLevelsAction(): Promise<Level[]> {
+  const sb = await createAdminClient();
+  const { data } = await sb
+    .from("levels")
+    .select("*")
+    .order("sort_order", { ascending: true })
+    .order("real", { ascending: true });
+  return (data ?? []) as Level[];
+}
+
+/** Create a skill level (any signed-in LINE user; global reference data). */
+export async function createLevelAction(input: {
+  real: number;
+  label: string;
+  sort_order?: number;
+}): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session || session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE" };
+
+  const parsed = LevelSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+
+  const sb = await createAdminClient();
+  const { error } = await sb.from("levels").insert({
+    real: parsed.data.real,
+    label: parsed.data.label,
+    sort_order: parsed.data.sort_order ?? Math.round(parsed.data.real * 10),
+  });
+  if (error) {
+    if (error.code === "23505") return { error: "ระดับนี้ (real หรือ label) มีอยู่แล้ว" };
+    return { error: error.message };
+  }
+  revalidatePath("/clubs", "layout");
+  return { ok: true };
+}
+
+/** Edit a skill level. */
+export async function updateLevelAction(input: {
+  id: string;
+  real: number;
+  label: string;
+  sort_order?: number;
+}): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session || session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE" };
+
+  const parsed = LevelSchema.safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+
+  const sb = await createAdminClient();
+  const { error } = await sb
+    .from("levels")
+    .update({
+      real: parsed.data.real,
+      label: parsed.data.label,
+      ...(parsed.data.sort_order != null ? { sort_order: parsed.data.sort_order } : {}),
+    })
+    .eq("id", input.id);
+  if (error) {
+    if (error.code === "23505") return { error: "ระดับนี้ (real หรือ label) มีอยู่แล้ว" };
+    return { error: error.message };
+  }
+  revalidatePath("/clubs", "layout");
+  return { ok: true };
+}
+
+/** Delete a skill level. Players referencing it have level_id set to NULL (FK ON DELETE SET NULL). */
+export async function deleteLevelAction(
+  id: string,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session || session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE" };
+
+  const sb = await createAdminClient();
+  const { error } = await sb.from("levels").delete().eq("id", id);
+  if (error) return { error: error.message };
+  revalidatePath("/clubs", "layout");
   return { ok: true };
 }

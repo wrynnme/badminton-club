@@ -28,13 +28,14 @@ import { CSS } from "@dnd-kit/utilities";
 import { LeaveButton } from "@/components/club/leave-button";
 import { KickButton } from "@/components/club/kick-button";
 import { reorderPlayersAction, toggleCheckInAction, updateClubPlayerSessionAction } from "@/lib/actions/clubs";
-import type { ClubPlayer } from "@/lib/types";
+import type { ClubPlayer, Level } from "@/lib/types";
 
 type Props = {
   clubId: string;
   players: ClubPlayer[];
   sessionProfileId: string | null;
   canManage: boolean;
+  levels?: Level[];
   /** Club session window — used as placeholder for player time inputs. */
   sessionStart?: string; // "HH:MM:SS"
   sessionEnd?: string;   // "HH:MM:SS"
@@ -240,6 +241,7 @@ function SortableItem({
   canManage,
   sessionStart,
   sessionEnd,
+  levelById,
 }: {
   player: ClubPlayer;
   index: number;
@@ -248,6 +250,7 @@ function SortableItem({
   canManage: boolean;
   sessionStart?: string;
   sessionEnd?: string;
+  levelById?: Map<string, { label: string }>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: player.id,
@@ -293,7 +296,12 @@ function SortableItem({
         )}
         <span className="text-muted-foreground w-6 tabular-nums">{index + 1}.</span>
         <span className="font-medium">{player.display_name}</span>
-        {player.level && <Badge variant="outline">{player.level}</Badge>}
+        {(() => {
+          const label = player.level_id
+            ? levelById?.get(player.level_id)?.label
+            : player.level ?? undefined;
+          return label ? <Badge variant="outline">{label}</Badge> : null;
+        })()}
         {player.note && (
           <span className="text-muted-foreground text-xs hidden sm:inline">— {player.note}</span>
         )}
@@ -331,9 +339,13 @@ export function SortablePlayerList({
   players,
   sessionProfileId,
   canManage,
+  levels,
   sessionStart,
   sessionEnd,
 }: Props) {
+  const levelById = levels
+    ? new Map(levels.map((l) => [l.id, l]))
+    : undefined;
   const [items, setItems] = useState(players);
   const [, startTransition] = useTransition();
   const [refreshing, startRefresh] = useTransition();
@@ -428,6 +440,7 @@ export function SortablePlayerList({
                 canManage={canManage}
                 sessionStart={sessionStart}
                 sessionEnd={sessionEnd}
+                levelById={levelById}
               />
             ))}
           </ol>

@@ -383,6 +383,14 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **UI**: `club-tabs.tsx` (4 แท็บ URL-synced: ลงชื่อ/เช็คอิน · ล็อคคู่+คิว · ค่าใช้จ่าย · ตั้งค่า [manager-only]) · `club-queue-settings.tsx` (7 ฟิลด์ debounce save) · `club-queue-panel.tsx` (Tabs รอ/กำลัง/จบ; pending **drag-reorder** @dnd-kit [manager]; per-court build + start/cancel/finish-winner + elapsed ticker + `ShuttleCounter` +/−ลูก + `DeleteMatchButton` [confirm dialog, in_progress/completed] + `ManualMatchDialog`) · `club-locked-pairs.tsx` (gated `players_per_team===2`) · `edit-club-form.tsx` (always-open). migrations `20260606000300` · `20260607000100/000200/000300/000400/000500`.
 - **Not built**: auto-rotate-all-courts, score entry (winner-only), not_ready/time_limit enforcement (hint), Realtime (manual refresh).
 
+### Skill Levels (levels table + FK) — ✅ CLUB IMPLEMENTED (2026-06-07, develop)
+
+ระดับฝีมือย้ายจาก free-text → ตาราง `levels` (global lookup) อ้างผ่าน FK. **Scope: club ก่อน** (tournament `team_players.level` ยังเป็น text เดิม — ยังไม่แตะ).
+- **DB** migration `20260607000700`: ตาราง `levels` (id, `real` numeric unique [ค่าคำนวณ], `label` text unique [แสดง], `sort_order`, created_at; RLS read-all) seed 1=BG · 1.25=BG+ · 1.5=N- · 2=N · 2.5=S- · 3=S · 3.5=P- · 4=P. `club_players +level_id` FK → levels ON DELETE SET NULL (+index); legacy `level` text คงไว้เป็น fallback. migrate ค่าเดิม (BG+/N/N-) → level_id ตาม label.
+- **Actions** (`clubs.ts`): `getLevelsAction()` · `createLevelAction`/`updateLevelAction`/`deleteLevelAction` (non-guest session; global ref data) · `joinClubAction`/`addGuestPlayerAction` รับ `level_id`. `buildNextClubMatchAction` resolve queue level จาก `levels.real` (embed `levels:level_id(real)`) fallback text. `Level` type.
+- **UI**: `join-form`/`add-guest-player` level **Select** (sentinel `__none__` = ไม่ระบุ → level_id null) · `sortable-player-list` badge = label จาก level_id (fallback text) · `club-levels-manager.tsx` (settings tab, canManage — list/add/edit/delete real+label) · page fetch levels → props. tsc 0 · vitest 401 · build OK.
+- **Tournament (ยังไม่ทำ):** `team_players`/`pairs.pair_level` + `computePairDivision`/thresholds ไม่แตะ — เมื่อทำ ต้อง map real=parseFloat(ค่าเดิม) เพื่อให้ pair_level + thresholds เท่าเดิม (impact วิเคราะห์แล้ว).
+
 ### Score Matrix View (2026-05-27)
 
 - **New helper** `src/lib/tournament/score-matrix.ts` — `buildScoreMatrix(matches, competitorIds, unit)` → `Map<rowId, Map<colId, CellResult>>`.

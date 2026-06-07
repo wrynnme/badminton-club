@@ -10,28 +10,45 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupText, InputGroupTextarea } from "@/components/ui/input-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { addGuestPlayerAction } from "@/lib/actions/clubs";
+import type { Level } from "@/lib/types";
+
+const NONE_SENTINEL = "__none__";
 
 const formSchema = z.object({
   display_name: z.string().min(1, "ระบุชื่อ"),
-  level: z.string(),
+  level_id: z.string(),
   note: z.string(),
 });
 
 type Props = {
   clubId: string;
   full: boolean;
+  levels: Level[];
 };
 
 /** Owner / co-admin only — adds a guest player (name only, no LINE account). */
-export function AddGuestPlayer({ clubId, full }: Props) {
+export function AddGuestPlayer({ clubId, full, levels }: Props) {
   const [open, setOpen] = useState(false);
 
   const form = useForm({
-    defaultValues: { display_name: "", level: "", note: "" },
+    defaultValues: { display_name: "", level_id: NONE_SENTINEL, note: "" },
     validators: { onSubmit: formSchema },
     onSubmit: async ({ value }) => {
-      const res = await addGuestPlayerAction({ club_id: clubId, ...value });
+      const level_id = value.level_id && value.level_id !== NONE_SENTINEL ? value.level_id : null;
+      const res = await addGuestPlayerAction({
+        club_id: clubId,
+        display_name: value.display_name,
+        note: value.note || null,
+        level_id,
+      });
       if (res?.error) toast.error(res.error);
       else {
         toast.success("เพิ่มผู้เล่นแล้ว");
@@ -88,18 +105,31 @@ export function AddGuestPlayer({ clubId, full }: Props) {
         />
 
         <form.Field
-          name="level"
+          name="level_id"
           children={(field) => (
             <Field>
               <FieldLabel htmlFor={field.name}>ระดับฝีมือ</FieldLabel>
-              <Input
-                id={field.name}
-                name={field.name}
+              <Select
                 value={field.state.value}
-                onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)}
-                placeholder="เช่น มือใหม่ / N / S"
-              />
+                onValueChange={(v) => field.handleChange(v ?? NONE_SENTINEL)}
+              >
+                <SelectTrigger id={field.name} className="w-full">
+                  <SelectValue>
+                    {(v: string) => {
+                      if (!v || v === NONE_SENTINEL) return "— ไม่ระบุ —";
+                      return levels.find((l) => l.id === v)?.label ?? "— ไม่ระบุ —";
+                    }}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_SENTINEL}>— ไม่ระบุ —</SelectItem>
+                  {levels.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.label} ({l.real})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
           )}
         />

@@ -31,6 +31,15 @@ export type Club = {
   queue_settings: Record<string, unknown>;
 };
 
+// Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").
+export type Level = {
+  id: string;
+  real: number;
+  label: string;
+  sort_order: number;
+  created_at: string;
+};
+
 export type CourtSplit = "even" | "by_time";
 export type ShuttleSplit = "even" | "per_match" | "per_player";
 export type GapPolicy = "spread" | "owner" | "ignore";
@@ -40,7 +49,8 @@ export type ClubPlayer = {
   club_id: string;
   profile_id: string | null;
   display_name: string;
-  level: string | null;
+  level: string | null; // legacy free-text label (fallback); source of truth = level_id
+  level_id: string | null; // FK → levels
   note: string | null;
   joined_at: string;
   position: number | null;

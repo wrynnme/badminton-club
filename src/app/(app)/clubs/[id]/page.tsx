@@ -19,9 +19,10 @@ import { HourlyHeadcount } from "@/components/club/hourly-headcount";
 import { ClubQueueSettings } from "@/components/club/club-queue-settings";
 import { ClubQueuePanel } from "@/components/club/club-queue-panel";
 import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
+import { ClubLevelsManager } from "@/components/club/club-levels-manager";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
 import type { ClubExpense, ClubAdmin } from "@/lib/actions/clubs";
-import type { ClubMatch, ClubLockedPair } from "@/lib/types";
+import type { ClubMatch, ClubLockedPair, Level } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -70,6 +71,11 @@ export default async function ClubDetailPage({
       .select("*")
       .eq("club_id", id)
       .order("created_at", { ascending: true }),
+    sb
+      .from("levels")
+      .select("*")
+      .order("sort_order", { ascending: true })
+      .order("real", { ascending: true }),
   ]);
 
   const owner = ownerRes.data;
@@ -77,6 +83,7 @@ export default async function ClubDetailPage({
   const expenses: ClubExpense[] = (expensesRes.data ?? []) as ClubExpense[];
   const clubMatches: ClubMatch[] = (matchesRes.data ?? []) as ClubMatch[];
   const lockedPairs: ClubLockedPair[] = (lockedPairsRes.data ?? []) as ClubLockedPair[];
+  const levels: Level[] = (levelsRes.data ?? []) as Level[];
 
   type AdminRow = { club_id: string; user_id: string; added_by: string | null; added_at: string; profile: { display_name: string | null; line_user_id: string | null } | null };
   const coAdmins: ClubAdmin[] = ((adminsRes.data ?? []) as unknown as AdminRow[]).map((r) => ({
@@ -168,18 +175,20 @@ export default async function ClubDetailPage({
                     defaultName={session.displayName}
                     full={full}
                     alreadyJoined={!!myRow}
+                    levels={levels}
                   />
                 )}
               </section>
 
               <section className="space-y-2">
                 <h2 className="font-semibold">รายชื่อผู้เล่น ({joined})</h2>
-                {canManage && <AddGuestPlayer clubId={club.id} full={full} />}
+                {canManage && <AddGuestPlayer clubId={club.id} full={full} levels={levels} />}
                 <SortablePlayerList
                   clubId={club.id}
                   players={players}
                   sessionProfileId={session?.profileId ?? null}
                   canManage={canManage}
+                  levels={levels}
                   sessionStart={club.start_time}
                   sessionEnd={club.end_time}
                 />
@@ -269,6 +278,7 @@ export default async function ClubDetailPage({
             <div className="space-y-4">
               {isOwner && <EditClubForm club={club} />}
               {canManage && <ClubQueueSettings clubId={club.id} initial={queueSettings} />}
+              {canManage && <ClubLevelsManager levels={levels} />}
               {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}
             </div>
           }
