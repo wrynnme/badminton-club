@@ -204,7 +204,7 @@ const CostConfigSchema = z.object({
   court_fee: z.coerce.number().min(0).max(1_000_000),
   court_split: z.enum(["even", "by_time"]),
   shuttle_fee: z.coerce.number().min(0).max(1_000_000),
-  shuttle_split: z.enum(["even", "by_games", "per_match"]),
+  shuttle_split: z.enum(["even", "per_match"]),
   shuttle_price: z.coerce.number().min(0).max(100_000),
   court_gap_policy: z.enum(["spread", "owner", "ignore"]),
 });
@@ -1201,5 +1201,36 @@ export async function reorderClubQueueAction(
   }
 
   revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
+/**
+ * Owner / co-admin deletes a match (wrong entry). Via RPC delete_club_match:
+ * a completed match reverts games_played (−1, floor 0) for its players; in_progress
+ * never incremented games so nothing to revert. last_finished_at + N-game lock
+ * decrements are NOT restored (the UI confirm dialog states this). Removing the row
+ * also drops its shuttle contribution (shuttle cost is derived from matches).
+ */
+export async function deleteClubMatchAction(
+  matchId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+
+  const { data: match, error: fetchError } = await sb
+    .from("club_matches")
+    .select("id, club_id")
+    .eq("id", matchId)
+    .single();
+  if (fetchError || !match) return { error: "ไม่พบแมตช์" };
+
+  if (!(await assertCanManageClub(sb, match.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const { error: rpcError } = await sb.rpc("delete_club_match", { p_match_id: matchId });
+  if (rpcError) return { error: rpcError.message };
+
+  revalidatePath(`/clubs/${match.club_id}`);
   return { ok: true };
 }

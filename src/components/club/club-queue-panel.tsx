@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, PenLine } from "lucide-react";
+import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, PenLine, Trash2, AlertTriangle } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -54,6 +54,7 @@ import {
   setClubMatchShuttlesAction,
   createClubManualMatchAction,
   reorderClubQueueAction,
+  deleteClubMatchAction,
 } from "@/lib/actions/clubs";
 import type { ClubMatch } from "@/lib/types";
 import type { ClubQueueSettings } from "@/lib/club/queue-settings";
@@ -167,6 +168,79 @@ function ShuttleCounter({
         </>
       )}
     </div>
+  );
+}
+
+// ─── Delete match confirm dialog ─────────────────────────────────────────────
+
+function DeleteMatchButton({
+  matchId,
+  status,
+  onRefresh,
+}: {
+  matchId: string;
+  status: "in_progress" | "completed";
+  onRefresh: () => void;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+
+  function handleConfirm() {
+    start(async () => {
+      const res = await deleteClubMatchAction(matchId);
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        setOpen(false);
+        router.refresh();
+        toast.success("ลบแมตช์แล้ว");
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-destructive hover:text-destructive shrink-0"
+            aria-label="ลบแมตช์นี้"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        }
+      />
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+            ลบแมตช์นี้?
+          </DialogTitle>
+        </DialogHeader>
+
+        <ul className="text-sm text-muted-foreground space-y-1.5 list-disc pl-5">
+          <li>แมตช์นี้จะถูกลบถาวร</li>
+          {status === "completed" && (
+            <li>จำนวนเกม (games) ของผู้เล่นจะถูกนับคืน −1</li>
+          )}
+          <li>ค่าลูกของแมตช์นี้จะหายจากการหาร</li>
+          {status === "in_progress" && (
+            <li>สนามจะว่างลง</li>
+          )}
+          <li>เวลาเล่นล่าสุด + การนับเกมล็อคคู่ จะไม่ถูกคืน</li>
+        </ul>
+
+        <DialogFooter>
+          <DialogClose render={<Button variant="outline" disabled={pending}>ยกเลิก</Button>} />
+          <Button variant="destructive" onClick={handleConfirm} disabled={pending}>
+            {pending ? "กำลังลบ…" : "ลบแมตช์"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -369,27 +443,30 @@ function InProgressRow({
         )}
         <ShuttleCounter match={match} canManage={canManage} onRefresh={onRefresh} />
         {canManage && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 px-2 shrink-0"
-                  disabled={finishBusy}
-                  onClick={() => setFinishOpen((o) => !o)}
-                >
-                  {finishOpen ? (
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  ) : (
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  )}
-                  <span className="text-xs ml-1">จบแข่ง</span>
-                </Button>
-              }
-            />
-            <TooltipContent>บันทึกผลแมตช์สนาม {match.court}</TooltipContent>
-          </Tooltip>
+          <>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 shrink-0"
+                    disabled={finishBusy}
+                    onClick={() => setFinishOpen((o) => !o)}
+                  >
+                    {finishOpen ? (
+                      <ChevronUp className="h-3.5 w-3.5" />
+                    ) : (
+                      <ChevronDown className="h-3.5 w-3.5" />
+                    )}
+                    <span className="text-xs ml-1">จบแข่ง</span>
+                  </Button>
+                }
+              />
+              <TooltipContent>บันทึกผลแมตช์สนาม {match.court}</TooltipContent>
+            </Tooltip>
+            <DeleteMatchButton matchId={match.id} status="in_progress" onRefresh={onRefresh} />
+          </>
         )}
       </div>
 
@@ -481,8 +558,11 @@ function CompletedRow({
       {match.winner_side && (
         <Trophy className="h-3.5 w-3.5 text-warning shrink-0" />
       )}
-      <div className="ml-auto">
+      <div className="ml-auto flex items-center gap-1">
         <ShuttleCounter match={match} canManage={canManage} onRefresh={onRefresh} />
+        {canManage && (
+          <DeleteMatchButton matchId={match.id} status="completed" onRefresh={onRefresh} />
+        )}
       </div>
     </div>
   );

@@ -4,7 +4,7 @@
 // See spec.md "ระบบคิดเงินก๊วน (Club cost split)".
 
 export type CourtSplit = "even" | "by_time";
-export type ShuttleSplit = "even" | "by_games" | "per_match";
+export type ShuttleSplit = "even" | "per_match";
 export type GapPolicy = "spread" | "owner" | "ignore";
 
 export type SplitPlayer = {
@@ -140,39 +140,37 @@ function computeCourt(input: SplitInput): Map<string, number> {
 }
 
 function computeShuttle(input: SplitInput): Map<string, number> {
-  const { players, shuttleFee, shuttleSplit } = input;
+  const { players, shuttleSplit } = input;
   const out = new Map<string, number>(players.map((p) => [p.id, 0]));
   const n = players.length;
   if (n === 0) return out;
 
-  // per_match — each match's (shuttles × price) split among that match's players.
-  // Independent of shuttleFee. A removed player's share is dropped (under-collect).
-  if (shuttleSplit === "per_match") {
-    const price = input.shuttlePrice ?? 0;
-    if (price <= 0) return out;
-    for (const m of input.matches ?? []) {
-      const k = m.playerIds.length;
-      if (k === 0 || m.shuttles <= 0) continue;
-      const each = (m.shuttles * price) / k;
-      for (const id of m.playerIds) {
-        if (out.has(id)) out.set(id, (out.get(id) ?? 0) + each);
-      }
-    }
-    return out;
-  }
+  // Shuttle cost is per-shuttle (shuttlePrice) and derived from each match's
+  // shuttles_used. Both modes need a price + matches — without the rotation queue
+  // (no matches recorded) shuttle cost is 0.
+  const price = input.shuttlePrice ?? 0;
+  if (price <= 0) return out;
+  const matches = input.matches ?? [];
 
-  if (shuttleFee <= 0) return out;
-
-  const totalGames = players.reduce((s, p) => s + Math.max(0, p.games), 0);
-  // by_games with no games recorded falls back to even.
-  if (shuttleSplit === "even" || totalGames === 0) {
-    const share = shuttleFee / n;
+  if (shuttleSplit === "even") {
+    // Σ shuttles across all matches × price, split EQUALLY among every player
+    // (regardless of who played which match / how many games).
+    const totalShuttles = matches.reduce((s, m) => s + Math.max(0, m.shuttles), 0);
+    if (totalShuttles <= 0) return out;
+    const share = (totalShuttles * price) / n;
     for (const p of players) out.set(p.id, share);
     return out;
   }
 
-  for (const p of players) {
-    out.set(p.id, (shuttleFee * Math.max(0, p.games)) / totalGames);
+  // per_match — each match's (shuttles × price) split among that match's players.
+  // A removed player's share is dropped (under-collect).
+  for (const m of matches) {
+    const k = m.playerIds.length;
+    if (k === 0 || m.shuttles <= 0) continue;
+    const each = (m.shuttles * price) / k;
+    for (const id of m.playerIds) {
+      if (out.has(id)) out.set(id, (out.get(id) ?? 0) + each);
+    }
   }
   return out;
 }

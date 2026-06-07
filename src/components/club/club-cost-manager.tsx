@@ -138,14 +138,14 @@ export function ClubCostManager({ clubId, initial }: Props) {
 
         {/* Shuttle fee */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium">ค่าลูก (บาท)</Label>
+          <Label className="text-sm font-medium">ค่าลูก (บาท/ต่อลูก)</Label>
           <div className="relative max-w-[140px]">
             <Input
               type="number"
               min={0}
               step={1}
-              value={shuttleFee}
-              onChange={(e) => setShuttleFee(Math.max(0, Number(e.target.value)))}
+              value={shuttlePrice}
+              onChange={(e) => setShuttlePrice(Math.max(0, Number(e.target.value)))}
               className="pr-8 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
@@ -165,45 +165,16 @@ export function ClubCostManager({ clubId, initial }: Props) {
             <Button
               type="button"
               size="sm"
-              variant={shuttleSplit === "by_games" ? "default" : "outline"}
-              onClick={() => setShuttleSplit("by_games")}
-              className="h-7 text-xs"
-            >
-              ตามเกม
-            </Button>
-            <Button
-              type="button"
-              size="sm"
               variant={shuttleSplit === "per_match" ? "default" : "outline"}
               onClick={() => setShuttleSplit("per_match")}
               className="h-7 text-xs"
             >
-              หารตามแมตช์ (ต่อลูก)
+              ตามแมตช์
             </Button>
           </div>
-
-          {/* Per-match shuttle price — shown only when per_match selected */}
-          {shuttleSplit === "per_match" && (
-            <div className="pl-3 border-l-2 border-muted space-y-2 pt-1">
-              <Label className="text-sm font-medium">ราคาต่อลูก (บาท)</Label>
-              <div className="relative max-w-[140px]">
-                <Input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={shuttlePrice}
-                  onChange={(e) => setShuttlePrice(Math.max(0, Number(e.target.value)))}
-                  className="pr-8 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
-                  ฿
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                ค่าลูก = ราคาต่อลูก × ลูกที่ใช้ในแมตช์ ÷ คนในแมตช์ (ใช้ร่วมกับระบบหมุนคิว)
-              </p>
-            </div>
-          )}
+          <p className="text-xs text-muted-foreground">
+            ค่าลูกคิดจากลูกที่ใช้ในแต่ละแมตช์ (ปุ่ม +ลูก ในตารางคิว) — ต้องใช้ระบบหมุนคิว. หารเท่า = รวมทุกลูก ÷ ทุกคน · ตามแมตช์ = ลูกในแมตช์ ÷ คนในแมตช์.
+          </p>
         </div>
 
         <Button

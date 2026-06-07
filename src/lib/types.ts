@@ -32,7 +32,7 @@ export type Club = {
 };
 
 export type CourtSplit = "even" | "by_time";
-export type ShuttleSplit = "even" | "by_games" | "per_match";
+export type ShuttleSplit = "even" | "per_match";
 export type GapPolicy = "spread" | "owner" | "ignore";
 
 export type ClubPlayer = {

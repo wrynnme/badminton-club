@@ -115,49 +115,78 @@ describe("computeClubSplit — court gap policy", () => {
   });
 });
 
-describe("computeClubSplit — shuttle", () => {
-  it("even: 300 / 3 = 100 each", () => {
-    const r = byId(computeClubSplit(base({ courtFee: 0 })));
-    expect(r.A.shuttle).toBe(100);
-    expect(r.B.shuttle).toBe(100);
-    expect(r.C.shuttle).toBe(100);
-  });
-
-  it("by_games: 300 × games / 33 → 73 / 91 / 136 (sums to 300)", () => {
-    const r = byId(computeClubSplit(base({ courtFee: 0, shuttleSplit: "by_games" })));
-    expect(r.A.shuttle).toBe(73);
-    expect(r.B.shuttle).toBe(91);
-    expect(r.C.shuttle).toBe(136);
-    expect(r.A.shuttle + r.B.shuttle + r.C.shuttle).toBe(300);
-  });
-
-  it("by_games with zero total games falls back to even split", () => {
+describe("computeClubSplit — shuttle even (per-shuttle price)", () => {
+  it("Σ shuttles × price ÷ N — equal for everyone, regardless of who played", () => {
+    // total 3 shuttles × 20 = 60, ÷ 3 players = 20 each.
     const r = byId(
       computeClubSplit(
         base({
           courtFee: 0,
-          shuttleSplit: "by_games",
-          players: [
-            { id: "A", start: "18:00", end: "21:00", games: 0 },
-            { id: "B", start: "18:00", end: "21:00", games: 0 },
+          shuttleSplit: "even",
+          shuttlePrice: 20,
+          matches: [
+            { playerIds: ["A", "B"], shuttles: 1 },
+            { playerIds: ["A", "C"], shuttles: 2 },
           ],
         }),
       ),
     );
-    expect(r.A.shuttle).toBe(150);
-    expect(r.B.shuttle).toBe(150);
+    expect([r.A.shuttle, r.B.shuttle, r.C.shuttle]).toEqual([20, 20, 20]);
+    expect(r.A.shuttle + r.B.shuttle + r.C.shuttle).toBe(60);
+  });
+
+  it("no matches → 0 (shuttle cost needs the rotation queue)", () => {
+    const r = byId(
+      computeClubSplit(base({ courtFee: 0, shuttleSplit: "even", shuttlePrice: 20, matches: [] })),
+    );
+    expect(r.A.shuttle).toBe(0);
+  });
+
+  it("price 0 → 0", () => {
+    const r = byId(
+      computeClubSplit(
+        base({
+          courtFee: 0,
+          shuttleSplit: "even",
+          shuttlePrice: 0,
+          matches: [{ playerIds: ["A", "B", "C"], shuttles: 5 }],
+        }),
+      ),
+    );
+    expect(r.A.shuttle).toBe(0);
+  });
+
+  it("rounds to whole baht preserving the collected total", () => {
+    // 1 shuttle × 20 = 20 ÷ 3 = 6.67 each → rounds, remainder on largest, sum 20.
+    const sum = computeClubSplit(
+      base({
+        courtFee: 0,
+        shuttleSplit: "even",
+        shuttlePrice: 20,
+        matches: [{ playerIds: ["A"], shuttles: 1 }],
+      }),
+    ).reduce((s, r) => s + r.shuttle, 0);
+    expect(sum).toBe(20);
   });
 });
 
 describe("computeClubSplit — combined + rounding", () => {
-  it("court by_time + shuttle by_games totals reconcile to 1020", () => {
-    const rows = computeClubSplit(base({ courtSplit: "by_time", shuttleSplit: "by_games" }));
+  it("court by_time + shuttle per_match totals reconcile", () => {
+    // court by_time → A 200, B 200, C 320 (720). shuttle per_match: one match
+    // {A,B,C} × 3 shuttles × 20 = 60 total ÷ 3 players = 20 each.
+    const rows = computeClubSplit(
+      base({
+        courtSplit: "by_time",
+        shuttleSplit: "per_match",
+        shuttlePrice: 20,
+        matches: [{ playerIds: ["A", "B", "C"], shuttles: 3 }],
+      }),
+    );
     const r = byId(rows);
-    expect(r.A.total).toBe(200 + 73);
-    expect(r.B.total).toBe(200 + 91);
-    expect(r.C.total).toBe(320 + 136);
-    const grand = rows.reduce((s, x) => s + x.total, 0);
-    expect(grand).toBe(720 + 300);
+    expect(r.A.total).toBe(200 + 20);
+    expect(r.B.total).toBe(200 + 20);
+    expect(r.C.total).toBe(320 + 20);
+    expect(rows.reduce((s, x) => s + x.total, 0)).toBe(720 + 60);
   });
 
   it("rounding remainder lands on the largest payer, bucket sum exact", () => {
