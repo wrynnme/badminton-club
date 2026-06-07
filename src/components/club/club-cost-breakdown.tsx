@@ -1,10 +1,22 @@
-import { computeClubSplit } from "@/lib/club/cost-split";
+"use client";
+
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
+import { computeClubSplit, computeExpenseShares } from "@/lib/club/cost-split";
+import { updateClubPlayerDiscountAction } from "@/lib/actions/clubs";
 import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
+import type { ClubExpense } from "@/lib/actions/clubs";
 
 type Props = {
   club: Club;
   players: ClubPlayer[];
   matches: ClubMatch[];
+  expenses: ClubExpense[];
+  canManage: boolean;
+  clubId: string;
 };
 
 const SPLIT_LABEL: Record<string, string> = {
@@ -20,14 +32,83 @@ const GAP_LABEL: Record<string, string> = {
   ignore: "ไม่คิด",
 };
 
-export function ClubCostBreakdown({ club, players, matches }: Props) {
+// ─── Editable discount cell (one per player row) ──────────────────────────────
+
+function DiscountCell({
+  clubId,
+  playerId,
+  initialDiscount,
+  canManage,
+}: {
+  clubId: string;
+  playerId: string;
+  initialDiscount: number;
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const [value, setValue] = useState(initialDiscount);
+  const [pending, start] = useTransition();
+
+  function handleBlur() {
+    if (value === initialDiscount) return; // skip unchanged
+    start(async () => {
+      const res = await updateClubPlayerDiscountAction(clubId, playerId, value);
+      if ("error" in res) {
+        toast.error(res.error);
+        setValue(initialDiscount); // revert on error
+      } else {
+        router.refresh();
+      }
+    });
+  }
+
+  if (!canManage) {
+    return (
+      <td className="py-1.5 px-2 text-right tabular-nums">
+        {value.toLocaleString()}
+      </td>
+    );
+  }
+
+  return (
+    <td className="py-1.5 px-2 text-right tabular-nums">
+      <div className="flex items-center justify-end gap-1">
+        {pending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+        <Input
+          type="number"
+          min={0}
+          value={value}
+          disabled={pending}
+          onChange={(e) => setValue(Math.max(0, parseFloat(e.target.value) || 0))}
+          onBlur={handleBlur}
+          className="h-6 w-[72px] text-xs text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none px-1.5"
+        />
+      </div>
+    </td>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
+
+export function ClubCostBreakdown({
+  club,
+  players,
+  matches,
+  expenses,
+  canManage,
+  clubId,
+}: Props) {
   // per_match mode: shuttle_fee can be 0; cost comes from shuttle_price × shuttles
   const hasShuttle =
     club.shuttle_fee > 0 ||
     (club.shuttle_split === "per_match" && club.shuttle_price > 0);
   const hasCourt = club.court_fee > 0;
+  // Personal expenses / discounts also warrant the breakdown (their per-player
+  // shares feed the grand total even without court/shuttle fees).
+  const hasExpense =
+    expenses.some((e) => Number(e.amount) > 0) || players.some((p) => p.discount > 0);
 
-  if (!hasCourt && !hasShuttle) {
+  if (!hasCourt && !hasShuttle && !hasExpense) {
     return (
       <p className="text-sm text-muted-foreground">ยังไม่ได้ตั้งค่าใช้จ่าย</p>
     );
@@ -79,10 +160,33 @@ export function ClubCostBreakdown({ club, players, matches }: Props) {
     ownerId: ownerPlayerId,
   });
 
-  // Footer sums from actual rows (correct under gapPolicy="ignore" which under-collects)
+  // Personal expense shares per player
+  const expShare = computeExpenseShares(
+    players.map((p) => p.id),
+    expenses.map((e) => ({
+      amount: Number(e.amount),
+      payerPlayerIds: e.payer_player_ids,
+    }))
+  );
+
+  // Build a discount lookup from players (initialised from DB; editable cells manage own state)
+  const discountById = new Map<string, number>(
+    players.map((p) => [p.id, p.discount ?? 0])
+  );
+
+  // Per-player grand total: court + shuttle + personalExpense − discount, floored at 0
+  const playerTotals = rows.map((row) => {
+    const exp = expShare.get(row.playerId) ?? 0;
+    const disc = discountById.get(row.playerId) ?? 0;
+    return Math.max(0, row.court + row.shuttle + exp - disc);
+  });
+
+  // Footer sums from actual row values
   const totalCourt = rows.reduce((s, r) => s + r.court, 0);
   const totalShuttle = rows.reduce((s, r) => s + r.shuttle, 0);
-  const grandTotal = rows.reduce((s, r) => s + r.total, 0);
+  const totalExp = [...expShare.values()].reduce((s, v) => s + v, 0);
+  const totalDiscount = players.reduce((s, p) => s + (p.discount ?? 0), 0);
+  const grandTotal = playerTotals.reduce((s, v) => s + v, 0);
 
   const splitDesc = [
     hasCourt
@@ -120,32 +224,51 @@ export function ClubCostBreakdown({ club, players, matches }: Props) {
                   ค่าลูก
                 </th>
               )}
+              <th className="text-right py-1.5 px-2 font-medium tabular-nums">
+                ค่าใช้จ่ายส่วนบุคคล
+              </th>
+              <th className="text-right py-1.5 px-2 font-medium tabular-nums">
+                ส่วนลด
+              </th>
               <th className="text-right py-1.5 pl-2 font-medium tabular-nums">
                 รวม
               </th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.playerId} className="border-b last:border-0">
-                <td className="py-1.5 pr-3 font-medium">
-                  {nameById.get(row.playerId) ?? row.playerId}
-                </td>
-                {hasCourt && (
-                  <td className="py-1.5 px-2 text-right tabular-nums">
-                    {row.court.toLocaleString()}
+            {rows.map((row, i) => {
+              const exp = expShare.get(row.playerId) ?? 0;
+              const playerTotal = playerTotals[i];
+              return (
+                <tr key={row.playerId} className="border-b last:border-0">
+                  <td className="py-1.5 pr-3 font-medium">
+                    {nameById.get(row.playerId) ?? row.playerId}
                   </td>
-                )}
-                {hasShuttle && (
+                  {hasCourt && (
+                    <td className="py-1.5 px-2 text-right tabular-nums">
+                      {row.court.toLocaleString()}
+                    </td>
+                  )}
+                  {hasShuttle && (
+                    <td className="py-1.5 px-2 text-right tabular-nums">
+                      {row.shuttle.toLocaleString()}
+                    </td>
+                  )}
                   <td className="py-1.5 px-2 text-right tabular-nums">
-                    {row.shuttle.toLocaleString()}
+                    {exp.toLocaleString()}
                   </td>
-                )}
-                <td className="py-1.5 pl-2 text-right font-semibold tabular-nums">
-                  {row.total.toLocaleString()}
-                </td>
-              </tr>
-            ))}
+                  <DiscountCell
+                    clubId={clubId}
+                    playerId={row.playerId}
+                    initialDiscount={discountById.get(row.playerId) ?? 0}
+                    canManage={canManage}
+                  />
+                  <td className="py-1.5 pl-2 text-right font-semibold tabular-nums">
+                    {playerTotal.toLocaleString()}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
           <tfoot>
             <tr className="border-t-2 font-semibold">
@@ -160,6 +283,12 @@ export function ClubCostBreakdown({ club, players, matches }: Props) {
                   {totalShuttle.toLocaleString()}
                 </td>
               )}
+              <td className="py-1.5 px-2 text-right tabular-nums text-sm">
+                {totalExp.toLocaleString()}
+              </td>
+              <td className="py-1.5 px-2 text-right tabular-nums text-sm">
+                {totalDiscount.toLocaleString()}
+              </td>
               <td className="py-1.5 pl-2 text-right tabular-nums text-sm">
                 {grandTotal.toLocaleString()} ฿
               </td>

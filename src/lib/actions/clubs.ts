@@ -1330,3 +1330,65 @@ export async function deleteLevelAction(
   revalidatePath("/clubs", "layout");
   return { ok: true };
 }
+
+// ─── Per-player discount + guest rename ───────────────────────────────────────
+
+/** Owner / co-admin sets a player's discount (subtracted from the cost breakdown total). */
+export async function updateClubPlayerDiscountAction(
+  clubId: string,
+  playerId: string,
+  discount: number,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const d = Number(discount);
+  if (!Number.isFinite(d) || d < 0 || d > 1_000_000) return { error: "ส่วนลดไม่ถูกต้อง" };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const { error } = await sb
+    .from("club_players")
+    .update({ discount: d })
+    .eq("id", playerId)
+    .eq("club_id", clubId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
+/** Owner / co-admin renames a guest player (profile_id IS NULL — LINE players keep their account name). */
+export async function renameClubGuestAction(
+  clubId: string,
+  playerId: string,
+  displayName: string,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const name = displayName.trim();
+  if (name.length < 1 || name.length > 60) return { error: "ชื่อยาว 1–60 ตัวอักษร" };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const { data: player, error: fetchError } = await sb
+    .from("club_players")
+    .select("id, profile_id")
+    .eq("id", playerId)
+    .eq("club_id", clubId)
+    .single();
+  if (fetchError || !player) return { error: "ไม่พบผู้เล่น" };
+  if (player.profile_id) return { error: "แก้ชื่อได้เฉพาะผู้เล่น guest" };
+
+  const { error } = await sb
+    .from("club_players")
+    .update({ display_name: name })
+    .eq("id", playerId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}

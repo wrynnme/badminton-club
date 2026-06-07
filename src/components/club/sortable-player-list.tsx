@@ -25,9 +25,10 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Pencil } from "lucide-react";
 import { LeaveButton } from "@/components/club/leave-button";
 import { KickButton } from "@/components/club/kick-button";
-import { reorderPlayersAction, toggleCheckInAction, updateClubPlayerSessionAction } from "@/lib/actions/clubs";
+import { reorderPlayersAction, toggleCheckInAction, updateClubPlayerSessionAction, renameClubGuestAction } from "@/lib/actions/clubs";
 import type { ClubPlayer, Level } from "@/lib/types";
 
 type Props = {
@@ -231,6 +232,92 @@ function SessionEditor({
   );
 }
 
+// ─── Rename control (guests only, canManage only) ─────────────────────────────
+// Pencil button renders inline in the main row; the edit form expands as a
+// sub-row below it (same pattern as SessionEditor).
+
+function RenameButton({ onOpen }: { onOpen: () => void }) {
+  return (
+    <Button
+      size="xs"
+      variant="ghost"
+      className="text-muted-foreground h-6 w-6 p-0"
+      onClick={onOpen}
+      title="แก้ไขชื่อ"
+      type="button"
+    >
+      <Pencil className="h-3 w-3" />
+    </Button>
+  );
+}
+
+function RenameForm({
+  player,
+  clubId,
+  onClose,
+}: {
+  player: ClubPlayer;
+  clubId: string;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [value, setValue] = useState(player.display_name);
+  const [pending, start] = useTransition();
+
+  function handleSave() {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    start(async () => {
+      const res = await renameClubGuestAction(clubId, player.id, trimmed);
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        router.refresh();
+        onClose();
+      }
+    });
+  }
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-end gap-2 rounded-md border bg-muted/30 p-2 text-xs">
+      <div className="flex flex-col gap-0.5 flex-1 min-w-[140px]">
+        <Label className="text-[10px] text-muted-foreground">ชื่อ</Label>
+        <Input
+          autoFocus
+          value={value}
+          maxLength={60}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") handleSave();
+            if (e.key === "Escape") onClose();
+          }}
+          className="h-7 text-xs"
+        />
+      </div>
+      <div className="flex items-end gap-1 pb-0.5">
+        <Button
+          type="button"
+          size="xs"
+          disabled={pending || !value.trim()}
+          onClick={handleSave}
+          className="h-7 text-xs"
+        >
+          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : "บันทึก"}
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          className="h-7 text-xs"
+          onClick={onClose}
+        >
+          ยกเลิก
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Sortable row ─────────────────────────────────────────────────────────────
 
 function SortableItem({
@@ -265,6 +352,8 @@ function SortableItem({
 
   const isSelf = sessionProfileId === player.profile_id;
   const isCheckedIn = !!player.checked_in_at;
+  const isGuest = player.profile_id == null;
+  const [renameOpen, setRenameOpen] = useState(false);
 
   // Partial session: player's effective window differs from the club's full window.
   const cs = sessionStart?.slice(0, 5);
@@ -296,6 +385,9 @@ function SortableItem({
         )}
         <span className="text-muted-foreground w-6 tabular-nums">{index + 1}.</span>
         <span className="font-medium">{player.display_name}</span>
+        {canManage && isGuest && (
+          <RenameButton onOpen={() => setRenameOpen(true)} />
+        )}
         {(() => {
           const label = player.level_id ? levelById?.get(player.level_id)?.label : undefined;
           return label ? <Badge variant="outline">{label}</Badge> : null;
@@ -318,6 +410,15 @@ function SortableItem({
           {canManage && !isSelf && <KickButton clubId={clubId} playerId={player.id} playerName={player.display_name} />}
         </span>
       </div>
+
+      {/* Guest rename form — expands below main row */}
+      {canManage && isGuest && renameOpen && (
+        <RenameForm
+          player={player}
+          clubId={clubId}
+          onClose={() => setRenameOpen(false)}
+        />
+      )}
 
       {/* Partial-session label under the name (shown to everyone) */}
       {isPartial && (

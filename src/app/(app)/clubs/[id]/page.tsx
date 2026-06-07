@@ -227,7 +227,7 @@ export default async function ClubDetailPage({
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
                       <Wallet className="h-4 w-4" />
-                      ค่าใช้จ่าย
+                      ค่าใช้จ่ายส่วนบุคคล
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -257,12 +257,21 @@ export default async function ClubDetailPage({
 
               {(club.court_fee > 0 ||
                 club.shuttle_fee > 0 ||
-                (club.shuttle_split === "per_match" && club.shuttle_price > 0)) ? (
+                (club.shuttle_split === "per_match" && club.shuttle_price > 0) ||
+                expenses.length > 0 ||
+                players.some((p) => p.discount > 0)) ? (
                 <section className="space-y-2">
                   <h2 className="font-semibold">สรุปค่าใช้จ่าย</h2>
                   <Card>
                     <CardContent className="pt-4">
-                      <ClubCostBreakdown club={club} players={players} matches={clubMatches} />
+                      <ClubCostBreakdown
+                        club={club}
+                        players={players}
+                        matches={clubMatches}
+                        expenses={expenses}
+                        canManage={canManage}
+                        clubId={club.id}
+                      />
                     </CardContent>
                   </Card>
                 </section>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeClubSplit, type SplitInput } from "@/lib/club/cost-split";
+import { computeClubSplit, computeExpenseShares, type SplitInput } from "@/lib/club/cost-split";
 
 // Anchor fixture from spec.md worked example: session 18:00–21:00,
 // A(18–20), B(19–21), C(18–21); court 720, shuttle 300; games 8/10/15.
@@ -326,5 +326,44 @@ describe("computeClubSplit — shuttle per_player (full, no division)", () => {
   it("no matches → 0", () => {
     const r = byId(computeClubSplit(pp({ matches: [] })));
     expect(r.A.shuttle).toBe(0);
+  });
+});
+
+describe("computeExpenseShares (personal expense rollup)", () => {
+  const ids = (m: Map<string, number>) => Object.fromEntries(m);
+
+  it("no designated payers → split ceil among all", () => {
+    const r = ids(computeExpenseShares(["A", "B", "C"], [{ amount: 300, payerPlayerIds: [] }]));
+    expect([r.A, r.B, r.C]).toEqual([100, 100, 100]);
+  });
+
+  it("designated payers only", () => {
+    const r = ids(computeExpenseShares(["A", "B", "C"], [{ amount: 100, payerPlayerIds: ["A"] }]));
+    expect([r.A, r.B, r.C]).toEqual([100, 0, 0]);
+  });
+
+  it("ceil per head among designated", () => {
+    const r = ids(computeExpenseShares(["A", "B", "C"], [{ amount: 90, payerPlayerIds: ["A", "B"] }]));
+    expect([r.A, r.B, r.C]).toEqual([45, 45, 0]);
+  });
+
+  it("accumulates across expenses", () => {
+    const r = ids(
+      computeExpenseShares(["A", "B", "C"], [
+        { amount: 300, payerPlayerIds: [] },
+        { amount: 100, payerPlayerIds: ["A"] },
+      ]),
+    );
+    expect([r.A, r.B, r.C]).toEqual([200, 100, 100]);
+  });
+
+  it("skips zero amount + ignores unknown payer ids", () => {
+    const r = ids(
+      computeExpenseShares(["A", "B"], [
+        { amount: 0, payerPlayerIds: [] },
+        { amount: 50, payerPlayerIds: ["A", "X"] }, // X not a player → split among A only
+      ]),
+    );
+    expect([r.A, r.B]).toEqual([50, 0]);
   });
 });

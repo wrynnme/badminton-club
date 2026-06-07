@@ -59,6 +59,7 @@ export type ClubPlayer = {
   end_time: string | null;
   games_played: number; // manual pre-queue fallback; auto-incremented from completed club_matches once rotation queue is used
   last_finished_at: string | null; // ISO; rest-ordering input for queue_mode='rest_longest'
+  discount: number; // per-player discount subtracted from the cost-breakdown grand total
 };
 
 // Locked pair: two players forced to be teammates by the rotation queue.

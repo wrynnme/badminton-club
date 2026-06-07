@@ -191,3 +191,27 @@ export function computeClubSplit(input: SplitInput): SplitRow[] {
     return { playerId: p.id, court: c, shuttle: s, total: c + s };
   });
 }
+
+/** One itemized club expense: empty payerPlayerIds = charged to ALL players. */
+export type ExpenseShareInput = { amount: number; payerPlayerIds: string[] };
+
+/**
+ * Per-player personal-expense total ("ค่าใช้จ่ายส่วนบุคคล"). Each expense is split
+ * ceil-per-head among its designated payers (or all players when none designated).
+ * Mirrors the ExpenseManager rollup so the cost breakdown reconciles with it.
+ */
+export function computeExpenseShares(
+  allPlayerIds: string[],
+  expenses: ExpenseShareInput[],
+): Map<string, number> {
+  const out = new Map<string, number>(allPlayerIds.map((id) => [id, 0]));
+  for (const e of expenses) {
+    if (e.amount <= 0) continue;
+    const designated = e.payerPlayerIds.length ? e.payerPlayerIds : allPlayerIds;
+    const payers = designated.filter((id) => out.has(id));
+    if (payers.length === 0) continue;
+    const perHead = Math.ceil(e.amount / payers.length);
+    for (const id of payers) out.set(id, (out.get(id) ?? 0) + perHead);
+  }
+  return out;
+}
