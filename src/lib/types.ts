@@ -49,8 +49,7 @@ export type ClubPlayer = {
   club_id: string;
   profile_id: string | null;
   display_name: string;
-  level: string | null; // legacy free-text label (fallback); source of truth = level_id
-  level_id: string | null; // FK → levels
+  level_id: string | null; // FK → levels (skill level)
   note: string | null;
   joined_at: string;
   position: number | null;

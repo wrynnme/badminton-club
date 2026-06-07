@@ -297,9 +297,7 @@ function SortableItem({
         <span className="text-muted-foreground w-6 tabular-nums">{index + 1}.</span>
         <span className="font-medium">{player.display_name}</span>
         {(() => {
-          const label = player.level_id
-            ? levelById?.get(player.level_id)?.label
-            : player.level ?? undefined;
+          const label = player.level_id ? levelById?.get(player.level_id)?.label : undefined;
           return label ? <Badge variant="outline">{label}</Badge> : null;
         })()}
         {player.note && (

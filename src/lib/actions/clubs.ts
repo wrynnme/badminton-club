@@ -89,7 +89,6 @@ export async function updateClubAction(input: UpdateClubInput) {
 const JoinSchema = z.object({
   club_id: z.string().uuid(),
   display_name: z.string().min(2, "ชื่อสั้นไป"),
-  level: z.string().optional().nullable(),
   level_id: z.string().uuid().optional().nullable(),
   note: z.string().optional().nullable(),
 });
@@ -127,7 +126,6 @@ export async function joinClubAction(input: JoinClubInput) {
     club_id: parsed.data.club_id,
     profile_id: session.profileId,
     display_name: parsed.data.display_name,
-    level: parsed.data.level || null,
     level_id: parsed.data.level_id || null,
     note: parsed.data.note || null,
     position: (count ?? 0) + 1,
@@ -145,7 +143,6 @@ export async function joinClubAction(input: JoinClubInput) {
 const GuestSchema = z.object({
   club_id: z.string().uuid(),
   display_name: z.string().min(1, "ระบุชื่อ").max(60, "ชื่อยาวเกินไป"),
-  level: z.string().optional().nullable(),
   level_id: z.string().uuid().optional().nullable(),
   note: z.string().optional().nullable(),
 });
@@ -191,7 +188,6 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
     club_id: parsed.data.club_id,
     profile_id: null,
     display_name: parsed.data.display_name.trim(),
-    level: parsed.data.level || null,
     level_id: parsed.data.level_id || null,
     note: parsed.data.note || null,
     position: (count ?? 0) + 1,
@@ -702,7 +698,7 @@ export async function buildNextClubMatchAction(
   // level kept as a fallback for any unmigrated row).
   const { data: allPlayers, error: playersFetchError } = await sb
     .from("club_players")
-    .select("id, position, joined_at, level, level_id, games_played, last_finished_at, checked_in_at, levels:level_id(real)")
+    .select("id, position, joined_at, level_id, games_played, last_finished_at, checked_in_at, levels:level_id(real)")
     .eq("club_id", clubId);
   if (playersFetchError || !allPlayers) return { error: "โหลดผู้เล่นไม่สำเร็จ" };
 
@@ -740,9 +736,6 @@ export async function buildNextClubMatchAction(
     let level: number | null = null;
     if (lvRow?.real != null) {
       const r = Number(lvRow.real);
-      level = Number.isNaN(r) ? null : r;
-    } else if (p.level != null && p.level !== "") {
-      const r = parseFloat(p.level);
       level = Number.isNaN(r) ? null : r;
     }
     return {

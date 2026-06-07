@@ -19,7 +19,6 @@ import { HourlyHeadcount } from "@/components/club/hourly-headcount";
 import { ClubQueueSettings } from "@/components/club/club-queue-settings";
 import { ClubQueuePanel } from "@/components/club/club-queue-panel";
 import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
-import { ClubLevelsManager } from "@/components/club/club-levels-manager";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
 import type { ClubExpense, ClubAdmin } from "@/lib/actions/clubs";
 import type { ClubMatch, ClubLockedPair, Level } from "@/lib/types";
@@ -278,7 +277,6 @@ export default async function ClubDetailPage({
             <div className="space-y-4">
               {isOwner && <EditClubForm club={club} />}
               {canManage && <ClubQueueSettings clubId={club.id} initial={queueSettings} />}
-              {canManage && <ClubLevelsManager levels={levels} />}
               {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}
             </div>
           }
