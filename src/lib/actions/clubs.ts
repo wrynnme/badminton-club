@@ -204,7 +204,6 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
 const CostConfigSchema = z.object({
   court_fee: z.coerce.number().min(0).max(1_000_000),
   court_split: z.enum(["even", "by_time"]),
-  shuttle_fee: z.coerce.number().min(0).max(1_000_000),
   shuttle_split: z.enum(["even", "per_match", "per_player"]),
   shuttle_price: z.coerce.number().min(0).max(100_000),
   court_gap_policy: z.enum(["spread", "owner", "ignore"]),
@@ -325,6 +324,28 @@ async function assertCanManageClub(sb: Awaited<ReturnType<typeof createAdminClie
   if (!data) return false;
   const admins = (data.club_admins ?? []) as { user_id: string }[];
   return data.owner_id === profileId || admins.length > 0;
+}
+
+/**
+ * Fetch a club_match by id + verify the caller can manage its club. Shared by the
+ * match-lifecycle actions (start / finish / cancel / shuttles / delete) to replace
+ * the repeated fetch → not-found → assertCanManageClub block.
+ */
+async function loadClubMatchForManage(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  matchId: string,
+  profileId: string,
+): Promise<{ match: { id: string; club_id: string } } | { error: string }> {
+  const { data: match, error } = await sb
+    .from("club_matches")
+    .select("id, club_id")
+    .eq("id", matchId)
+    .single();
+  if (error || !match) return { error: "ไม่พบแมตช์" };
+  if (!(await assertCanManageClub(sb, match.club_id, profileId))) {
+    return { error: "ไม่มีสิทธิ์" };
+  }
+  return { match };
 }
 
 export async function addExpenseAction(input: { club_id: string; label: string; amount: number; payer_player_ids?: string[] }) {
@@ -702,8 +723,7 @@ export async function buildNextClubMatchAction(
   if (clubFetchError || !clubRow) return { error: "ไม่พบก๊วนนี้" };
   const settings = parseQueueSettings(clubRow.queue_settings);
 
-  // Load all players for this club (level resolved via the levels FK; legacy text
-  // level kept as a fallback for any unmigrated row).
+  // Load all players for this club (level resolved via the levels FK).
   const { data: allPlayers, error: playersFetchError } = await sb
     .from("club_players")
     .select("id, position, joined_at, level_id, games_played, last_finished_at, checked_in_at, levels:level_id(real)")
@@ -737,8 +757,7 @@ export async function buildNextClubMatchAction(
     return true;
   });
 
-  // Map to QueuePlayer. Level = levels.real (via FK embed), falling back to the
-  // legacy text level for any unmigrated row. NaN → null.
+  // Map to QueuePlayer. Level = levels.real (via FK embed); NaN → null.
   const toQueuePlayer = (p: (typeof eligiblePlayers)[number]): QueuePlayer => {
     const lvRow = Array.isArray(p.levels) ? p.levels[0] : p.levels;
     let level: number | null = null;
@@ -883,15 +902,9 @@ export async function startClubMatchAction(
 
   const sb = await createAdminClient();
 
-  // Fetch the match first to get club_id for auth.
-  const { data: match, error: fetchError } = await sb
-    .from("club_matches")
-    .select("id, club_id, status")
-    .eq("id", matchId)
-    .single();
-  if (fetchError || !match) return { error: "ไม่พบแมตช์" };
-
-  if (!(await assertCanManageClub(sb, match.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const guard = await loadClubMatchForManage(sb, matchId, session.profileId);
+  if ("error" in guard) return { error: guard.error };
+  const { match } = guard;
 
   const { error: updateError } = await sb
     .from("club_matches")
@@ -924,14 +937,9 @@ export async function finishClubMatchAction(input: {
 
   const sb = await createAdminClient();
 
-  const { data: match, error: fetchError } = await sb
-    .from("club_matches")
-    .select("id, club_id")
-    .eq("id", input.matchId)
-    .single();
-  if (fetchError || !match) return { error: "ไม่พบแมตช์" };
-
-  if (!(await assertCanManageClub(sb, match.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const guard = await loadClubMatchForManage(sb, input.matchId, session.profileId);
+  if ("error" in guard) return { error: guard.error };
+  const { match } = guard;
 
   const { error: rpcError } = await sb.rpc("finish_club_match", {
     p_match_id: input.matchId,
@@ -956,14 +964,9 @@ export async function cancelClubMatchAction(
 
   const sb = await createAdminClient();
 
-  const { data: match, error: fetchError } = await sb
-    .from("club_matches")
-    .select("id, club_id")
-    .eq("id", matchId)
-    .single();
-  if (fetchError || !match) return { error: "ไม่พบแมตช์" };
-
-  if (!(await assertCanManageClub(sb, match.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const guard = await loadClubMatchForManage(sb, matchId, session.profileId);
+  if ("error" in guard) return { error: guard.error };
+  const { match } = guard;
 
   const { error: updateError } = await sb
     .from("club_matches")
@@ -1080,14 +1083,9 @@ export async function setClubMatchShuttlesAction(
   if (!Number.isFinite(n) || n < 0 || n > 99) return { error: "จำนวนลูกไม่ถูกต้อง" };
 
   const sb = await createAdminClient();
-  const { data: match, error: fetchError } = await sb
-    .from("club_matches")
-    .select("id, club_id")
-    .eq("id", matchId)
-    .single();
-  if (fetchError || !match) return { error: "ไม่พบแมตช์" };
-
-  if (!(await assertCanManageClub(sb, match.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const guard = await loadClubMatchForManage(sb, matchId, session.profileId);
+  if ("error" in guard) return { error: guard.error };
+  const { match } = guard;
 
   const { error: updateError } = await sb
     .from("club_matches")
@@ -1200,13 +1198,19 @@ export async function reorderClubQueueAction(
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
-  for (let i = 0; i < orderedIds.length; i++) {
-    const { error } = await sb
-      .from("club_matches")
-      .update({ queue_position: i + 1 })
-      .eq("id", orderedIds[i])
-      .eq("club_id", clubId)
-      .eq("status", "pending");
+  // Renumber pending matches in parallel (independent updates) — mirrors
+  // reorderPlayersAction; avoids N sequential round-trips on every drag.
+  const results = await Promise.all(
+    orderedIds.map((id, i) =>
+      sb
+        .from("club_matches")
+        .update({ queue_position: i + 1 })
+        .eq("id", id)
+        .eq("club_id", clubId)
+        .eq("status", "pending"),
+    ),
+  );
+  for (const { error } of results) {
     if (error) return { error: error.message };
   }
 
@@ -1229,14 +1233,9 @@ export async function deleteClubMatchAction(
 
   const sb = await createAdminClient();
 
-  const { data: match, error: fetchError } = await sb
-    .from("club_matches")
-    .select("id, club_id")
-    .eq("id", matchId)
-    .single();
-  if (fetchError || !match) return { error: "ไม่พบแมตช์" };
-
-  if (!(await assertCanManageClub(sb, match.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const guard = await loadClubMatchForManage(sb, matchId, session.profileId);
+  if ("error" in guard) return { error: guard.error };
+  const { match } = guard;
 
   const { error: rpcError } = await sb.rpc("delete_club_match", { p_match_id: matchId });
   if (rpcError) return { error: rpcError.message };

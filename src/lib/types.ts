@@ -23,9 +23,8 @@ export type Club = {
   // Cost split (per-bucket, independently configurable)
   court_fee: number;
   court_split: CourtSplit;
-  shuttle_fee: number;
   shuttle_split: ShuttleSplit;
-  shuttle_price: number; // price per shuttle, used when shuttle_split = "per_match"
+  shuttle_price: number; // price per shuttle — drives cost for all shuttle_split modes
   court_gap_policy: GapPolicy;
   // Rotation-queue config (raw jsonb; parse via parseQueueSettings in queue-settings.ts)
   queue_settings: Record<string, unknown>;

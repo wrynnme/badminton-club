@@ -16,7 +16,6 @@ type Props = {
   initial: {
     court_fee: number;
     court_split: CourtSplit;
-    shuttle_fee: number;
     shuttle_split: ShuttleSplit;
     shuttle_price: number;
     court_gap_policy: GapPolicy;
@@ -29,7 +28,6 @@ export function ClubCostManager({ clubId, initial }: Props) {
 
   const [courtFee, setCourtFee] = useState(initial.court_fee);
   const [courtSplit, setCourtSplit] = useState<CourtSplit>(initial.court_split);
-  const [shuttleFee, setShuttleFee] = useState(initial.shuttle_fee);
   const [shuttleSplit, setShuttleSplit] = useState<ShuttleSplit>(initial.shuttle_split);
   const [shuttlePrice, setShuttlePrice] = useState(initial.shuttle_price);
   const [gapPolicy, setGapPolicy] = useState<GapPolicy>(initial.court_gap_policy);
@@ -39,7 +37,6 @@ export function ClubCostManager({ clubId, initial }: Props) {
       const res = await updateClubCostConfigAction(clubId, {
         court_fee: courtFee,
         court_split: courtSplit,
-        shuttle_fee: shuttleFee,
         shuttle_split: shuttleSplit,
         shuttle_price: shuttlePrice,
         court_gap_policy: gapPolicy,

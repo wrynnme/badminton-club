@@ -12,7 +12,6 @@ function base(overrides: Partial<SplitInput> = {}): SplitInput {
     players: [A, B, C],
     courtFee: 720,
     courtSplit: "even",
-    shuttleFee: 300,
     shuttleSplit: "even",
     sessionStart: "18:00",
     sessionEnd: "21:00",
@@ -26,7 +25,7 @@ const byId = (rows: ReturnType<typeof computeClubSplit>) =>
 
 describe("computeClubSplit — court", () => {
   it("even: 720 / 3 = 240 each", () => {
-    const r = byId(computeClubSplit(base({ shuttleFee: 0 })));
+    const r = byId(computeClubSplit(base()));
     expect(r.A.court).toBe(240);
     expect(r.B.court).toBe(240);
     expect(r.C.court).toBe(240);
@@ -34,7 +33,7 @@ describe("computeClubSplit — court", () => {
   });
 
   it("by_time: segment split → A 200, B 200, C 320 (spec example)", () => {
-    const r = byId(computeClubSplit(base({ courtSplit: "by_time", shuttleFee: 0 })));
+    const r = byId(computeClubSplit(base({ courtSplit: "by_time" })));
     expect(r.A.court).toBe(200);
     expect(r.B.court).toBe(200);
     expect(r.C.court).toBe(320);
@@ -47,7 +46,6 @@ describe("computeClubSplit — court", () => {
       computeClubSplit(
         base({
           courtSplit: "by_time",
-          shuttleFee: 0,
           players: [{ id: "A", start: "17:00", end: "22:00", games: 1 }],
         }),
       ),
@@ -61,7 +59,6 @@ describe("computeClubSplit — court", () => {
         base({
           courtSplit: "by_time",
           courtFee: 180,
-          shuttleFee: 0,
           players: [{ id: "A", start: "18:00", end: "19:00", games: 1 }],
         }),
       ),
@@ -79,7 +76,7 @@ describe("computeClubSplit — court gap policy", () => {
 
   it("spread: gap segment shared across all players", () => {
     const r = byId(
-      computeClubSplit(base({ players, courtSplit: "by_time", courtFee: 180, shuttleFee: 0 })),
+      computeClubSplit(base({ players, courtSplit: "by_time", courtFee: 180 })),
     );
     expect(r.A.court).toBe(90); // 60 own + 30 half-gap
     expect(r.B.court).toBe(90);
@@ -89,7 +86,7 @@ describe("computeClubSplit — court gap policy", () => {
   it("ignore: gap segment is not collected (under-collects)", () => {
     const r = byId(
       computeClubSplit(
-        base({ players, courtSplit: "by_time", courtFee: 180, shuttleFee: 0, gapPolicy: "ignore" }),
+        base({ players, courtSplit: "by_time", courtFee: 180, gapPolicy: "ignore" }),
       ),
     );
     expect(r.A.court).toBe(60);
@@ -104,7 +101,6 @@ describe("computeClubSplit — court gap policy", () => {
           players,
           courtSplit: "by_time",
           courtFee: 180,
-          shuttleFee: 0,
           gapPolicy: "owner",
           ownerId: "A",
         }),
@@ -191,7 +187,7 @@ describe("computeClubSplit — combined + rounding", () => {
 
   it("rounding remainder lands on the largest payer, bucket sum exact", () => {
     // courtFee 100 / 3 even = 33.33 each → rounds 33/33/33 = 99, remainder +1 → largest gets 34.
-    const rows = computeClubSplit(base({ courtFee: 100, courtSplit: "even", shuttleFee: 0 }));
+    const rows = computeClubSplit(base({ courtFee: 100, courtSplit: "even" }));
     const sum = rows.reduce((s, x) => s + x.court, 0);
     expect(sum).toBe(100);
     expect(rows.map((x) => x.court).sort((a, b) => a - b)).toEqual([33, 33, 34]);
@@ -203,7 +199,7 @@ describe("computeClubSplit — combined + rounding", () => {
   });
 
   it("zero fees → all zeros", () => {
-    const r = byId(computeClubSplit(base({ courtFee: 0, shuttleFee: 0 })));
+    const r = byId(computeClubSplit(base({ courtFee: 0 })));
     expect(r.A.total).toBe(0);
     expect(r.C.total).toBe(0);
   });
@@ -221,8 +217,7 @@ describe("computeClubSplit — shuttle per_match", () => {
       players: players4,
       courtFee: 0,
       courtSplit: "even",
-      shuttleFee: 0,
-      shuttleSplit: "per_match",
+        shuttleSplit: "per_match",
       shuttlePrice: 80,
       sessionStart: "18:00",
       sessionEnd: "21:00",
@@ -288,8 +283,7 @@ describe("computeClubSplit — shuttle per_player (full, no division)", () => {
       players: players4,
       courtFee: 0,
       courtSplit: "even",
-      shuttleFee: 0,
-      shuttleSplit: "per_player",
+        shuttleSplit: "per_player",
       shuttlePrice: 20,
       sessionStart: "18:00",
       sessionEnd: "21:00",

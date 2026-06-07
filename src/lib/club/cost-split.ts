@@ -1,6 +1,6 @@
 // Club cost split — pure, testable. Two independent buckets:
-//   court_fee   → split "even" | "by_time" (per-segment fair share by presence)
-//   shuttle_fee → split "even" | "by_games" (proportional to games played)
+//   court_fee    → split "even" | "by_time" (per-segment fair share by presence)
+//   shuttle (price × shuttles_used per match) → split "even" | "per_match" | "per_player"
 // See spec.md "ระบบคิดเงินก๊วน (Club cost split)".
 
 export type CourtSplit = "even" | "by_time";
@@ -27,7 +27,6 @@ export type SplitInput = {
   players: SplitPlayer[];
   courtFee: number;
   courtSplit: CourtSplit;
-  shuttleFee: number;
   shuttleSplit: ShuttleSplit;
   sessionStart: string;
   sessionEnd: string;

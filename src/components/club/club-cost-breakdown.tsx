@@ -22,8 +22,13 @@ type Props = {
 const SPLIT_LABEL: Record<string, string> = {
   even: "หารเท่า",
   by_time: "ตามเวลา",
-  by_games: "ตามเกม",
-  per_match: "หารตามแมตช์",
+};
+
+// Shuttle split mode labels — match the manager UI (commit 8d9e96c relabel).
+const SHUTTLE_SPLIT_LABEL: Record<string, string> = {
+  even: "หารเท่า",
+  per_match: "ต่อลูก",
+  per_player: "ต่อแมตช์",
 };
 
 const GAP_LABEL: Record<string, string> = {
@@ -158,7 +163,6 @@ export function ClubCostBreakdown({
     })),
     courtFee: club.court_fee,
     courtSplit: club.court_split,
-    shuttleFee: club.shuttle_fee,
     shuttleSplit: club.shuttle_split,
     shuttlePrice: club.shuttle_price,
     matches: splitMatches,
@@ -204,9 +208,7 @@ export function ClubCostBreakdown({
       ? `ช่วงว่าง: ${GAP_LABEL[club.court_gap_policy] ?? club.court_gap_policy}`
       : null,
     hasShuttle
-      ? club.shuttle_split === "per_match"
-        ? `ค่าลูก ${club.shuttle_price.toLocaleString()} ฿/ลูก · หารตามแมตช์`
-        : `ค่าลูก ${club.shuttle_fee.toLocaleString()} ฿ · ${SPLIT_LABEL[club.shuttle_split] ?? club.shuttle_split}`
+      ? `ค่าลูก ${club.shuttle_price.toLocaleString()} ฿/ลูก · ${SHUTTLE_SPLIT_LABEL[club.shuttle_split] ?? club.shuttle_split}`
       : null,
   ]
     .filter(Boolean)

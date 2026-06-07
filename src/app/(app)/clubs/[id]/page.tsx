@@ -247,7 +247,6 @@ export default async function ClubDetailPage({
                   initial={{
                     court_fee: club.court_fee,
                     court_split: club.court_split,
-                    shuttle_fee: club.shuttle_fee,
                     shuttle_split: club.shuttle_split,
                     shuttle_price: club.shuttle_price,
                     court_gap_policy: club.court_gap_policy,
