@@ -1168,3 +1168,38 @@ export async function createClubManualMatchAction(input: {
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true, match: newMatch as ClubMatch };
 }
+
+/**
+ * Owner / co-admin reorders the pending queue (drag-and-drop). Sets
+ * queue_position = 1..N in the given id order. Only touches pending rows of this
+ * club (in_progress/completed keep their slots). No DB unique constraint on
+ * queue_position, so a straight per-row update is safe (unlike the tournament
+ * RPC which guards a unique match_number).
+ */
+export async function reorderClubQueueAction(
+  clubId: string,
+  orderedIds: string[],
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
+    return { error: "ลำดับคิวไม่ถูกต้อง" };
+  }
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  for (let i = 0; i < orderedIds.length; i++) {
+    const { error } = await sb
+      .from("club_matches")
+      .update({ queue_position: i + 1 })
+      .eq("id", orderedIds[i])
+      .eq("club_id", clubId)
+      .eq("status", "pending");
+    if (error) return { error: error.message };
+  }
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}

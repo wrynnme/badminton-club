@@ -3,10 +3,8 @@
 import { fieldErrors } from "@/lib/form-errors";
 import * as React from "react";
 import * as z from "zod";
-import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
-import { Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -48,8 +46,6 @@ const TIME_PRESETS = [
 const MAX_PRESETS = [8, 10, 12, 16, 20];
 
 export function EditClubForm({ club }: { club: Club }) {
-  const [open, setOpen] = useState(false);
-
   const form = useForm({
     defaultValues: {
       name: club.name,
@@ -67,29 +63,14 @@ export function EditClubForm({ club }: { club: Club }) {
       if (res?.error) toast.error(res.error);
       else {
         toast.success("บันทึกแล้ว");
-        setOpen(false);
       }
     },
   });
 
-  if (!open) {
-    return (
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <Pencil className="h-3.5 w-3.5 mr-1.5" />
-        แก้ไขก๊วน
-      </Button>
-    );
-  }
-
   return (
     <Card>
       <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-base">แก้ไขข้อมูลก๊วน</CardTitle>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setOpen(false)}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
+        <CardTitle className="text-base">แก้ไขข้อมูลก๊วน</CardTitle>
       </CardHeader>
       <CardContent>
         <form
@@ -291,14 +272,9 @@ export function EditClubForm({ club }: { club: Club }) {
           <Field orientation="horizontal" className="mt-5">
             <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
               {([canSubmit, isSubmitting]) => (
-                <>
-                  <Button type="submit" disabled={!canSubmit || isSubmitting}>
-                    {isSubmitting ? "กำลังบันทึก..." : "บันทึก"}
-                  </Button>
-                  <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
-                    ยกเลิก
-                  </Button>
-                </>
+                <Button type="submit" disabled={!canSubmit || isSubmitting}>
+                  {isSubmitting ? "กำลังบันทึก..." : "บันทึก"}
+                </Button>
               )}
             </form.Subscribe>
           </Field>

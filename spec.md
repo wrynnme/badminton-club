@@ -327,11 +327,11 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **`assertClubOwner(sb, clubId, profileId)`** — owner-only check; `maybeSingle()`, throws on DB error
 - **`assertCanManageClub(sb, clubId, profileId)`** — owner OR co-admin; LEFT JOIN query `clubs ← club_admins[user_id=profileId]`; `maybeSingle()`, throws on DB error
 
-| Action                   | Owner | Co-Admin | Player |
-| ------------------------ | ----- | -------- | ------ |
-| เช็คอิน / Kick / Reorder | ✓     | ✓        | ✗      |
-| Edit club / Expenses     | ✓     | ✗        | ✗      |
-| Add/remove co-admins     | ✓     | ✗        | ✗      |
+| Action                                                      | Owner | Co-Admin | Player |
+| ----------------------------------------------------------- | ----- | -------- | ------ |
+| เช็คอิน / Kick / Reorder / Add guest                        | ✓     | ✓        | ✗      |
+| Edit club / Expenses / Cost config / Queue / Locked / Match | ✓     | ✓        | ✗      |
+| Add/remove co-admins / Share link                           | ✓     | ✗        | ✗      |
 
 ### Co-Admin
 
@@ -365,6 +365,22 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
   - `PlayerRollup` table — รวมยอดต่อหัวจาก payer assignment (ceil per head)
   - `router.refresh()` หลัง mutate
 - **Club detail page**: fetch parallel; รวมยอด `รวมค่าใช้จ่าย {total}` ใน info grid (ตัด per-person averaged line ทิ้ง — misleading เมื่อมี designated payers); fallback `total_cost` (legacy) ถ้า expenses ว่าง; ส่ง `players` prop เข้า `ExpenseManager`
+
+### Cost Split (court + shuttle) — ✅ DONE
+
+หาร 2 ก้อนแยกอิสระ (ดู design เต็มใน `## Todo`):
+- **DB** `clubs`: `court_fee` · `court_split` (`even`|`by_time`) · `shuttle_fee` · `shuttle_split` (`even`|`by_games`|`per_match`) · `shuttle_price` (ราคา/ลูก, ใช้กับ per_match) · `court_gap_policy` (`spread`|`owner`|`ignore`). `club_players`: `start_time`/`end_time` (time, null = ช่วงก๊วนเต็ม) · `games_played` · `last_finished_at`.
+- **Pure** `src/lib/club/cost-split.ts` `computeClubSplit(input)`: court `by_time` = segment ตามช่วงผู้เล่น; shuttle `by_games` = ตามเกม, `per_match` = Σ(`shuttles_used × shuttle_price ÷ คนในแมตช์`) จาก `matches`; whole-baht rounding (remainder → คนจ่ายมากสุด). 21 vitest.
+- **Actions**: `updateClubCostConfigAction` (`CostConfigSchema` incl. shuttle_price + per_match) · `updateClubPlayerSessionAction` (time/games).
+- **UI**: `club-cost-manager.tsx` (fees + split toggles + gap policy + per_match shuttle_price) · `club-cost-breakdown.tsx` (per-player table; รับ `matches` สำหรับ per_match) · session editor + partial-window label + `hourly-headcount.tsx` ใน `sortable-player-list`.
+
+### Rotation Queue + Locked Pairs + Manual Match — ✅ DONE
+
+- **DB**: `clubs.queue_settings jsonb` (parse via `src/lib/club/queue-settings.ts` `parseQueueSettings`, 8 fields: court_count, players_per_team 1|2, rotation_mode `fair_queue`|`winner_stays`, queue_mode `rest_longest`|`fifo`|`level_match`|`smart`, skill_level_enabled, game_time_limit_min, not_ready_action, winner_stays_max). `club_matches` (id, club_id FK CASCADE, court, **side_a_player1/2 + side_b_player1/2** FK club_players CASCADE [player2 null=singles], status pending/in_progress/completed/cancelled, queue_position, winner_side a/b, score_a/b, **shuttles_used** int default 1, started_at, ended_at; partial unique `(club_id,court) WHERE in_progress`). `club_locked_pairs` (player1/2 FK, `games_remaining` null=ตลอด/N=นับถอย; RLS read-all). RPC `finish_club_match` (atomic complete + games_played++ / last_finished_at + ลด N-game locks + auto-release).
+- **Pure** `src/lib/club/queue.ts` `buildNextMatch(pool, settings, stayingSide?, lockedPairs?)` — 4 queue_mode + winner_stays + skill-balanced split + locked-pair atomic side (strict wait) + singles ignore locks. 25 vitest.
+- **Actions** (owner/co-admin): `updateClubQueueSettingsAction` · `buildNextClubMatchAction` (pool + check-in gate + winner_stays streak + locks) · `startClubMatchAction` (court 23505 guard) · `finishClubMatchAction` (RPC) · `cancelClubMatchAction` · `setClubMatchShuttlesAction` · `createClubManualMatchAction` · `createClubLockedPairAction` / `releaseClubLockedPairAction`.
+- **UI**: `club-queue-settings.tsx` (7 ฟิลด์ debounce save) · `club-queue-panel.tsx` (Tabs รอ/กำลัง/จบ + per-court build + start/cancel/finish-winner + elapsed ticker + `ShuttleCounter` +/−ลูก + `ManualMatchDialog`) · `club-locked-pairs.tsx` (gated `players_per_team===2`). migrations `20260606000300` · `20260607000100/000200/000300`.
+- **Not built**: auto-rotate-all-courts, score entry (winner-only), not_ready/time_limit enforcement (hint), Realtime (manual refresh).
 
 ### Score Matrix View (2026-05-27)
 
@@ -566,7 +582,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 (Phase 12 DONE — see below.)
 
-### ระบบก๊วน (Club session) — create form + rotation queue + cost split  [Part A: foundation DONE, actions/UI PLANNED]
+### ระบบก๊วน (Club session) — create form + rotation queue + cost split  [✅ DONE — rotation queue + cost (court/shuttle/per_match) + locked pairs + manual match; canonical summary in `## Club System`]
 
 ก๊วนแบดแบบเล่นสนุก (casual session) — แยกจาก tournament. ตอนสร้างก๊วนมีฟอร์มตั้งค่า + ระบบหมุนคิว + หารค่าใช้จ่าย. ตั้งค่าทุกตัวแก้ได้ภายหลังในหน้า settings ของก๊วน.
 

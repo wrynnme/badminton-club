@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
 import { CalendarDays, Clock, MapPin, Users, Wallet } from "lucide-react";
@@ -5,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { ClubTabs } from "@/components/club/club-tabs";
 import { JoinForm } from "@/components/club/join-form";
 import { AddGuestPlayer } from "@/components/club/add-guest-player";
 import { EditClubForm } from "@/components/club/edit-club-form";
@@ -150,116 +151,129 @@ export default async function ClubDetailPage({
         </Card>
       )}
 
-      {isOwner && (
-        <div className="space-y-4">
-          <EditClubForm club={club} />
+      <Suspense fallback={null}>
+        <ClubTabs
+          showSettings={canManage}
+          checkin={
+            <div className="space-y-6">
+              <section className="space-y-3">
+                <h2 className="font-semibold">ลงชื่อเล่น</h2>
+                {!session ? (
+                  <p className="text-sm text-muted-foreground">
+                    <a href="/" className="underline">เข้าสู่ระบบ</a> ก่อนลงชื่อ
+                  </p>
+                ) : (
+                  <JoinForm
+                    clubId={club.id}
+                    defaultName={session.displayName}
+                    full={full}
+                    alreadyJoined={!!myRow}
+                  />
+                )}
+              </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Wallet className="h-4 w-4" />
-                ค่าใช้จ่าย
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ExpenseManager
+              <section className="space-y-2">
+                <h2 className="font-semibold">รายชื่อผู้เล่น ({joined})</h2>
+                {canManage && <AddGuestPlayer clubId={club.id} full={full} />}
+                <SortablePlayerList
+                  clubId={club.id}
+                  players={players}
+                  sessionProfileId={session?.profileId ?? null}
+                  canManage={canManage}
+                  sessionStart={club.start_time}
+                  sessionEnd={club.end_time}
+                />
+              </section>
+
+              {players.length > 0 && (
+                <section className="space-y-2">
+                  <h2 className="font-semibold">จำนวนคนต่อช่วง</h2>
+                  <HourlyHeadcount club={club} players={players} />
+                </section>
+              )}
+            </div>
+          }
+          queue={
+            <div className="space-y-4">
+              {queueSettings.players_per_team === 2 && (
+                <ClubLockedPairs
+                  clubId={club.id}
+                  players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
+                  locks={lockedPairs}
+                  canManage={canManage}
+                />
+              )}
+              <ClubQueuePanel
                 clubId={club.id}
-                expenses={expenses}
-                playerCount={joined}
+                matches={clubMatches}
                 players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
+                settings={queueSettings}
+                canManage={canManage}
               />
-            </CardContent>
-          </Card>
+            </div>
+          }
+          cost={
+            <div className="space-y-4">
+              {canManage && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Wallet className="h-4 w-4" />
+                      ค่าใช้จ่าย
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <ExpenseManager
+                      clubId={club.id}
+                      expenses={expenses}
+                      playerCount={joined}
+                      players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
+                    />
+                  </CardContent>
+                </Card>
+              )}
 
-          <ClubCostManager
-            clubId={club.id}
-            initial={{
-              court_fee: club.court_fee,
-              court_split: club.court_split,
-              shuttle_fee: club.shuttle_fee,
-              shuttle_split: club.shuttle_split,
-              shuttle_price: club.shuttle_price,
-              court_gap_policy: club.court_gap_policy,
-            }}
-          />
+              {canManage && (
+                <ClubCostManager
+                  clubId={club.id}
+                  initial={{
+                    court_fee: club.court_fee,
+                    court_split: club.court_split,
+                    shuttle_fee: club.shuttle_fee,
+                    shuttle_split: club.shuttle_split,
+                    shuttle_price: club.shuttle_price,
+                    court_gap_policy: club.court_gap_policy,
+                  }}
+                />
+              )}
 
-          <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />
-        </div>
-      )}
-
-      {canManage && (
-        <ClubQueueSettings clubId={club.id} initial={queueSettings} />
-      )}
-
-      <Separator />
-
-      <section className="space-y-3">
-        <h2 className="font-semibold">ลงชื่อเล่น</h2>
-        {!session ? (
-          <p className="text-sm text-muted-foreground">
-            <a href="/" className="underline">เข้าสู่ระบบ</a> ก่อนลงชื่อ
-          </p>
-        ) : (
-          <JoinForm
-            clubId={club.id}
-            defaultName={session.displayName}
-            full={full}
-            alreadyJoined={!!myRow}
-          />
-        )}
-      </section>
-
-      <section className="space-y-2">
-        <h2 className="font-semibold">รายชื่อผู้เล่น ({joined})</h2>
-        {canManage && <AddGuestPlayer clubId={club.id} full={full} />}
-        <SortablePlayerList
-          clubId={club.id}
-          players={players}
-          sessionProfileId={session?.profileId ?? null}
-          canManage={canManage}
-          sessionStart={club.start_time}
-          sessionEnd={club.end_time}
+              {(club.court_fee > 0 ||
+                club.shuttle_fee > 0 ||
+                (club.shuttle_split === "per_match" && club.shuttle_price > 0)) ? (
+                <section className="space-y-2">
+                  <h2 className="font-semibold">สรุปค่าใช้จ่าย</h2>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <ClubCostBreakdown club={club} players={players} matches={clubMatches} />
+                    </CardContent>
+                  </Card>
+                </section>
+              ) : (
+                !canManage && (
+                  <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูลค่าใช้จ่าย</p>
+                )
+              )}
+            </div>
+          }
+          settings={
+            <div className="space-y-4">
+              {isOwner && <EditClubForm club={club} />}
+              {canManage && <ClubQueueSettings clubId={club.id} initial={queueSettings} />}
+              {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}
+            </div>
+          }
         />
-      </section>
-
-      {players.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="font-semibold">จำนวนคนต่อช่วง</h2>
-          <HourlyHeadcount club={club} players={players} />
-        </section>
-      )}
-
-      <section className="space-y-3">
-        <h2 className="font-semibold">ระบบหมุนคิว</h2>
-        {queueSettings.players_per_team === 2 && (
-          <ClubLockedPairs
-            clubId={club.id}
-            players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
-            locks={lockedPairs}
-            canManage={canManage}
-          />
-        )}
-        <ClubQueuePanel
-          clubId={club.id}
-          matches={clubMatches}
-          players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
-          settings={queueSettings}
-          canManage={canManage}
-        />
-      </section>
-
-      {(club.court_fee > 0 ||
-        club.shuttle_fee > 0 ||
-        (club.shuttle_split === "per_match" && club.shuttle_price > 0)) && (
-        <section className="space-y-2">
-          <h2 className="font-semibold">สรุปค่าใช้จ่าย</h2>
-          <Card>
-            <CardContent className="pt-4">
-              <ClubCostBreakdown club={club} players={players} matches={clubMatches} />
-            </CardContent>
-          </Card>
-        </section>
-      )}
+      </Suspense>
     </div>
   );
 }

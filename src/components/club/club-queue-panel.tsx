@@ -3,7 +3,22 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, PenLine } from "lucide-react";
+import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, PenLine } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -38,6 +53,7 @@ import {
   cancelClubMatchAction,
   setClubMatchShuttlesAction,
   createClubManualMatchAction,
+  reorderClubQueueAction,
 } from "@/lib/actions/clubs";
 import type { ClubMatch } from "@/lib/types";
 import type { ClubQueueSettings } from "@/lib/club/queue-settings";
@@ -161,11 +177,15 @@ function PendingRow({
   nameMap,
   canManage,
   onRefresh,
+  dragHandleProps,
+  rowNumber,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
   canManage: boolean;
   onRefresh: () => void;
+  dragHandleProps?: Record<string, unknown> | null;
+  rowNumber?: number;
 }) {
   const [startBusy, startTransition] = useTransition();
   const [cancelBusy, cancelTransition] = useTransition();
@@ -197,6 +217,28 @@ function PendingRow({
 
   return (
     <div className="flex items-center gap-2 py-2 border-b last:border-0">
+      {dragHandleProps && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                {...dragHandleProps}
+                aria-label="ลากเพื่อจัดลำดับ"
+                className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none shrink-0"
+              >
+                <GripVertical className="h-4 w-4" />
+              </button>
+            }
+          />
+          <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
+        </Tooltip>
+      )}
+      {rowNumber != null && (
+        <span className="text-xs font-mono text-muted-foreground w-5 shrink-0 text-right">
+          {rowNumber}.
+        </span>
+      )}
       <Badge variant="outline" className="shrink-0 text-xs">
         สนาม {match.court}
       </Badge>
@@ -240,6 +282,42 @@ function PendingRow({
         </div>
       )}
     </div>
+  );
+}
+
+// ─── Sortable wrapper for PendingRow ─────────────────────────────────────────
+
+function SortablePendingRow({
+  match,
+  nameMap,
+  onRefresh,
+  rowNumber,
+}: {
+  match: ClubMatch;
+  nameMap: Map<string, string>;
+  onRefresh: () => void;
+  rowNumber: number;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: match.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.6 : 1,
+  };
+
+  return (
+    <li ref={setNodeRef} style={style} className="touch-none list-none">
+      <PendingRow
+        match={match}
+        nameMap={nameMap}
+        canManage
+        onRefresh={onRefresh}
+        dragHandleProps={{ ...attributes, ...listeners }}
+        rowNumber={rowNumber}
+      />
+    </li>
   );
 }
 
@@ -670,6 +748,7 @@ export function ClubQueuePanel({
   canManage: boolean;
 }) {
   const router = useRouter();
+  const [reorderPending, startReorder] = useTransition();
 
   // Build a stable name-resolution map
   const nameMap = useRef(new Map<string, string>());
@@ -685,15 +764,50 @@ export function ClubQueuePanel({
     nameMap.current = m;
   }
 
+  // Pending-only local order for optimistic drag-to-reorder
+  const sortedPending = matches
+    .filter((m) => m.status === "pending")
+    .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity));
+
+  const [pendingOrder, setPendingOrder] = useState<ClubMatch[]>(sortedPending);
+
+  // Keep local order in sync when server data changes
+  useEffect(() => {
+    setPendingOrder(
+      matches
+        .filter((m) => m.status === "pending")
+        .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity)),
+    );
+  }, [matches]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
+  function onDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = pendingOrder.findIndex((m) => m.id === active.id);
+    const newIndex = pendingOrder.findIndex((m) => m.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+
+    const reordered = arrayMove(pendingOrder, oldIndex, newIndex);
+    setPendingOrder(reordered);
+
+    startReorder(async () => {
+      const res = await reorderClubQueueAction(clubId, reordered.map((m) => m.id));
+      if ("error" in res) {
+        toast.error(res.error);
+        router.refresh();
+      } else {
+        router.refresh();
+      }
+    });
+  }
+
   function onRefresh() {
     router.refresh();
   }
-
-  const pending = matches
-    .filter((m) => m.status === "pending")
-    .sort(
-      (a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity),
-    );
 
   const inProgress = matches.filter((m) => m.status === "in_progress");
 
@@ -717,7 +831,7 @@ export function ClubQueuePanel({
         <TabsTrigger value="pending" className="gap-1.5">
           รอแข่ง{" "}
           <Badge variant="outline" className="text-[10px] px-1 py-0">
-            {pending.length}
+            {pendingOrder.length}
           </Badge>
         </TabsTrigger>
         <TabsTrigger value="in_progress" className="gap-1.5">
@@ -755,20 +869,54 @@ export function ClubQueuePanel({
           </div>
         )}
 
+        {canManage && pendingOrder.length >= 2 && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+            {reorderPending && (
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            )}
+            ลากเพื่อจัดลำดับ
+          </p>
+        )}
+
         <Card>
           <CardContent className="py-3 px-4">
-            {pending.length === 0 ? (
+            {pendingOrder.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
                 ยังไม่มีแมตช์ในคิว
               </p>
+            ) : canManage ? (
+              <DndContext
+                id="club-queue-dnd"
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={onDragEnd}
+              >
+                <SortableContext
+                  items={pendingOrder.map((m) => m.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <ul className="m-0 p-0">
+                    {pendingOrder.map((m, i) => (
+                      <SortablePendingRow
+                        key={m.id}
+                        match={m}
+                        nameMap={nameMap.current}
+                        onRefresh={onRefresh}
+                        rowNumber={i + 1}
+                      />
+                    ))}
+                  </ul>
+                </SortableContext>
+              </DndContext>
             ) : (
-              pending.map((m) => (
+              pendingOrder.map((m, i) => (
                 <PendingRow
                   key={m.id}
                   match={m}
                   nameMap={nameMap.current}
-                  canManage={canManage}
+                  canManage={false}
                   onRefresh={onRefresh}
+                  rowNumber={i + 1}
                 />
               ))
             )}
