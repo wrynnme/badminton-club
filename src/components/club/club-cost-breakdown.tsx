@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -48,8 +48,16 @@ function DiscountCell({
   const router = useRouter();
   const [value, setValue] = useState(initialDiscount);
   const [pending, start] = useTransition();
+  const focusedRef = useRef(false);
+
+  // Resync to the latest DB value after an external refresh — unless the field is
+  // focused (don't clobber an in-progress edit).
+  useEffect(() => {
+    if (!focusedRef.current) setValue(initialDiscount);
+  }, [initialDiscount]);
 
   function handleBlur() {
+    focusedRef.current = false;
     if (value === initialDiscount) return; // skip unchanged
     start(async () => {
       const res = await updateClubPlayerDiscountAction(clubId, playerId, value);
@@ -80,6 +88,7 @@ function DiscountCell({
           value={value}
           disabled={pending}
           onChange={(e) => setValue(Math.max(0, parseFloat(e.target.value) || 0))}
+          onFocus={() => { focusedRef.current = true; }}
           onBlur={handleBlur}
           className="h-6 w-[72px] text-xs text-right [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none px-1.5"
         />

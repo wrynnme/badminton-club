@@ -122,12 +122,14 @@ function SessionEditor({
   const [endVal, setEndVal] = useState(player.end_time?.slice(0, 5) ?? clubEndPlaceholder);
   const [games, setGames] = useState(player.games_played);
 
-  // Keep in sync if parent re-renders with new player data
+  // Resync from parent when the editor is CLOSED. While open, a background
+  // router.refresh() (30s auto-refresh) must not clobber the admin's in-progress edit.
   useEffect(() => {
+    if (open) return;
     setStartVal(player.start_time?.slice(0, 5) ?? clubStartPlaceholder);
     setEndVal(player.end_time?.slice(0, 5) ?? clubEndPlaceholder);
     setGames(player.games_played);
-  }, [player.start_time, player.end_time, player.games_played, clubStartPlaceholder, clubEndPlaceholder]);
+  }, [open, player.start_time, player.end_time, player.games_played, clubStartPlaceholder, clubEndPlaceholder]);
 
   function handleSave() {
     start(async () => {

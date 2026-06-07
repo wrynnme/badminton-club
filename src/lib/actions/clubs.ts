@@ -339,6 +339,11 @@ export async function addExpenseAction(input: { club_id: string; label: string; 
     return { error: "ไม่มีสิทธิ์" };
 
   const payers = await validClubPayerIds(sb, parsed.data.club_id, parsed.data.payer_player_ids);
+  // Guard: if the user designated specific payers but none survive validation
+  // (all removed from the club), do NOT fall through to [] = "charge everyone".
+  if (parsed.data.payer_player_ids.length > 0 && payers.length === 0) {
+    return { error: "ผู้จ่ายที่เลือกไม่อยู่ในก๊วนนี้แล้ว — เลือกใหม่" };
+  }
   const { error } = await sb.from("club_expenses").insert({
     club_id: parsed.data.club_id,
     label: parsed.data.label,
@@ -363,6 +368,9 @@ export async function updateExpenseAction(input: { id: string; club_id: string; 
     return { error: "ไม่มีสิทธิ์" };
 
   const payers = await validClubPayerIds(sb, parsed.data.club_id, parsed.data.payer_player_ids);
+  if (parsed.data.payer_player_ids.length > 0 && payers.length === 0) {
+    return { error: "ผู้จ่ายที่เลือกไม่อยู่ในก๊วนนี้แล้ว — เลือกใหม่" };
+  }
   const { error } = await sb
     .from("club_expenses")
     .update({ label: parsed.data.label, amount: parsed.data.amount, payer_player_ids: payers })
@@ -1007,26 +1015,21 @@ export async function createClubLockedPairAction(input: {
     .in("id", [player1Id, player2Id]);
   if (!members || members.length !== 2) return { error: "ไม่พบผู้เล่นในก๊วนนี้" };
 
-  // Neither player may already be in an active lock.
-  const { data: existing } = await sb
-    .from("club_locked_pairs")
-    .select("id")
-    .eq("club_id", clubId)
-    .or(
-      `player1_id.in.(${player1Id},${player2Id}),player2_id.in.(${player1Id},${player2Id})`,
-    )
-    .limit(1);
-  if (existing && existing.length > 0) {
-    return { error: "ผู้เล่นถูกล็อคคู่อยู่แล้ว — ปล่อยคู่เดิมก่อน" };
-  }
-
-  const { error: insertError } = await sb.from("club_locked_pairs").insert({
-    club_id: clubId,
-    player1_id: player1Id,
-    player2_id: player2Id,
-    games_remaining: games,
+  // Create atomically via RPC — it takes a club-row lock + re-checks the
+  // 1-active-lock-per-player invariant under the lock (closes the read-then-insert
+  // TOCTOU where two concurrent requests could lock the same player twice).
+  const { error: rpcError } = await sb.rpc("create_club_locked_pair", {
+    p_club_id: clubId,
+    p_player1: player1Id,
+    p_player2: player2Id,
+    p_games: games,
   });
-  if (insertError) return { error: insertError.message };
+  if (rpcError) {
+    if (rpcError.message.includes("player_already_locked")) {
+      return { error: "ผู้เล่นถูกล็อคคู่อยู่แล้ว — ปล่อยคู่เดิมก่อน" };
+    }
+    return { error: rpcError.message };
+  }
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true };
