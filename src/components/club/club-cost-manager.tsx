@@ -171,9 +171,18 @@ export function ClubCostManager({ clubId, initial }: Props) {
             >
               ตามแมตช์
             </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={shuttleSplit === "per_player" ? "default" : "outline"}
+              onClick={() => setShuttleSplit("per_player")}
+              className="h-7 text-xs"
+            >
+              ต่อคน (ไม่หาร)
+            </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            ค่าลูกคิดจากลูกที่ใช้ในแต่ละแมตช์ (ปุ่ม +ลูก ในตารางคิว) — ต้องใช้ระบบหมุนคิว. หารเท่า = รวมทุกลูก ÷ ทุกคน · ตามแมตช์ = ลูกในแมตช์ ÷ คนในแมตช์.
+            ค่าลูกคิดจากลูกที่ใช้ในแต่ละแมตช์ (ปุ่ม +ลูก ในตารางคิว) — ต้องใช้ระบบหมุนคิว. หารเท่า = รวมทุกลูก ÷ ทุกคน · ตามแมตช์ = ลูกในแมตช์ ÷ คนในแมตช์ · ต่อคน = แต่ละคนจ่ายเต็มตามลูกที่ใช้ (ไม่หาร).
           </p>
         </div>
 

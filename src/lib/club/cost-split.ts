@@ -4,7 +4,7 @@
 // See spec.md "ระบบคิดเงินก๊วน (Club cost split)".
 
 export type CourtSplit = "even" | "by_time";
-export type ShuttleSplit = "even" | "per_match";
+export type ShuttleSplit = "even" | "per_match" | "per_player";
 export type GapPolicy = "spread" | "owner" | "ignore";
 
 export type SplitPlayer = {
@@ -163,11 +163,13 @@ function computeShuttle(input: SplitInput): Map<string, number> {
   }
 
   // per_match — each match's (shuttles × price) split among that match's players.
-  // A removed player's share is dropped (under-collect).
+  // per_player — each player in the match pays the FULL (shuttles × price), no division.
+  // A removed player's share is dropped (under-collect, per_match only).
   for (const m of matches) {
     const k = m.playerIds.length;
     if (k === 0 || m.shuttles <= 0) continue;
-    const each = (m.shuttles * price) / k;
+    const cost = m.shuttles * price;
+    const each = shuttleSplit === "per_player" ? cost : cost / k;
     for (const id of m.playerIds) {
       if (out.has(id)) out.set(id, (out.get(id) ?? 0) + each);
     }

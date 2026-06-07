@@ -204,7 +204,7 @@ const CostConfigSchema = z.object({
   court_fee: z.coerce.number().min(0).max(1_000_000),
   court_split: z.enum(["even", "by_time"]),
   shuttle_fee: z.coerce.number().min(0).max(1_000_000),
-  shuttle_split: z.enum(["even", "per_match"]),
+  shuttle_split: z.enum(["even", "per_match", "per_player"]),
   shuttle_price: z.coerce.number().min(0).max(100_000),
   court_gap_policy: z.enum(["spread", "owner", "ignore"]),
 });
