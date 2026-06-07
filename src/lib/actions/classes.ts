@@ -354,11 +354,17 @@ export async function upgradeToCompetitionAction(
 
   const { data: t } = await sb
     .from("tournaments")
-    .select("mode, format, advance_count, has_lower_bracket, allow_drop_to_lower, settings")
+    .select("mode, match_unit, format, advance_count, has_lower_bracket, allow_drop_to_lower, settings")
     .eq("id", tournamentId)
     .maybeSingle();
   if (!t) return { error: "ไม่พบรายการแข่ง" };
   if (t.mode === "competition") return { error: "อยู่ในโหมด competition อยู่แล้ว" };
+  // Competition mode is pair-based — class generation seeds from `pairs`. A
+  // team-mode tournament has no pairs, so upgrading would create an empty MAIN
+  // class + orphan its team matches with no downgrade path. Block it.
+  if (t.match_unit !== "pair") {
+    return { error: "อัปเกรดเป็น competition ได้เฉพาะรายการแบบคู่ (pair) เท่านั้น" };
+  }
 
   const VALID_MF = ["fixed_2", "best_of_3", "best_of_5"];
   const dmf = (t.settings as { default_match_format?: string } | null)?.default_match_format;

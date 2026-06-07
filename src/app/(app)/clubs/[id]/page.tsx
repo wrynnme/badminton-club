@@ -256,8 +256,7 @@ export default async function ClubDetailPage({
               )}
 
               {(club.court_fee > 0 ||
-                club.shuttle_fee > 0 ||
-                (club.shuttle_split === "per_match" && club.shuttle_price > 0) ||
+                club.shuttle_price > 0 ||
                 expenses.length > 0 ||
                 players.some((p) => p.discount > 0)) ? (
                 <section className="space-y-2">

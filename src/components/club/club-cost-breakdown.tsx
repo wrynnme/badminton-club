@@ -98,10 +98,9 @@ export function ClubCostBreakdown({
   canManage,
   clubId,
 }: Props) {
-  // per_match mode: shuttle_fee can be 0; cost comes from shuttle_price × shuttles
-  const hasShuttle =
-    club.shuttle_fee > 0 ||
-    (club.shuttle_split === "per_match" && club.shuttle_price > 0);
+  // All three shuttle modes (even/per_match/per_player) are price-driven via
+  // computeShuttle (shuttle_price × per-match shuttles_used); shuttle_fee is dead.
+  const hasShuttle = club.shuttle_price > 0;
   const hasCourt = club.court_fee > 0;
   // Personal expenses / discounts also warrant the breakdown (their per-player
   // shares feed the grand total even without court/shuttle fees).

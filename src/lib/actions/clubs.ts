@@ -335,7 +335,7 @@ export async function addExpenseAction(input: { club_id: string; label: string; 
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
   const sb = await createAdminClient();
-  if (!(await assertClubOwner(sb, parsed.data.club_id, session.profileId)))
+  if (!(await assertCanManageClub(sb, parsed.data.club_id, session.profileId)))
     return { error: "ไม่มีสิทธิ์" };
 
   const payers = await validClubPayerIds(sb, parsed.data.club_id, parsed.data.payer_player_ids);
@@ -359,7 +359,7 @@ export async function updateExpenseAction(input: { id: string; club_id: string; 
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
 
   const sb = await createAdminClient();
-  if (!(await assertClubOwner(sb, parsed.data.club_id, session.profileId)))
+  if (!(await assertCanManageClub(sb, parsed.data.club_id, session.profileId)))
     return { error: "ไม่มีสิทธิ์" };
 
   const payers = await validClubPayerIds(sb, parsed.data.club_id, parsed.data.payer_player_ids);
@@ -379,7 +379,7 @@ export async function deleteExpenseAction(input: { id: string; club_id: string }
   if (!session) return await loginRedirect();
 
   const sb = await createAdminClient();
-  if (!(await assertClubOwner(sb, input.club_id, session.profileId)))
+  if (!(await assertCanManageClub(sb, input.club_id, session.profileId)))
     return { error: "ไม่มีสิทธิ์" };
 
   const { error } = await sb

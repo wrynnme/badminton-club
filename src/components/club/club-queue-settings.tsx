@@ -121,7 +121,6 @@ export function ClubQueueSettings({
     inFlightRef.current = p;
     const res = await p;
     inFlightRef.current = null;
-    pendingPatchRef.current = null;
     setSaving(false);
     if (res && "error" in res && res.error) {
       toast.error(res.error);
@@ -145,6 +144,9 @@ export function ClubQueueSettings({
     debounceTimer.current = setTimeout(() => {
       const queued = pendingPatchRef.current;
       if (!queued) return;
+      // Claim the patch BEFORE dispatching — any change made while this save is
+      // in flight accumulates into a fresh patch + its own timer (no lost update).
+      pendingPatchRef.current = null;
       startTransition(() => flush(queued));
     }, DEBOUNCE_MS);
   }

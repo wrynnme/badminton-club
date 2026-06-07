@@ -74,7 +74,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
             <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">Competition mode</Badge>
             <span className="text-xs text-muted-foreground">หลายรุ่น (class) — กำหนด class ในแท็บตั้งค่า</span>
           </div>
-        ) : isOwner ? (
+        ) : isOwner && tournament.match_unit === "pair" ? (
           <div className="mb-4 rounded-md border border-dashed p-3 space-y-2">
             <p className="text-sm font-medium">โหมด: กีฬาสี / ทั่วไป</p>
             <p className="text-xs text-muted-foreground">
