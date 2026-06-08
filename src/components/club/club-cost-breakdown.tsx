@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@bprogress/next/app";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { computeClubSplit, computeExpenseShares } from "@/lib/club/cost-split";
+import { buildClubSplitInput } from "@/lib/club/cost-summary";
 import { updateClubPlayerDiscountAction } from "@/lib/actions/clubs";
 import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
 import type { ClubExpense } from "@/lib/actions/clubs";
@@ -138,39 +139,9 @@ export function ClubCostBreakdown({
     players.map((p) => [p.id, p.display_name])
   );
 
-  // Resolve ownerId: helper keys by club_players.id, but club.owner_id is a profile_id
-  const ownerPlayerId = players.find((p) => p.profile_id === club.owner_id)?.id;
-
-  // Build SplitMatch array from in_progress / completed matches
-  const splitMatches = matches
-    .filter((m) => m.status === "in_progress" || m.status === "completed")
-    .map((m) => ({
-      playerIds: [
-        m.side_a_player1,
-        m.side_a_player2,
-        m.side_b_player1,
-        m.side_b_player2,
-      ].filter((id): id is string => Boolean(id)),
-      shuttles: m.shuttles_used,
-    }));
-
-  const rows = computeClubSplit({
-    players: players.map((p) => ({
-      id: p.id,
-      start: p.start_time ?? club.start_time,
-      end: p.end_time ?? club.end_time,
-      games: p.games_played,
-    })),
-    courtFee: club.court_fee,
-    courtSplit: club.court_split,
-    shuttleSplit: club.shuttle_split,
-    shuttlePrice: club.shuttle_price,
-    matches: splitMatches,
-    sessionStart: club.start_time,
-    sessionEnd: club.end_time,
-    gapPolicy: club.court_gap_policy,
-    ownerId: ownerPlayerId,
-  });
+  // Court + shuttle split — assembled via the shared adapter so this table and
+  // the dashboard "ค่าใช้จ่ายรวม" card derive identical numbers (cost-summary.ts).
+  const rows = computeClubSplit(buildClubSplitInput(club, players, matches));
 
   // Personal expense shares per player
   const expShare = computeExpenseShares(

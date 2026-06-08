@@ -179,16 +179,7 @@ export function ClubQueueSettings({
       </CardHeader>
 
       <CardContent className="space-y-1">
-        {/* Court count */}
-        <NumberRow
-          id="qs-court-count"
-          label="จำนวนสนาม"
-          description="จำนวนสนามที่เปิดใช้งาน (1–20)"
-          value={settings.court_count}
-          min={1}
-          max={20}
-          onChange={(v) => update("court_count", v)}
-        />
+        {/* Courts are managed via the named-court list (ClubCourtManager) above. */}
 
         {/* Players per team */}
         <div className="flex items-center justify-between gap-3 py-1.5">

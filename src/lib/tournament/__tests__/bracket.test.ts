@@ -5,8 +5,9 @@ import {
   buildDoubleBracket,
   roundLabel,
   lowerRoundLabel,
+  selectBracketFillers,
 } from "../bracket";
-import type { BracketEntry, BracketMatchDef } from "../bracket";
+import type { BracketEntry, BracketMatchDef, BracketFiller } from "../bracket";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -327,5 +328,43 @@ describe("lowerRoundLabel", () => {
     expect(lowerRoundLabel(1, 4)).toBe("สายล่าง รอบ 1");
     expect(lowerRoundLabel(2, 4)).toBe("สายล่าง รอบ 2");
     expect(lowerRoundLabel(3, 4)).toBe("สายล่าง รอบ 3");
+  });
+});
+
+describe("selectBracketFillers (T2 — best Nth place)", () => {
+  const f = (teamId: string, groupRank: number, pts: number, diff = 0, pf = 0): BracketFiller => ({
+    teamId, name: teamId, groupRank, pts, diff, pf,
+  });
+
+  it("returns [] when need <= 0", () => {
+    expect(selectBracketFillers([f("a", 3, 6)], 0)).toEqual([]);
+    expect(selectBracketFillers([f("a", 3, 6)], -1)).toEqual([]);
+  });
+
+  it("picks best 3rd-placers across groups to fill (6 groups → KO16, need 4)", () => {
+    // 6 groups, advance 2 each = 12; each group's 3rd-placer (groupRank 3) competes for 4 slots
+    const thirds = [
+      f("A3", 3, 6, 8, 52), f("D3", 3, 6, 5, 48), f("B3", 3, 6, 5, 44),
+      f("F3", 3, 4, 2, 40), f("C3", 3, 4, -1, 38), f("E3", 3, 3, -4, 35),
+    ];
+    const picked = selectBracketFillers(thirds, 4).map((x) => x.teamId);
+    expect(picked).toEqual(["A3", "D3", "B3", "F3"]);
+  });
+
+  it("ranks finishing position before score (every 3rd beats any 4th)", () => {
+    const rest = [f("g4", 4, 99, 99, 99), f("g3", 3, 1, 0, 0)];
+    expect(selectBracketFillers(rest, 1).map((x) => x.teamId)).toEqual(["g3"]);
+  });
+
+  it("returns fewer than need when not enough rest teams (slots stay BYE)", () => {
+    expect(selectBracketFillers([f("a", 3, 6)], 4)).toHaveLength(1);
+    expect(selectBracketFillers([], 4)).toEqual([]);
+  });
+
+  it("does not mutate the input array", () => {
+    const rest = [f("a", 3, 1), f("b", 3, 9)];
+    const copy = [...rest];
+    selectBracketFillers(rest, 2);
+    expect(rest).toEqual(copy);
   });
 });

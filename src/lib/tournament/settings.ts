@@ -28,10 +28,22 @@ export const TournamentSettingsSchema = z.object({
   export_visible: z.boolean().default(true),
   allow_force_bracket_reset: z.boolean().default(false),
   allow_manual_match_after_bracket: z.boolean().default(true),
+  // T2 — team-mode group_knockout only: when ON, empty knockout-bracket slots are
+  // filled with the best non-advancing teams ranked cross-group (e.g. best 3rd-placers)
+  // instead of being left as first-round BYEs. Opt-in: a BYE that rewards group winners
+  // is a legitimate format. No effect in pair mode (division-wide seeding) or when an
+  // independent lower bracket already consumes the next-rank teams.
+  knockout_fill_byes: z.boolean().default(false),
   auto_advance_next: z.boolean().default(false),
   require_court_to_start: z.boolean().default(false),
   require_checkin: z.boolean().default(false),
   realtime_enabled: z.boolean().default(true),
+  // T5 — granular queue realtime (opt-in, default off). When ON, the match queue
+  // patches individual match rows from postgres_changes UPDATE payloads (no full
+  // page refetch) for snappier multi-court updates. INSERT/DELETE still fall back
+  // to router.refresh, and the page-level debounced refresh stays as the authority,
+  // so this is purely additive — it cannot regress the working refresh path.
+  queue_payload_sync: z.boolean().default(false),
   audit_log_enabled: z.boolean().default(true),
   match_cooldown_minutes: z.number().int().min(0).max(30).default(0),
   // Default best-of format for matches. Competition-mode classes override per-class

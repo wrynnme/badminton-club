@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@bprogress/next/app";
 import { useForm } from "@tanstack/react-form";
 import * as z from "zod";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Check, X, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { addExpenseAction, updateExpenseAction, deleteExpenseAction } from "@/lib/actions/clubs";
 import type { ClubExpense } from "@/lib/actions/clubs";
@@ -62,13 +63,12 @@ function ExpenseForm({
         <form.Field name="amount">
           {(field) => (
             <div className="relative w-28 shrink-0">
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
                 step={1}
                 placeholder="0"
                 value={field.state.value}
-                onChange={(e) => field.handleChange(Number(e.target.value))}
+                onValueChange={field.handleChange}
                 onBlur={field.handleBlur}
                 className="h-8 text-sm pr-8 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                 aria-invalid={field.state.meta.isTouched && !field.state.meta.isValid}

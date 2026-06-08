@@ -49,3 +49,53 @@ export function isMatchComplete(games: Game[], format: MatchFormat): boolean {
   if (canDraw) return games.length === maxGames;
   return a === winAt || b === winAt;
 }
+
+export type MatchResult =
+  | { ok: true; winner: "a" | "b" | "draw" }
+  | { ok: false; reason: string };
+
+/**
+ * Validate `games` against a competition class's `match_format` and resolve the
+ * winner in one pass. Used at score-entry time for class matches (sports_day
+ * matches stay on the lenient `gameWinner` majority path — no format to enforce).
+ *
+ * Rejects (with a Thai reason):
+ *  - no games at all
+ *  - any individual tied game (g.a === g.b is a malformed score, never a draw)
+ *  - more games than the format allows
+ *  - fixed_2 with ≠ 2 games
+ *  - best_of_N where neither side reached the clinch
+ * Returns winner "a" | "b" | "draw" ("draw" only possible for fixed_2 at 1-1).
+ */
+export function resolveMatchResult(games: Game[], format: MatchFormat): MatchResult {
+  const { maxGames, winAt, canDraw } = MATCH_FORMAT_BOUNDS[format];
+  if (games.length === 0) return { ok: false, reason: "ต้องมีอย่างน้อย 1 เกม" };
+  for (const g of games) {
+    if (g.a === g.b) return { ok: false, reason: "แต่ละเกมต้องมีผู้ชนะ (คะแนนเท่ากันไม่ได้)" };
+  }
+  if (games.length > maxGames) {
+    return { ok: false, reason: `รูปแบบนี้เล่นได้ไม่เกิน ${maxGames} เกม` };
+  }
+
+  let a = 0;
+  let b = 0;
+  for (const g of games) {
+    if (g.a > g.b) a++;
+    else b++; // tied games already rejected above
+  }
+
+  if (canDraw) {
+    // fixed_2: both games must be played; 2-0 / 0-2 → winner, 1-1 → draw.
+    if (games.length !== maxGames) {
+      return { ok: false, reason: `รูปแบบนี้ต้องเล่น ${maxGames} เกม` };
+    }
+    if (a > b) return { ok: true, winner: "a" };
+    if (b > a) return { ok: true, winner: "b" };
+    return { ok: true, winner: "draw" };
+  }
+
+  // best_of_N: a side must reach the clinch to end the match.
+  if (a >= winAt) return { ok: true, winner: "a" };
+  if (b >= winAt) return { ok: true, winner: "b" };
+  return { ok: false, reason: `ต้องชนะให้ครบ ${winAt} เกมจึงจะจบแมตช์` };
+}

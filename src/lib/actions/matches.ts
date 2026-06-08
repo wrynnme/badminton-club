@@ -7,9 +7,11 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { generateAllPairMatches } from "@/lib/tournament/scheduling";
 import { gameWinner, sumGameScores, computeStandings } from "@/lib/tournament/scoring";
-import { buildBracket, buildDoubleBracket, nextPowerOf2 } from "@/lib/tournament/bracket";
+import { resolveMatchResult } from "@/lib/tournament/match-format";
+import { buildBracket, buildDoubleBracket, nextPowerOf2, selectBracketFillers } from "@/lib/tournament/bracket";
+import type { BracketFiller } from "@/lib/tournament/bracket";
 import type { BracketEntry, BracketMatchDef } from "@/lib/tournament/bracket";
-import type { Game, Match } from "@/lib/types";
+import type { Game, Match, MatchFormat } from "@/lib/types";
 import { assertCanEdit } from "@/lib/tournament/permissions";
 import { writeAuditLog } from "@/lib/tournament/audit";
 import { notifyTournamentEvent } from "@/lib/notification/line";
@@ -607,6 +609,9 @@ export async function generateKnockoutAction(tournamentId: string) {
     .single();
   if (!tournament) return { error: "ไม่พบทัวร์นาเมนต์" };
 
+  // T2 — knockout_fill_byes (team-mode group_knockout): read once here.
+  const settings = await getTournamentSettings(tournamentId);
+
   // KO match_number ต่อจาก group stage (max group match_number; 0 ถ้าไม่มี).
   // Subsequent `getNextMatchNumber` calls inside this action should reuse this via
   // `{ precomputedMax: groupMax }` to skip the redundant max(match_number) round-trip.
@@ -916,18 +921,37 @@ export async function generateKnockoutAction(tournamentId: string) {
     type Advancer = Seed & { groupRank: number; pts: number; diff: number; pf: number };
     const advancers: Advancer[] = [];
     const lowerAdvancers: Advancer[] = [];
+    // T2: non-advancing teams kept as candidates to fill empty bracket slots
+    // (best Nth place). Only collected on the non-independent-lower path — when an
+    // independent lower bracket is active it already consumes the next-rank teams.
+    const restAdvancers: BracketFiller[] = [];
+    const independentLower = tournament.has_lower_bracket && !tournament.allow_drop_to_lower;
 
     for (const group of groups) {
       const ranked = rankGroupTeams(group.group_teams as unknown as GroupTeamRow[]);
       ranked.slice(0, advanceCount).forEach((t, i) => advancers.push({ ...t, groupRank: i + 1 }));
-      if (tournament.has_lower_bracket && !tournament.allow_drop_to_lower) {
+      if (independentLower) {
         ranked.slice(advanceCount, advanceCount * 2).forEach((t, i) =>
           lowerAdvancers.push({ ...t, groupRank: i + 1 })
+        );
+      } else {
+        ranked.slice(advanceCount).forEach((t, i) =>
+          restAdvancers.push({ ...t, groupRank: advanceCount + i + 1 })
         );
       }
     }
 
     if (advancers.length < 2) return { error: "ผู้เข้ารอบยังไม่ครบ — ต้องมีอย่างน้อย 2 ทีม" };
+
+    // T2 — knockout_fill_byes: replace first-round BYEs with the best non-advancing
+    // teams (cross-group, ranked by finishing position then score). Gated off the
+    // independent-lower path above; no-op when the bracket is already full.
+    if (settings.knockout_fill_byes && !independentLower) {
+      const need = nextPowerOf2(advancers.length) - advancers.length;
+      for (const f of selectBracketFillers(restAdvancers, need)) {
+        advancers.push({ teamId: f.teamId, name: f.name, groupRank: f.groupRank, pts: f.pts, diff: f.diff, pf: f.pf });
+      }
+    }
 
     seeds = tournament.seeding_method === "by_group_score"
       ? [...advancers].sort((a, b) => a.groupRank - b.groupRank || b.pts - a.pts || b.diff - a.diff || b.pf - a.pf)
@@ -1082,10 +1106,29 @@ export async function recordMatchScoreAction(input: {
   const { data: match } = await sb.from("matches").select("*").eq("id", input.matchId).single();
   if (!match) return { error: "ไม่พบแมตช์" };
 
-  const winner = gameWinner(input.games);
+  // Competition-class matches must satisfy their class's match_format
+  // (fixed_2 / best_of_3 / best_of_5). sports_day matches (class_id null) stay
+  // on the lenient majority-wins path so existing workflows are untouched.
+  let winner: "a" | "b" | "draw";
+  if (match.class_id) {
+    const { data: cls } = await sb
+      .from("tournament_classes")
+      .select("match_format")
+      .eq("id", match.class_id)
+      .single();
+    const format = (cls?.match_format ?? "best_of_3") as MatchFormat;
+    const result = resolveMatchResult(input.games, format);
+    if (!result.ok) return { error: result.reason };
+    winner = result.winner;
+  } else {
+    winner = gameWinner(input.games);
+  }
   const totals = sumGameScores(input.games);
 
-  if (match.round_type === "knockout" && winner === "draw") {
+  // Any non-group round needs a decisive winner to advance the bracket. Stored
+  // round_type is "group" | "knockout" today; `!== "group"` also covers any future
+  // bracket-specific value (upper_*/grand_final) and a fixed_2 class KO that ties 1-1.
+  if (match.round_type !== "group" && winner === "draw") {
     return { error: "แมตช์น็อกเอาต์ไม่อนุญาตให้เสมอ" };
   }
 

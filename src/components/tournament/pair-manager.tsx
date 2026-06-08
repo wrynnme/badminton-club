@@ -11,12 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createPairAction, deletePairAction } from "@/lib/actions/pairs";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { PairScheduleLink } from "@/components/tournament/pair-schedule-link";
-import type { TeamWithPlayers, PairWithPlayers, TournamentClass } from "@/lib/types";
+import type { Level, TeamWithPlayers, PairWithPlayers, TournamentClass } from "@/lib/types";
 
-function CreatePairForm({ teamId, availablePlayers, classes = [], onDone }: {
+function CreatePairForm({ teamId, availablePlayers, classes = [], levelById, onDone }: {
   teamId: string;
   availablePlayers: TeamWithPlayers["players"];
   classes?: TournamentClass[];
+  levelById: Map<string, string>;
   onDone: () => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -89,7 +90,9 @@ function CreatePairForm({ teamId, availablePlayers, classes = [], onDone }: {
                 className="h-7 text-xs px-2"
                 onClick={() => toggle(p.id)}>
                 {p.role === "captain" && "★ "}{p.display_name}
-                {p.level && <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">{p.level}</Badge>}
+                {p.level_id && levelById.get(p.level_id) && (
+                  <Badge variant="secondary" className="ml-1 text-[10px] px-1 py-0">{levelById.get(p.level_id)}</Badge>
+                )}
               </Button>
             ))}
           </div>
@@ -106,16 +109,20 @@ function CreatePairForm({ teamId, availablePlayers, classes = [], onDone }: {
   );
 }
 
-function PairItem({ pair, isOwner, color, classCode }: {
+function PairItem({ pair, isOwner, color, classCode, levelById }: {
   pair: PairWithPlayers;
   isOwner: boolean;
   color?: string | null;
   classCode?: string;
+  levelById: Map<string, string>;
 }) {
   const [delPending, startDel] = useTransition();
   const p1 = pair.player1;
   const p2 = pair.player2;
-  const levels = [p1?.level, p2?.level].filter(Boolean);
+  const playerLevelLabels = [
+    p1?.level_id ? levelById.get(p1.level_id) : undefined,
+    p2?.level_id ? levelById.get(p2.level_id) : undefined,
+  ].filter((v): v is string => !!v);
 
   return (
     <div className="flex items-center gap-2 text-sm py-1 px-2 border rounded">
@@ -144,9 +151,9 @@ function PairItem({ pair, isOwner, color, classCode }: {
             "—"
           )}
         </div>
-        {levels.length > 0 && (
+        {playerLevelLabels.length > 0 && (
           <div className="flex gap-1 mt-0.5">
-            {levels.map((lv, i) => (
+            {playerLevelLabels.map((lv, i) => (
               <Badge key={i} variant="outline" className="text-[10px] px-1 py-0">{lv}</Badge>
             ))}
           </div>
@@ -173,16 +180,18 @@ function PairItem({ pair, isOwner, color, classCode }: {
   );
 }
 
-export function PairManager({ team, pairs, isOwner, classes = [] }: {
+export function PairManager({ team, pairs, isOwner, classes = [], levels = [] }: {
   team: TeamWithPlayers;
   pairs: PairWithPlayers[];
   isOwner: boolean;
   classes?: TournamentClass[];
+  levels?: Level[];
 }) {
   const [adding, setAdding] = useState(false);
   const pairedIds = new Set(pairs.flatMap((p) => [p.player_id_1, p.player_id_2].filter(Boolean) as string[]));
   const available = team.players.filter((p) => !pairedIds.has(p.id));
   const classCodeById = new Map(classes.map((c) => [c.id, c.code]));
+  const levelById = new Map(levels.map((l) => [l.id, l.label]));
 
   return (
     <Card>
@@ -206,12 +215,12 @@ export function PairManager({ team, pairs, isOwner, classes = [] }: {
         ) : (
           <div className="space-y-1">
             {pairs.map((p) => (
-              <PairItem key={p.id} pair={p} isOwner={isOwner} color={team.color} classCode={p.class_id ? classCodeById.get(p.class_id) : undefined} />
+              <PairItem key={p.id} pair={p} isOwner={isOwner} color={team.color} classCode={p.class_id ? classCodeById.get(p.class_id) : undefined} levelById={levelById} />
             ))}
           </div>
         )}
         {adding && (
-          <CreatePairForm teamId={team.id} availablePlayers={available} classes={classes} onDone={() => setAdding(false)} />
+          <CreatePairForm teamId={team.id} availablePlayers={available} classes={classes} levelById={levelById} onDone={() => setAdding(false)} />
         )}
       </CardContent>
     </Card>

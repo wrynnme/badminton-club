@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@bprogress/next/app";
 import { toast } from "sonner";
 import { Save, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { updateClubCostConfigAction } from "@/lib/actions/clubs";
 import type { CourtSplit, ShuttleSplit, GapPolicy } from "@/lib/types";
@@ -60,12 +60,11 @@ export function ClubCostManager({ clubId, initial }: Props) {
         <div className="space-y-2">
           <Label className="text-sm font-medium">ค่าสนาม (บาท)</Label>
           <div className="relative max-w-[140px]">
-            <Input
-              type="number"
+            <NumberInput
               min={0}
               step={1}
               value={courtFee}
-              onChange={(e) => setCourtFee(Math.max(0, Number(e.target.value)))}
+              onValueChange={setCourtFee}
               className="pr-8 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
@@ -128,7 +127,11 @@ export function ClubCostManager({ clubId, initial }: Props) {
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              เฉลี่ยทุกคน = แบ่งให้ทุกคน · เจ้าของจ่าย = เจ้าของรับภาระ · ไม่คิด = ตัดช่วงนั้นทิ้ง
+              {gapPolicy === "spread"
+                ? "เฉลี่ยทุกคน = แบ่งให้ทุกคน"
+                : gapPolicy === "owner"
+                  ? "เจ้าของจ่าย = เจ้าของรับภาระ"
+                  : "ไม่คิด = ตัดช่วงนั้นทิ้ง"}
             </p>
           </div>
         )}
@@ -137,12 +140,11 @@ export function ClubCostManager({ clubId, initial }: Props) {
         <div className="space-y-2">
           <Label className="text-sm font-medium">ค่าลูก (บาท)</Label>
           <div className="relative max-w-[140px]">
-            <Input
-              type="number"
+            <NumberInput
               min={0}
               step={1}
               value={shuttlePrice}
-              onChange={(e) => setShuttlePrice(Math.max(0, Number(e.target.value)))}
+              onValueChange={setShuttlePrice}
               className="pr-8 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
@@ -179,7 +181,12 @@ export function ClubCostManager({ clubId, initial }: Props) {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            ค่าลูกคิดจากลูกที่ใช้ในแต่ละแมตช์ (ปุ่ม +ลูก ในตารางคิว) — ต้องใช้ระบบหมุนคิว. หารเท่า = รวมทุกลูก ÷ ทุกคน · ต่อลูก = ลูกในแมตช์ ÷ คนในแมตช์ · ต่อแมตช์ = แต่ละคนจ่ายเต็มตามลูกที่ใช้ (ไม่หาร).
+            ค่าลูกคิดจากลูกที่ใช้ในแต่ละแมตช์ (ปุ่ม +ลูก ในตารางคิว) — ต้องใช้ระบบหมุนคิว.{" "}
+            {shuttleSplit === "even"
+              ? "หารเท่า = รวมทุกลูก ÷ ทุกคน"
+              : shuttleSplit === "per_match"
+                ? "ต่อลูก = ลูกในแมตช์ ÷ คนในแมตช์"
+                : "ต่อแมตช์ = แต่ละคนจ่ายเต็มตามลูกที่ใช้ (ไม่หาร)"}
           </p>
         </div>
 

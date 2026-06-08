@@ -26,8 +26,9 @@ import { ClassManager } from "@/components/tournament/class-manager";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { EditTournamentForm } from "@/components/tournament/edit-tournament-form";
 import { SettingsManager } from "@/components/tournament/settings-manager";
-import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match, TournamentClass, MatchFormat } from "@/lib/types";
+import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match, TournamentClass, MatchFormat, Level } from "@/lib/types";
 import type { TournamentAdmin } from "@/lib/actions/admins";
+import { getLevelsAction } from "@/lib/actions/clubs";
 import { parseSettings } from "@/lib/tournament/settings";
 import { parseTournamentThresholds } from "@/lib/tournament/divisions";
 import { TOURNAMENT_STATUS_BADGE, TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";
@@ -61,7 +62,7 @@ export default async function TournamentDetailPage({
   // Pairs uses an inner join on teams to scope by tournament_id without first
   // awaiting the teams list (cast required because the join column shape isn't
   // part of the generated PairWithPlayers type).
-  const [teamsRes, groupsRes, matchesRes, pairsRes, classesRes] = await Promise.all([
+  const [teamsRes, groupsRes, matchesRes, pairsRes, classesRes, levels] = await Promise.all([
     sb.from("teams").select("*, players:team_players(*)").eq("tournament_id", id).order("created_at"),
     sb.from("groups").select("*, group_teams(*, team:teams(*)), matches(*)").eq("tournament_id", id).order("name"),
     sb.from("matches").select("*").eq("tournament_id", id).order("round_type", { ascending: true }).order("match_number"),
@@ -71,6 +72,7 @@ export default async function TournamentDetailPage({
       .eq("team.tournament_id", id)
       .order("created_at"),
     sb.from("tournament_classes").select("*").eq("tournament_id", id).order("position"),
+    getLevelsAction(),
   ]);
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];
@@ -78,6 +80,7 @@ export default async function TournamentDetailPage({
   const allMatches: Match[] = (matchesRes.data ?? []) as Match[];
   const pairs: PairWithPlayers[] = (pairsRes.data ?? []) as unknown as PairWithPlayers[];
   const classes: TournamentClass[] = (classesRes.data ?? []) as TournamentClass[];
+  const levelsList: Level[] = levels;
   const flatTeams: Team[] = teams.map(({ players: _p, ...x }) => x as Team);
 
   const isOwner = session?.profileId === t.owner_id;
@@ -217,6 +220,7 @@ export default async function TournamentDetailPage({
               teams={teams}
               isOwner={canEdit}
               teamCount={t.team_count}
+              levels={levelsList}
             />
           }
           groupsTab={
@@ -243,6 +247,7 @@ export default async function TournamentDetailPage({
               isOwner={canEdit}
               pairDivisionThresholds={parseTournamentThresholds(t.pair_division_thresholds)}
               classes={isCompetition ? classes : []}
+              levels={levelsList}
             />
           }
           knockoutTab={
@@ -283,6 +288,7 @@ export default async function TournamentDetailPage({
               requireCourtToStart={settings.require_court_to_start}
               courtStrict={settings.court_strict}
               classById={classById}
+              realtimeSync={settings.realtime_enabled && settings.queue_payload_sync}
             />
           }
           settingsTab={

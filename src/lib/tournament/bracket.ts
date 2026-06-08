@@ -4,6 +4,32 @@ export function nextPowerOf2(n: number): number {
   return p;
 }
 
+// A non-advancing group team that can fill an empty knockout slot (T2).
+export type BracketFiller = {
+  teamId: string;
+  name: string;
+  groupRank: number; // 1-based finishing position within its group
+  pts: number;
+  diff: number;
+  pf: number;
+};
+
+/**
+ * Pick the best `need` non-advancing teams to fill empty knockout-bracket slots
+ * instead of leaving them as first-round BYEs (T2, "best Nth place").
+ *
+ * Ranks the candidates cross-group by finishing position first (so every best
+ * 3rd-placer outranks any 4th-placer), then by league points / point-diff /
+ * points-for. Returns at most `need` (fewer when there aren't enough rest teams,
+ * leaving the remaining slots as BYEs). Pure — no DB, no mutation of the input.
+ */
+export function selectBracketFillers(rest: BracketFiller[], need: number): BracketFiller[] {
+  if (need <= 0) return [];
+  return [...rest]
+    .sort((a, b) => a.groupRank - b.groupRank || b.pts - a.pts || b.diff - a.diff || b.pf - a.pf)
+    .slice(0, need);
+}
+
 export type BracketEntry = {
   teamId: string | null;
   label: string;

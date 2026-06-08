@@ -29,14 +29,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { updateCourtsAction } from "@/lib/actions/tournaments";
+import { updateClubCourtsAction } from "@/lib/actions/clubs";
 
 type Props = {
-  tournamentId: string;
+  clubId: string;
   initialCourts: string[];
 };
 
-export function CourtManager({ tournamentId, initialCourts }: Props) {
+export function ClubCourtManager({ clubId, initialCourts }: Props) {
   const router = useRouter();
   const [courts, setCourts] = useState<string[]>(initialCourts);
   const [newName, setNewName] = useState("");
@@ -66,7 +66,7 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
         if (inFlightRef.current) {
           try { await inFlightRef.current; } catch {}
         }
-        const p = updateCourtsAction(tournamentId, next);
+        const p = updateClubCourtsAction(clubId, next);
         inFlightRef.current = p;
         const res = await p;
         inFlightRef.current = null;
@@ -125,7 +125,7 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
         {courts.length === 0 ? (
           <p className="text-sm text-muted-foreground">ยังไม่มีสนาม — เพิ่มได้ด้านล่าง</p>
         ) : (
-          <DndContext id="court-manager-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <DndContext id="club-court-manager-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={courts} strategy={verticalListSortingStrategy}>
               <ul className="space-y-1.5">
                 {courts.map((name) => (

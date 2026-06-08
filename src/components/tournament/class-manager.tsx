@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@bprogress/next/app";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, GripVertical, Loader2 } from "lucide-react";
 import {

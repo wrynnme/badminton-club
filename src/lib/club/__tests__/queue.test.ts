@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { buildNextMatch, type QueuePlayer, type MatchSide } from "@/lib/club/queue";
+import {
+  buildNextMatch,
+  deriveWinnerSide,
+  type QueuePlayer,
+  type MatchSide,
+} from "@/lib/club/queue";
 import {
   parseQueueSettings,
   DEFAULT_QUEUE_SETTINGS,
@@ -319,5 +324,18 @@ describe("parseQueueSettings", () => {
     const r = parseQueueSettings({ court_count: 999, game_time_limit_min: -5 });
     expect(r.court_count).toBe(1); // out of range -> default
     expect(r.game_time_limit_min).toBe(0);
+  });
+});
+
+describe("deriveWinnerSide", () => {
+  it("returns 'a' when side A scores higher", () => {
+    expect(deriveWinnerSide(21, 18)).toBe("a");
+  });
+  it("returns 'b' when side B scores higher", () => {
+    expect(deriveWinnerSide(15, 21)).toBe("b");
+  });
+  it("returns null on a tie", () => {
+    expect(deriveWinnerSide(21, 21)).toBeNull();
+    expect(deriveWinnerSide(0, 0)).toBeNull();
   });
 });

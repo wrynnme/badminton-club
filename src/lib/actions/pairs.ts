@@ -7,19 +7,13 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { assertCanEdit } from "@/lib/tournament/permissions";
 import { writeAuditLog } from "@/lib/tournament/audit";
+import { pairLevelString, embeddedReal } from "@/lib/tournament/levels";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
   const referer = h.get("referer");
   const redirectTo = referer ? new URL(referer).pathname : "/tournaments";
   redirect(`/?auth_error=login_required&redirectTo=${encodeURIComponent(redirectTo)}`);
-}
-
-function computePairLevel(l1: string | null | undefined, l2: string | null | undefined): string | null {
-  const n1 = parseFloat(l1 ?? "");
-  const n2 = parseFloat(l2 ?? "");
-  if (isNaN(n1) && isNaN(n2)) return null;
-  return String((isNaN(n1) ? 0 : n1) + (isNaN(n2) ? 0 : n2));
 }
 
 async function tournamentIdOfTeam(teamId: string): Promise<string | null> {
@@ -54,9 +48,9 @@ export async function createPairAction(input: {
     if (!cls) return { error: "ไม่พบ class นี้ในรายการแข่ง" };
   }
 
-  // Verify both players belong to this team + get levels for auto-compute
+  // Verify both players belong to this team + get level embeds for auto-compute
   const { data: players } = await sb
-    .from("team_players").select("id, team_id, level").in("id", input.playerIds);
+    .from("team_players").select("id, team_id, level_id, levels:level_id(real)").in("id", input.playerIds);
   if (!players || players.length !== 2 || players.some((p) => p.team_id !== input.teamId)) {
     return { error: "ผู้เล่นไม่ได้อยู่ในทีมนี้" };
   }
@@ -77,7 +71,10 @@ export async function createPairAction(input: {
     player_id_1: input.playerIds[0],
     player_id_2: input.playerIds[1],
     display_pair_name: input.name || null,
-    pair_level: computePairLevel(p1data?.level, p2data?.level),
+    pair_level: pairLevelString(
+      embeddedReal((p1data as unknown as { levels: unknown })?.levels),
+      embeddedReal((p2data as unknown as { levels: unknown })?.levels),
+    ),
     class_id: input.classId || null,
   });
   if (error) return { error: "สร้างคู่ไม่สำเร็จ" };

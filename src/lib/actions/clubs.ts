@@ -12,7 +12,12 @@ import {
   ClubQueueSettingsSchema,
   parseQueueSettings,
 } from "@/lib/club/queue-settings";
-import { buildNextMatch, type QueuePlayer, type MatchSide } from "@/lib/club/queue";
+import {
+  buildNextMatch,
+  deriveWinnerSide,
+  type QueuePlayer,
+  type MatchSide,
+} from "@/lib/club/queue";
 import type { ClubMatch } from "@/lib/types";
 
 async function loginRedirect(): Promise<never> {
@@ -95,6 +100,28 @@ const JoinSchema = z.object({
 
 export type JoinClubInput = z.infer<typeof JoinSchema>;
 
+/**
+ * Head-counts for a club: `total` (for the next sequential position) and
+ * `active` (for the max_players cap — reserves don't count against it).
+ */
+async function countClubPlayers(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  clubId: string,
+): Promise<{ total: number; active: number }> {
+  const [{ count: total }, { count: active }] = await Promise.all([
+    sb
+      .from("club_players")
+      .select("*", { count: "exact", head: true })
+      .eq("club_id", clubId),
+    sb
+      .from("club_players")
+      .select("*", { count: "exact", head: true })
+      .eq("club_id", clubId)
+      .eq("status", "active"),
+  ]);
+  return { total: total ?? 0, active: active ?? 0 };
+}
+
 export async function joinClubAction(input: JoinClubInput) {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -113,14 +140,9 @@ export async function joinClubAction(input: JoinClubInput) {
     .single();
   if (!club) return { error: "ไม่พบก๊วนนี้" };
 
-  const { count } = await sb
-    .from("club_players")
-    .select("*", { count: "exact", head: true })
-    .eq("club_id", parsed.data.club_id);
-
-  if ((count ?? 0) >= club.max_players) {
-    return { error: "ก๊วนเต็มแล้ว" };
-  }
+  const { total, active } = await countClubPlayers(sb, parsed.data.club_id);
+  // Full → join as reserve; auto-promoted when an active player leaves.
+  const status = active >= club.max_players ? "reserve" : "active";
 
   const { error } = await sb.from("club_players").insert({
     club_id: parsed.data.club_id,
@@ -128,7 +150,8 @@ export async function joinClubAction(input: JoinClubInput) {
     display_name: parsed.data.display_name,
     level_id: parsed.data.level_id || null,
     note: parsed.data.note || null,
-    position: (count ?? 0) + 1,
+    position: total + 1,
+    status,
   });
 
   if (error) {
@@ -175,14 +198,9 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
     .single();
   if (!club) return { error: "ไม่พบก๊วนนี้" };
 
-  const { count } = await sb
-    .from("club_players")
-    .select("*", { count: "exact", head: true })
-    .eq("club_id", parsed.data.club_id);
-
-  if ((count ?? 0) >= club.max_players) {
-    return { error: "ก๊วนเต็มแล้ว" };
-  }
+  const { total, active } = await countClubPlayers(sb, parsed.data.club_id);
+  // Full → add as reserve; auto-promoted when an active player leaves.
+  const status = active >= club.max_players ? "reserve" : "active";
 
   const { error } = await sb.from("club_players").insert({
     club_id: parsed.data.club_id,
@@ -190,7 +208,8 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
     display_name: parsed.data.display_name.trim(),
     level_id: parsed.data.level_id || null,
     note: parsed.data.note || null,
-    position: (count ?? 0) + 1,
+    position: total + 1,
+    status,
   });
 
   if (error) return { error: error.message };
@@ -478,7 +497,11 @@ export async function kickPlayerAction(formData: FormData) {
   if (!(await assertCanManageClub(sb, clubId, session.profileId)))
     return { error: "ไม่มีสิทธิ์" };
 
-  await sb.from("club_players").delete().eq("id", playerId).eq("club_id", clubId);
+  // Delete + auto-promote the earliest reserve into the freed slot (atomic RPC).
+  await sb.rpc("remove_club_player_and_promote", {
+    p_player_id: playerId,
+    p_club_id: clubId,
+  });
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true };
 }
@@ -632,11 +655,20 @@ export async function leaveClubAction(formData: FormData) {
 
   const clubId = formData.get("club_id") as string;
   const sb = await createAdminClient();
-  await sb
+
+  // Resolve the caller's player row, then delete + auto-promote a reserve (atomic).
+  const { data: row } = await sb
     .from("club_players")
-    .delete()
+    .select("id")
     .eq("club_id", clubId)
-    .eq("profile_id", session.profileId);
+    .eq("profile_id", session.profileId)
+    .maybeSingle();
+  if (row) {
+    await sb.rpc("remove_club_player_and_promote", {
+      p_player_id: row.id,
+      p_club_id: clubId,
+    });
+  }
 
   revalidatePath(`/clubs/${clubId}`);
 }
@@ -686,6 +718,37 @@ export async function updateClubQueueSettingsAction(
 }
 
 /**
+ * Owner / co-admin sets the club's named courts (mirror tournament
+ * updateCourtsAction). Trim + dedupe + cap; replaces queue_settings.court_count.
+ */
+export async function updateClubCourtsAction(
+  clubId: string,
+  courts: string[],
+): Promise<{ ok: true; courts: string[] } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const COURT_NAME_MAX = 40;
+  const COURTS_MAX = 50;
+  const cleaned = courts
+    .map((c) => c.trim().slice(0, COURT_NAME_MAX))
+    .filter((c) => c.length > 0);
+  const deduped = Array.from(new Set(cleaned)).slice(0, COURTS_MAX);
+
+  const { error } = await sb.from("clubs").update({ courts: deduped }).eq("id", clubId);
+  if (error) {
+    console.error("[updateClubCourtsAction]", error);
+    return { error: "บันทึกสนามไม่สำเร็จ" };
+  }
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true, courts: deduped };
+}
+
+/**
  * Owner / co-admin proposes the next match for a given court.
  *
  * Pool eligibility:
@@ -702,14 +765,13 @@ export async function updateClubQueueSettingsAction(
  */
 export async function buildNextClubMatchAction(
   clubId: string,
-  court: number,
+  court: string,
 ): Promise<{ ok: true; match: ClubMatch } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
-  // Validate court is a positive integer.
-  const courtInt = Math.trunc(court);
-  if (!Number.isFinite(courtInt) || courtInt < 1) return { error: "หมายเลขสนามไม่ถูกต้อง" };
+  const courtName = court.trim();
+  if (!courtName) return { error: "ระบุสนาม" };
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
@@ -723,11 +785,14 @@ export async function buildNextClubMatchAction(
   if (clubFetchError || !clubRow) return { error: "ไม่พบก๊วนนี้" };
   const settings = parseQueueSettings(clubRow.queue_settings);
 
-  // Load all players for this club (level resolved via the levels FK).
+  // Load active players for this club (level resolved via the levels FK).
+  // Reserves (status='reserve') are excluded — they wait until promoted and are
+  // never drafted into a match by the queue builder.
   const { data: allPlayers, error: playersFetchError } = await sb
     .from("club_players")
     .select("id, position, joined_at, level_id, games_played, last_finished_at, checked_in_at, levels:level_id(real)")
-    .eq("club_id", clubId);
+    .eq("club_id", clubId)
+    .eq("status", "active");
   if (playersFetchError || !allPlayers) return { error: "โหลดผู้เล่นไม่สำเร็จ" };
 
   // Collect ids of players already in an active (pending or in_progress) match.
@@ -786,7 +851,7 @@ export async function buildNextClubMatchAction(
         "side_a_player1, side_a_player2, side_b_player1, side_b_player2, winner_side, ended_at",
       )
       .eq("club_id", clubId)
-      .eq("court", courtInt)
+      .eq("court", courtName)
       .eq("status", "completed")
       .not("winner_side", "is", null)
       .order("ended_at", { ascending: false })
@@ -872,7 +937,7 @@ export async function buildNextClubMatchAction(
     .from("club_matches")
     .insert({
       club_id: clubId,
-      court: courtInt,
+      court: courtName,
       side_a_player1: proposed.sideA.player1,
       side_a_player2: proposed.sideA.player2 ?? null,
       side_b_player1: proposed.sideB.player1,
@@ -941,9 +1006,17 @@ export async function finishClubMatchAction(input: {
   if ("error" in guard) return { error: guard.error };
   const { match } = guard;
 
+  // Full-score finish derives the winner from the score (server-authoritative);
+  // an explicit winnerSide (winner-only finish) is honored as-is.
+  const winnerSide =
+    input.winnerSide ??
+    (input.scoreA != null && input.scoreB != null
+      ? deriveWinnerSide(input.scoreA, input.scoreB) ?? undefined
+      : undefined);
+
   const { error: rpcError } = await sb.rpc("finish_club_match", {
     p_match_id: input.matchId,
-    p_winner_side: input.winnerSide ?? null,
+    p_winner_side: winnerSide ?? null,
     p_score_a: input.scoreA ?? null,
     p_score_b: input.scoreB ?? null,
   });
@@ -1106,7 +1179,7 @@ export async function setClubMatchShuttlesAction(
  */
 export async function createClubManualMatchAction(input: {
   clubId: string;
-  court: number;
+  court: string;
   sideA: string[];
   sideB: string[];
 }): Promise<{ ok: true; match: ClubMatch } | { error: string }> {
@@ -1114,8 +1187,8 @@ export async function createClubManualMatchAction(input: {
   if (!session) return await loginRedirect();
 
   const { clubId, sideA, sideB } = input;
-  const courtInt = Math.trunc(input.court);
-  if (!Number.isFinite(courtInt) || courtInt < 1) return { error: "หมายเลขสนามไม่ถูกต้อง" };
+  const courtName = input.court.trim();
+  if (!courtName) return { error: "ระบุสนาม" };
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
@@ -1161,7 +1234,7 @@ export async function createClubManualMatchAction(input: {
     .from("club_matches")
     .insert({
       club_id: clubId,
-      court: courtInt,
+      court: courtName,
       side_a_player1: cleanA[0],
       side_a_player2: ppt === 2 ? cleanA[1] : null,
       side_b_player1: cleanB[0],

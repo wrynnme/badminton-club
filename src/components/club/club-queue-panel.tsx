@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "@bprogress/next/app";
 import { toast } from "sonner";
-import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, PenLine, Trash2, AlertTriangle } from "lucide-react";
+import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -34,13 +34,26 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
   TooltipContent,
@@ -410,23 +423,46 @@ function InProgressRow({
 }) {
   const [finishOpen, setFinishOpen] = useState(false);
   const [finishBusy, finishTransition] = useTransition();
+  const [scoreA, setScoreA] = useState("");
+  const [scoreB, setScoreB] = useState("");
 
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
   const sideB = resolveSide(match.side_b_player1, match.side_b_player2, nameMap);
 
-  function handleFinish(winnerSide?: "a" | "b") {
+  function handleFinish(opts: {
+    winnerSide?: "a" | "b";
+    scoreA?: number;
+    scoreB?: number;
+  } = {}) {
     finishTransition(async () => {
-      const res = await finishClubMatchAction({
-        matchId: match.id,
-        winnerSide,
-      });
+      const res = await finishClubMatchAction({ matchId: match.id, ...opts });
       if ("error" in res) {
         toast.error(res.error);
       } else {
         setFinishOpen(false);
+        setScoreA("");
+        setScoreB("");
         onRefresh();
       }
     });
+  }
+
+  function handleScoreFinish() {
+    const a = parseInt(scoreA, 10);
+    const b = parseInt(scoreB, 10);
+    if (Number.isNaN(a) || Number.isNaN(b)) {
+      toast.error("กรอกคะแนนทั้งสองฝั่ง");
+      return;
+    }
+    if (a < 0 || b < 0 || a > 99 || b > 99) {
+      toast.error("คะแนน 0–99");
+      return;
+    }
+    if (a === b) {
+      toast.error("คะแนนเท่ากัน ต้องมีผู้ชนะ");
+      return;
+    }
+    handleFinish({ scoreA: a, scoreB: b });
   }
 
   return (
@@ -471,57 +507,103 @@ function InProgressRow({
       </div>
 
       {finishOpen && canManage && (
-        <div className="mt-2 ml-2 flex flex-wrap gap-2">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="sm"
-                  variant="default"
-                  className="h-7 text-xs"
-                  disabled={finishBusy}
-                  onClick={() => handleFinish("a")}
-                >
-                  <Trophy className="h-3 w-3 mr-1" />
-                  ฝั่ง A ชนะ
-                </Button>
-              }
+        <div className="mt-2 ml-2 flex flex-col gap-2">
+          {/* โหมด 1 — กรอกคะแนนเต็ม (ผู้ชนะคำนวณจากคะแนน) */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground shrink-0">กรอกคะแนน</span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={99}
+              value={scoreA}
+              onChange={(e) => setScoreA(e.target.value)}
+              disabled={finishBusy}
+              aria-label={`คะแนน ${sideA}`}
+              className="h-7 w-14 text-center text-xs"
             />
-            <TooltipContent>{sideA} ชนะ</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="sm"
-                  variant="default"
-                  className="h-7 text-xs"
-                  disabled={finishBusy}
-                  onClick={() => handleFinish("b")}
-                >
-                  <Trophy className="h-3 w-3 mr-1" />
-                  ฝั่ง B ชนะ
-                </Button>
-              }
+            <span className="text-xs text-muted-foreground">:</span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={99}
+              value={scoreB}
+              onChange={(e) => setScoreB(e.target.value)}
+              disabled={finishBusy}
+              aria-label={`คะแนน ${sideB}`}
+              className="h-7 w-14 text-center text-xs"
             />
-            <TooltipContent>{sideB} ชนะ</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 text-xs"
-                  disabled={finishBusy}
-                  onClick={() => handleFinish(undefined)}
-                >
-                  จบแบบไม่ระบุผล
-                </Button>
-              }
-            />
-            <TooltipContent>บันทึกว่าจบโดยไม่มีผู้ชนะ</TooltipContent>
-          </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs"
+                    disabled={finishBusy}
+                    onClick={handleScoreFinish}
+                  >
+                    บันทึกผล
+                  </Button>
+                }
+              />
+              <TooltipContent>บันทึกคะแนน — ผู้ชนะคำนวณจากคะแนนที่สูงกว่า</TooltipContent>
+            </Tooltip>
+          </div>
+          {/* โหมด 2/3 — กดฝั่งผู้ชนะ หรือจบแบบไม่ระบุผล */}
+          <div className="flex flex-wrap gap-2">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    disabled={finishBusy}
+                    onClick={() => handleFinish({ winnerSide: "a" })}
+                  >
+                    <Trophy className="h-3 w-3 mr-1" />
+                    ฝั่ง A ชนะ
+                  </Button>
+                }
+              />
+              <TooltipContent>{sideA} ชนะ (ไม่บันทึกคะแนน)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    disabled={finishBusy}
+                    onClick={() => handleFinish({ winnerSide: "b" })}
+                  >
+                    <Trophy className="h-3 w-3 mr-1" />
+                    ฝั่ง B ชนะ
+                  </Button>
+                }
+              />
+              <TooltipContent>{sideB} ชนะ (ไม่บันทึกคะแนน)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    disabled={finishBusy}
+                    onClick={() => handleFinish({})}
+                  >
+                    จบแบบไม่ระบุผล
+                  </Button>
+                }
+              />
+              <TooltipContent>บันทึกว่าจบโดยไม่มีผู้ชนะ</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       )}
     </div>
@@ -555,6 +637,11 @@ function CompletedRow({
       <span className={winnerA ? "text-winner font-medium" : ""}>{sideA}</span>
       <span className="text-xs">vs</span>
       <span className={winnerB ? "text-winner font-medium" : ""}>{sideB}</span>
+      {match.score_a != null && match.score_b != null && (
+        <span className="text-xs font-medium tabular-nums text-foreground shrink-0">
+          {match.score_a} : {match.score_b}
+        </span>
+      )}
       {match.winner_side && (
         <Trophy className="h-3.5 w-3.5 text-warning shrink-0" />
       )}
@@ -576,7 +663,7 @@ function BuildButton({
   onRefresh,
 }: {
   clubId: string;
-  court: number;
+  court: string;
   onRefresh: () => void;
 }) {
   const [busy, transition] = useTransition();
@@ -631,27 +718,59 @@ function PlayerSelect({
   players: { id: string; display_name: string }[];
   nameMap: Map<string, string>;
 }) {
-  function renderName(v: string) {
-    return v ? (nameMap.get(v) ?? v) : "เลือกผู้เล่น";
-  }
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const selectedName = value ? (nameMap.get(value) ?? value) : "";
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? players.filter((p) => p.display_name.toLowerCase().includes(q))
+    : players;
 
   return (
     <div className="space-y-1">
       <Label htmlFor={id} className="text-xs text-muted-foreground">
         {label}
       </Label>
-      <Select value={value} onValueChange={(v) => { if (v) onChange(v); }}>
-        <SelectTrigger id={id} className="h-8 text-sm">
-          <SelectValue>{(v: string) => renderName(v)}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {players.map((p) => (
-            <SelectItem key={p.id} value={p.id}>
-              {p.display_name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
+        <PopoverTrigger
+          render={
+            <Button
+              id={id}
+              type="button"
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              className="w-full h-8 justify-between font-normal text-sm"
+            >
+              <span className={`truncate ${selectedName ? "" : "text-muted-foreground"}`}>
+                {selectedName || "เลือกผู้เล่น"}
+              </span>
+              <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
+            </Button>
+          }
+        />
+        <PopoverContent className="w-(--anchor-width) p-0 gap-0" align="start">
+          <Command shouldFilter={false}>
+            <CommandInput placeholder="พิมพ์ชื่อ..." value={query} onValueChange={setQuery} />
+            <CommandList>
+              <CommandEmpty>ไม่พบผู้เล่น</CommandEmpty>
+              <CommandGroup>
+                {filtered.map((p) => (
+                  <CommandItem
+                    key={p.id}
+                    value={p.id}
+                    onSelect={() => { onChange(p.id); setOpen(false); setQuery(""); }}
+                  >
+                    <span className="flex-1 truncate">{p.display_name}</span>
+                    {value === p.id && <Check className="h-4 w-4 shrink-0" />}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
@@ -660,22 +779,31 @@ function PlayerSelect({
 
 const UNSET = "";
 
+/** Order-independent key for a side's player set (sorted ids). */
+function sideKey(ids: (string | null | undefined)[]): string {
+  return ids.filter(Boolean).slice().sort().join("|");
+}
+
 function ManualMatchDialog({
   clubId,
   players,
   settings,
+  courts,
+  matches,
   onRefresh,
 }: {
   clubId: string;
   players: { id: string; display_name: string }[];
   settings: ClubQueueSettings;
+  courts: string[];
+  matches: ClubMatch[];
   onRefresh: () => void;
 }) {
   const ppt = settings.players_per_team;
   const [open, setOpen] = useState(false);
   const [busy, startTransition] = useTransition();
 
-  const [court, setCourt] = useState(1);
+  const [court, setCourt] = useState(courts[0] ?? "");
   const [sideA1, setSideA1] = useState(UNSET);
   const [sideA2, setSideA2] = useState(UNSET);
   const [sideB1, setSideB1] = useState(UNSET);
@@ -683,8 +811,54 @@ function ManualMatchDialog({
 
   const nameMap = new Map(players.map((p) => [p.id, p.display_name]));
 
+  // Prior meetings: non-cancelled matches where the same two pairs (order-
+  // independent, within-side and between-side) already faced each other.
+  const priorMeetings = useMemo(() => {
+    const sideA = ppt === 2 ? [sideA1, sideA2] : [sideA1];
+    const sideB = ppt === 2 ? [sideB1, sideB2] : [sideB1];
+    const all = [...sideA, ...sideB];
+    if (all.some((id) => !id) || new Set(all).size !== all.length) return [];
+    const a = sideKey(sideA);
+    const b = sideKey(sideB);
+    return matches
+      .filter((m) => {
+        if (m.status === "cancelled") return false;
+        const ma = sideKey([m.side_a_player1, m.side_a_player2]);
+        const mb = sideKey([m.side_b_player1, m.side_b_player2]);
+        return (ma === a && mb === b) || (ma === b && mb === a);
+      })
+      .sort(
+        (x, y) =>
+          new Date(y.ended_at ?? y.created_at).getTime() -
+          new Date(x.ended_at ?? x.created_at).getTime(),
+      );
+  }, [matches, sideA1, sideA2, sideB1, sideB2, ppt]);
+
+  const lastMeetingLabel = useMemo(() => {
+    const last = priorMeetings[0];
+    if (!last) return "";
+    if (last.status === "in_progress") return "กำลังแข่งอยู่";
+    if (last.status === "pending") return "อยู่ในคิว";
+    // completed
+    const hasScore = last.score_a != null && last.score_b != null;
+    const winnerIds =
+      last.winner_side === "a"
+        ? [last.side_a_player1, last.side_a_player2]
+        : last.winner_side === "b"
+          ? [last.side_b_player1, last.side_b_player2]
+          : [];
+    const winnerName = winnerIds
+      .filter(Boolean)
+      .map((id) => nameMap.get(id!) ?? "?")
+      .join(" & ");
+    if (hasScore && winnerName) return `${winnerName} ชนะ ${last.score_a}–${last.score_b}`;
+    if (hasScore) return `ผล ${last.score_a}–${last.score_b}`;
+    if (winnerName) return `${winnerName} ชนะ`;
+    return "จบแล้ว (ไม่บันทึกผล)";
+  }, [priorMeetings, nameMap]);
+
   function reset() {
-    setCourt(1);
+    setCourt(courts[0] ?? "");
     setSideA1(UNSET);
     setSideA2(UNSET);
     setSideB1(UNSET);
@@ -739,19 +913,29 @@ function ManualMatchDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Court number */}
+          {/* Court */}
           <div className="space-y-1">
             <Label htmlFor="mm-court" className="text-sm font-medium">
               สนาม
             </Label>
-            <Input
-              id="mm-court"
-              type="number"
-              min={1}
-              value={court}
-              onChange={(e) => setCourt(Math.max(1, Math.trunc(Number(e.target.value)) || 1))}
-              className="h-8 w-24 text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
+            {courts.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                ยังไม่ได้ตั้งค่าสนาม — เพิ่มในแท็บตั้งค่า
+              </p>
+            ) : (
+              <Select value={court} onValueChange={(v) => setCourt(v ?? "")}>
+                <SelectTrigger id="mm-court" className="h-8 w-32 text-sm">
+                  <SelectValue>{(v: string) => `สนาม ${v}`}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {courts.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      สนาม {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {/* Side A */}
@@ -799,12 +983,34 @@ function ManualMatchDialog({
               />
             )}
           </div>
+
+          {priorMeetings.length > 0 && (
+            <div className="flex gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-warning mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="font-medium text-warning-foreground">
+                  คู่นี้เคยพบกันแล้ว {priorMeetings.length} ครั้ง
+                </p>
+                {lastMeetingLabel && (
+                  <p className="text-muted-foreground">ครั้งล่าสุด: {lastMeetingLabel}</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
           <DialogClose render={<Button variant="outline" disabled={busy}>ยกเลิก</Button>} />
-          <Button onClick={handleSubmit} disabled={busy}>
-            {busy ? "กำลังสร้าง…" : "เพิ่มแมตช์"}
+          <Button
+            onClick={handleSubmit}
+            disabled={busy}
+            variant={priorMeetings.length > 0 ? "destructive" : "default"}
+          >
+            {busy
+              ? "กำลังสร้าง…"
+              : priorMeetings.length > 0
+                ? "ยืนยันสร้าง (เคยเจอกัน)"
+                : "เพิ่มแมตช์"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -819,12 +1025,14 @@ export function ClubQueuePanel({
   matches,
   players,
   settings,
+  courts,
   canManage,
 }: {
   clubId: string;
   matches: ClubMatch[];
   players: { id: string; display_name: string }[];
   settings: ClubQueueSettings;
+  courts: string[];
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -897,13 +1105,7 @@ export function ClubQueuePanel({
       (a, b) =>
         new Date(b.ended_at ?? b.created_at).getTime() -
         new Date(a.ended_at ?? a.created_at).getTime(),
-    )
-    .slice(0, 15);
-
-  const courts = Array.from(
-    { length: settings.court_count },
-    (_, i) => i + 1,
-  );
+    );
 
   return (
     <Tabs defaultValue="pending" className="space-y-3">
@@ -931,21 +1133,30 @@ export function ClubQueuePanel({
       {/* ── รอแข่ง tab ── */}
       <TabsContent value="pending" className="space-y-3 mt-0">
         {canManage && (
-          <div className="flex flex-wrap gap-2">
-            {courts.map((c) => (
-              <BuildButton
-                key={c}
+          <div className="space-y-2">
+            {courts.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                ยังไม่ได้ตั้งค่าสนาม — เพิ่มในแท็บตั้งค่าก่อนสร้างแมตช์ตามสนาม
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {courts.map((c) => (
+                <BuildButton
+                  key={c}
+                  clubId={clubId}
+                  court={c}
+                  onRefresh={onRefresh}
+                />
+              ))}
+              <ManualMatchDialog
                 clubId={clubId}
-                court={c}
+                players={players}
+                settings={settings}
+                courts={courts}
+                matches={matches}
                 onRefresh={onRefresh}
               />
-            ))}
-            <ManualMatchDialog
-              clubId={clubId}
-              players={players}
-              settings={settings}
-              onRefresh={onRefresh}
-            />
+            </div>
           </div>
         )}
 

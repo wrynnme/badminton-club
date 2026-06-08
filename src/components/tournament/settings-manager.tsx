@@ -441,6 +441,13 @@ export function SettingsManager({
             onChange={(v) => update("realtime_enabled", v)}
           />
           <ToggleRow
+            id="queue-payload-sync"
+            label="อัปเดตคิวแบบ granular (ทดลอง)"
+            description="แพตช์เฉพาะแถวแมตช์ที่เปลี่ยนจาก Realtime payload แทนการรีเฟรชทั้งหน้า — คิวลื่นขึ้นตอนหลายสนาม (ต้องเปิด Realtime updates ด้วย)"
+            checked={settings.queue_payload_sync}
+            onChange={(v) => update("queue_payload_sync", v)}
+          />
+          <ToggleRow
             id="audit-log"
             label="Audit log"
             description="ปิดเพื่อ privacy / ลด write traffic"
@@ -453,6 +460,13 @@ export function SettingsManager({
             description="อนุญาตรีเซ็ตแมตช์น็อคเอ้าที่รอบถัดไปจบแล้ว พร้อม cascade 1 ขั้น (ใช้กรณีพลาดบันทึกผลแล้วต้องแก้)"
             checked={settings.allow_force_bracket_reset}
             onChange={(v) => update("allow_force_bracket_reset", v)}
+          />
+          <ToggleRow
+            id="knockout-fill-byes"
+            label="เติมช่อง BYE ด้วยทีมอันดับถัดไป"
+            description="โหมดทีม + แบ่งกลุ่ม: เมื่อผู้เข้ารอบไม่พอเต็มสาย ดึงทีมอันดับถัดไปที่ดีที่สุดข้ามกลุ่ม (เช่นที่ 3 ที่ดีสุด) มาเติมแทนการให้ BYE — ปิดอยู่ = ทีมหัวกลุ่มได้ BYE รอบแรก"
+            checked={settings.knockout_fill_byes}
+            onChange={(v) => update("knockout_fill_byes", v)}
           />
           <div className="flex items-center justify-between gap-3 py-1">
             <div className="flex flex-col gap-0.5">

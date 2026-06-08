@@ -14,6 +14,7 @@ import { MatchQueue } from "@/components/tournament/match-queue";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseSettings } from "@/lib/tournament/settings";
 import { parseTournamentThresholds } from "@/lib/tournament/divisions";
+import { getLevelsAction } from "@/lib/actions/clubs";
 import type {
   Tournament,
   TeamWithPlayers,
@@ -21,6 +22,7 @@ import type {
   Team,
   PairWithPlayers,
   Match,
+  Level,
 } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +48,7 @@ export default async function PublicTournamentPage({
   // Pairs uses an inner join on teams to scope by tournament_id without first
   // awaiting the teams list (cast required because the join column shape isn't
   // part of the generated PairWithPlayers type).
-  const [teamsRes, groupsRes, matchesRes, pairsRes] = await Promise.all([
+  const [teamsRes, groupsRes, matchesRes, pairsRes, levels] = await Promise.all([
     sb
       .from("teams")
       .select("*, players:team_players(*)")
@@ -70,12 +72,14 @@ export default async function PublicTournamentPage({
       )
       .eq("team.tournament_id", t.id)
       .order("created_at"),
+    getLevelsAction(),
   ]);
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];
   const groups: GroupWithTeams[] = (groupsRes.data ?? []) as GroupWithTeams[];
   const allMatches: Match[] = (matchesRes.data ?? []) as Match[];
   const pairs: PairWithPlayers[] = (pairsRes.data ?? []) as unknown as PairWithPlayers[];
+  const levelsList: Level[] = levels;
   const flatTeams: Team[] = teams.map(({ players: _p, ...x }) => x as Team);
 
   const settings = parseSettings(t.settings);
@@ -143,6 +147,7 @@ export default async function PublicTournamentPage({
                   pairDivisionThresholds={parseTournamentThresholds(t.pair_division_thresholds)}
                   isOwner={false}
                   matchRowSize="comfortable"
+                  levels={levelsList}
                 />
               ) : undefined
             }
@@ -172,6 +177,7 @@ export default async function PublicTournamentPage({
                   courts={t.courts ?? []}
                   requireCourtToStart={settings.require_court_to_start}
                   courtStrict={settings.court_strict}
+                  realtimeSync={settings.realtime_enabled && settings.queue_payload_sync}
                 />
               ) : undefined
             }

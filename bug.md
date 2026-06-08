@@ -6,6 +6,40 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-08 — Club dashboard (#10): static + dual-state live-smoke, no findings (develop)
+
+tsc 0 · vitest **70/70** club (incl. new dashboard 6 + cost-summary 5) · prod `next build` OK. Live-smoke on two throwaway guest-owned clubs: **populated** (4 active + 1 reserve, 2 completed + 1 in_progress + 1 pending matches, court_fee 120 + shuttle + a 50฿ expense) → 5 stat cards, both charts (recharts bars), and the player table all render; dashboard "ค่าใช้จ่ายรวม" card = **220฿** == the cost tab footer grand total (reconciles by construction via shared `computeClubCostSummary`). **empty** club → "ยังไม่มีข้อมูล" empty state, no crash. Console **0 errors / 0 warnings / 0 hydration** on both, across tab switches. Throwaway clubs + guest deleted (CASCADE); net-zero (2 NOMKONZ intact, 0 orphan matches/players).
+
+### 2026-06-08 — Club named courts (#9): static + owner live-smoke, no findings (develop)
+
+tsc `--noEmit` 0 · vitest **59/59** club · prod `next build` OK. Owner live-smoke on a throwaway guest-owned club (`court_count=3` → fallback courts `['1','2','3']`, migration not applied): queue tab build buttons render "สนาม 1/2/3", ManualMatchDialog court `<Select>` lists named courts, settings tab `ClubCourtManager` ("จัดการสนาม") renders + old "จำนวนสนาม" input gone — console **0 errors / 0 warnings / 0 hydration** across tab switches. Throwaway club + guest profile deleted (CASCADE); real data net-zero (2 NOMKONZ clubs intact, 0 orphan matches). Migration `20260608000300` + `20260608000400` (court int→text) **APPLIED to prod 2026-06-09** (user-confirmed; window: 0 live in_progress matches). Triggered by report "เพิ่มสนามใหม่ไม่ได้" — root cause was the unapplied `clubs.courts` column (UI rendered but `updateClubCourtsAction` UPDATE errored on the missing column). Post-apply: `clubs.courts`=text[] (2/2 backfilled), `club_matches.court`=text (28 matches intact), occupancy index recreated; add-court live-smoke persisted `['1','2','สนาม A']`; net-zero.
+
+### 2026-06-08 — Club queue: completed matches capped at 15 (RESOLVED, develop)
+
+**[P1] Completed club matches beyond 15 vanished from the จบแล้ว tab.** Context: `club-queue-panel.tsx:975` sliced the completed list `.slice(0, 15)` after sorting newest-first, so a session with >15 finished matches only ever showed the latest 15 (older ones looked lost; the tab count badge also capped at 15). Data was never lost — `clubs/[id]/page.tsx` fetches all `club_matches` with no limit/range. **Fix:** removed `.slice(0, 15)` → all completed matches render (newest-first) and the badge shows the true count.
+
+### 2026-06-08 — T5: granular queue realtime (develop)
+
+Static green: `tsc --noEmit` clean · vitest **421/421** · prod `next build` OK. Opt-in `queue_payload_sync` (default false, no migration): match-queue patches individual rows from postgres_changes UPDATE payloads instead of full refetch; INSERT/DELETE → router.refresh; `suppressPatchRef` pauses patches during drag/reorder. Page-level debounced refresh untouched (authority) → purely additive, default-off → cannot regress the working path. **✅ Single-client happy path LIVE-VERIFIED (2026-06-08)** — temporarily enabled both flags on a real completed tournament, drove the public queue page via `playwright-cli` + temp `console.log`: confirmed `channel status: SUBSCRIBED`, a real `UPDATE matches SET court=…` reached the handler with all columns present (REPLICA IDENTITY FULL live-confirmed), `setItems` patched the row, and the value rendered to the DOM. All instrumentation + flag/data reverted (net-zero; working tree == HEAD). **⚠️ Still unverified:** multi-client concurrency (multi-court races, optimistic-vs-payload reconciliation, dnd-vs-realtime) needs ≥2 simultaneous clients; INSERT/DELETE fallback branch (low risk, plain router.refresh) not exercised. Ships off; the UPDATE-patch core is proven, races still need a live multi-court test before broad use.
+
+### 2026-06-08 — T2: knockout "best Nth place" bracket fill (develop)
+
+All static green: `tsc --noEmit` clean · vitest **421/421** (+5 `selectBracketFillers` cases) · prod `next build` OK. Opt-in setting `knockout_fill_byes` (default false, no migration) fills empty team-mode knockout slots with best non-advancing teams instead of BYEs; gated off the independent-lower-bracket path (avoids double-allocating the next-rank teams). **Not live-tested:** prod has **zero team-mode tournaments** (1 tournament total, pair/group_knockout) so T2 has no current consumer and no reachable UI path to exercise without seeding a throwaway team tournament; the fill logic is unit-tested, the `generateKnockoutAction` wiring is static-verified + default-off (cannot affect the running pair tournament). Flagged for a seeded team-mode smoke if/when a team tournament is created.
+
+### 2026-06-08 — T3: tournament level → levels table FK (develop)
+
+All green: `tsc --noEmit` clean · vitest **416/416** · prod `next build` OK · **live smoke PASS** (public `/t/[token]` + `/t/[token]/stats/player/[id]` render HTTP 200, 0 error markers, level label renders from `level_id`). Migration `20260608000100_add_team_players_level_id` applied to prod with explicit user confirm — additive `level_id` FK + backfill, **72/72 players mapped, 0 unmapped**; **0/36** existing pairs' `pair_level` differs from `real(p1)+real(p2)` (no division shift). `updateTeamPlayerAction` now recomputes pair_level for the edited player's pairs (closed a pre-existing stale-pair_level gap). **Not Playwright-tested:** the admin team-tab level Select add/edit interaction (needs auth) — it mirrors the already-live club `add-guest-player.tsx` Select pattern; server action writes verified in diff.
+
+**Pending (separate confirm):** `ALTER TABLE team_players DROP COLUMN level;` — the dead free-text column is left in place; drop after a few days of develop soak (same pattern as the still-pending `club_players.level` drop).
+
+### 2026-06-08 — T4: collapsible divisions on match page (develop)
+
+All green, no new findings: `tsc --noEmit` clean · prod `next build` OK. `knockout-stage.tsx` + `pair-stage.tsx` "แข่งขัน" sub-tab were already collapsible; the gap was `pair-stage.tsx` "คะแนน" (standings) sub-tab — per-division `StandingsTable` cards rendered all-expanded. Wrapped each in the existing `<Collapsible>` pattern, reusing `isOpen`/`setOpen` so a division's open state is consistent across the แข่งขัน + คะแนน tabs; `EntityLink` kept as a sibling link next to the chevron trigger. No live smoke — presentational change mirroring the already-live matches-tab Collapsible in the same component.
+
+### 2026-06-08 — T1: server-side match_format enforcement (develop)
+
+All green, no new findings: `tsc --noEmit` clean · vitest **416/416 pass** (+10 new cases for `resolveMatchResult`). Closes the Slice 6 follow-up (2) — `recordMatchScoreAction` previously trusted the client-only format clamp, so a `best_of_3`/`best_of_5`/`fixed_2` class match could be saved with an invalid game set (e.g. a 1-game best_of_3 or a 1-1 best_of_3 with no decider) via a direct action call. **Fix**: new pure `resolveMatchResult(games, format)` in `match-format.ts` (reuses `MATCH_FORMAT_BOUNDS`); `recordMatchScoreAction` fetches the class `match_format` and gates the write when `match.class_id != null` (rejects empty/over-length/tied-game/non-clinch/wrong-count with a Thai `reason` via the existing `{ error }` channel). sports_day (`class_id` null) untouched — stays on `gameWinner`. Static-verified only (pure helper + single-action change over the proven `record_match_score` RPC path; no new RSC/client boundary).
+
 ### 2026-06-05 — max-effort code review of Phase 13 slices 7+8 + UI fixes (develop, commits up to 26fbb93) — 5 findings, ALL FIXED same-session
 
 Review of `origin/master..develop` (9 finder angles + advisor verify). 5 real bugs, all introduced this session, all on develop (never reached prod). Fixed + tsc clean · vitest 350 · prod build OK.

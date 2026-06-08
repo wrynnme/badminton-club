@@ -29,6 +29,7 @@ function makePlayer(overrides: Partial<TeamPlayer> = {}): TeamPlayer {
     display_name: "Alice",
     role: "member",
     level: "3",
+    level_id: null,
     csv_id: null,
     checked_in_at: null,
     created_at: "2026-01-01T00:00:00Z",

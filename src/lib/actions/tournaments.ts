@@ -15,6 +15,8 @@ import {
   type TournamentSettings,
 } from "@/lib/tournament/settings";
 import { parseTournamentThresholds } from "@/lib/tournament/divisions";
+import { pairLevelString, embeddedReal, realOf } from "@/lib/tournament/levels";
+import type { Level } from "@/lib/types";
 
 async function loginRedirect(): Promise<never> {
   const h = await headers();
@@ -347,18 +349,22 @@ export async function deleteTeamAction(teamId: string, tournamentId: string) {
   return { ok: true };
 }
 
-export async function addTeamPlayerAction(input: { team_id: string; display_name: string; role: "captain" | "member"; level?: string; tournament_id: string }) {
+export async function addTeamPlayerAction(
+  teamId: string,
+  input: { display_name: string; role: "captain" | "member"; level_id: string | null },
+  tournamentId: string,
+) {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
-  if (!(await assertCanEdit(input.tournament_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
   const { error } = await sb.from("team_players").insert({
-    team_id: input.team_id,
+    team_id: teamId,
     display_name: input.display_name,
     role: input.role,
-    level: input.level || null,
+    level_id: input.level_id,
     profile_id: session.profileId,
   });
   if (error) {
@@ -366,9 +372,9 @@ export async function addTeamPlayerAction(input: { team_id: string; display_name
     return { error: "เพิ่มผู้เล่นไม่สำเร็จ" };
   }
 
-  revalidatePath(`/tournaments/${input.tournament_id}`);
+  revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
-    tournament_id: input.tournament_id,
+    tournament_id: tournamentId,
     actor_id: session.profileId,
     actor_name: session.displayName,
     event_type: "player_added",
@@ -445,6 +451,25 @@ export async function importPlayersCsvAction(
   if (!rows.length) return { error: "ไฟล์ไม่มีข้อมูล" };
 
   const sb = await createAdminClient();
+
+  // Fetch levels once — resolve CSV `level` text (real numeric or label) → level_id
+  const { data: levelsData } = await sb.from("levels").select("id, real, label").order("sort_order");
+  const levels: Level[] = (levelsData ?? []) as Level[];
+
+  function resolveLevelId(raw: string): string | null {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const asFloat = parseFloat(trimmed);
+    // Match by real value first (realOf coerces string → number, levels.real is numeric in DB)
+    if (!isNaN(asFloat)) {
+      const byReal = levels.find((l) => realOf(l.real) === asFloat);
+      if (byReal) return byReal.id;
+    }
+    // Fall back to label match
+    const byLabel = levels.find((l) => l.label === trimmed);
+    return byLabel?.id ?? null;
+  }
+
   const prevTeamCount = (await sb.from("teams").select("id", { count: "exact", head: true }).eq("tournament_id", tournamentId)).count ?? 0;
   const teamByName = await ensureTeams(sb, tournamentId, rows);
   const teamsCreated = teamByName.size - prevTeamCount;
@@ -469,12 +494,13 @@ export async function importPlayersCsvAction(
   await Promise.all(
     [...dedupedRows.values()].map(async (r) => {
       const teamId = r.__teamId;
+      const levelId = resolveLevelId(r.level);
       const existingId = existingByCsvId.get(`${teamId}:${r.csv_id}`);
       if (existingId) {
-        await sb.from("team_players").update({ display_name: r.display_name, role: r.role, level: r.level || null }).eq("id", existingId);
+        await sb.from("team_players").update({ display_name: r.display_name, role: r.role, level_id: levelId }).eq("id", existingId);
         updated++;
       } else {
-        await sb.from("team_players").insert({ team_id: teamId, csv_id: r.csv_id, display_name: r.display_name, role: r.role, level: r.level || null });
+        await sb.from("team_players").insert({ team_id: teamId, csv_id: r.csv_id, display_name: r.display_name, role: r.role, level_id: levelId });
         created++;
       }
     })
@@ -516,10 +542,10 @@ export async function importPairsCsvAction(
 
   const sb = await createAdminClient();
 
-  // Build csv_id → {player_id, team_id, level} map for this tournament
+  // Build csv_id → {player_id, team_id, real} map for this tournament
   const { data: players } = await sb
     .from("team_players")
-    .select("id, team_id, csv_id, level")
+    .select("id, team_id, csv_id, level_id, levels:level_id(real)")
     .not("csv_id", "is", null);
 
   const { data: teams } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
@@ -539,10 +565,14 @@ export async function importPairsCsvAction(
   }
   const unknownClassCodes = new Set<string>();
 
-  const playerByCsvId = new Map<string, { id: string; teamId: string; level: string | null }>();
+  const playerByCsvId = new Map<string, { id: string; teamId: string; real: number | null }>();
   for (const p of players ?? []) {
     if (p.csv_id && teamIdSet.has(p.team_id)) {
-      playerByCsvId.set(p.csv_id, { id: p.id, teamId: p.team_id, level: p.level as string | null });
+      playerByCsvId.set(p.csv_id, {
+        id: p.id,
+        teamId: p.team_id,
+        real: embeddedReal((p as unknown as { levels: unknown }).levels),
+      });
     }
   }
 
@@ -591,12 +621,7 @@ export async function importPairsCsvAction(
       classId = cid;
     }
 
-    const pairLevel = (() => {
-      const n1 = parseFloat(p1.level ?? "");
-      const n2 = parseFloat(p2.level ?? "");
-      if (isNaN(n1) && isNaN(n2)) return null;
-      return String((isNaN(n1) ? 0 : n1) + (isNaN(n2) ? 0 : n2));
-    })();
+    const pairLevel = pairLevelString(p1.real, p2.real);
     const payload = {
       player_id_1: p1.id,
       player_id_2: p2.id,
@@ -634,7 +659,7 @@ export async function importPairsCsvAction(
 
 export async function updateTeamPlayerAction(
   playerId: string,
-  fields: { display_name?: string; level?: string | null },
+  fields: { display_name?: string; level_id?: string | null },
   tournamentId: string
 ) {
   const session = await getSession();
@@ -646,7 +671,7 @@ export async function updateTeamPlayerAction(
 
   const update: Record<string, string | null> = {};
   if (fields.display_name !== undefined) update.display_name = fields.display_name.trim();
-  if ("level" in fields) update.level = fields.level ?? null;
+  if ("level_id" in fields) update.level_id = fields.level_id ?? null;
 
   const sb = await createAdminClient();
   const { error } = await sb
@@ -654,6 +679,45 @@ export async function updateTeamPlayerAction(
   if (error) {
     console.error("[updateTeamPlayerAction]", error);
     return { error: "บันทึกข้อมูลผู้เล่นไม่สำเร็จ" };
+  }
+
+  // When level_id changed, recompute pair_level for every pair containing this player
+  if ("level_id" in fields) {
+    // Find all pairs where this player is player_id_1 or player_id_2
+    const { data: affectedPairs } = await sb
+      .from("pairs")
+      .select("id, player_id_1, player_id_2")
+      .or(`player_id_1.eq.${playerId},player_id_2.eq.${playerId}`);
+
+    if (affectedPairs && affectedPairs.length > 0) {
+      // Collect all distinct player ids across affected pairs
+      const allPlayerIds = Array.from(
+        new Set(affectedPairs.flatMap((p) => [p.player_id_1, p.player_id_2].filter(Boolean) as string[]))
+      );
+
+      // Fetch each player's level embed (reads new level_id since we already wrote above)
+      const { data: playerRows } = await sb
+        .from("team_players")
+        .select("id, level_id, levels:level_id(real)")
+        .in("id", allPlayerIds);
+
+      const realById = new Map<string, number | null>();
+      for (const p of playerRows ?? []) {
+        realById.set(p.id, embeddedReal((p as unknown as { levels: unknown }).levels));
+      }
+
+      // Update each pair's pair_level
+      await Promise.all(
+        affectedPairs.map((pair) => {
+          const r1 = pair.player_id_1 ? (realById.get(pair.player_id_1) ?? null) : null;
+          const r2 = pair.player_id_2 ? (realById.get(pair.player_id_2) ?? null) : null;
+          return sb
+            .from("pairs")
+            .update({ pair_level: pairLevelString(r1, r2) })
+            .eq("id", pair.id);
+        })
+      );
+    }
   }
 
   revalidatePath(`/tournaments/${tournamentId}`);

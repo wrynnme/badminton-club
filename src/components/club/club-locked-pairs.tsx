@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter } from "@bprogress/next/app";
 import { toast } from "sonner";
 import { Link2, Unlink, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";

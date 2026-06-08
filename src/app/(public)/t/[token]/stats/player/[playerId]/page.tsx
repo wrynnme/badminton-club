@@ -4,6 +4,7 @@ import { loadStatsTournamentByToken } from "@/lib/tournament/stats-page-data";
 import { computePlayerStats } from "@/lib/tournament/entity-stats";
 import { StatsPageShell } from "@/components/tournament/stats/stats-page-shell";
 import { PlayerStatsView } from "@/components/tournament/stats/player-stats-view";
+import { getLevelsAction } from "@/lib/actions/clubs";
 import type { TeamPlayer } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +15,10 @@ export default async function PublicPlayerStatsPage({
   params: Promise<{ token: string; playerId: string }>;
 }) {
   const { token, playerId } = await params;
-  const data = await loadStatsTournamentByToken(token);
+  const [data, levels] = await Promise.all([
+    loadStatsTournamentByToken(token),
+    getLevelsAction(),
+  ]);
   if (!data) notFound();
 
   // Fetch player directly from team_players; validate it belongs to this tournament
@@ -52,6 +56,7 @@ export default async function PublicPlayerStatsPage({
         team={team}
         pairById={pairById}
         competitorById={data.competitorById}
+        levels={levels}
       />
     </StatsPageShell>
   );

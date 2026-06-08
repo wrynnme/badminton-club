@@ -28,6 +28,8 @@ export type Club = {
   court_gap_policy: GapPolicy;
   // Rotation-queue config (raw jsonb; parse via parseQueueSettings in queue-settings.ts)
   queue_settings: Record<string, unknown>;
+  // Named courts (mirror tournaments.courts); replaces queue_settings.court_count.
+  courts: string[];
 };
 
 // Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").
@@ -52,6 +54,7 @@ export type ClubPlayer = {
   note: string | null;
   joined_at: string;
   position: number | null;
+  status: "active" | "reserve"; // 'reserve' = waitlist beyond max_players; auto-promoted when an active player leaves
   checked_in_at: string | null;
   // Cost split inputs — per-player session window + games played
   start_time: string | null; // "HH:MM:SS" or null = use club window
@@ -78,7 +81,8 @@ export type ClubMatchStatus = "pending" | "in_progress" | "completed" | "cancell
 export type ClubMatch = {
   id: string;
   club_id: string;
-  court: number;
+  court: string; // named court (FK-by-name to clubs.courts); was int 1..N pre-2026-06-08
+
   side_a_player1: string;
   side_a_player2: string | null;
   side_b_player1: string;
@@ -159,7 +163,8 @@ export type TeamPlayer = {
   profile_id: string | null;
   display_name: string;
   role: TeamRole;
-  level: string | null;
+  level: string | null; // DEPRECATED free-text — superseded by level_id FK → levels; dropped in a later migration
+  level_id: string | null; // FK → levels (skill level); source of truth for tournament players
   csv_id: string | null;
   checked_in_at: string | null;
   created_at: string;
