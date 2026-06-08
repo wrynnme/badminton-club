@@ -43,7 +43,22 @@ export function buildVisualBracket(
 
   return roundNumbers.map((rn, idx) => {
     const rMatches = byRound.get(rn)!.sort((a, b) => a.match_number - b.match_number);
-    // Number of slots shrinks each round
+
+    // Lower bracket does NOT follow single-elim halving — its round sizes go
+    // n/4, n/4, n/8, n/8, ... (consecutive equal-size rounds). Deriving slotCount
+    // from halving would slice real, playable matches out of the rendered bracket.
+    // Render one slot per actual match at uniform height; vertical connector
+    // alignment is cosmetic, dropping matches is not.
+    if (section === "lower") {
+      return {
+        roundNumber: rn,
+        label: `สายแพ้ รอบ ${idx + 1}`,
+        slotHeight: CARD_H,
+        matches: rMatches as Array<Match | null>,
+      };
+    }
+
+    // Upper bracket (and the single grand-final match): strict single-elim halving.
     const slotCount = Math.max(1, Math.round(firstRoundCount / Math.pow(2, idx)));
     const slotHeight = CARD_H * Math.pow(2, idx);
 

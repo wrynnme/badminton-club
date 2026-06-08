@@ -6,7 +6,7 @@
 
 - Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1
 - Supabase Postgres (service role, bypass RLS) · MCP connected
-- Auth: LINE Login + Guest (HMAC-signed `bc_session` cookie)
+- Auth: LINE Login + Guest (HMAC-signed `bc_session` cookie; payload carries `iat`, `decode()` rejects tokens older than `MAX_AGE`=30d server-side — cookie maxAge alone is browser-only. 2026-06-09 review fix)
 - Theme: **"Court Energy" (D2) — court-green primary + green-tinted neutral + vivid orange `--brand`** (design-language overhaul 2026-05-30, replaced Teal+Zinc). Picked from a 3-direction compare (`design-preview.html`, throwaway artifact at repo root). Applied via CSS vars in `src/app/globals.css` `:root`/`.dark` only. Light primary/ring = `oklch(0.52 0.16 150)`, dark = `oklch(0.78 0.2 148)`; neutrals green-tinted (hue ~150–158, not Zinc); `--accent` stays a **subtle neutral** (shadcn hover/selected role — NOT the brand orange). Charts = green-family ramp.
   - **Semantic tokens** (theme-aware — light/dark baked into the var, so no `dark:` at call sites): `--success` `--warning` `--live` `--winner` `--brand` `--destructive`. Division palette `--div-1..8` (1=top). Elevation ladder `--e-1..3` + `--glow` (consume via `var()`), `--shadow-color` HSL triplet. All new colors registered in `@theme inline` so `bg-success`/`text-winner`/`bg-div-1/14` utilities + opacity modifiers exist.
   - **Display font** Chakra Petch via `next/font` (`--font-chakra` → `@theme --font-heading`); body still Anuphan, mono Geist Mono. `font-heading` utility is **inert until phase-2 components adopt it** (headings/scoreboard numerals).
