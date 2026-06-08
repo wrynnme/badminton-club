@@ -347,19 +347,38 @@ export function PairStage({
                   const divMatches = matchesByDivision.get(divKey) ?? [];
                   const divCompetitors = divisionCompetitorsByKey.get(divKey) ?? [];
                   const tone = divisionTone(divKey!);
+                  const open = isOpen(divKey);
+                  const completedCount = divMatches.filter((m) => m.status === "completed").length;
                   return (
-                    <div key={String(divKey)}>
-                      <p className={`text-xs font-medium mb-2 ${tone.text}`}>
-                        <EntityLink entityType="division" entityId={String(divKey)}>
-                          {divisionLabelTh(divKey!)}
-                        </EntityLink>
-                      </p>
-                      <Card>
-                        <CardContent className="pt-3">
-                          <StandingsTable matches={divMatches} competitors={divCompetitors} unit="pair" />
-                        </CardContent>
-                      </Card>
-                    </div>
+                    <Collapsible key={String(divKey)} open={open} onOpenChange={(o) => setOpen(divKey, o)}>
+                      {/* Header: chevron toggle + division link (kept separate so the
+                          EntityLink stays a real link, not nested inside the trigger) */}
+                      <div className="flex items-center gap-1.5">
+                        <CollapsibleTrigger
+                          render={<Button type="button" variant="ghost" size="sm" className="h-6 w-6 px-0 shrink-0" />}
+                        >
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+                          />
+                        </CollapsibleTrigger>
+                        <span className={`inline-block w-1.5 h-1.5 rounded-full ${tone.bg} ${tone.border} border`} />
+                        <p className={`text-xs font-medium ${tone.text}`}>
+                          <EntityLink entityType="division" entityId={String(divKey)}>
+                            {divisionLabelTh(divKey!)}
+                          </EntityLink>
+                        </p>
+                        <span className="text-xs text-muted-foreground">
+                          ({completedCount}/{divMatches.length})
+                        </span>
+                      </div>
+                      <CollapsibleContent>
+                        <Card className="mt-2">
+                          <CardContent className="pt-3">
+                            <StandingsTable matches={divMatches} competitors={divCompetitors} unit="pair" />
+                          </CardContent>
+                        </Card>
+                      </CollapsibleContent>
+                    </Collapsible>
                   );
                 })}
               </div>

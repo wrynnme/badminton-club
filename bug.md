@@ -6,6 +6,10 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-08 — T4: collapsible divisions on match page (develop)
+
+All green, no new findings: `tsc --noEmit` clean · prod `next build` OK. `knockout-stage.tsx` + `pair-stage.tsx` "แข่งขัน" sub-tab were already collapsible; the gap was `pair-stage.tsx` "คะแนน" (standings) sub-tab — per-division `StandingsTable` cards rendered all-expanded. Wrapped each in the existing `<Collapsible>` pattern, reusing `isOpen`/`setOpen` so a division's open state is consistent across the แข่งขัน + คะแนน tabs; `EntityLink` kept as a sibling link next to the chevron trigger. No live smoke — presentational change mirroring the already-live matches-tab Collapsible in the same component.
+
 ### 2026-06-08 — T1: server-side match_format enforcement (develop)
 
 All green, no new findings: `tsc --noEmit` clean · vitest **416/416 pass** (+10 new cases for `resolveMatchResult`). Closes the Slice 6 follow-up (2) — `recordMatchScoreAction` previously trusted the client-only format clamp, so a `best_of_3`/`best_of_5`/`fixed_2` class match could be saved with an invalid game set (e.g. a 1-game best_of_3 or a 1-1 best_of_3 with no decider) via a direct action call. **Fix**: new pure `resolveMatchResult(games, format)` in `match-format.ts` (reuses `MATCH_FORMAT_BOUNDS`); `recordMatchScoreAction` fetches the class `match_format` and gates the write when `match.class_id != null` (rejects empty/over-length/tied-game/non-clinch/wrong-count with a Thai `reason` via the existing `{ error }` channel). sports_day (`class_id` null) untouched — stays on `gameWinner`. Static-verified only (pure helper + single-action change over the proven `record_match_score` RPC path; no new RSC/client boundary).
