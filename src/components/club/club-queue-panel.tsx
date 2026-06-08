@@ -971,8 +971,7 @@ export function ClubQueuePanel({
       (a, b) =>
         new Date(b.ended_at ?? b.created_at).getTime() -
         new Date(a.ended_at ?? a.created_at).getTime(),
-    )
-    .slice(0, 15);
+    );
 
   const courts = Array.from(
     { length: settings.court_count },

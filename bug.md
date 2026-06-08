@@ -6,6 +6,10 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-08 — Club queue: completed matches capped at 15 (RESOLVED, develop)
+
+**[P1] Completed club matches beyond 15 vanished from the จบแล้ว tab.** Context: `club-queue-panel.tsx:975` sliced the completed list `.slice(0, 15)` after sorting newest-first, so a session with >15 finished matches only ever showed the latest 15 (older ones looked lost; the tab count badge also capped at 15). Data was never lost — `clubs/[id]/page.tsx` fetches all `club_matches` with no limit/range. **Fix:** removed `.slice(0, 15)` → all completed matches render (newest-first) and the badge shows the true count.
+
 ### 2026-06-08 — T5: granular queue realtime (develop)
 
 Static green: `tsc --noEmit` clean · vitest **421/421** · prod `next build` OK. Opt-in `queue_payload_sync` (default false, no migration): match-queue patches individual rows from postgres_changes UPDATE payloads instead of full refetch; INSERT/DELETE → router.refresh; `suppressPatchRef` pauses patches during drag/reorder. Page-level debounced refresh untouched (authority) → purely additive, default-off → cannot regress the working path. **✅ Single-client happy path LIVE-VERIFIED (2026-06-08)** — temporarily enabled both flags on a real completed tournament, drove the public queue page via `playwright-cli` + temp `console.log`: confirmed `channel status: SUBSCRIBED`, a real `UPDATE matches SET court=…` reached the handler with all columns present (REPLICA IDENTITY FULL live-confirmed), `setItems` patched the row, and the value rendered to the DOM. All instrumentation + flag/data reverted (net-zero; working tree == HEAD). **⚠️ Still unverified:** multi-client concurrency (multi-court races, optimistic-vs-payload reconciliation, dnd-vs-realtime) needs ≥2 simultaneous clients; INSERT/DELETE fallback branch (low risk, plain router.refresh) not exercised. Ships off; the UPDATE-patch core is proven, races still need a live multi-court test before broad use.
