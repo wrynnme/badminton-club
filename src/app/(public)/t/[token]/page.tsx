@@ -177,6 +177,7 @@ export default async function PublicTournamentPage({
                   courts={t.courts ?? []}
                   requireCourtToStart={settings.require_court_to_start}
                   courtStrict={settings.court_strict}
+                  realtimeSync={settings.realtime_enabled && settings.queue_payload_sync}
                 />
               ) : undefined
             }

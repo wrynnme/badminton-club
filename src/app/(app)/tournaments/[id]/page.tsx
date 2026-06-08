@@ -288,6 +288,7 @@ export default async function TournamentDetailPage({
               requireCourtToStart={settings.require_court_to_start}
               courtStrict={settings.court_strict}
               classById={classById}
+              realtimeSync={settings.realtime_enabled && settings.queue_payload_sync}
             />
           }
           settingsTab={

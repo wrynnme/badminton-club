@@ -38,6 +38,12 @@ export const TournamentSettingsSchema = z.object({
   require_court_to_start: z.boolean().default(false),
   require_checkin: z.boolean().default(false),
   realtime_enabled: z.boolean().default(true),
+  // T5 — granular queue realtime (opt-in, default off). When ON, the match queue
+  // patches individual match rows from postgres_changes UPDATE payloads (no full
+  // page refetch) for snappier multi-court updates. INSERT/DELETE still fall back
+  // to router.refresh, and the page-level debounced refresh stays as the authority,
+  // so this is purely additive — it cannot regress the working refresh path.
+  queue_payload_sync: z.boolean().default(false),
   audit_log_enabled: z.boolean().default(true),
   match_cooldown_minutes: z.number().int().min(0).max(30).default(0),
   // Default best-of format for matches. Competition-mode classes override per-class

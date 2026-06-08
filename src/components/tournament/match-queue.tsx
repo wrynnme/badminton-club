@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { GripVertical, Loader2, Play, ClipboardEdit, RotateCcw, Shuffle, CheckCircle2, Undo2 } from "lucide-react";
 import {
@@ -81,6 +82,7 @@ export function MatchQueue({
   requireCourtToStart = false,
   courtStrict = true,
   classById,
+  realtimeSync = false,
 }: {
   matches: Match[];
   competitorById: Map<string, Competitor>;
@@ -91,16 +93,61 @@ export function MatchQueue({
   requireCourtToStart?: boolean;
   courtStrict?: boolean;
   classById?: Map<string, TournamentClass>;
+  /** T5 — when true, patch match rows from realtime UPDATE payloads instead of
+   *  waiting for the page-level debounced router.refresh. Additive + opt-in. */
+  realtimeSync?: boolean;
 }) {
   const router = useRouter();
   const [items, setItems] = useState<Match[]>([]);
   const [reorderPending, startReorder] = useTransition();
   const [autoPending, startAuto] = useTransition();
+  // T5: suppress realtime row-patches while the user is dragging or a reorder is
+  // mid-flight, so an incoming queue_position UPDATE can't fight the optimistic order.
+  const suppressPatchRef = useRef(false);
 
   // keep local state in sync with server-side `matches`
   useEffect(() => {
     setItems(sortMatches(matches));
   }, [matches]);
+
+  // T5 — granular queue realtime: patch individual rows from UPDATE payloads
+  // (matches has REPLICA IDENTITY FULL → payload.new carries every column). New /
+  // removed matches need related data the payload lacks, so they fall back to a
+  // full refresh. Off by default; the page-level wrapper's refresh stays the authority.
+  useEffect(() => {
+    if (!realtimeSync) return;
+    const sb = createClient();
+    const channel = sb
+      .channel(`queue-sync:${tournamentId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "matches", filter: `tournament_id=eq.${tournamentId}` },
+        (payload) => {
+          if (suppressPatchRef.current) return;
+          const row = payload.new as Match;
+          if (!row?.id) return;
+          setItems((prev) =>
+            prev.some((m) => m.id === row.id)
+              ? sortMatches(prev.map((m) => (m.id === row.id ? { ...m, ...row } : m)))
+              : prev, // unknown id (e.g. just inserted) — let the refresh below add it
+          );
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "matches", filter: `tournament_id=eq.${tournamentId}` },
+        () => router.refresh(),
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "matches", filter: `tournament_id=eq.${tournamentId}` },
+        () => router.refresh(),
+      )
+      .subscribe();
+    return () => {
+      sb.removeChannel(channel);
+    };
+  }, [realtimeSync, tournamentId, router]);
 
   const pending = useMemo(() => items.filter((m) => m.status === "pending"), [items]);
   const inProgress = useMemo(() => items.filter((m) => m.status === "in_progress"), [items]);
@@ -116,12 +163,16 @@ export function MatchQueue({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
+  // T5: pause realtime patches for the whole drag → reorder → commit window.
+  const onDragStart = () => { suppressPatchRef.current = true; };
+  const onDragCancel = () => { suppressPatchRef.current = false; };
+
   const onDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
+    if (!over || active.id === over.id) { suppressPatchRef.current = false; return; }
     const oldIndex = pending.findIndex((m) => m.id === active.id);
     const newIndex = pending.findIndex((m) => m.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
+    if (oldIndex < 0 || newIndex < 0) { suppressPatchRef.current = false; return; }
 
     const reordered = arrayMove(pending, oldIndex, newIndex);
     const merged = [...reordered, ...inProgress, ...completed];
@@ -137,6 +188,8 @@ export function MatchQueue({
         toast.success("จัดลำดับใหม่แล้ว");
         router.refresh();
       }
+      // Re-enable realtime patches once the new order is committed server-side.
+      suppressPatchRef.current = false;
     });
   };
 
@@ -250,7 +303,7 @@ export function MatchQueue({
           {pending.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">ไม่มีแมตช์รอแข่ง</p>
           ) : canEdit ? (
-            <DndContext id="match-queue-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+            <DndContext id="match-queue-dnd" sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
               <SortableContext items={pending.map((m) => m.id)} strategy={verticalListSortingStrategy}>
                 <ul className="space-y-2">
                   {pending.map((m) => (

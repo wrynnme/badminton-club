@@ -6,6 +6,10 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-08 — T5: granular queue realtime (develop)
+
+Static green: `tsc --noEmit` clean · vitest **421/421** · prod `next build` OK · **render smoke** (public queue page HTTP 200, 0 errors). Opt-in `queue_payload_sync` (default false, no migration): match-queue patches individual rows from postgres_changes UPDATE payloads instead of full refetch; INSERT/DELETE → router.refresh; `suppressPatchRef` pauses patches during drag/reorder. Page-level debounced refresh untouched (authority) → purely additive, default-off → cannot regress the working path. **⚠️ Concurrency NOT verified** — multi-court races, optimistic-vs-payload reconciliation, and dnd-vs-realtime cannot be exercised single-client in this environment. Needs a live multi-court/multi-client test before being recommended for real use; ships off so the running tournament is unaffected.
+
 ### 2026-06-08 — T2: knockout "best Nth place" bracket fill (develop)
 
 All static green: `tsc --noEmit` clean · vitest **421/421** (+5 `selectBracketFillers` cases) · prod `next build` OK. Opt-in setting `knockout_fill_byes` (default false, no migration) fills empty team-mode knockout slots with best non-advancing teams instead of BYEs; gated off the independent-lower-bracket path (avoids double-allocating the next-rank teams). **Not live-tested:** prod has **zero team-mode tournaments** (1 tournament total, pair/group_knockout) so T2 has no current consumer and no reachable UI path to exercise without seeding a throwaway team tournament; the fill logic is unit-tested, the `generateKnockoutAction` wiring is static-verified + default-off (cannot affect the running pair tournament). Flagged for a seeded team-mode smoke if/when a team tournament is created.

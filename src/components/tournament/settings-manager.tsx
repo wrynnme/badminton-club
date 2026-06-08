@@ -441,6 +441,13 @@ export function SettingsManager({
             onChange={(v) => update("realtime_enabled", v)}
           />
           <ToggleRow
+            id="queue-payload-sync"
+            label="อัปเดตคิวแบบ granular (ทดลอง)"
+            description="แพตช์เฉพาะแถวแมตช์ที่เปลี่ยนจาก Realtime payload แทนการรีเฟรชทั้งหน้า — คิวลื่นขึ้นตอนหลายสนาม (ต้องเปิด Realtime updates ด้วย)"
+            checked={settings.queue_payload_sync}
+            onChange={(v) => update("queue_payload_sync", v)}
+          />
+          <ToggleRow
             id="audit-log"
             label="Audit log"
             description="ปิดเพื่อ privacy / ลด write traffic"
