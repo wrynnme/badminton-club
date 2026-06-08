@@ -10,7 +10,7 @@ Open items below come from the 2026-06-09 whole-system core review (full report:
 
 Remaining after the IDOR-cluster + session-expiry + bracket-visual P1 fixes (all in Resolved). None block; surfaced by the core review.
 
-- **[P2 ×16 remaining]** correctness/concurrency/hardening leads — see the HTML report. Notable: `by_time` court split drops fee on cross-midnight session, unbounded guest-profile creation (no rate limit), remaining read-then-write races (join capacity, group_teams unlocked RMW), per-field settings fallback wipes sibling flags, division-stats cross-bucket counts. Not individually re-verified. (7 of 23 closed 2026-06-09 — see Resolved; club `queue_position` race closed via created_at tiebreak.)
+- **[P2 ×15 remaining]** correctness/concurrency/hardening leads — see the HTML report. Notable: `by_time` court split drops fee on cross-midnight session, unbounded guest-profile creation (no rate limit), remaining read-then-write races (join capacity, group_teams unlocked RMW), division-stats cross-bucket counts. Not individually re-verified. (8 of 23 closed 2026-06-09 — see Resolved; settings per-field fallback now recovers nested sub-flags.)
 - **[P2 — won't fix, intended]** `computeExpenseShares` ceil-per-head over-collects by a few baht (100฿/3 → 102). Confirmed by user 2026-06-09 as by-design: everyone pays the same whole baht, organizer is covered, and it stays reconciled between the cost-breakdown table and ExpenseManager. Fair largest-remainder split was offered and declined.
 - **[P1 follow-up] session revocation** — the expiry fix below closes "valid forever", but there is still no per-token revocation (can't kill one leaked cookie without rotating `SESSION_SECRET`, which logs everyone out). Deferred — needs a per-profile token-version column + a lookup on every `getSession()` (DB hit on the auth hot path).
 
@@ -142,6 +142,12 @@ Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upse
 All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
 
 ## Resolved
+
+### 2026-06-09 — Settings: per-field fallback wiped sibling flags (P2) (develop)
+
+tsc 0 · vitest 442 (+3 line_notify recovery) · build OK. No DB migration.
+
+- **[P2] parseSettings per-field fallback reset the WHOLE nested object on one corrupt sub-flag** (`tournament/settings.ts:143`) — the fallback loop did `fieldSchema.safeParse(normalised[key])` per top-level key. `line_notify` is a nested object of 4 boolean flags; if a manual DB edit corrupts ONE sub-value (e.g. `start:"yes"`), the whole-object parse fails → the key is skipped → `line_notify` resets to DEFAULT (all true), silently wiping the user's `score:false`/`bracket:false`. Fix: new `recoverObjectField(objSchema, value, fallback)` helper recovers nested-object sub-values individually — keeps every sub-flag that parses, falls back ONLY the corrupt one to its default; the loop routes `key === "line_notify"` through it (the only nested object). Verified against zod v4: `{start:"yes",score:false,bracket:false,status:true}` → `start` recovers to true, `score`/`bracket` stay false. Read-time recovery only — the write path (`updateTournamentSettingsAction`) keeps strict whole-object validation (a schema `.catch()` would silently coerce garbage on write). Non-object `line_notify` still falls back wholesale (existing test green). Scalars/enums/arrays unchanged; `queue_division_priority` (array) still falls back wholesale by design.
 
 ### 2026-06-09 — Club queue: queue_position duplicate-position race (P2) (develop)
 

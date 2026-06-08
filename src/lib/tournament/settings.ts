@@ -126,6 +126,32 @@ function normalizeLegacy(raw: Record<string, unknown>): Record<string, unknown> 
   return raw;
 }
 
+// Recover a nested-object field sub-value-by-sub-value. If the whole object parses,
+// return it. Otherwise (one corrupt sub-value from a manual DB edit) keep every
+// sub-field that parses individually, falling back ONLY the corrupt sub-field to its
+// default — so one bad flag never wipes its valid siblings. Non-object inputs fall
+// back wholesale. Read-time only: the write path keeps strict whole-object validation
+// (a `.catch()` on the schema would silently coerce garbage on write — we don't want that).
+function recoverObjectField(
+  objSchema: typeof LineNotifyFlagsSchema,
+  value: unknown,
+  fallback: LineNotifyFlags,
+): LineNotifyFlags {
+  const whole = objSchema.safeParse(value);
+  if (whole.success) return whole.data;
+  if (value == null || typeof value !== "object" || Array.isArray(value)) return fallback;
+
+  const src = value as Record<string, unknown>;
+  const subShape = objSchema.shape as Record<string, z.ZodType>;
+  const recovered: Record<string, unknown> = { ...fallback };
+  for (const subKey of Object.keys(subShape)) {
+    const sub = subShape[subKey].safeParse(src[subKey]);
+    if (sub.success) recovered[subKey] = sub.data;
+  }
+  const reparsed = objSchema.safeParse(recovered);
+  return reparsed.success ? reparsed.data : fallback;
+}
+
 // Per-field fallback: if the whole-object parse passes, return it; otherwise
 // preserve any field that parses individually instead of dropping everything.
 // Defends against partial corruption from manual DB edits.
@@ -142,8 +168,18 @@ export function parseSettings(raw: unknown): TournamentSettings {
   const shape = TournamentSettingsSchema.shape;
   for (const key of Object.keys(shape) as Array<keyof typeof shape>) {
     if (!(key in normalised)) continue;
-    const fieldSchema = shape[key];
-    const parsed = fieldSchema.safeParse(normalised[key]);
+    // line_notify is the only nested object — recover its flags sub-field-wise so a
+    // single corrupt flag doesn't reset the whole group. (Add other nested objects here
+    // if the schema grows them.) Everything else is scalar/enum/array → whole-value parse.
+    if (key === "line_notify") {
+      out.line_notify = recoverObjectField(
+        LineNotifyFlagsSchema,
+        normalised[key],
+        DEFAULT_SETTINGS.line_notify,
+      );
+      continue;
+    }
+    const parsed = shape[key].safeParse(normalised[key]);
     if (parsed.success) {
       (out as Record<string, unknown>)[key] = parsed.data;
     }
