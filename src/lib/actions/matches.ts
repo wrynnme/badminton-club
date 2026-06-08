@@ -1105,6 +1105,14 @@ export async function recordMatchScoreAction(input: {
 
   const { data: match } = await sb.from("matches").select("*").eq("id", input.matchId).single();
   if (!match) return { error: "ไม่พบแมตช์" };
+  // Scope the write to the authorized tournament — assertCanEdit only proved rights
+  // on input.tournamentId, NOT that this match belongs to it. Without this an admin
+  // of any tournament could record a score onto another tournament's match (IDOR).
+  if (match.tournament_id !== input.tournamentId) return { error: "ไม่พบแมตช์" };
+  // Block re-recording a completed match: record_match_score ADDS to group standings,
+  // so a second call double-counts. Editing a result must go through reset first
+  // (the UI only shows ScoreForm on non-completed matches).
+  if (match.status === "completed") return { error: "แมตช์นี้บันทึกผลแล้ว — รีเซ็ตก่อนแก้ไข" };
 
   // Competition-class matches must satisfy their class's match_format
   // (fixed_2 / best_of_3 / best_of_5). sports_day matches (class_id null) stay
@@ -1486,7 +1494,11 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
 
   const sb = await createAdminClient();
   const { data: match } = await sb.from("matches").select("*").eq("id", matchId).single();
-  if (!match || match.status !== "completed") return { error: "แมตช์นี้ยังไม่มีคะแนน" };
+  // Scope to the authorized tournament BEFORE touching standings — reverseGroupTeamStandings
+  // below runs on match.group_id/team ids, so an out-of-tenant match would corrupt another
+  // tournament's group_teams before the (already-scoped) RPC no-ops (IDOR / data-integrity).
+  if (!match || match.tournament_id !== tournamentId) return { error: "ไม่พบแมตช์" };
+  if (match.status !== "completed") return { error: "แมตช์นี้ยังไม่มีคะแนน" };
 
   if (match.group_id && !match.pair_a_id && match.team_a_id && match.team_b_id) {
     const totals = sumGameScores(match.games);
