@@ -10,7 +10,7 @@ Open items below come from the 2026-06-09 whole-system core review (full report:
 
 Remaining after the IDOR-cluster + session-expiry + bracket-visual P1 fixes (all in Resolved). None block; surfaced by the core review.
 
-- **[P2 ×17 remaining]** correctness/concurrency/hardening leads — see the HTML report. Notable: `by_time` court split drops fee on cross-midnight session, unbounded guest-profile creation (no rate limit), several read-then-write races (queue_position, join capacity, group_teams unlocked RMW), per-field settings fallback wipes sibling flags, division-stats cross-bucket counts. Not individually re-verified. (6 of 23 closed 2026-06-09 — see Resolved.)
+- **[P2 ×16 remaining]** correctness/concurrency/hardening leads — see the HTML report. Notable: `by_time` court split drops fee on cross-midnight session, unbounded guest-profile creation (no rate limit), remaining read-then-write races (join capacity, group_teams unlocked RMW), per-field settings fallback wipes sibling flags, division-stats cross-bucket counts. Not individually re-verified. (7 of 23 closed 2026-06-09 — see Resolved; club `queue_position` race closed via created_at tiebreak.)
 - **[P2 — won't fix, intended]** `computeExpenseShares` ceil-per-head over-collects by a few baht (100฿/3 → 102). Confirmed by user 2026-06-09 as by-design: everyone pays the same whole baht, organizer is covered, and it stays reconciled between the cost-breakdown table and ExpenseManager. Fair largest-remainder split was offered and declined.
 - **[P1 follow-up] session revocation** — the expiry fix below closes "valid forever", but there is still no per-token revocation (can't kill one leaked cookie without rotating `SESSION_SECRET`, which logs everyone out). Deferred — needs a per-profile token-version column + a lookup on every `getSession()` (DB hit on the auth hot path).
 
@@ -142,6 +142,12 @@ Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upse
 All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
 
 ## Resolved
+
+### 2026-06-09 — Club queue: queue_position duplicate-position race (P2) (develop)
+
+tsc 0 · vitest 70 club tests · build OK. **No DB migration** (created_at tiebreak chosen over advisory-lock RPC — user confirmed 2026-06-09).
+
+- **[P2] concurrent club tail-inserts collide on `queue_position`** (`actions/clubs.ts` `buildNextClubMatchAction` + `createClubManualMatchAction`) — both read `max(queue_position)+1` among pending then insert non-atomically; two concurrent calls produce duplicate positions (no DB unique constraint on the column). Symptom is ordering ambiguity only, never data loss. Fix: make duplicates **harmless** instead of impossible — every read site now orders pending by `(queue_position ASC, created_at ASC)`. Server fetch (`clubs/[id]/page.tsx`) adds the secondary `.order("created_at")`; client panel (`club-queue-panel.tsx`) replaces the inline `queue_position`-only comparator at both sort sites with a shared `byQueueThenCreated` helper. `created_at` is non-nullable (DB default), so the tiebreak always resolves. Insert logic unchanged (dup positions now don't matter); `reorderClubQueueAction` already renumbers 1..N on any manual drag, cleaning up any collisions. This prevents user-visible disorder from concurrent inserts; it does **not** make duplicate positions impossible at the DB (by design — no migration).
 
 ### 2026-06-09 — Core review P2 safe batch (4 fixes) (develop)
 
