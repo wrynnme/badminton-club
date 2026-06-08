@@ -7,6 +7,8 @@ import { getSession } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ClubTabs } from "@/components/club/club-tabs";
+import { ClubDashboard } from "@/components/club/club-dashboard";
+import { computeClubCostSummary } from "@/lib/club/cost-summary";
 import { JoinForm } from "@/components/club/join-form";
 import { AddGuestPlayer } from "@/components/club/add-guest-player";
 import { EditClubForm } from "@/components/club/edit-club-form";
@@ -121,6 +123,10 @@ export default async function ClubDetailPage({
   const expenseTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
   const displayTotal = expenseTotal > 0 ? expenseTotal : (club.total_cost ?? 0);
 
+  // Canonical session cost (court + shuttle + personal expenses − discounts) —
+  // same calc the cost-breakdown table uses, so the dashboard card reconciles.
+  const costSummary = computeClubCostSummary({ club, players, matches: clubMatches, expenses });
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div>
@@ -179,6 +185,15 @@ export default async function ClubDetailPage({
       <Suspense fallback={null}>
         <ClubTabs
           showSettings={canManage}
+          dashboard={
+            <ClubDashboard
+              players={players}
+              matches={clubMatches}
+              levels={levels}
+              costTotal={costSummary.grandTotal}
+              maxPlayers={club.max_players}
+            />
+          }
           checkin={
             <div className="space-y-6">
               <section className="space-y-3">

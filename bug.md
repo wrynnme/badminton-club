@@ -6,6 +6,10 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-08 — Club dashboard (#10): static + dual-state live-smoke, no findings (develop)
+
+tsc 0 · vitest **70/70** club (incl. new dashboard 6 + cost-summary 5) · prod `next build` OK. Live-smoke on two throwaway guest-owned clubs: **populated** (4 active + 1 reserve, 2 completed + 1 in_progress + 1 pending matches, court_fee 120 + shuttle + a 50฿ expense) → 5 stat cards, both charts (recharts bars), and the player table all render; dashboard "ค่าใช้จ่ายรวม" card = **220฿** == the cost tab footer grand total (reconciles by construction via shared `computeClubCostSummary`). **empty** club → "ยังไม่มีข้อมูล" empty state, no crash. Console **0 errors / 0 warnings / 0 hydration** on both, across tab switches. Throwaway clubs + guest deleted (CASCADE); net-zero (2 NOMKONZ intact, 0 orphan matches/players).
+
 ### 2026-06-08 — Club named courts (#9): static + owner live-smoke, no findings (develop)
 
 tsc `--noEmit` 0 · vitest **59/59** club · prod `next build` OK. Owner live-smoke on a throwaway guest-owned club (`court_count=3` → fallback courts `['1','2','3']`, migration not applied): queue tab build buttons render "สนาม 1/2/3", ManualMatchDialog court `<Select>` lists named courts, settings tab `ClubCourtManager` ("จัดการสนาม") renders + old "จำนวนสนาม" input gone — console **0 errors / 0 warnings / 0 hydration** across tab switches. Throwaway club + guest profile deleted (CASCADE); real data net-zero (2 NOMKONZ clubs intact, 0 orphan matches). Migration `20260608000400` (court int→text) staged-not-applied — apply with prod deploy during a no-live-session window.
