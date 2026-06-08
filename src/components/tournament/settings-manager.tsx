@@ -454,6 +454,13 @@ export function SettingsManager({
             checked={settings.allow_force_bracket_reset}
             onChange={(v) => update("allow_force_bracket_reset", v)}
           />
+          <ToggleRow
+            id="knockout-fill-byes"
+            label="เติมช่อง BYE ด้วยทีมอันดับถัดไป"
+            description="โหมดทีม + แบ่งกลุ่ม: เมื่อผู้เข้ารอบไม่พอเต็มสาย ดึงทีมอันดับถัดไปที่ดีที่สุดข้ามกลุ่ม (เช่นที่ 3 ที่ดีสุด) มาเติมแทนการให้ BYE — ปิดอยู่ = ทีมหัวกลุ่มได้ BYE รอบแรก"
+            checked={settings.knockout_fill_byes}
+            onChange={(v) => update("knockout_fill_byes", v)}
+          />
           <div className="flex items-center justify-between gap-3 py-1">
             <div className="flex flex-col gap-0.5">
               <Label htmlFor="chart-orientation" className="text-sm">แนวกราฟแท่ง</Label>

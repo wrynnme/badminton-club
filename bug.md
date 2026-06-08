@@ -6,6 +6,10 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-08 — T2: knockout "best Nth place" bracket fill (develop)
+
+All static green: `tsc --noEmit` clean · vitest **421/421** (+5 `selectBracketFillers` cases) · prod `next build` OK. Opt-in setting `knockout_fill_byes` (default false, no migration) fills empty team-mode knockout slots with best non-advancing teams instead of BYEs; gated off the independent-lower-bracket path (avoids double-allocating the next-rank teams). **Not live-tested:** prod has **zero team-mode tournaments** (1 tournament total, pair/group_knockout) so T2 has no current consumer and no reachable UI path to exercise without seeding a throwaway team tournament; the fill logic is unit-tested, the `generateKnockoutAction` wiring is static-verified + default-off (cannot affect the running pair tournament). Flagged for a seeded team-mode smoke if/when a team tournament is created.
+
 ### 2026-06-08 — T3: tournament level → levels table FK (develop)
 
 All green: `tsc --noEmit` clean · vitest **416/416** · prod `next build` OK · **live smoke PASS** (public `/t/[token]` + `/t/[token]/stats/player/[id]` render HTTP 200, 0 error markers, level label renders from `level_id`). Migration `20260608000100_add_team_players_level_id` applied to prod with explicit user confirm — additive `level_id` FK + backfill, **72/72 players mapped, 0 unmapped**; **0/36** existing pairs' `pair_level` differs from `real(p1)+real(p2)` (no division shift). `updateTeamPlayerAction` now recomputes pair_level for the edited player's pairs (closed a pre-existing stale-pair_level gap). **Not Playwright-tested:** the admin team-tab level Select add/edit interaction (needs auth) — it mirrors the already-live club `add-guest-player.tsx` Select pattern; server action writes verified in diff.

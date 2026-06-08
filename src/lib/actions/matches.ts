@@ -8,7 +8,8 @@ import { getSession } from "@/lib/auth/session";
 import { generateAllPairMatches } from "@/lib/tournament/scheduling";
 import { gameWinner, sumGameScores, computeStandings } from "@/lib/tournament/scoring";
 import { resolveMatchResult } from "@/lib/tournament/match-format";
-import { buildBracket, buildDoubleBracket, nextPowerOf2 } from "@/lib/tournament/bracket";
+import { buildBracket, buildDoubleBracket, nextPowerOf2, selectBracketFillers } from "@/lib/tournament/bracket";
+import type { BracketFiller } from "@/lib/tournament/bracket";
 import type { BracketEntry, BracketMatchDef } from "@/lib/tournament/bracket";
 import type { Game, Match, MatchFormat } from "@/lib/types";
 import { assertCanEdit } from "@/lib/tournament/permissions";
@@ -608,6 +609,9 @@ export async function generateKnockoutAction(tournamentId: string) {
     .single();
   if (!tournament) return { error: "ไม่พบทัวร์นาเมนต์" };
 
+  // T2 — knockout_fill_byes (team-mode group_knockout): read once here.
+  const settings = await getTournamentSettings(tournamentId);
+
   // KO match_number ต่อจาก group stage (max group match_number; 0 ถ้าไม่มี).
   // Subsequent `getNextMatchNumber` calls inside this action should reuse this via
   // `{ precomputedMax: groupMax }` to skip the redundant max(match_number) round-trip.
@@ -917,18 +921,37 @@ export async function generateKnockoutAction(tournamentId: string) {
     type Advancer = Seed & { groupRank: number; pts: number; diff: number; pf: number };
     const advancers: Advancer[] = [];
     const lowerAdvancers: Advancer[] = [];
+    // T2: non-advancing teams kept as candidates to fill empty bracket slots
+    // (best Nth place). Only collected on the non-independent-lower path — when an
+    // independent lower bracket is active it already consumes the next-rank teams.
+    const restAdvancers: BracketFiller[] = [];
+    const independentLower = tournament.has_lower_bracket && !tournament.allow_drop_to_lower;
 
     for (const group of groups) {
       const ranked = rankGroupTeams(group.group_teams as unknown as GroupTeamRow[]);
       ranked.slice(0, advanceCount).forEach((t, i) => advancers.push({ ...t, groupRank: i + 1 }));
-      if (tournament.has_lower_bracket && !tournament.allow_drop_to_lower) {
+      if (independentLower) {
         ranked.slice(advanceCount, advanceCount * 2).forEach((t, i) =>
           lowerAdvancers.push({ ...t, groupRank: i + 1 })
+        );
+      } else {
+        ranked.slice(advanceCount).forEach((t, i) =>
+          restAdvancers.push({ ...t, groupRank: advanceCount + i + 1 })
         );
       }
     }
 
     if (advancers.length < 2) return { error: "ผู้เข้ารอบยังไม่ครบ — ต้องมีอย่างน้อย 2 ทีม" };
+
+    // T2 — knockout_fill_byes: replace first-round BYEs with the best non-advancing
+    // teams (cross-group, ranked by finishing position then score). Gated off the
+    // independent-lower path above; no-op when the bracket is already full.
+    if (settings.knockout_fill_byes && !independentLower) {
+      const need = nextPowerOf2(advancers.length) - advancers.length;
+      for (const f of selectBracketFillers(restAdvancers, need)) {
+        advancers.push({ teamId: f.teamId, name: f.name, groupRank: f.groupRank, pts: f.pts, diff: f.diff, pf: f.pf });
+      }
+    }
 
     seeds = tournament.seeding_method === "by_group_score"
       ? [...advancers].sort((a, b) => a.groupRank - b.groupRank || b.pts - a.pts || b.diff - a.diff || b.pf - a.pf)

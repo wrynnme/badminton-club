@@ -28,6 +28,12 @@ export const TournamentSettingsSchema = z.object({
   export_visible: z.boolean().default(true),
   allow_force_bracket_reset: z.boolean().default(false),
   allow_manual_match_after_bracket: z.boolean().default(true),
+  // T2 — team-mode group_knockout only: when ON, empty knockout-bracket slots are
+  // filled with the best non-advancing teams ranked cross-group (e.g. best 3rd-placers)
+  // instead of being left as first-round BYEs. Opt-in: a BYE that rewards group winners
+  // is a legitimate format. No effect in pair mode (division-wide seeding) or when an
+  // independent lower bracket already consumes the next-rank teams.
+  knockout_fill_byes: z.boolean().default(false),
   auto_advance_next: z.boolean().default(false),
   require_court_to_start: z.boolean().default(false),
   require_checkin: z.boolean().default(false),
