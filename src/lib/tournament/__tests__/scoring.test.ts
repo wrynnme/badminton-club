@@ -257,6 +257,16 @@ describe("computeStandings (team unit)", () => {
     const rows = computeStandings([m], "team", [teamA, teamB]);
     expect(rows.every((r) => r.played === 0)).toBe(true);
   });
+
+  it("skips a completed BYE/walkover (no games) — no phantom draw credited", () => {
+    // gameWinner([]) returns "draw"; without the games-length guard this would
+    // credit both teams a played + a draw from a non-played walkover.
+    const m = makeMatch({ team_a_id: teamA, team_b_id: teamB, games: [] });
+    const rows = computeStandings([m], "team", [teamA, teamB]);
+    expect(rows.every((r) => r.played === 0)).toBe(true);
+    expect(rows.every((r) => r.draws === 0)).toBe(true);
+    expect(rows.every((r) => r.leaguePoints === 0)).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

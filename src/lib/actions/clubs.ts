@@ -476,11 +476,15 @@ export async function reorderPlayersAction(clubId: string, orderedIds: string[])
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
-  await Promise.all(
+  const results = await Promise.all(
     orderedIds.map((id, i) =>
       sb.from("club_players").update({ position: i + 1 }).eq("id", id).eq("club_id", clubId)
     )
   );
+  // Don't silently swallow a partial failure — mirror reorderClubQueueAction.
+  for (const { error } of results) {
+    if (error) return { error: "จัดลำดับไม่สำเร็จ" };
+  }
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true };

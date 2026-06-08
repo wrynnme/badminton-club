@@ -74,6 +74,11 @@ export function computeStandings(
     const rowB = map.get(bId);
     if (!rowA || !rowB) continue;
 
+    // Skip BYE / walkover (a completed match with no games). gameWinner([]) returns
+    // "draw", so without this guard a phantom 0-0 draw would be credited to both
+    // competitors (matches the games.length guard in entity-stats).
+    if (!Array.isArray(m.games) || m.games.length === 0) continue;
+
     const totals = sumGameScores(m.games);
     const winner = gameWinner(m.games);
 

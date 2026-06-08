@@ -1,3 +1,4 @@
+import "server-only"; // hard-fail the build if a client component ever imports this (service-role key lives here)
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 

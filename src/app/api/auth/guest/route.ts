@@ -3,7 +3,10 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { setSession } from "@/lib/auth/session";
 
 function safeRedirectTo(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/clubs";
+  // Only same-origin absolute paths. Reject protocol-relative `//host` AND `/\host`
+  // (the WHATWG URL parser normalizes backslash to `/`, so `new URL("/\\evil.com", base)`
+  // becomes an off-origin redirect) → open-redirect guard.
+  if (!value || !value.startsWith("/") || value[1] === "/" || value[1] === "\\") return "/clubs";
   return value;
 }
 

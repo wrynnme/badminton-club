@@ -10,7 +10,8 @@ Open items below come from the 2026-06-09 whole-system core review (full report:
 
 Remaining after the IDOR-cluster + session-expiry + bracket-visual P1 fixes (all in Resolved). None block; surfaced by the core review.
 
-- **[P2 ×23]** correctness/concurrency/hardening leads — see the HTML report. Notable: open-redirect via `/\` in `safeRedirectTo` (`api/auth/guest`), `computeExpenseShares` ceil over-collect, `by_time` court split drops fee on cross-midnight session, unbounded guest-profile creation, several read-then-write races (queue_position, join capacity, group_teams), `createAdminClient` missing `import "server-only"`. Not individually re-verified.
+- **[P2 ×17 remaining]** correctness/concurrency/hardening leads — see the HTML report. Notable: `by_time` court split drops fee on cross-midnight session, unbounded guest-profile creation (no rate limit), several read-then-write races (queue_position, join capacity, group_teams unlocked RMW), per-field settings fallback wipes sibling flags, division-stats cross-bucket counts. Not individually re-verified. (6 of 23 closed 2026-06-09 — see Resolved.)
+- **[P2 — won't fix, intended]** `computeExpenseShares` ceil-per-head over-collects by a few baht (100฿/3 → 102). Confirmed by user 2026-06-09 as by-design: everyone pays the same whole baht, organizer is covered, and it stays reconciled between the cost-breakdown table and ExpenseManager. Fair largest-remainder split was offered and declined.
 - **[P1 follow-up] session revocation** — the expiry fix below closes "valid forever", but there is still no per-token revocation (can't kill one leaked cookie without rotating `SESSION_SECRET`, which logs everyone out). Deferred — needs a per-profile token-version column + a lookup on every `getSession()` (DB hit on the auth hot path).
 
 ### 2026-06-09 — Dashboard + cost review fixes (#9+#10): static + live-smoke, no findings (develop)
@@ -141,6 +142,17 @@ Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upse
 All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
 
 ## Resolved
+
+### 2026-06-09 — Core review P2 safe batch (4 fixes) (develop)
+
+tsc 0 · vitest 439 (+1 scoring BYE) · build OK. No DB migration.
+
+- **[P2] open-redirect** (`api/auth/guest/route.ts`, `api/auth/line/route.ts`, `(app)/page.tsx`) — `safeRedirectTo`/inline guard blocked `//host` but not `/\host`; the WHATWG URL parser normalizes `\`→`/`, so `new URL("/\\evil.com", base)` redirected off-origin. Fix: reject when `value[1]` is `/` **or** `\` at all three sites.
+- **[P2] service-role module lacked `server-only`** (`lib/supabase/server.ts`) — added `import "server-only"` so the build hard-fails if a client component ever imports the file holding `SUPABASE_SERVICE_ROLE_KEY`.
+- **[P2] computeStandings credited BYE walkovers as draws** (`tournament/scoring.ts`) — `gameWinner([])` returns "draw"; a completed match with `games=[]` got a phantom 0-0 draw. Fix: `if (!Array.isArray(m.games) || m.games.length === 0) continue;` (mirrors the entity-stats guard). +1 scoring test.
+- **[P2] reorderPlayersAction swallowed per-row update errors** (`actions/clubs.ts`) — `Promise.all` without checking results; now inspects each `{error}` and returns on failure (mirrors `reorderClubQueueAction`).
+
+Also closed earlier in the session: **decode() shape validation** (`session.ts`, in the expiry commit). **Expense ceil over-collect** triaged won't-fix/intended (see Open).
 
 ### 2026-06-09 — Core review P1s: session expiry + bracket-visual lower-drop (develop)
 
