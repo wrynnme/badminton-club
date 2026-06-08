@@ -129,6 +129,43 @@ describe("parseSettings partial corruption", () => {
     // Should fall back to DEFAULT_SETTINGS.line_notify
     expect(result.line_notify).toEqual(DEFAULT_SETTINGS.line_notify);
   });
+
+  it("one corrupt line_notify sub-flag does NOT wipe its valid siblings", () => {
+    // Manual DB edit mangles a single flag (start: "yes" — a string, not boolean).
+    // The user had score:false + bracket:false set; those must survive. Only the
+    // corrupt `start` falls back to its default (true). Old code reset all four.
+    const input = {
+      line_notify: { start: "yes", score: false, bracket: false, status: true },
+    };
+    const result = parseSettings(input);
+    expect(result.line_notify.score).toBe(false); // sibling preserved
+    expect(result.line_notify.bracket).toBe(false); // sibling preserved
+    expect(result.line_notify.status).toBe(true); // sibling preserved
+    expect(result.line_notify.start).toBe(true); // corrupt one → default
+  });
+
+  it("corrupt line_notify sub-flag does not affect other top-level fields", () => {
+    const input = {
+      line_notify: { score: "nope" },
+      realtime_enabled: false,
+      auto_rotate_rest_gap: 4,
+    };
+    const result = parseSettings(input);
+    expect(result.realtime_enabled).toBe(false);
+    expect(result.auto_rotate_rest_gap).toBe(4);
+    // line_notify.score corrupt → its own default (true); siblings stay default true
+    expect(result.line_notify.score).toBe(true);
+  });
+
+  it("partially-specified valid line_notify keeps unspecified flags at default", () => {
+    // Only `score` provided and valid → it wins; the other three default to true.
+    const input = { line_notify: { score: false } };
+    const result = parseSettings(input);
+    expect(result.line_notify.score).toBe(false);
+    expect(result.line_notify.start).toBe(true);
+    expect(result.line_notify.bracket).toBe(true);
+    expect(result.line_notify.status).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
