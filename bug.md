@@ -8,11 +8,10 @@ Open items below come from the 2026-06-09 whole-system core review (full report:
 
 ### 2026-06-09 — Core code review: open follow-ups (develop)
 
-Remaining after the IDOR-cluster fix. None block; surfaced by the core review, ranked.
+Remaining after the IDOR-cluster + session-expiry + bracket-visual P1 fixes (all in Resolved). None block; surfaced by the core review.
 
-- **[P1] session token has no expiry/revocation** — `src/lib/auth/session.ts`: signed `bc_session` payload has no `iat`/`exp`; `decode()` checks HMAC only, so a leaked cookie is valid until `SESSION_SECRET` rotates. Fix: embed `iat`, reject when `now-iat > MAX_AGE`; mix a per-profile token-version into the HMAC key for revocation. HMAC itself is sound (`timingSafeEqual`).
-- **[P1] buildVisualBracket drops lower-bracket matches** — `src/lib/tournament/bracket-visual.ts:47`: single-elim halving `slotCount` slices real matches out of the double-elim *lower* section on the admin + public bracket pages (display-only, no data loss). Fix: drive `slotCount = rMatches.length` for `section==="lower"`.
 - **[P2 ×23]** correctness/concurrency/hardening leads — see the HTML report. Notable: open-redirect via `/\` in `safeRedirectTo` (`api/auth/guest`), `computeExpenseShares` ceil over-collect, `by_time` court split drops fee on cross-midnight session, unbounded guest-profile creation, several read-then-write races (queue_position, join capacity, group_teams), `createAdminClient` missing `import "server-only"`. Not individually re-verified.
+- **[P1 follow-up] session revocation** — the expiry fix below closes "valid forever", but there is still no per-token revocation (can't kill one leaked cookie without rotating `SESSION_SECRET`, which logs everyone out). Deferred — needs a per-profile token-version column + a lookup on every `getSession()` (DB hit on the auth hot path).
 
 ### 2026-06-09 — Dashboard + cost review fixes (#9+#10): static + live-smoke, no findings (develop)
 
@@ -142,6 +141,13 @@ Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upse
 All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
 
 ## Resolved
+
+### 2026-06-09 — Core review P1s: session expiry + bracket-visual lower-drop (develop)
+
+tsc 0 · vitest 438 (+3 bracket-visual) · build OK. No DB migration.
+
+- **[P1] session token had no expiry/revocation** (`src/lib/auth/session.ts`) — Fix: `encode()` now stamps `iat` (epoch sec) into the signed payload; `decode()` rejects tokens with no `iat` or older than `MAX_AGE` (server-enforced — the cookie `maxAge` is browser-only). Also validates payload shape instead of blindly casting (closes P2 #14). **Deploy note:** pre-rollout cookies lack `iat` → all users get one forced re-login. Per-token revocation still deferred (see Open). Live-smoke: fresh guest login → cookie carries `iat`, header renders the user + logout = `decode` accepts it; no-cookie = login link. Throwaway guest deleted, net-zero.
+- **[P1] buildVisualBracket dropped lower-bracket matches** (`src/lib/tournament/bracket-visual.ts`) — Fix: lower section now renders one slot per actual match at uniform height (`สายแพ้ รอบ N` label) instead of single-elim halving `slotCount` that sliced real matches off the admin + public bracket pages. Upper bracket keeps halving geometry; grand-final (1 match) unaffected. New `bracket-visual.test.ts` (3 cases) covers the no-drop regression.
 
 ### 2026-06-09 — Tournament IDOR cluster (core review: P0 + 3×P1) (develop)
 

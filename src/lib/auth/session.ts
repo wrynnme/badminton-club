@@ -21,8 +21,18 @@ function sign(value: string) {
   return createHmac("sha256", secret()).update(value).digest("base64url");
 }
 
+// Internal wire shape: the public payload plus an issued-at timestamp (epoch
+// seconds) that the server uses to enforce expiry. `iat` is stamped here, so
+// callers of setSession() never pass it.
+type StoredPayload = SessionPayload & { iat: number };
+
+function nowSec() {
+  return Math.floor(Date.now() / 1000);
+}
+
 function encode(payload: SessionPayload) {
-  const json = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const stored: StoredPayload = { ...payload, iat: nowSec() };
+  const json = Buffer.from(JSON.stringify(stored)).toString("base64url");
   return `${json}.${sign(json)}`;
 }
 
@@ -33,11 +43,30 @@ function decode(token: string): SessionPayload | null {
   const a = Buffer.from(sig);
   const b = Buffer.from(expected);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
+  let parsed: Partial<StoredPayload>;
   try {
-    return JSON.parse(Buffer.from(json, "base64url").toString("utf8"));
+    parsed = JSON.parse(Buffer.from(json, "base64url").toString("utf8")) as Partial<StoredPayload>;
   } catch {
     return null;
   }
+  // Server-enforced expiry: the cookie's maxAge is browser-only and does NOT stop a
+  // replayed/leaked token. Reject tokens with no `iat` (incl. all pre-expiry-rollout
+  // cookies → one forced re-login) or issued more than MAX_AGE ago.
+  if (typeof parsed.iat !== "number" || nowSec() - parsed.iat > MAX_AGE) return null;
+  // Validate shape instead of blindly trusting the signed JSON's structure.
+  if (
+    typeof parsed.profileId !== "string" ||
+    typeof parsed.displayName !== "string" ||
+    typeof parsed.isGuest !== "boolean"
+  ) {
+    return null;
+  }
+  return {
+    profileId: parsed.profileId,
+    displayName: parsed.displayName,
+    pictureUrl: parsed.pictureUrl ?? null,
+    isGuest: parsed.isGuest,
+  };
 }
 
 export async function setSession(payload: SessionPayload) {
