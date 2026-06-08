@@ -48,6 +48,13 @@ import {
 } from "@/components/ui/command";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -656,7 +663,7 @@ function BuildButton({
   onRefresh,
 }: {
   clubId: string;
-  court: number;
+  court: string;
   onRefresh: () => void;
 }) {
   const [busy, transition] = useTransition();
@@ -781,12 +788,14 @@ function ManualMatchDialog({
   clubId,
   players,
   settings,
+  courts,
   matches,
   onRefresh,
 }: {
   clubId: string;
   players: { id: string; display_name: string }[];
   settings: ClubQueueSettings;
+  courts: string[];
   matches: ClubMatch[];
   onRefresh: () => void;
 }) {
@@ -794,7 +803,7 @@ function ManualMatchDialog({
   const [open, setOpen] = useState(false);
   const [busy, startTransition] = useTransition();
 
-  const [court, setCourt] = useState(1);
+  const [court, setCourt] = useState(courts[0] ?? "");
   const [sideA1, setSideA1] = useState(UNSET);
   const [sideA2, setSideA2] = useState(UNSET);
   const [sideB1, setSideB1] = useState(UNSET);
@@ -849,7 +858,7 @@ function ManualMatchDialog({
   }, [priorMeetings, nameMap]);
 
   function reset() {
-    setCourt(1);
+    setCourt(courts[0] ?? "");
     setSideA1(UNSET);
     setSideA2(UNSET);
     setSideB1(UNSET);
@@ -904,19 +913,29 @@ function ManualMatchDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Court number */}
+          {/* Court */}
           <div className="space-y-1">
             <Label htmlFor="mm-court" className="text-sm font-medium">
               สนาม
             </Label>
-            <Input
-              id="mm-court"
-              type="number"
-              min={1}
-              value={court}
-              onChange={(e) => setCourt(Math.max(1, Math.trunc(Number(e.target.value)) || 1))}
-              className="h-8 w-24 text-sm [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
+            {courts.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                ยังไม่ได้ตั้งค่าสนาม — เพิ่มในแท็บตั้งค่า
+              </p>
+            ) : (
+              <Select value={court} onValueChange={(v) => setCourt(v ?? "")}>
+                <SelectTrigger id="mm-court" className="h-8 w-32 text-sm">
+                  <SelectValue>{(v: string) => `สนาม ${v}`}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {courts.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      สนาม {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           {/* Side A */}
@@ -1006,12 +1025,14 @@ export function ClubQueuePanel({
   matches,
   players,
   settings,
+  courts,
   canManage,
 }: {
   clubId: string;
   matches: ClubMatch[];
   players: { id: string; display_name: string }[];
   settings: ClubQueueSettings;
+  courts: string[];
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -1086,11 +1107,6 @@ export function ClubQueuePanel({
         new Date(a.ended_at ?? a.created_at).getTime(),
     );
 
-  const courts = Array.from(
-    { length: settings.court_count },
-    (_, i) => i + 1,
-  );
-
   return (
     <Tabs defaultValue="pending" className="space-y-3">
       <TabsList className="w-full flex-wrap h-auto">
@@ -1117,22 +1133,30 @@ export function ClubQueuePanel({
       {/* ── รอแข่ง tab ── */}
       <TabsContent value="pending" className="space-y-3 mt-0">
         {canManage && (
-          <div className="flex flex-wrap gap-2">
-            {courts.map((c) => (
-              <BuildButton
-                key={c}
+          <div className="space-y-2">
+            {courts.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                ยังไม่ได้ตั้งค่าสนาม — เพิ่มในแท็บตั้งค่าก่อนสร้างแมตช์ตามสนาม
+              </p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              {courts.map((c) => (
+                <BuildButton
+                  key={c}
+                  clubId={clubId}
+                  court={c}
+                  onRefresh={onRefresh}
+                />
+              ))}
+              <ManualMatchDialog
                 clubId={clubId}
-                court={c}
+                players={players}
+                settings={settings}
+                courts={courts}
+                matches={matches}
                 onRefresh={onRefresh}
               />
-            ))}
-            <ManualMatchDialog
-              clubId={clubId}
-              players={players}
-              settings={settings}
-              matches={matches}
-              onRefresh={onRefresh}
-            />
+            </div>
           </div>
         )}
 

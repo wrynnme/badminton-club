@@ -6,6 +6,10 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-08 — Club named courts (#9): static + owner live-smoke, no findings (develop)
+
+tsc `--noEmit` 0 · vitest **59/59** club · prod `next build` OK. Owner live-smoke on a throwaway guest-owned club (`court_count=3` → fallback courts `['1','2','3']`, migration not applied): queue tab build buttons render "สนาม 1/2/3", ManualMatchDialog court `<Select>` lists named courts, settings tab `ClubCourtManager` ("จัดการสนาม") renders + old "จำนวนสนาม" input gone — console **0 errors / 0 warnings / 0 hydration** across tab switches. Throwaway club + guest profile deleted (CASCADE); real data net-zero (2 NOMKONZ clubs intact, 0 orphan matches). Migration `20260608000400` (court int→text) staged-not-applied — apply with prod deploy during a no-live-session window.
+
 ### 2026-06-08 — Club queue: completed matches capped at 15 (RESOLVED, develop)
 
 **[P1] Completed club matches beyond 15 vanished from the จบแล้ว tab.** Context: `club-queue-panel.tsx:975` sliced the completed list `.slice(0, 15)` after sorting newest-first, so a session with >15 finished matches only ever showed the latest 15 (older ones looked lost; the tab count badge also capped at 15). Data was never lost — `clubs/[id]/page.tsx` fetches all `club_matches` with no limit/range. **Fix:** removed `.slice(0, 15)` → all completed matches render (newest-first) and the badge shows the true count.

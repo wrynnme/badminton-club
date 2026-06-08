@@ -17,6 +17,7 @@ import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
 import { HourlyHeadcount } from "@/components/club/hourly-headcount";
 import { ClubQueueSettings } from "@/components/club/club-queue-settings";
+import { ClubCourtManager } from "@/components/club/club-court-manager";
 import { ClubQueuePanel } from "@/components/club/club-queue-panel";
 import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
@@ -106,6 +107,15 @@ export default async function ClubDetailPage({
   const canManage = isOwner || isCoAdmin;
 
   const queueSettings = parseQueueSettings(club.queue_settings);
+
+  // Named courts (clubs.courts). Fall back to ['1'..'N'] derived from the legacy
+  // queue_settings.court_count so the queue UI works before the named-courts
+  // migration is applied / for clubs that have never set a court list. Once an
+  // owner saves a list (or the backfill runs) club.courts becomes the source.
+  const clubCourts =
+    club.courts && club.courts.length > 0
+      ? club.courts
+      : Array.from({ length: queueSettings.court_count }, (_, i) => String(i + 1));
 
   // Compute total from expenses; fall back to legacy total_cost
   const expenseTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
@@ -225,6 +235,7 @@ export default async function ClubDetailPage({
                 matches={clubMatches}
                 players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
                 settings={queueSettings}
+                courts={clubCourts}
                 canManage={canManage}
               />
             </div>
@@ -292,6 +303,7 @@ export default async function ClubDetailPage({
           settings={
             <div className="space-y-4">
               {isOwner && <EditClubForm club={club} />}
+              {canManage && <ClubCourtManager clubId={club.id} initialCourts={clubCourts} />}
               {canManage && <ClubQueueSettings clubId={club.id} initial={queueSettings} />}
               {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}
             </div>

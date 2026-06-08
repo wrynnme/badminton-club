@@ -718,6 +718,37 @@ export async function updateClubQueueSettingsAction(
 }
 
 /**
+ * Owner / co-admin sets the club's named courts (mirror tournament
+ * updateCourtsAction). Trim + dedupe + cap; replaces queue_settings.court_count.
+ */
+export async function updateClubCourtsAction(
+  clubId: string,
+  courts: string[],
+): Promise<{ ok: true; courts: string[] } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const COURT_NAME_MAX = 40;
+  const COURTS_MAX = 50;
+  const cleaned = courts
+    .map((c) => c.trim().slice(0, COURT_NAME_MAX))
+    .filter((c) => c.length > 0);
+  const deduped = Array.from(new Set(cleaned)).slice(0, COURTS_MAX);
+
+  const { error } = await sb.from("clubs").update({ courts: deduped }).eq("id", clubId);
+  if (error) {
+    console.error("[updateClubCourtsAction]", error);
+    return { error: "บันทึกสนามไม่สำเร็จ" };
+  }
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true, courts: deduped };
+}
+
+/**
  * Owner / co-admin proposes the next match for a given court.
  *
  * Pool eligibility:
@@ -734,14 +765,13 @@ export async function updateClubQueueSettingsAction(
  */
 export async function buildNextClubMatchAction(
   clubId: string,
-  court: number,
+  court: string,
 ): Promise<{ ok: true; match: ClubMatch } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
-  // Validate court is a positive integer.
-  const courtInt = Math.trunc(court);
-  if (!Number.isFinite(courtInt) || courtInt < 1) return { error: "หมายเลขสนามไม่ถูกต้อง" };
+  const courtName = court.trim();
+  if (!courtName) return { error: "ระบุสนาม" };
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
@@ -821,7 +851,7 @@ export async function buildNextClubMatchAction(
         "side_a_player1, side_a_player2, side_b_player1, side_b_player2, winner_side, ended_at",
       )
       .eq("club_id", clubId)
-      .eq("court", courtInt)
+      .eq("court", courtName)
       .eq("status", "completed")
       .not("winner_side", "is", null)
       .order("ended_at", { ascending: false })
@@ -907,7 +937,7 @@ export async function buildNextClubMatchAction(
     .from("club_matches")
     .insert({
       club_id: clubId,
-      court: courtInt,
+      court: courtName,
       side_a_player1: proposed.sideA.player1,
       side_a_player2: proposed.sideA.player2 ?? null,
       side_b_player1: proposed.sideB.player1,
@@ -1149,7 +1179,7 @@ export async function setClubMatchShuttlesAction(
  */
 export async function createClubManualMatchAction(input: {
   clubId: string;
-  court: number;
+  court: string;
   sideA: string[];
   sideB: string[];
 }): Promise<{ ok: true; match: ClubMatch } | { error: string }> {
@@ -1157,8 +1187,8 @@ export async function createClubManualMatchAction(input: {
   if (!session) return await loginRedirect();
 
   const { clubId, sideA, sideB } = input;
-  const courtInt = Math.trunc(input.court);
-  if (!Number.isFinite(courtInt) || courtInt < 1) return { error: "หมายเลขสนามไม่ถูกต้อง" };
+  const courtName = input.court.trim();
+  if (!courtName) return { error: "ระบุสนาม" };
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
@@ -1204,7 +1234,7 @@ export async function createClubManualMatchAction(input: {
     .from("club_matches")
     .insert({
       club_id: clubId,
-      court: courtInt,
+      court: courtName,
       side_a_player1: cleanA[0],
       side_a_player2: ppt === 2 ? cleanA[1] : null,
       side_b_player1: cleanB[0],

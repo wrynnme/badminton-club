@@ -28,6 +28,8 @@ export type Club = {
   court_gap_policy: GapPolicy;
   // Rotation-queue config (raw jsonb; parse via parseQueueSettings in queue-settings.ts)
   queue_settings: Record<string, unknown>;
+  // Named courts (mirror tournaments.courts); replaces queue_settings.court_count.
+  courts: string[];
 };
 
 // Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").
@@ -79,7 +81,8 @@ export type ClubMatchStatus = "pending" | "in_progress" | "completed" | "cancell
 export type ClubMatch = {
   id: string;
   club_id: string;
-  court: number;
+  court: string; // named court (FK-by-name to clubs.courts); was int 1..N pre-2026-06-08
+
   side_a_player1: string;
   side_a_player2: string | null;
   side_b_player1: string;
