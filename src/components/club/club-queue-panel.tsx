@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle } from "lucide-react";
@@ -772,15 +772,22 @@ function PlayerSelect({
 
 const UNSET = "";
 
+/** Order-independent key for a side's player set (sorted ids). */
+function sideKey(ids: (string | null | undefined)[]): string {
+  return ids.filter(Boolean).slice().sort().join("|");
+}
+
 function ManualMatchDialog({
   clubId,
   players,
   settings,
+  matches,
   onRefresh,
 }: {
   clubId: string;
   players: { id: string; display_name: string }[];
   settings: ClubQueueSettings;
+  matches: ClubMatch[];
   onRefresh: () => void;
 }) {
   const ppt = settings.players_per_team;
@@ -794,6 +801,52 @@ function ManualMatchDialog({
   const [sideB2, setSideB2] = useState(UNSET);
 
   const nameMap = new Map(players.map((p) => [p.id, p.display_name]));
+
+  // Prior meetings: non-cancelled matches where the same two pairs (order-
+  // independent, within-side and between-side) already faced each other.
+  const priorMeetings = useMemo(() => {
+    const sideA = ppt === 2 ? [sideA1, sideA2] : [sideA1];
+    const sideB = ppt === 2 ? [sideB1, sideB2] : [sideB1];
+    const all = [...sideA, ...sideB];
+    if (all.some((id) => !id) || new Set(all).size !== all.length) return [];
+    const a = sideKey(sideA);
+    const b = sideKey(sideB);
+    return matches
+      .filter((m) => {
+        if (m.status === "cancelled") return false;
+        const ma = sideKey([m.side_a_player1, m.side_a_player2]);
+        const mb = sideKey([m.side_b_player1, m.side_b_player2]);
+        return (ma === a && mb === b) || (ma === b && mb === a);
+      })
+      .sort(
+        (x, y) =>
+          new Date(y.ended_at ?? y.created_at).getTime() -
+          new Date(x.ended_at ?? x.created_at).getTime(),
+      );
+  }, [matches, sideA1, sideA2, sideB1, sideB2, ppt]);
+
+  const lastMeetingLabel = useMemo(() => {
+    const last = priorMeetings[0];
+    if (!last) return "";
+    if (last.status === "in_progress") return "กำลังแข่งอยู่";
+    if (last.status === "pending") return "อยู่ในคิว";
+    // completed
+    const hasScore = last.score_a != null && last.score_b != null;
+    const winnerIds =
+      last.winner_side === "a"
+        ? [last.side_a_player1, last.side_a_player2]
+        : last.winner_side === "b"
+          ? [last.side_b_player1, last.side_b_player2]
+          : [];
+    const winnerName = winnerIds
+      .filter(Boolean)
+      .map((id) => nameMap.get(id!) ?? "?")
+      .join(" & ");
+    if (hasScore && winnerName) return `${winnerName} ชนะ ${last.score_a}–${last.score_b}`;
+    if (hasScore) return `ผล ${last.score_a}–${last.score_b}`;
+    if (winnerName) return `${winnerName} ชนะ`;
+    return "จบแล้ว (ไม่บันทึกผล)";
+  }, [priorMeetings, nameMap]);
 
   function reset() {
     setCourt(1);
@@ -911,12 +964,34 @@ function ManualMatchDialog({
               />
             )}
           </div>
+
+          {priorMeetings.length > 0 && (
+            <div className="flex gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-warning mt-0.5" />
+              <div className="space-y-0.5">
+                <p className="font-medium text-warning-foreground">
+                  คู่นี้เคยพบกันแล้ว {priorMeetings.length} ครั้ง
+                </p>
+                {lastMeetingLabel && (
+                  <p className="text-muted-foreground">ครั้งล่าสุด: {lastMeetingLabel}</p>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         <DialogFooter>
           <DialogClose render={<Button variant="outline" disabled={busy}>ยกเลิก</Button>} />
-          <Button onClick={handleSubmit} disabled={busy}>
-            {busy ? "กำลังสร้าง…" : "เพิ่มแมตช์"}
+          <Button
+            onClick={handleSubmit}
+            disabled={busy}
+            variant={priorMeetings.length > 0 ? "destructive" : "default"}
+          >
+            {busy
+              ? "กำลังสร้าง…"
+              : priorMeetings.length > 0
+                ? "ยืนยันสร้าง (เคยเจอกัน)"
+                : "เพิ่มแมตช์"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1055,6 +1130,7 @@ export function ClubQueuePanel({
               clubId={clubId}
               players={players}
               settings={settings}
+              matches={matches}
               onRefresh={onRefresh}
             />
           </div>
