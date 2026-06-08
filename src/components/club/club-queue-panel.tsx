@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, PenLine, Trash2, AlertTriangle } from "lucide-react";
+import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -34,12 +34,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -705,27 +711,59 @@ function PlayerSelect({
   players: { id: string; display_name: string }[];
   nameMap: Map<string, string>;
 }) {
-  function renderName(v: string) {
-    return v ? (nameMap.get(v) ?? v) : "เลือกผู้เล่น";
-  }
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const selectedName = value ? (nameMap.get(value) ?? value) : "";
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? players.filter((p) => p.display_name.toLowerCase().includes(q))
+    : players;
 
   return (
     <div className="space-y-1">
       <Label htmlFor={id} className="text-xs text-muted-foreground">
         {label}
       </Label>
-      <Select value={value} onValueChange={(v) => { if (v) onChange(v); }}>
-        <SelectTrigger id={id} className="h-8 text-sm">
-          <SelectValue>{(v: string) => renderName(v)}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {players.map((p) => (
-            <SelectItem key={p.id} value={p.id}>
-              {p.display_name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
+        <PopoverTrigger
+          render={
+            <Button
+              id={id}
+              type="button"
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              className="w-full h-8 justify-between font-normal text-sm"
+            >
+              <span className={`truncate ${selectedName ? "" : "text-muted-foreground"}`}>
+                {selectedName || "เลือกผู้เล่น"}
+              </span>
+              <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
+            </Button>
+          }
+        />
+        <PopoverContent className="w-(--anchor-width) p-0 gap-0" align="start">
+          <Command shouldFilter={false}>
+            <CommandInput placeholder="พิมพ์ชื่อ..." value={query} onValueChange={setQuery} />
+            <CommandList>
+              <CommandEmpty>ไม่พบผู้เล่น</CommandEmpty>
+              <CommandGroup>
+                {filtered.map((p) => (
+                  <CommandItem
+                    key={p.id}
+                    value={p.id}
+                    onSelect={() => { onChange(p.id); setOpen(false); setQuery(""); }}
+                  >
+                    <span className="flex-1 truncate">{p.display_name}</span>
+                    {value === p.id && <Check className="h-4 w-4 shrink-0" />}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
