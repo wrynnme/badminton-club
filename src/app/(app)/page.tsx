@@ -16,9 +16,10 @@ export default async function Home({
   if (session) redirect("/clubs");
 
   const sp = await searchParams;
-  const redirectTo = sp.redirectTo?.startsWith("/") && !sp.redirectTo.startsWith("//")
-    ? sp.redirectTo
-    : undefined;
+  const redirectTo =
+    sp.redirectTo?.startsWith("/") && sp.redirectTo[1] !== "/" && sp.redirectTo[1] !== "\\"
+      ? sp.redirectTo
+      : undefined;
   const errorMap: Record<string, string> = {
     state: "OAuth state ไม่ตรง ลองใหม่",
     token: "แลก token ไม่สำเร็จ",

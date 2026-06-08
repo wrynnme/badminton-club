@@ -3,7 +3,9 @@ import { randomBytes } from "crypto";
 import { cookies } from "next/headers";
 
 function safeRedirectTo(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/clubs";
+  // Same-origin absolute paths only. Reject `//host` AND `/\host` (browsers normalize
+  // backslash to `/`, turning it into an off-origin redirect) → open-redirect guard.
+  if (!value || !value.startsWith("/") || value[1] === "/" || value[1] === "\\") return "/clubs";
   return value;
 }
 
