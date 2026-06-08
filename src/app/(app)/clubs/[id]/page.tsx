@@ -67,7 +67,11 @@ export default async function ClubDetailPage({
       .from("club_matches")
       .select("*")
       .eq("club_id", id)
-      .order("queue_position", { ascending: true, nullsFirst: false }),
+      // created_at tiebreak: no DB unique constraint on queue_position, so concurrent
+      // tail-inserts can collide on the same position → order them deterministically by
+      // insert time instead of arbitrarily (matches byQueueThenCreated in the panel).
+      .order("queue_position", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true }),
     sb
       .from("club_locked_pairs")
       .select("*")

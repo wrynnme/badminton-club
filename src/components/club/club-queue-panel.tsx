@@ -74,6 +74,17 @@ import type { ClubQueueSettings } from "@/lib/club/queue-settings";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+// Pending queue order: queue_position asc, then created_at asc as tiebreak.
+// There's no DB unique constraint on queue_position, so concurrent tail-inserts
+// can land on the same position; the created_at tiebreak makes that harmless —
+// rows still order deterministically by insert time instead of arbitrarily.
+function byQueueThenCreated(a: ClubMatch, b: ClubMatch): number {
+  const qa = a.queue_position ?? Infinity;
+  const qb = b.queue_position ?? Infinity;
+  if (qa !== qb) return qa - qb;
+  return a.created_at.localeCompare(b.created_at);
+}
+
 function formatElapsed(startedAt: string): string {
   const elapsedMs = Date.now() - new Date(startedAt).getTime();
   if (elapsedMs < 0) return "0:00";
@@ -1062,7 +1073,7 @@ export function ClubQueuePanel({
   // Pending-only local order for optimistic drag-to-reorder
   const sortedPending = matches
     .filter((m) => m.status === "pending")
-    .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity));
+    .sort(byQueueThenCreated);
 
   const [pendingOrder, setPendingOrder] = useState<ClubMatch[]>(sortedPending);
 
@@ -1071,7 +1082,7 @@ export function ClubQueuePanel({
     setPendingOrder(
       matches
         .filter((m) => m.status === "pending")
-        .sort((a, b) => (a.queue_position ?? Infinity) - (b.queue_position ?? Infinity)),
+        .sort(byQueueThenCreated),
     );
   }, [matches]);
 
