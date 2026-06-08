@@ -384,6 +384,17 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **UI**: `club-tabs.tsx` (4 แท็บ URL-synced: ลงชื่อ/เช็คอิน · ล็อคคู่+คิว · ค่าใช้จ่าย · ตั้งค่า [manager-only]) · `club-queue-settings.tsx` (7 ฟิลด์ debounce save) · `club-queue-panel.tsx` (Tabs รอ/กำลัง/จบ; pending **drag-reorder** @dnd-kit [manager]; per-court build + start/cancel/finish-winner + elapsed ticker + `ShuttleCounter` +/−ลูก + `DeleteMatchButton` [confirm dialog, in_progress/completed] + `ManualMatchDialog`) · `club-locked-pairs.tsx` (gated `players_per_team===2`) · `edit-club-form.tsx` (always-open). migrations `20260606000300` · `20260607000100/000200/000300/000400/000500`.
 - **Not built**: auto-rotate-all-courts, score entry (winner-only), not_ready/time_limit enforcement (hint), Realtime (manual refresh).
 
+### Reserve / Waitlist (สำรอง) — ✅ UI DONE (2026-06-08, develop)
+
+- **DB**: `club_players.status "active"|"reserve"` (backend already done — migration + server actions not touched by this change).
+- **Capacity logic**: `joinClubAction`/`addGuestPlayerAction` insert `status='reserve'` when `active >= max_players`; adding is always allowed (no 403). Auto-promotion server-side when an active player leaves.
+- **Reserves excluded from queue**: `buildNextClubMatchAction` pool excludes `status='reserve'` rows.
+- **UI changes (2026-06-08)**:
+  - `src/app/(app)/clubs/[id]/page.tsx` — capacity now counts ONLY `status==='active'` (`activeCount`, `reserveCount`, `full = activeCount >= max_players`). Header badge: `"เต็ม"` (if full) **or** `{activeCount}/{max_players}` badge + `+{reserveCount} สำรอง` badge when reserves exist. Info card `คน` line uses `activeCount (+N สำรอง) / max`. `joined` (total) preserved for cost `playerCount` divisor.
+  - `src/components/club/join-form.tsx` — removed "ก๊วนเต็มแล้ว" early-return; `!open` state shows info note `"เต็มแล้ว — เพิ่มเป็นสำรอง (รอคิว)"` when `full`; same note shown inside open form; success toast = `"เพิ่มเป็นสำรองแล้ว (รอคิว)"` when `full`, else `"ลงชื่อสำเร็จ"`.
+  - `src/components/club/add-guest-player.tsx` — same changes: removed block, info note in collapsed + open states, success toast conditioned on `full`.
+  - `src/components/club/sortable-player-list.tsx` — extracted shared `PlayerRowBody` (presentational, no `useSortable`). Active players (`status==='active'`) in `DndContext`/`SortableContext` as before. Reserve players in a separate non-DnD `<ol>` below with header `สำรอง (N)` + `รอคิว` badge; each row muted (`opacity-70`), rank `#1/#2/…`, same per-row actions (SessionEditor / CheckInButton / Leave / Kick). `handleDragEnd` reorders ONLY active array → `reorderPlayersAction(clubId, reorderedActive.map(p => p.id))` — reserve ids never passed to reorder.
+
 ### Skill Levels (levels table + FK) — ✅ CLUB IMPLEMENTED (2026-06-07, develop)
 
 ระดับฝีมือย้ายจาก free-text → ตาราง `levels` (global lookup) อ้างผ่าน FK. **Scope: club ก่อน** (tournament `team_players.level` ยังเป็น text เดิม — ยังไม่แตะ).
@@ -720,6 +731,25 @@ computeClubSplit(input: {
 - queue algo `smart` — ปัจจัยอะไรบ้าง (เวลาพัก, จำนวนเกม, ระดับฝีมือ, เพื่อนร่วม/คู่ตรงข้ามซ้ำ)? reuse `autoRotateQueueAction` logic จาก tournament ได้แค่ไหน
 - `winner_stays` — กติกาผู้ชนะอยู่ต่อกี่เกมติด, เปลี่ยนคู่ฝั่งไหน
 - skill-level scale — เลขอิสระเหมือน tournament `level` หรือ fixed scale
+
+### ระบบ Preset ก๊วน (user-owned templates) — TODO (captured 2026-06-08, ยังไม่เริ่ม)
+
+Preset = เทมเพลตก๊วนที่ user **เพิ่ม/ลบ/แก้** ของตัวเองได้ เก็บ config + roster ที่ใช้ประจำ เพื่อเปิดก๊วนรอบใหม่ได้เร็ว. ตัวอย่าง: "NOMKON · วันพุธ · 19:00–21:00".
+
+**ฟิลด์ใน preset:**
+- ชื่อ (เช่น `NOMKON`)
+- ตารางประจำ — วัน (เช่น วันพุธ) + ช่วงเวลา (19:00–21:00)
+- `max_players` (รับสูงสุดกี่คน), `shuttle_price` (ลูกขนไก่), `court_count` (จำนวนสนาม), `players_per_team`, `rotation_mode`, `queue_mode`
+- co-admins (รายชื่อ)
+- **ผู้เล่นประจำ** — ชื่อ + เวลาที่มาประจำของแต่ละคน (regular's usual attend window)
+
+**Behavior:** CRUD บน preset ของตัวเอง · "apply preset" → สร้าง/เปิดก๊วนรอบใหม่โดย pre-fill config + co-admins + add ผู้เล่นประจำ (พร้อม start/end time ประจำ).
+
+**Open decisions (ถามก่อน implement):**
+1. Storage — ตาราง `club_presets` (owner = profile_id) + child tables (`club_preset_regulars`, `club_preset_admins`) หรือ jsonb ก้อนเดียว?
+2. "apply" = สร้าง club ใหม่จาก preset (one-shot seed) หรือผูก club กับ preset ถาวร?
+3. Recurrence — แค่ template (กดเปิดเอง) หรือ scheduled auto-create ตามวัน/เวลา?
+4. ผู้เล่นประจำ — match กับ profile ที่มีอยู่ (LINE) หรือเป็น guest name ล้วน?
 
 ### UX polish backlog
 
