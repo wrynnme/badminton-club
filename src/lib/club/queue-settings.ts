@@ -4,7 +4,10 @@ import { z } from "zod";
  * Club rotation-queue config. Stored on `clubs.queue_settings jsonb` so new fields
  * can ship without a migration (mirrors tournaments.settings + parseSettings).
  *
- *  court_count          จำนวนสนามที่เปิด
+ *  court_count          [frozen] legacy fallback only — superseded by the named-
+ *                       courts list `clubs.courts text[]`. No UI writes this field
+ *                       anymore; page.tsx still reads it to backfill ['1'..'N'] when
+ *                       clubs.courts is empty. Kept in the schema so old rows parse.
  *  players_per_team     1 = เดี่ยว, 2 = คู่
  *  rotation_mode        fair_queue   = ทุกคนหมุนตามคิว
  *                       winner_stays = ผู้ชนะอยู่ต่อ (เปลี่ยนเฉพาะฝั่งแพ้)

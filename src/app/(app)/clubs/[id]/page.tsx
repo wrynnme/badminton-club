@@ -119,13 +119,14 @@ export default async function ClubDetailPage({
       ? club.courts
       : Array.from({ length: queueSettings.court_count }, (_, i) => String(i + 1));
 
-  // Compute total from expenses; fall back to legacy total_cost
-  const expenseTotal = expenses.reduce((s, e) => s + Number(e.amount), 0);
-  const displayTotal = expenseTotal > 0 ? expenseTotal : (club.total_cost ?? 0);
-
   // Canonical session cost (court + shuttle + personal expenses − discounts) —
   // same calc the cost-breakdown table uses, so the dashboard card reconciles.
   const costSummary = computeClubCostSummary({ club, players, matches: clubMatches, expenses });
+
+  // One headline cost number shared by the page header AND the dashboard card, so
+  // they never disagree. Prefer the computed session total; fall back to legacy
+  // total_cost only before any court/shuttle/expense/discount input is set.
+  const clubCostTotal = costSummary.grandTotal > 0 ? costSummary.grandTotal : (club.total_cost ?? 0);
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -165,10 +166,10 @@ export default async function ClubDetailPage({
             label={<Users className="h-4 w-4" />}
             text={`${activeCount}${reserveCount > 0 ? ` (+${reserveCount} สำรอง)` : ""} / ${club.max_players} คน`}
           />
-          {displayTotal > 0 && (
+          {clubCostTotal > 0 && (
             <Info
               label={<Wallet className="h-4 w-4" />}
-              text={`รวมค่าใช้จ่าย ${displayTotal.toLocaleString()} บาท`}
+              text={`รวมค่าใช้จ่าย ${clubCostTotal.toLocaleString()} บาท`}
             />
           )}
           {club.shuttle_info && <Info label="🏸" text={club.shuttle_info} />}
@@ -190,7 +191,7 @@ export default async function ClubDetailPage({
               players={players}
               matches={clubMatches}
               levels={levels}
-              costTotal={costSummary.grandTotal}
+              costTotal={clubCostTotal}
               maxPlayers={club.max_players}
             />
           }

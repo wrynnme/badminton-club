@@ -141,7 +141,7 @@ export function ClubCourtManager({ clubId, initialCourts }: Props) {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-            placeholder="ชื่อสนาม เช่น สนาม 1"
+            placeholder="ชื่อสนาม เช่น 1 หรือ A"
             maxLength={40}
             className="h-8 text-sm"
             disabled={savePending}
@@ -200,7 +200,7 @@ function SortableCourtRow({
         />
         <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
       </Tooltip>
-      <span className="flex-1 text-sm">{name}</span>
+      <span className="flex-1 text-sm">สนาม {name}</span>
       <Tooltip>
         <TooltipTrigger
           render={
