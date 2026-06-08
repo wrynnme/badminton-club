@@ -277,6 +277,7 @@ function makePlayer(id: string, displayName = `Player ${id}`): TeamPlayer {
     display_name: displayName,
     role: "member",
     level: null,
+    level_id: null,
     csv_id: null,
     checked_in_at: null,
     created_at: "2026-01-01T00:00:00Z",

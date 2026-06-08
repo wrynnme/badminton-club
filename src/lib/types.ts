@@ -159,7 +159,8 @@ export type TeamPlayer = {
   profile_id: string | null;
   display_name: string;
   role: TeamRole;
-  level: string | null;
+  level: string | null; // DEPRECATED free-text — superseded by level_id FK → levels; dropped in a later migration
+  level_id: string | null; // FK → levels (skill level); source of truth for tournament players
   csv_id: string | null;
   checked_in_at: string | null;
   created_at: string;

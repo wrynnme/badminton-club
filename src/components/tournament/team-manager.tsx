@@ -7,14 +7,23 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { addTeamPlayerAction, bulkCheckInTeamAction, createTeamAction, deleteTeamAction, removeTeamPlayerAction, resetAllCheckInsAction, toggleTeamPlayerCheckInAction, updateTeamPlayerAction } from "@/lib/actions/tournaments";
 import { fieldErrors } from "@/lib/form-errors";
-import type { TeamWithPlayers } from "@/lib/types";
+import type { Level, TeamWithPlayers } from "@/lib/types";
 import { useForm } from "@tanstack/react-form";
 import { Check, CheckCheck, ChevronDown, ChevronUp, Loader2, Pencil, Plus, RotateCcw, Trash2, UserCheck, UserMinus, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import * as z from "zod";
+
+const NONE_SENTINEL = "__none__";
 
 const teamSchema = z.object({
   name: z.string().min(1, "ระบุชื่อทีม"),
@@ -25,7 +34,7 @@ const teamSchema = z.object({
 const memberSchema = z.object({
   display_name: z.string().min(1, "ระบุชื่อสมาชิก"),
   role: z.enum(["captain", "member"]),
-  level: z.string(),
+  level_id: z.string(),
 });
 
 const COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ec4899", "#14b8a6", "#f97316"];
@@ -83,12 +92,13 @@ function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: (
   );
 }
 
-function AddMemberForm({ teamId, tournamentId, onDone }: { teamId: string; tournamentId: string; onDone: () => void }) {
+function AddMemberForm({ teamId, tournamentId, levels, onDone }: { teamId: string; tournamentId: string; levels: Level[]; onDone: () => void }) {
   const form = useForm({
-    defaultValues: { display_name: "", role: "member" as "captain" | "member", level: "" },
+    defaultValues: { display_name: "", role: "member" as "captain" | "member", level_id: NONE_SENTINEL },
     validators: { onSubmit: memberSchema },
     onSubmit: async ({ value }) => {
-      const res = await addTeamPlayerAction({ team_id: teamId, tournament_id: tournamentId, ...value });
+      const level_id = value.level_id && value.level_id !== NONE_SENTINEL ? value.level_id : null;
+      const res = await addTeamPlayerAction(teamId, { display_name: value.display_name, role: value.role, level_id }, tournamentId);
       if (res?.error) toast.error(res.error);
       else { toast.success("เพิ่มสมาชิกแล้ว"); form.reset(); onDone(); }
     },
@@ -125,12 +135,30 @@ function AddMemberForm({ teamId, tournamentId, onDone }: { teamId: string; tourn
             </div>
           </Field>
         )} />
-        <form.Field name="level" children={(field) => (
+        <form.Field name="level_id" children={(field) => (
           <Field>
-            <FieldLabel>Level</FieldLabel>
-            <Input type="number" step="0.5" value={field.state.value}
-              onChange={(e) => field.handleChange(e.target.value)}
-              placeholder="เช่น 3.5" className="w-28" />
+            <FieldLabel htmlFor={field.name}>ระดับฝีมือ</FieldLabel>
+            <Select
+              value={field.state.value}
+              onValueChange={(v) => field.handleChange(v ?? NONE_SENTINEL)}
+            >
+              <SelectTrigger id={field.name} className="w-full">
+                <SelectValue>
+                  {(v: string) => {
+                    if (!v || v === NONE_SENTINEL) return "— ไม่ระบุ —";
+                    return levels.find((l) => l.id === v)?.label ?? "— ไม่ระบุ —";
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE_SENTINEL}>— ไม่ระบุ —</SelectItem>
+                {levels.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.label} ({l.real})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
         )} />
       </FieldGroup>
@@ -146,15 +174,17 @@ function AddMemberForm({ teamId, tournamentId, onDone }: { teamId: string; tourn
   );
 }
 
-function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
+function PlayerRow({ p, tournamentId, isOwner, levels, startRemove }: {
   p: TeamWithPlayers["players"][number];
   tournamentId: string;
   isOwner: boolean;
+  levels: Level[];
   startRemove: (fn: () => Promise<void>) => void;
 }) {
+  const levelById = new Map(levels.map((l) => [l.id, l.label]));
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(p.display_name);
-  const [level, setLevel] = useState(p.level ?? "");
+  const [levelId, setLevelId] = useState(p.level_id ?? NONE_SENTINEL);
   const [editPending, startEdit] = useTransition();
   const [checkPending, startCheck] = useTransition();
   const isCheckedIn = !!p.checked_in_at;
@@ -165,13 +195,16 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
   });
 
   const save = () => startEdit(async () => {
-    const res = await updateTeamPlayerAction(p.id, { display_name: name, level: level || null }, tournamentId);
-    if (res?.error) { toast.error(res.error); setName(p.display_name); setLevel(p.level ?? ""); }
+    const level_id = levelId && levelId !== NONE_SENTINEL ? levelId : null;
+    const res = await updateTeamPlayerAction(p.id, { display_name: name, level_id }, tournamentId);
+    if (res?.error) { toast.error(res.error); setName(p.display_name); setLevelId(p.level_id ?? NONE_SENTINEL); }
     else toast.success("แก้ไขผู้เล่นแล้ว");
     setEditing(false);
   });
 
-  const cancel = () => { setEditing(false); setName(p.display_name); setLevel(p.level ?? ""); };
+  const cancel = () => { setEditing(false); setName(p.display_name); setLevelId(p.level_id ?? NONE_SENTINEL); };
+
+  const currentLevelLabel = p.level_id ? levelById.get(p.level_id) : undefined;
 
   return (
     <li className={`flex items-center gap-2 text-sm rounded px-1 py-0.5 ${isCheckedIn ? "bg-green-500/5 border border-green-500/30" : ""}`}>
@@ -181,8 +214,24 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
           <Input value={name} onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
             className="h-6 text-xs flex-1 px-1.5 min-w-0" autoFocus />
-          <Input type="number" step="0.5" value={level} onChange={(e) => setLevel(e.target.value)}
-            placeholder="Level" className="h-6 text-xs w-16 px-1.5" />
+          <Select value={levelId} onValueChange={(v) => setLevelId(v ?? NONE_SENTINEL)}>
+            <SelectTrigger className="h-6 text-xs w-28 px-1.5">
+              <SelectValue>
+                {(v: string) => {
+                  if (!v || v === NONE_SENTINEL) return "— ระดับ —";
+                  return levels.find((l) => l.id === v)?.label ?? "— ระดับ —";
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE_SENTINEL}>— ไม่ระบุ —</SelectItem>
+              {levels.map((l) => (
+                <SelectItem key={l.id} value={l.id}>
+                  {l.label} ({l.real})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label="บันทึก" disabled={editPending} onClick={save}>
             {editPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
           </Button>
@@ -191,7 +240,7 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
       ) : (
         <>
           <EntityLink entityType="player" entityId={p.id} className="flex-1 truncate">{name}</EntityLink>
-          {p.level && <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">{p.level}</Badge>}
+          {currentLevelLabel && <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">{currentLevelLabel}</Badge>}
           {isOwner && (
             <Button variant={isCheckedIn ? "default" : "outline"} size="sm"
               className={`h-6 px-2 text-[10px] shrink-0 ${isCheckedIn ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
@@ -220,7 +269,7 @@ function PlayerRow({ p, tournamentId, isOwner, startRemove }: {
   );
 }
 
-function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tournamentId: string; isOwner: boolean }) {
+function TeamCard({ team, tournamentId, isOwner, levels }: { team: TeamWithPlayers; tournamentId: string; isOwner: boolean; levels: Level[] }) {
   const [open, setOpen] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
   const [delPending, startDel] = useTransition();
@@ -292,7 +341,7 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
           ) : (
             <ul className="space-y-1">
               {[...team.players].sort((a, b) => (a.role === "captain" ? -1 : b.role === "captain" ? 1 : 0)).map((p) => (
-                <PlayerRow key={p.id} p={p} tournamentId={tournamentId} isOwner={isOwner} startRemove={startRemove} />
+                <PlayerRow key={p.id} p={p} tournamentId={tournamentId} isOwner={isOwner} levels={levels} startRemove={startRemove} />
               ))}
             </ul>
           )}
@@ -309,6 +358,7 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
             <AddMemberForm
               teamId={team.id}
               tournamentId={tournamentId}
+              levels={levels}
               onDone={() => setAddingMember(false)}
             />
           )}
@@ -318,11 +368,12 @@ function TeamCard({ team, tournamentId, isOwner }: { team: TeamWithPlayers; tour
   );
 }
 
-export function TeamManager({ tournamentId, teams, isOwner, teamCount }: {
+export function TeamManager({ tournamentId, teams, isOwner, teamCount, levels }: {
   tournamentId: string;
   teams: TeamWithPlayers[];
   isOwner: boolean;
   teamCount: number;
+  levels: Level[];
 }) {
   const [adding, setAdding] = useState(false);
   const [resetPending, startReset] = useTransition();
@@ -373,7 +424,7 @@ export function TeamManager({ tournamentId, teams, isOwner, teamCount }: {
 
       <div className="grid gap-2 sm:grid-cols-2">
         {teams.map((t) => (
-          <TeamCard key={t.id} team={t} tournamentId={tournamentId} isOwner={isOwner} />
+          <TeamCard key={t.id} team={t} tournamentId={tournamentId} isOwner={isOwner} levels={levels} />
         ))}
       </div>
 

@@ -6,6 +6,12 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-08 — T3: tournament level → levels table FK (develop)
+
+All green: `tsc --noEmit` clean · vitest **416/416** · prod `next build` OK · **live smoke PASS** (public `/t/[token]` + `/t/[token]/stats/player/[id]` render HTTP 200, 0 error markers, level label renders from `level_id`). Migration `20260608000100_add_team_players_level_id` applied to prod with explicit user confirm — additive `level_id` FK + backfill, **72/72 players mapped, 0 unmapped**; **0/36** existing pairs' `pair_level` differs from `real(p1)+real(p2)` (no division shift). `updateTeamPlayerAction` now recomputes pair_level for the edited player's pairs (closed a pre-existing stale-pair_level gap). **Not Playwright-tested:** the admin team-tab level Select add/edit interaction (needs auth) — it mirrors the already-live club `add-guest-player.tsx` Select pattern; server action writes verified in diff.
+
+**Pending (separate confirm):** `ALTER TABLE team_players DROP COLUMN level;` — the dead free-text column is left in place; drop after a few days of develop soak (same pattern as the still-pending `club_players.level` drop).
+
 ### 2026-06-08 — T4: collapsible divisions on match page (develop)
 
 All green, no new findings: `tsc --noEmit` clean · prod `next build` OK. `knockout-stage.tsx` + `pair-stage.tsx` "แข่งขัน" sub-tab were already collapsible; the gap was `pair-stage.tsx` "คะแนน" (standings) sub-tab — per-division `StandingsTable` cards rendered all-expanded. Wrapped each in the existing `<Collapsible>` pattern, reusing `isOpen`/`setOpen` so a division's open state is consistent across the แข่งขัน + คะแนน tabs; `EntityLink` kept as a sibling link next to the chevron trigger. No live smoke — presentational change mirroring the already-live matches-tab Collapsible in the same component.

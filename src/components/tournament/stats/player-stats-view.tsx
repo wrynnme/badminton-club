@@ -3,7 +3,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { PlayerStats } from "@/lib/tournament/entity-stats";
-import type { TeamPlayer, Team, PairWithPlayers } from "@/lib/types";
+import type { Level, TeamPlayer, Team, PairWithPlayers } from "@/lib/types";
 import { StreakPill } from "./shared/streak-pill";
 import { StatHeaderCards } from "./shared/stat-header-cards";
 import { MatchHistoryList, type CompetitorEntry } from "./shared/match-history-list";
@@ -15,12 +15,14 @@ export function PlayerStatsView({
   team,
   pairById,
   competitorById,
+  levels,
 }: {
   stats: PlayerStats;
   player: TeamPlayer;
   team: Team | undefined;
   pairById: Map<string, PairWithPlayers>;
   competitorById: Map<string, CompetitorEntry>;
+  levels: Level[];
 }) {
   // Set of pair IDs this player belongs to — needed for side detection in match rows
   const playerPairIds = new Set<string>();
@@ -61,12 +63,15 @@ export function PlayerStatsView({
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
               <h1 className="text-xl font-bold">{player.display_name}</h1>
-              {player.level && (
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  ระดับ:{" "}
-                  <span className="font-medium text-foreground">{player.level}</span>
-                </p>
-              )}
+              {player.level_id && (() => {
+                const label = levels.find((l) => l.id === player.level_id)?.label;
+                return label ? (
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    ระดับ:{" "}
+                    <span className="font-medium text-foreground">{label}</span>
+                  </p>
+                ) : null;
+              })()}
             </div>
             {team && (
               <Badge

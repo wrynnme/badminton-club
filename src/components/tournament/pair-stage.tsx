@@ -16,7 +16,7 @@ import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { computeStandings, aggregatePairStandingsToTeams } from "@/lib/tournament/scoring";
-import type { Match, PairWithPlayers, Team, TeamWithPlayers, TournamentClass } from "@/lib/types";
+import type { Level, Match, PairWithPlayers, Team, TeamWithPlayers, TournamentClass } from "@/lib/types";
 import { ChevronDown, Loader2, Swords } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -30,6 +30,7 @@ export function PairStage({
   pairDivisionThresholds = [],
   matchRowSize,
   classes = [],
+  levels = [],
 }: {
   tournamentId: string;
   teams: TeamWithPlayers[];
@@ -41,6 +42,8 @@ export function PairStage({
   /** Competition-mode classes. When present, the pair tab is class-assignment
    *  only — group matches + standings live in the กลุ่ม / น็อคเอ้า tabs. */
   classes?: TournamentClass[];
+  /** Skill-level rows (BG…P) for the per-player level Select in PairManager. */
+  levels?: Level[];
 }) {
   const isCompetition = classes.length > 0;
   const [genPending, startGen] = useTransition();
@@ -173,6 +176,7 @@ export function PairStage({
                 pairs={pairsByTeam.get(t.id) ?? []}
                 isOwner={isOwner}
                 classes={classes}
+                levels={levels}
               />
             ))}
           </div>
@@ -208,6 +212,7 @@ export function PairStage({
                 team={t}
                 pairs={pairsByTeam.get(t.id) ?? []}
                 isOwner={isOwner}
+                levels={levels}
               />
             ))}
           </div>
