@@ -2,6 +2,9 @@
 
 import { useState, useTransition, useId, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+// Progress-bar-aware router for user mutations; the plain one stays for the
+// 30s auto-refresh interval so the top bar doesn't flash on every tick.
+import { useRouter as useProgressRouter } from "@bprogress/next/app";
 import { RefreshCw, GripVertical, CheckCircle2, Circle, Loader2, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -53,7 +56,7 @@ function CheckInButton({
   clubId: string;
   canToggle: boolean;
 }) {
-  const router = useRouter();
+  const router = useProgressRouter();
   const [pending, start] = useTransition();
   const isCheckedIn = !!player.checked_in_at;
 
@@ -110,7 +113,7 @@ function SessionEditor({
   sessionStart?: string;
   sessionEnd?: string;
 }) {
-  const router = useRouter();
+  const router = useProgressRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
 
@@ -262,7 +265,7 @@ function RenameForm({
   clubId: string;
   onClose: () => void;
 }) {
-  const router = useRouter();
+  const router = useProgressRouter();
   const [value, setValue] = useState(player.display_name);
   const [pending, start] = useTransition();
 
