@@ -12,7 +12,12 @@ import {
   ClubQueueSettingsSchema,
   parseQueueSettings,
 } from "@/lib/club/queue-settings";
-import { buildNextMatch, type QueuePlayer, type MatchSide } from "@/lib/club/queue";
+import {
+  buildNextMatch,
+  deriveWinnerSide,
+  type QueuePlayer,
+  type MatchSide,
+} from "@/lib/club/queue";
 import type { ClubMatch } from "@/lib/types";
 
 async function loginRedirect(): Promise<never> {
@@ -941,9 +946,17 @@ export async function finishClubMatchAction(input: {
   if ("error" in guard) return { error: guard.error };
   const { match } = guard;
 
+  // Full-score finish derives the winner from the score (server-authoritative);
+  // an explicit winnerSide (winner-only finish) is honored as-is.
+  const winnerSide =
+    input.winnerSide ??
+    (input.scoreA != null && input.scoreB != null
+      ? deriveWinnerSide(input.scoreA, input.scoreB) ?? undefined
+      : undefined);
+
   const { error: rpcError } = await sb.rpc("finish_club_match", {
     p_match_id: input.matchId,
-    p_winner_side: input.winnerSide ?? null,
+    p_winner_side: winnerSide ?? null,
     p_score_a: input.scoreA ?? null,
     p_score_b: input.scoreB ?? null,
   });

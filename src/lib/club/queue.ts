@@ -252,3 +252,17 @@ export function buildNextMatch(
 
   return splitSides(chosen, settings);
 }
+
+/**
+ * Derive the winning side from a finished game's score.
+ * Returns "a" / "b" for the higher score, or null on a tie (a recorded full
+ * score should normally have a winner — callers may reject the tie at input).
+ */
+export function deriveWinnerSide(
+  scoreA: number,
+  scoreB: number,
+): "a" | "b" | null {
+  if (scoreA > scoreB) return "a";
+  if (scoreB > scoreA) return "b";
+  return null;
+}

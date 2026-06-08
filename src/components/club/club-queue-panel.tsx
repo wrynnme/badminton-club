@@ -410,23 +410,46 @@ function InProgressRow({
 }) {
   const [finishOpen, setFinishOpen] = useState(false);
   const [finishBusy, finishTransition] = useTransition();
+  const [scoreA, setScoreA] = useState("");
+  const [scoreB, setScoreB] = useState("");
 
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
   const sideB = resolveSide(match.side_b_player1, match.side_b_player2, nameMap);
 
-  function handleFinish(winnerSide?: "a" | "b") {
+  function handleFinish(opts: {
+    winnerSide?: "a" | "b";
+    scoreA?: number;
+    scoreB?: number;
+  } = {}) {
     finishTransition(async () => {
-      const res = await finishClubMatchAction({
-        matchId: match.id,
-        winnerSide,
-      });
+      const res = await finishClubMatchAction({ matchId: match.id, ...opts });
       if ("error" in res) {
         toast.error(res.error);
       } else {
         setFinishOpen(false);
+        setScoreA("");
+        setScoreB("");
         onRefresh();
       }
     });
+  }
+
+  function handleScoreFinish() {
+    const a = parseInt(scoreA, 10);
+    const b = parseInt(scoreB, 10);
+    if (Number.isNaN(a) || Number.isNaN(b)) {
+      toast.error("กรอกคะแนนทั้งสองฝั่ง");
+      return;
+    }
+    if (a < 0 || b < 0 || a > 99 || b > 99) {
+      toast.error("คะแนน 0–99");
+      return;
+    }
+    if (a === b) {
+      toast.error("คะแนนเท่ากัน ต้องมีผู้ชนะ");
+      return;
+    }
+    handleFinish({ scoreA: a, scoreB: b });
   }
 
   return (
@@ -471,57 +494,103 @@ function InProgressRow({
       </div>
 
       {finishOpen && canManage && (
-        <div className="mt-2 ml-2 flex flex-wrap gap-2">
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="sm"
-                  variant="default"
-                  className="h-7 text-xs"
-                  disabled={finishBusy}
-                  onClick={() => handleFinish("a")}
-                >
-                  <Trophy className="h-3 w-3 mr-1" />
-                  ฝั่ง A ชนะ
-                </Button>
-              }
+        <div className="mt-2 ml-2 flex flex-col gap-2">
+          {/* โหมด 1 — กรอกคะแนนเต็ม (ผู้ชนะคำนวณจากคะแนน) */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-muted-foreground shrink-0">กรอกคะแนน</span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={99}
+              value={scoreA}
+              onChange={(e) => setScoreA(e.target.value)}
+              disabled={finishBusy}
+              aria-label={`คะแนน ${sideA}`}
+              className="h-7 w-14 text-center text-xs"
             />
-            <TooltipContent>{sideA} ชนะ</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="sm"
-                  variant="default"
-                  className="h-7 text-xs"
-                  disabled={finishBusy}
-                  onClick={() => handleFinish("b")}
-                >
-                  <Trophy className="h-3 w-3 mr-1" />
-                  ฝั่ง B ชนะ
-                </Button>
-              }
+            <span className="text-xs text-muted-foreground">:</span>
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={99}
+              value={scoreB}
+              onChange={(e) => setScoreB(e.target.value)}
+              disabled={finishBusy}
+              aria-label={`คะแนน ${sideB}`}
+              className="h-7 w-14 text-center text-xs"
             />
-            <TooltipContent>{sideB} ชนะ</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 text-xs"
-                  disabled={finishBusy}
-                  onClick={() => handleFinish(undefined)}
-                >
-                  จบแบบไม่ระบุผล
-                </Button>
-              }
-            />
-            <TooltipContent>บันทึกว่าจบโดยไม่มีผู้ชนะ</TooltipContent>
-          </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className="h-7 text-xs"
+                    disabled={finishBusy}
+                    onClick={handleScoreFinish}
+                  >
+                    บันทึกผล
+                  </Button>
+                }
+              />
+              <TooltipContent>บันทึกคะแนน — ผู้ชนะคำนวณจากคะแนนที่สูงกว่า</TooltipContent>
+            </Tooltip>
+          </div>
+          {/* โหมด 2/3 — กดฝั่งผู้ชนะ หรือจบแบบไม่ระบุผล */}
+          <div className="flex flex-wrap gap-2">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    disabled={finishBusy}
+                    onClick={() => handleFinish({ winnerSide: "a" })}
+                  >
+                    <Trophy className="h-3 w-3 mr-1" />
+                    ฝั่ง A ชนะ
+                  </Button>
+                }
+              />
+              <TooltipContent>{sideA} ชนะ (ไม่บันทึกคะแนน)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    disabled={finishBusy}
+                    onClick={() => handleFinish({ winnerSide: "b" })}
+                  >
+                    <Trophy className="h-3 w-3 mr-1" />
+                    ฝั่ง B ชนะ
+                  </Button>
+                }
+              />
+              <TooltipContent>{sideB} ชนะ (ไม่บันทึกคะแนน)</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    disabled={finishBusy}
+                    onClick={() => handleFinish({})}
+                  >
+                    จบแบบไม่ระบุผล
+                  </Button>
+                }
+              />
+              <TooltipContent>บันทึกว่าจบโดยไม่มีผู้ชนะ</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       )}
     </div>
@@ -555,6 +624,11 @@ function CompletedRow({
       <span className={winnerA ? "text-winner font-medium" : ""}>{sideA}</span>
       <span className="text-xs">vs</span>
       <span className={winnerB ? "text-winner font-medium" : ""}>{sideB}</span>
+      {match.score_a != null && match.score_b != null && (
+        <span className="text-xs font-medium tabular-nums text-foreground shrink-0">
+          {match.score_a} : {match.score_b}
+        </span>
+      )}
       {match.winner_side && (
         <Trophy className="h-3.5 w-3.5 text-warning shrink-0" />
       )}

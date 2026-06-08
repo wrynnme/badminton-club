@@ -610,7 +610,11 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 **UI:** `club-queue-settings.tsx` (owner/co-admin card, 7 fields + winner_stays_max conditional, 500ms debounce + unmount-flush, mirror `settings-manager.tsx`) · `club-queue-panel.tsx` (Tabs รอแข่ง/กำลังแข่ง/จบแล้ว + count badges; per-court "สร้างแมตช์ถัดไป"; per-row เริ่ม/ยกเลิก/จบแข่ง→winner picker; `ElapsedTicker` mm:ss; `text-winner` highlight; useTransition + toast + router.refresh). Wired in `clubs/[id]/page.tsx` (matches fetch added to parallel block, `queueSettings = parseQueueSettings`, settings gated canManage, panel for all). tsc clean · vitest 383 · build OK.
 
-> create-form 7 fields **not added** — settings เป็น edit-later บนหน้า club detail (ตรง spec "แก้ได้ภายหลัง"); create ใช้ default จาก `queue_settings '{}'`. **ยังไม่ทำ:** auto-rotate-all-courts (สร้างทีละสนามด้วยปุ่ม), score entry (winner-only v1), not_ready_action wiring (UI hint), game_time_limit enforcement (UI hint), Realtime (manual refresh). **ยังไม่ live-smoke.**
+> create-form 7 fields **not added** — settings เป็น edit-later บนหน้า club detail (ตรง spec "แก้ได้ภายหลัง"); create ใช้ default จาก `queue_settings '{}'`.
+>
+> **A2 — score entry 3 โหมด ✅ DONE (static-green, 2026-06-08, develop):** finish region ใน `club-queue-panel.tsx` (InProgressRow) มี 3 ทาง — (1) **กรอก score `a:b` เต็ม** (2 `Input` number 0–99 + ปุ่ม "บันทึกผล"; block คะแนนเท่า "ต้องมีผู้ชนะ"; winner derive ฝั่ง server) · (2) **กดฝั่งผู้ชนะ** (ปุ่ม A/B ชนะ, ไม่บันทึกคะแนน) · (3) **จบแบบไม่ระบุผล** (no winner/score). ทั้ง 3 ทาง RPC `finish_club_match` → `games_played++` + คืนสนาม. Winner derive ผ่าน pure `deriveWinnerSide(a,b)` (`queue.ts`, equal→null, +3 vitest) เรียกใน `finishClubMatchAction` เมื่อมี score แต่ไม่มี winnerSide. `CompletedRow` โชว์ `score_a : score_b` (tabular-nums) + winner highlight + trophy. tsc clean · vitest 28 (club queue). **⚠️ ยัง live-smoke ไม่ได้** — รวมกับ A6 capstone (club queue path ยังไม่เคยรันจริง).
+>
+> **ยังไม่ทำ (A ที่เหลือ):** auto-rotate-all-courts (A1, สร้างทีละสนามด้วยปุ่ม), not_ready_action wiring (A3, UI hint), game_time_limit enforcement (A4, UI hint), Realtime (A5, manual refresh), **live-smoke (A6 capstone)**.
 
 #### ล็อคคู่ (locked teammate pairs) — ✅ IMPLEMENTED (2026-06-07, develop)
 
