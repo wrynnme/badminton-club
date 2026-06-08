@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+// Progress-bar-aware router for user mutations (reorder drag); the plain one
+// stays for the realtime subscription refreshes so the bar doesn't fire on every event.
+import { useRouter as useProgressRouter } from "@bprogress/next/app";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { GripVertical, Loader2, Play, ClipboardEdit, RotateCcw, Shuffle, CheckCircle2, Undo2 } from "lucide-react";
@@ -98,6 +101,7 @@ export function MatchQueue({
   realtimeSync?: boolean;
 }) {
   const router = useRouter();
+  const progressRouter = useProgressRouter();
   const [items, setItems] = useState<Match[]>([]);
   const [reorderPending, startReorder] = useTransition();
   const [autoPending, startAuto] = useTransition();
@@ -187,7 +191,7 @@ export function MatchQueue({
           setItems(sortMatches(matches));
         } else {
           toast.success("จัดลำดับใหม่แล้ว");
-          router.refresh();
+          progressRouter.refresh();
         }
       } finally {
         // Re-enable realtime patches once the order is committed — even if the
