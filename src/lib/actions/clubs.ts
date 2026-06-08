@@ -100,6 +100,28 @@ const JoinSchema = z.object({
 
 export type JoinClubInput = z.infer<typeof JoinSchema>;
 
+/**
+ * Head-counts for a club: `total` (for the next sequential position) and
+ * `active` (for the max_players cap — reserves don't count against it).
+ */
+async function countClubPlayers(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  clubId: string,
+): Promise<{ total: number; active: number }> {
+  const [{ count: total }, { count: active }] = await Promise.all([
+    sb
+      .from("club_players")
+      .select("*", { count: "exact", head: true })
+      .eq("club_id", clubId),
+    sb
+      .from("club_players")
+      .select("*", { count: "exact", head: true })
+      .eq("club_id", clubId)
+      .eq("status", "active"),
+  ]);
+  return { total: total ?? 0, active: active ?? 0 };
+}
+
 export async function joinClubAction(input: JoinClubInput) {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -118,14 +140,9 @@ export async function joinClubAction(input: JoinClubInput) {
     .single();
   if (!club) return { error: "ไม่พบก๊วนนี้" };
 
-  const { count } = await sb
-    .from("club_players")
-    .select("*", { count: "exact", head: true })
-    .eq("club_id", parsed.data.club_id);
-
-  if ((count ?? 0) >= club.max_players) {
-    return { error: "ก๊วนเต็มแล้ว" };
-  }
+  const { total, active } = await countClubPlayers(sb, parsed.data.club_id);
+  // Full → join as reserve; auto-promoted when an active player leaves.
+  const status = active >= club.max_players ? "reserve" : "active";
 
   const { error } = await sb.from("club_players").insert({
     club_id: parsed.data.club_id,
@@ -133,7 +150,8 @@ export async function joinClubAction(input: JoinClubInput) {
     display_name: parsed.data.display_name,
     level_id: parsed.data.level_id || null,
     note: parsed.data.note || null,
-    position: (count ?? 0) + 1,
+    position: total + 1,
+    status,
   });
 
   if (error) {
@@ -180,14 +198,9 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
     .single();
   if (!club) return { error: "ไม่พบก๊วนนี้" };
 
-  const { count } = await sb
-    .from("club_players")
-    .select("*", { count: "exact", head: true })
-    .eq("club_id", parsed.data.club_id);
-
-  if ((count ?? 0) >= club.max_players) {
-    return { error: "ก๊วนเต็มแล้ว" };
-  }
+  const { total, active } = await countClubPlayers(sb, parsed.data.club_id);
+  // Full → add as reserve; auto-promoted when an active player leaves.
+  const status = active >= club.max_players ? "reserve" : "active";
 
   const { error } = await sb.from("club_players").insert({
     club_id: parsed.data.club_id,
@@ -195,7 +208,8 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
     display_name: parsed.data.display_name.trim(),
     level_id: parsed.data.level_id || null,
     note: parsed.data.note || null,
-    position: (count ?? 0) + 1,
+    position: total + 1,
+    status,
   });
 
   if (error) return { error: error.message };
@@ -483,7 +497,11 @@ export async function kickPlayerAction(formData: FormData) {
   if (!(await assertCanManageClub(sb, clubId, session.profileId)))
     return { error: "ไม่มีสิทธิ์" };
 
-  await sb.from("club_players").delete().eq("id", playerId).eq("club_id", clubId);
+  // Delete + auto-promote the earliest reserve into the freed slot (atomic RPC).
+  await sb.rpc("remove_club_player_and_promote", {
+    p_player_id: playerId,
+    p_club_id: clubId,
+  });
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true };
 }
@@ -637,11 +655,20 @@ export async function leaveClubAction(formData: FormData) {
 
   const clubId = formData.get("club_id") as string;
   const sb = await createAdminClient();
-  await sb
+
+  // Resolve the caller's player row, then delete + auto-promote a reserve (atomic).
+  const { data: row } = await sb
     .from("club_players")
-    .delete()
+    .select("id")
     .eq("club_id", clubId)
-    .eq("profile_id", session.profileId);
+    .eq("profile_id", session.profileId)
+    .maybeSingle();
+  if (row) {
+    await sb.rpc("remove_club_player_and_promote", {
+      p_player_id: row.id,
+      p_club_id: clubId,
+    });
+  }
 
   revalidatePath(`/clubs/${clubId}`);
 }
@@ -728,11 +755,14 @@ export async function buildNextClubMatchAction(
   if (clubFetchError || !clubRow) return { error: "ไม่พบก๊วนนี้" };
   const settings = parseQueueSettings(clubRow.queue_settings);
 
-  // Load all players for this club (level resolved via the levels FK).
+  // Load active players for this club (level resolved via the levels FK).
+  // Reserves (status='reserve') are excluded — they wait until promoted and are
+  // never drafted into a match by the queue builder.
   const { data: allPlayers, error: playersFetchError } = await sb
     .from("club_players")
     .select("id, position, joined_at, level_id, games_played, last_finished_at, checked_in_at, levels:level_id(real)")
-    .eq("club_id", clubId);
+    .eq("club_id", clubId)
+    .eq("status", "active");
   if (playersFetchError || !allPlayers) return { error: "โหลดผู้เล่นไม่สำเร็จ" };
 
   // Collect ids of players already in an active (pending or in_progress) match.

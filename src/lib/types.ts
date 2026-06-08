@@ -52,6 +52,7 @@ export type ClubPlayer = {
   note: string | null;
   joined_at: string;
   position: number | null;
+  status: "active" | "reserve"; // 'reserve' = waitlist beyond max_players; auto-promoted when an active player leaves
   checked_in_at: string | null;
   // Cost split inputs — per-player session window + games played
   start_time: string | null; // "HH:MM:SS" or null = use club window

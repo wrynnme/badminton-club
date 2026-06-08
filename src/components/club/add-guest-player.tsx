@@ -51,23 +51,24 @@ export function AddGuestPlayer({ clubId, full, levels }: Props) {
       });
       if (res?.error) toast.error(res.error);
       else {
-        toast.success("เพิ่มผู้เล่นแล้ว");
+        toast.success(full ? "เพิ่มเป็นสำรองแล้ว (รอคิว)" : "เพิ่มผู้เล่นแล้ว");
         form.reset();
         // keep the form open so multiple guests can be added in a row
       }
     },
   });
 
-  if (full) {
-    return <p className="text-sm text-destructive">ก๊วนเต็มแล้ว — เพิ่มผู้เล่นไม่ได้</p>;
-  }
-
   if (!open) {
     return (
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <UserPlus className="h-4 w-4 mr-1" />
-        เพิ่มผู้เล่น (guest)
-      </Button>
+      <div className="flex flex-col gap-1.5">
+        <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+          <UserPlus className="h-4 w-4 mr-1" />
+          เพิ่มผู้เล่น (guest)
+        </Button>
+        {full && (
+          <p className="text-sm text-muted-foreground">เต็มแล้ว — เพิ่มเป็นสำรอง (รอคิว)</p>
+        )}
+      </div>
     );
   }
 
@@ -160,6 +161,10 @@ export function AddGuestPlayer({ clubId, full, levels }: Props) {
           )}
         />
       </FieldGroup>
+
+      {full && (
+        <p className="text-sm text-muted-foreground mt-3">เต็มแล้ว — เพิ่มเป็นสำรอง (รอคิว)</p>
+      )}
 
       <Field orientation="horizontal" className="mt-4">
         <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>

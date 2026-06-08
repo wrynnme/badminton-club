@@ -66,7 +66,7 @@ export function JoinForm({ clubId, defaultName, full, alreadyJoined, levels }: P
       });
       if (res?.error) toast.error(res.error);
       else {
-        toast.success("ลงชื่อสำเร็จ");
+        toast.success(full ? "เพิ่มเป็นสำรองแล้ว (รอคิว)" : "ลงชื่อสำเร็จ");
         setOpen(false);
       }
     },
@@ -75,11 +75,15 @@ export function JoinForm({ clubId, defaultName, full, alreadyJoined, levels }: P
   if (alreadyJoined) {
     return <p className="text-sm text-green-600 font-medium">✓ คุณลงชื่อไว้แล้ว</p>;
   }
-  if (full) {
-    return <p className="text-sm text-destructive">ก๊วนเต็มแล้ว</p>;
-  }
   if (!open) {
-    return <Button onClick={() => setOpen(true)}>ลงชื่อเล่น</Button>;
+    return (
+      <div className="flex flex-col gap-1.5">
+        <Button onClick={() => setOpen(true)}>ลงชื่อเล่น</Button>
+        {full && (
+          <p className="text-sm text-muted-foreground">เต็มแล้ว — เพิ่มเป็นสำรอง (รอคิว)</p>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -171,6 +175,10 @@ export function JoinForm({ clubId, defaultName, full, alreadyJoined, levels }: P
           )}
         />
       </FieldGroup>
+
+      {full && (
+        <p className="text-sm text-muted-foreground mt-3">เต็มแล้ว — เพิ่มเป็นสำรอง (รอคิว)</p>
+      )}
 
       <Field orientation="horizontal" className="mt-4">
         <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>

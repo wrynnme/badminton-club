@@ -320,41 +320,37 @@ function RenameForm({
   );
 }
 
-// ─── Sortable row ─────────────────────────────────────────────────────────────
+// ─── Shared row body (presentational — no useSortable) ───────────────────────
+// Used by both SortableItem (active, draggable) and ReserveItem (static).
 
-function SortableItem({
-  player,
-  index,
-  clubId,
-  sessionProfileId,
-  canManage,
-  sessionStart,
-  sessionEnd,
-  levelById,
-}: {
+type RowBodyProps = {
   player: ClubPlayer;
-  index: number;
   clubId: string;
   sessionProfileId: string | null;
   canManage: boolean;
   sessionStart?: string;
   sessionEnd?: string;
   levelById?: Map<string, { label: string }>;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: player.id,
-    disabled: !canManage,
-  });
+  /** Drag handle element injected by SortableItem; null for reserve rows. */
+  dragHandle?: React.ReactNode;
+  /** Position label shown before the name (e.g. "1." or "#1"). */
+  positionLabel: React.ReactNode;
+};
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  const isSelf = sessionProfileId === player.profile_id;
+function PlayerRowBody({
+  player,
+  clubId,
+  sessionProfileId,
+  canManage,
+  sessionStart,
+  sessionEnd,
+  levelById,
+  dragHandle,
+  positionLabel,
+}: RowBodyProps) {
   const isCheckedIn = !!player.checked_in_at;
   const isGuest = player.profile_id == null;
+  const isSelf = sessionProfileId === player.profile_id;
   const [renameOpen, setRenameOpen] = useState(false);
 
   // Partial session: player's effective window differs from the club's full window.
@@ -365,27 +361,11 @@ function SortableItem({
   const isPartial = !!(cs && ce) && (effStart !== cs || effEnd !== ce);
 
   return (
-    <li
-      ref={setNodeRef}
-      style={style}
-      className={`flex flex-col border rounded px-3 py-2 bg-background transition-colors text-sm ${
-        isCheckedIn ? "border-green-500/30 bg-green-500/5 dark:bg-green-500/5" : ""
-      }`}
-    >
+    <>
       {/* Main row */}
       <div className="flex items-center gap-2">
-        {canManage && (
-          <button
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
-            aria-label="ลาก"
-            type="button"
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
-        )}
-        <span className="text-muted-foreground w-6 tabular-nums">{index + 1}.</span>
+        {dragHandle}
+        <span className="text-muted-foreground w-6 tabular-nums">{positionLabel}</span>
         <span className="font-medium">{player.display_name}</span>
         {canManage && isGuest && (
           <RenameButton onOpen={() => setRenameOpen(true)} />
@@ -429,6 +409,113 @@ function SortableItem({
           เล่น {effStart}–{effEnd}
         </div>
       )}
+    </>
+  );
+}
+
+// ─── Sortable row (active players only) ──────────────────────────────────────
+
+function SortableItem({
+  player,
+  index,
+  clubId,
+  sessionProfileId,
+  canManage,
+  sessionStart,
+  sessionEnd,
+  levelById,
+}: {
+  player: ClubPlayer;
+  index: number;
+  clubId: string;
+  sessionProfileId: string | null;
+  canManage: boolean;
+  sessionStart?: string;
+  sessionEnd?: string;
+  levelById?: Map<string, { label: string }>;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: player.id,
+    disabled: !canManage,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const isCheckedIn = !!player.checked_in_at;
+
+  const dragHandle = canManage ? (
+    <button
+      {...attributes}
+      {...listeners}
+      className="cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
+      aria-label="ลาก"
+      type="button"
+    >
+      <GripVertical className="h-4 w-4" />
+    </button>
+  ) : null;
+
+  return (
+    <li
+      ref={setNodeRef}
+      style={style}
+      className={`flex flex-col border rounded px-3 py-2 bg-background transition-colors text-sm ${
+        isCheckedIn ? "border-green-500/30 bg-green-500/5 dark:bg-green-500/5" : ""
+      }`}
+    >
+      <PlayerRowBody
+        player={player}
+        clubId={clubId}
+        sessionProfileId={sessionProfileId}
+        canManage={canManage}
+        sessionStart={sessionStart}
+        sessionEnd={sessionEnd}
+        levelById={levelById}
+        dragHandle={dragHandle}
+        positionLabel={`${index + 1}.`}
+      />
+    </li>
+  );
+}
+
+// ─── Reserve row (non-draggable) ──────────────────────────────────────────────
+
+function ReserveItem({
+  player,
+  rank,
+  clubId,
+  sessionProfileId,
+  canManage,
+  sessionStart,
+  sessionEnd,
+  levelById,
+}: {
+  player: ClubPlayer;
+  rank: number;
+  clubId: string;
+  sessionProfileId: string | null;
+  canManage: boolean;
+  sessionStart?: string;
+  sessionEnd?: string;
+  levelById?: Map<string, { label: string }>;
+}) {
+  return (
+    <li className="flex flex-col border rounded px-3 py-2 bg-background text-sm opacity-70">
+      <PlayerRowBody
+        player={player}
+        clubId={clubId}
+        sessionProfileId={sessionProfileId}
+        canManage={canManage}
+        sessionStart={sessionStart}
+        sessionEnd={sessionEnd}
+        levelById={levelById}
+        dragHandle={null}
+        positionLabel={`#${rank}`}
+      />
     </li>
   );
 }
@@ -469,15 +556,21 @@ export function SortablePlayerList({
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
+  // Split into active and reserve; preserve relative order within each group.
+  const active = items.filter((p) => p.status === "active");
+  const reserve = items.filter((p) => p.status === "reserve");
+
   function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = items.findIndex((p) => p.id === active.id);
-    const newIndex = items.findIndex((p) => p.id === over.id);
-    const reordered = arrayMove(items, oldIndex, newIndex);
-    setItems(reordered);
+    const { active: dragActive, over } = event;
+    if (!over || dragActive.id === over.id) return;
+    const oldIndex = active.findIndex((p) => p.id === dragActive.id);
+    const newIndex = active.findIndex((p) => p.id === over.id);
+    const reorderedActive = arrayMove(active, oldIndex, newIndex);
+    // Merge back: active first (reordered), reserves unchanged at tail.
+    setItems([...reorderedActive, ...reserve]);
     startTransition(async () => {
-      await reorderPlayersAction(clubId, reordered.map((p) => p.id));
+      // Requirement #3: pass ONLY active player ids.
+      await reorderPlayersAction(clubId, reorderedActive.map((p) => p.id));
     });
   }
 
@@ -523,15 +616,16 @@ export function SortablePlayerList({
         {refreshBtn}
       </div>
 
+      {/* Active players — drag-reorderable */}
       <DndContext
         id={dndId}
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
       >
-        <SortableContext items={items.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+        <SortableContext items={active.map((p) => p.id)} strategy={verticalListSortingStrategy}>
           <ol className="space-y-1">
-            {items.map((p, i) => (
+            {active.map((p, i) => (
               <SortableItem
                 key={p.id}
                 player={p}
@@ -547,6 +641,31 @@ export function SortablePlayerList({
           </ol>
         </SortableContext>
       </DndContext>
+
+      {/* Reserve players — non-draggable waitlist */}
+      {reserve.length > 0 && (
+        <div className="mt-3 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-muted-foreground">สำรอง ({reserve.length})</span>
+            <Badge variant="secondary" className="text-xs">รอคิว</Badge>
+          </div>
+          <ol className="space-y-1">
+            {reserve.map((p, i) => (
+              <ReserveItem
+                key={p.id}
+                player={p}
+                rank={i + 1}
+                clubId={clubId}
+                sessionProfileId={sessionProfileId}
+                canManage={canManage}
+                sessionStart={sessionStart}
+                sessionEnd={sessionEnd}
+                levelById={levelById}
+              />
+            ))}
+          </ol>
+        </div>
+      )}
     </div>
   );
 }

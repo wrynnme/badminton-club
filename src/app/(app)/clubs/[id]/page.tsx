@@ -95,7 +95,9 @@ export default async function ClubDetailPage({
   }));
 
   const joined = players.length;
-  const full = joined >= club.max_players;
+  const activeCount = players.filter((p) => p.status === "active").length;
+  const reserveCount = players.filter((p) => p.status === "reserve").length;
+  const full = activeCount >= club.max_players;
   const myRow = session
     ? players.find((p) => p.profile_id === session.profileId)
     : null;
@@ -114,11 +116,18 @@ export default async function ClubDetailPage({
       <div>
         <div className="flex items-start justify-between gap-2">
           <h1 className="text-2xl font-bold">{club.name}</h1>
-          {full ? (
-            <Badge variant="destructive">เต็ม</Badge>
-          ) : (
-            <Badge variant="secondary">{joined}/{club.max_players}</Badge>
-          )}
+          <div className="flex items-center gap-1.5">
+            {full ? (
+              <Badge variant="destructive">เต็ม</Badge>
+            ) : (
+              <Badge variant="secondary">{activeCount}/{club.max_players}</Badge>
+            )}
+            {reserveCount > 0 && (
+              <Badge variant="outline" className="text-muted-foreground">
+                +{reserveCount} สำรอง
+              </Badge>
+            )}
+          </div>
         </div>
         {owner && (
           <p className="text-sm text-muted-foreground mt-1">โดย {owner.display_name}</p>
@@ -138,7 +147,7 @@ export default async function ClubDetailPage({
           />
           <Info
             label={<Users className="h-4 w-4" />}
-            text={`${joined} / ${club.max_players} คน`}
+            text={`${activeCount}${reserveCount > 0 ? ` (+${reserveCount} สำรอง)` : ""} / ${club.max_players} คน`}
           />
           {displayTotal > 0 && (
             <Info
