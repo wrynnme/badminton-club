@@ -6,6 +6,10 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-08 — T1: server-side match_format enforcement (develop)
+
+All green, no new findings: `tsc --noEmit` clean · vitest **416/416 pass** (+10 new cases for `resolveMatchResult`). Closes the Slice 6 follow-up (2) — `recordMatchScoreAction` previously trusted the client-only format clamp, so a `best_of_3`/`best_of_5`/`fixed_2` class match could be saved with an invalid game set (e.g. a 1-game best_of_3 or a 1-1 best_of_3 with no decider) via a direct action call. **Fix**: new pure `resolveMatchResult(games, format)` in `match-format.ts` (reuses `MATCH_FORMAT_BOUNDS`); `recordMatchScoreAction` fetches the class `match_format` and gates the write when `match.class_id != null` (rejects empty/over-length/tied-game/non-clinch/wrong-count with a Thai `reason` via the existing `{ error }` channel). sports_day (`class_id` null) untouched — stays on `gameWinner`. Static-verified only (pure helper + single-action change over the proven `record_match_score` RPC path; no new RSC/client boundary).
+
 ### 2026-06-05 — max-effort code review of Phase 13 slices 7+8 + UI fixes (develop, commits up to 26fbb93) — 5 findings, ALL FIXED same-session
 
 Review of `origin/master..develop` (9 finder angles + advisor verify). 5 real bugs, all introduced this session, all on develop (never reached prod). Fixed + tsc clean · vitest 350 · prod build OK.

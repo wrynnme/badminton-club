@@ -4,6 +4,7 @@ import {
   MATCH_FORMAT_LABEL_TH,
   maxGamesForFormat,
   isMatchComplete,
+  resolveMatchResult,
 } from "../match-format";
 import type { Game } from "@/lib/types";
 
@@ -76,5 +77,55 @@ describe("isMatchComplete — edge", () => {
     expect(isMatchComplete([], "fixed_2")).toBe(false);
     expect(isMatchComplete([], "best_of_3")).toBe(false);
     expect(isMatchComplete([], "best_of_5")).toBe(false);
+  });
+});
+
+describe("resolveMatchResult — fixed_2", () => {
+  it("2-0 / 0-2 resolves a winner", () => {
+    expect(resolveMatchResult([g(21, 15), g(21, 18)], "fixed_2")).toEqual({ ok: true, winner: "a" });
+    expect(resolveMatchResult([g(15, 21), g(18, 21)], "fixed_2")).toEqual({ ok: true, winner: "b" });
+  });
+  it("1-1 is a legal draw", () => {
+    expect(resolveMatchResult([g(21, 15), g(15, 21)], "fixed_2")).toEqual({ ok: true, winner: "draw" });
+  });
+  it("rejects fewer or more than 2 games", () => {
+    expect(resolveMatchResult([g(21, 15)], "fixed_2")).toMatchObject({ ok: false });
+    expect(resolveMatchResult([g(21, 15), g(21, 18), g(21, 10)], "fixed_2")).toMatchObject({ ok: false });
+  });
+});
+
+describe("resolveMatchResult — best_of_3", () => {
+  it("resolves on clinch (2 game-wins)", () => {
+    expect(resolveMatchResult([g(21, 15), g(21, 18)], "best_of_3")).toEqual({ ok: true, winner: "a" });
+    expect(resolveMatchResult([g(21, 15), g(15, 21), g(15, 21)], "best_of_3")).toEqual({ ok: true, winner: "b" });
+  });
+  it("rejects 1-1 (no decider) — neither side clinched", () => {
+    expect(resolveMatchResult([g(21, 15), g(15, 21)], "best_of_3")).toMatchObject({ ok: false });
+  });
+  it("rejects more than 3 games", () => {
+    expect(
+      resolveMatchResult([g(21, 15), g(15, 21), g(21, 18), g(21, 10)], "best_of_3"),
+    ).toMatchObject({ ok: false });
+  });
+});
+
+describe("resolveMatchResult — best_of_5", () => {
+  it("resolves on clinch (3 game-wins)", () => {
+    expect(
+      resolveMatchResult([g(21, 1), g(1, 21), g(21, 2), g(2, 21), g(21, 3)], "best_of_5"),
+    ).toEqual({ ok: true, winner: "a" });
+  });
+  it("rejects 2-0 (not yet clinched at 3)", () => {
+    expect(resolveMatchResult([g(21, 1), g(21, 2)], "best_of_5")).toMatchObject({ ok: false });
+  });
+});
+
+describe("resolveMatchResult — malformed input", () => {
+  it("rejects empty games", () => {
+    expect(resolveMatchResult([], "best_of_3")).toMatchObject({ ok: false });
+  });
+  it("rejects any tied individual game (never a per-game draw)", () => {
+    expect(resolveMatchResult([g(21, 21), g(21, 18)], "best_of_3")).toMatchObject({ ok: false });
+    expect(resolveMatchResult([g(10, 10), g(21, 15)], "fixed_2")).toMatchObject({ ok: false });
   });
 });
