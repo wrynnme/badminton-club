@@ -180,16 +180,20 @@ export function MatchQueue({
 
     const allIds = merged.map((m) => m.id);
     startReorder(async () => {
-      const res = await reorderMatchQueueAction(tournamentId, allIds);
-      if (res && "error" in res) {
-        toast.error(res.error);
-        setItems(sortMatches(matches));
-      } else {
-        toast.success("จัดลำดับใหม่แล้ว");
-        router.refresh();
+      try {
+        const res = await reorderMatchQueueAction(tournamentId, allIds);
+        if (res && "error" in res) {
+          toast.error(res.error);
+          setItems(sortMatches(matches));
+        } else {
+          toast.success("จัดลำดับใหม่แล้ว");
+          router.refresh();
+        }
+      } finally {
+        // Re-enable realtime patches once the order is committed — even if the
+        // action threw, so a rejected reorder can't leave patching dead until reload.
+        suppressPatchRef.current = false;
       }
-      // Re-enable realtime patches once the new order is committed server-side.
-      suppressPatchRef.current = false;
     });
   };
 
