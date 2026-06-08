@@ -334,6 +334,11 @@ export async function deleteTeamAction(teamId: string, tournamentId: string) {
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
+  // Scope to the asserted tournament — assertCanEdit only proved rights on tournamentId,
+  // not that this team belongs to it (otherwise an admin of any tournament could delete
+  // another tournament's team by id).
+  const { data: team } = await sb.from("teams").select("tournament_id").eq("id", teamId).single();
+  if (!team || team.tournament_id !== tournamentId) return { error: "ไม่พบทีม" };
   const { error: deleteError } = await sb.from("teams").delete().eq("id", teamId);
   if (deleteError) return { error: "ลบทีมไม่สำเร็จ" };
   revalidatePath(`/tournaments/${tournamentId}`);
@@ -360,6 +365,10 @@ export async function addTeamPlayerAction(
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
+  // Scope to the asserted tournament — verify the target team belongs to it before
+  // inserting (assertCanEdit only covers tournamentId, not that teamId lives under it).
+  const { data: team } = await sb.from("teams").select("tournament_id").eq("id", teamId).single();
+  if (!team || team.tournament_id !== tournamentId) return { error: "ไม่พบทีม" };
   const { error } = await sb.from("team_players").insert({
     team_id: teamId,
     display_name: input.display_name,
@@ -391,6 +400,13 @@ export async function removeTeamPlayerAction(playerId: string, tournamentId: str
   if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   const sb = await createAdminClient();
+  // Scope to the asserted tournament — resolve the player's team and verify it belongs
+  // to tournamentId before deleting (assertCanEdit alone would allow deleting a player
+  // from another tournament's team by id).
+  const { data: player } = await sb.from("team_players").select("team_id").eq("id", playerId).single();
+  if (!player) return { error: "ไม่พบผู้เล่น" };
+  const { data: team } = await sb.from("teams").select("tournament_id").eq("id", player.team_id).single();
+  if (!team || team.tournament_id !== tournamentId) return { error: "ไม่พบผู้เล่น" };
   const { error: deleteError } = await sb.from("team_players").delete().eq("id", playerId);
   if (deleteError) return { error: "ลบผู้เล่นไม่สำเร็จ" };
   revalidatePath(`/tournaments/${tournamentId}`);

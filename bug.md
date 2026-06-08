@@ -4,7 +4,15 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-_No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
+Open items below come from the 2026-06-09 whole-system core review (full report: `code-review-core-2026-06-09.html`). The IDOR cluster (P0 + 3×P1) is fixed (see Resolved); the rest remain open.
+
+### 2026-06-09 — Core code review: open follow-ups (develop)
+
+Remaining after the IDOR-cluster fix. None block; surfaced by the core review, ranked.
+
+- **[P1] session token has no expiry/revocation** — `src/lib/auth/session.ts`: signed `bc_session` payload has no `iat`/`exp`; `decode()` checks HMAC only, so a leaked cookie is valid until `SESSION_SECRET` rotates. Fix: embed `iat`, reject when `now-iat > MAX_AGE`; mix a per-profile token-version into the HMAC key for revocation. HMAC itself is sound (`timingSafeEqual`).
+- **[P1] buildVisualBracket drops lower-bracket matches** — `src/lib/tournament/bracket-visual.ts:47`: single-elim halving `slotCount` slices real matches out of the double-elim *lower* section on the admin + public bracket pages (display-only, no data loss). Fix: drive `slotCount = rMatches.length` for `section==="lower"`.
+- **[P2 ×23]** correctness/concurrency/hardening leads — see the HTML report. Notable: open-redirect via `/\` in `safeRedirectTo` (`api/auth/guest`), `computeExpenseShares` ceil over-collect, `by_time` court split drops fee on cross-midnight session, unbounded guest-profile creation, several read-then-write races (queue_position, join capacity, group_teams), `createAdminClient` missing `import "server-only"`. Not individually re-verified.
 
 ### 2026-06-09 — Dashboard + cost review fixes (#9+#10): static + live-smoke, no findings (develop)
 
@@ -134,6 +142,17 @@ Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upse
 All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
 
 ## Resolved
+
+### 2026-06-09 — Tournament IDOR cluster (core review: P0 + 3×P1) (develop)
+
+Root cause was one pattern: a server action authorized `assertCanEdit(input.tournamentId)` then loaded/wrote the target row by its own id without checking that row's `tournament_id` matched the authorized tournament. Fix = scope the target to the asserted tenant. No DB migration. tsc 0 · vitest 435 · build OK.
+
+- **[P0] `recordMatchScoreAction` cross-tournament write** (`matches.ts:1106`) — Fix: after fetch, `if (match.tournament_id !== input.tournamentId) return error`. Any LINE user could otherwise record a score onto another tournament's match (match ids are exposed on public `/t/[token]` pages).
+- **[P1] `recordMatchScoreAction` double-counts standings** (`matches.ts:1160`) — Fix: added `if (match.status === "completed") return error` (UI only renders ScoreForm on non-completed matches, so editing already goes through reset → no legit path blocked).
+- **[P1] `resetMatchScoreAction` cross-tenant standings corruption** (`matches.ts:1491`) — Fix: tenant check immediately after fetch so `reverseGroupTeamStandings` never runs on an out-of-tenant match (the RPC was already scoped).
+- **[P1] team-write IDOR** (`tournaments.ts`) — `deleteTeamAction`, `addTeamPlayerAction`, `removeTeamPlayerAction` now fetch the team (or player→team) and assert `tournament_id === tournamentId` before the write, mirroring `toggleTeamPlayerCheckInAction`.
+
+Full review + remaining open follow-ups (P1 session-expiry, P1 bracket-visual, 23×P2): `code-review-core-2026-06-09.html` + `## Open`.
 
 ### 2026-06-01 — `cfbab56` Match-queue mobile readability
 
