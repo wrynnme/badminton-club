@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Save, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { updateClubCostConfigAction } from "@/lib/actions/clubs";
 import type { CourtSplit, ShuttleSplit, GapPolicy } from "@/lib/types";
@@ -60,12 +60,11 @@ export function ClubCostManager({ clubId, initial }: Props) {
         <div className="space-y-2">
           <Label className="text-sm font-medium">ค่าสนาม (บาท)</Label>
           <div className="relative max-w-[140px]">
-            <Input
-              type="number"
+            <NumberInput
               min={0}
               step={1}
               value={courtFee}
-              onChange={(e) => setCourtFee(Math.max(0, Number(e.target.value)))}
+              onValueChange={setCourtFee}
               className="pr-8 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
@@ -141,12 +140,11 @@ export function ClubCostManager({ clubId, initial }: Props) {
         <div className="space-y-2">
           <Label className="text-sm font-medium">ค่าลูก (บาท)</Label>
           <div className="relative max-w-[140px]">
-            <Input
-              type="number"
+            <NumberInput
               min={0}
               step={1}
               value={shuttlePrice}
-              onChange={(e) => setShuttlePrice(Math.max(0, Number(e.target.value)))}
+              onValueChange={setShuttlePrice}
               className="pr-8 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
             />
             <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
