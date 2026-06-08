@@ -6,6 +6,10 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 _No open bugs._ The four "status unknown (2026-05-23)" items tracked outside this file were all verified RESOLVED in current code (see confirmation below).
 
+### 2026-06-09 — Dashboard + cost review fixes (#9+#10): static + live-smoke, no findings (develop)
+
+tsc 0 · vitest **435/435** (70 club) · prod `next build` OK. Applied 8 low-risk fixes from `/code-review max` (court single-prefix, unified `clubCostTotal` for header+card, เฉลี่ย/คน ÷ totalPlayers, shuttle count = in_progress+completed, games-chart keyed by id, expense rollup survivor-filter, shared `playerSessionTotal`, ManualMatchDialog court resync). Live-smoke read-only as guest on NOMKONZ (`776dfbce…`, 33 players / 20 completed / court 3000 + shuttle): games-chart Y-axis renders player **names** (no UUID leak), court chart `สนาม 3/4/5/6` (single-prefix); header `4,680 บาท` == dashboard card `4,680 ฿` == cost-tab footer `รวมทั้งหมด 4,680 ฿`; `เฉลี่ย/คน 142 ฿ · หาร 33 คน`. Throwaway guest profile deleted; prod net-zero (real data read-only, untouched). No open bugs.
+
 ### 2026-06-08 — Club dashboard (#10): static + dual-state live-smoke, no findings (develop)
 
 tsc 0 · vitest **70/70** club (incl. new dashboard 6 + cost-summary 5) · prod `next build` OK. Live-smoke on two throwaway guest-owned clubs: **populated** (4 active + 1 reserve, 2 completed + 1 in_progress + 1 pending matches, court_fee 120 + shuttle + a 50฿ expense) → 5 stat cards, both charts (recharts bars), and the player table all render; dashboard "ค่าใช้จ่ายรวม" card = **220฿** == the cost tab footer grand total (reconciles by construction via shared `computeClubCostSummary`). **empty** club → "ยังไม่มีข้อมูล" empty state, no crash. Console **0 errors / 0 warnings / 0 hydration** on both, across tab switches. Throwaway clubs + guest deleted (CASCADE); net-zero (2 NOMKONZ intact, 0 orphan matches/players).

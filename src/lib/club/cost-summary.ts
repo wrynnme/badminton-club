@@ -77,6 +77,21 @@ export function buildClubSplitInput(
   };
 }
 
+/**
+ * One player's session total: court + shuttle + personal-expense share − discount,
+ * floored at 0 (a discount can't make a player owe negative). The single definition
+ * of the per-player total — shared by the summary roll-up and the breakdown table so
+ * the grand total reconciles by construction.
+ */
+export function playerSessionTotal(parts: {
+  court: number;
+  shuttle: number;
+  expense: number;
+  discount: number;
+}): number {
+  return Math.max(0, parts.court + parts.shuttle + parts.expense - parts.discount);
+}
+
 export type ClubCostSummary = {
   rows: SplitRow[];
   /** Per-player personal-expense share (club_players.id → baht). */
@@ -121,7 +136,7 @@ export function computeClubCostSummary(input: {
   for (const row of rows) {
     const exp = expShareById.get(row.playerId) ?? 0;
     const disc = discountById.get(row.playerId) ?? 0;
-    grandTotal += Math.max(0, row.court + row.shuttle + exp - disc);
+    grandTotal += playerSessionTotal({ court: row.court, shuttle: row.shuttle, expense: exp, discount: disc });
   }
 
   const totalCourt = rows.reduce((s, r) => s + r.court, 0);

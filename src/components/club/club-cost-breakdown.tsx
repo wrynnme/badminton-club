@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { computeClubSplit, computeExpenseShares } from "@/lib/club/cost-split";
-import { buildClubSplitInput } from "@/lib/club/cost-summary";
+import { buildClubSplitInput, playerSessionTotal } from "@/lib/club/cost-summary";
 import { updateClubPlayerDiscountAction } from "@/lib/actions/clubs";
 import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
 import type { ClubExpense } from "@/lib/actions/clubs";
@@ -157,11 +157,12 @@ export function ClubCostBreakdown({
     players.map((p) => [p.id, p.discount ?? 0])
   );
 
-  // Per-player grand total: court + shuttle + personalExpense − discount, floored at 0
+  // Per-player grand total — shared helper so this table and the dashboard card
+  // derive the identical figure (cost-summary.ts).
   const playerTotals = rows.map((row) => {
     const exp = expShare.get(row.playerId) ?? 0;
     const disc = discountById.get(row.playerId) ?? 0;
-    return Math.max(0, row.court + row.shuttle + exp - disc);
+    return playerSessionTotal({ court: row.court, shuttle: row.shuttle, expense: exp, discount: disc });
   });
 
   // Footer sums from actual row values

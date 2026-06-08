@@ -49,15 +49,20 @@ export function ClubDashboard({ players, matches, levels, costTotal, maxPlayers 
     return (levelId: string | null) => (levelId ? byId.get(levelId) ?? "—" : "—");
   }, [levels]);
 
-  const perPlayer = d.activePlayers > 0 ? Math.round(costTotal / d.activePlayers) : 0;
+  // Average over every player the cost is split across (rows in the cost table),
+  // not just ตัวจริง — dividing by activePlayers overstates the per-head figure
+  // because reserve players also carry court/shuttle/expense shares.
+  const perPlayer = d.totalPlayers > 0 ? Math.round(costTotal / d.totalPlayers) : 0;
 
-  // Top 10 players by completed-match appearances (desc), name resolved.
+  // Top 10 players by completed-match appearances (desc). Key each bar by player
+  // id (unique) so two players with the same — or same 14-char prefix — name don't
+  // collapse into one category; the y-axis tick formatter truncates for display.
   const gamesChartData = useMemo(() => {
     return [...d.gamesByPlayer.entries()]
-      .map(([id, games]) => ({ name: truncate(nameById.get(id) ?? "?", 14), games }))
+      .map(([id, games]) => ({ id, games }))
       .sort((a, b) => b.games - a.games)
       .slice(0, 10);
-  }, [d.gamesByPlayer, nameById]);
+  }, [d.gamesByPlayer]);
 
   const courtChartData = useMemo(
     () => d.courtUsage.map((c) => ({ court: `สนาม ${c.court}`, matches: c.matches })),
@@ -119,7 +124,7 @@ export function ClubDashboard({ players, matches, levels, costTotal, maxPlayers 
           icon={<Coins className="h-4 w-4" />}
           label="เฉลี่ย/คน"
           value={`${perPlayer.toLocaleString()} ฿`}
-          sub={`หาร ${d.activePlayers} ตัวจริง`}
+          sub={`หาร ${d.totalPlayers} คน`}
         />
       </div>
 
@@ -146,11 +151,12 @@ export function ClubDashboard({ players, matches, levels, costTotal, maxPlayers 
                   <XAxis type="number" allowDecimals={false} hide />
                   <YAxis
                     type="category"
-                    dataKey="name"
+                    dataKey="id"
                     width={92}
                     tickLine={false}
                     axisLine={false}
                     fontSize={12}
+                    tickFormatter={(id: string) => truncate(nameById.get(id) ?? "?", 12)}
                   />
                   <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
                   <Bar dataKey="games" fill="var(--color-games)" radius={4}>

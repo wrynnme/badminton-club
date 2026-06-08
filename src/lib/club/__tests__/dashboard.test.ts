@@ -42,7 +42,7 @@ describe("computeClubDashboard", () => {
     expect(d.totalPlayers).toBe(3);
   });
 
-  it("counts only completed matches for games/court/shuttles", () => {
+  it("counts completed for games/court; shuttles include in_progress (cost basis)", () => {
     const d = computeClubDashboard(
       [player("p1"), player("p2"), player("p3"), player("p4")],
       [
@@ -56,7 +56,7 @@ describe("computeClubDashboard", () => {
     expect(d.inProgressMatches).toBe(1);
     expect(d.pendingMatches).toBe(1);
     expect(d.totalGames).toBe(1);
-    expect(d.totalShuttles).toBe(2); // only the completed match's shuttles
+    expect(d.totalShuttles).toBe(7); // completed (2) + in_progress (5) — cost basis
     // each of the 4 players appeared in the one completed match
     expect(d.gamesByPlayer.get("p1")).toBe(1);
     expect(d.gamesByPlayer.get("p4")).toBe(1);

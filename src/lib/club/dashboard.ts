@@ -1,7 +1,8 @@
 // Club dashboard aggregations — pure, testable. Derives the headline counts and
-// chart series from the live club_players + club_matches rows. All match-derived
-// metrics (games per player, court usage, shuttles, total games) count COMPLETED
-// matches only; pending / in_progress / cancelled are excluded. The cost figure
+// chart series from the live club_players + club_matches rows. Games per player,
+// court usage and total games count COMPLETED matches only. Shuttles count
+// in_progress + completed (mirroring the cost basis — a live match is already
+// consuming shuttles); pending / cancelled are always excluded. The cost figure
 // is computed separately via cost-summary.ts (the canonical money path).
 
 import type { ClubPlayer, ClubMatch } from "@/lib/types";
@@ -17,7 +18,7 @@ export type ClubDashboardData = {
   pendingMatches: number;
   /** Completed matches = games actually played this session. */
   totalGames: number;
-  /** Σ shuttles_used over completed matches. */
+  /** Σ shuttles_used over in_progress + completed matches (the cost basis). */
   totalShuttles: number;
   /** club_players.id → completed-match appearances. */
   gamesByPlayer: Map<string, number>;
@@ -49,7 +50,11 @@ export function computeClubDashboard(
   const inProgressMatches = matches.filter((m) => m.status === "in_progress").length;
   const pendingMatches = matches.filter((m) => m.status === "pending").length;
 
-  const totalShuttles = completed.reduce((s, m) => s + Math.max(0, m.shuttles_used), 0);
+  // Shuttles "used so far" mirror the cost basis: a live (in_progress) match is
+  // already consuming shuttles, so include it alongside completed.
+  const totalShuttles = matches
+    .filter((m) => m.status === "completed" || m.status === "in_progress")
+    .reduce((s, m) => s + Math.max(0, m.shuttles_used), 0);
 
   const gamesByPlayer = new Map<string, number>();
   const courtCounts = new Map<string, number>();

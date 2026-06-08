@@ -809,6 +809,13 @@ function ManualMatchDialog({
   const [sideB1, setSideB1] = useState(UNSET);
   const [sideB2, setSideB2] = useState(UNSET);
 
+  // The dialog stays mounted across refreshes, so `court` can outlive its court if
+  // the list changes (e.g. a court renamed/removed in Settings). Snap back to a
+  // valid court rather than submitting a stale name.
+  useEffect(() => {
+    if (court && !courts.includes(court)) setCourt(courts[0] ?? "");
+  }, [courts, court]);
+
   const nameMap = new Map(players.map((p) => [p.id, p.display_name]));
 
   // Prior meetings: non-cancelled matches where the same two pairs (order-

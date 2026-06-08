@@ -146,6 +146,7 @@ function PayerSubLine({
 }) {
   const ids: string[] = expense.payer_player_ids ?? [];
   const amount = Number(expense.amount);
+  const nameMap = new Map(players.map((p) => [p.id, p.display_name]));
 
   if (ids.length === 0) {
     // Everyone pays
@@ -159,11 +160,12 @@ function PayerSubLine({
     );
   }
 
-  // Specific payers
-  const headcount = ids.length;
+  // Specific payers — drop ids whose player no longer exists, matching
+  // computeExpenseShares (which divides only among players still in the club).
+  const livePayerIds = ids.filter((id) => nameMap.has(id));
+  const headcount = livePayerIds.length;
   const perPerson = headcount > 0 ? Math.ceil(amount / headcount) : null;
-  const nameMap = new Map(players.map((p) => [p.id, p.display_name]));
-  const names = ids.map((id) => nameMap.get(id) ?? "?").join(", ");
+  const names = livePayerIds.map((id) => nameMap.get(id) ?? "?").join(", ");
   const MAX_NAMES_LEN = 40;
   const displayNames = names.length > MAX_NAMES_LEN ? names.slice(0, MAX_NAMES_LEN) + "…" : names;
 
@@ -188,16 +190,20 @@ function PlayerRollup({
 }) {
   if (expenses.length === 0 || players.length === 0) return null;
 
-  // For each player, sum ceil(amount / effective_headcount) for expenses they're part of
+  // For each player, sum ceil(amount / effective_headcount) for expenses they're
+  // part of. Designated payer ids are filtered to players who still exist so the
+  // per-head divisor matches computeExpenseShares (which divides among survivors).
+  const existingIds = new Set(players.map((p) => p.id));
   const totals = players.map((player) => {
     let total = 0;
     for (const expense of expenses) {
-      const ids: string[] = expense.payer_player_ids ?? [];
+      const rawIds: string[] = expense.payer_player_ids ?? [];
+      const liveIds = rawIds.filter((id) => existingIds.has(id));
       const amount = Number(expense.amount);
-      const isDesignated = ids.length > 0 && ids.includes(player.id);
-      const isEveryone = ids.length === 0;
+      const isDesignated = rawIds.length > 0 && liveIds.includes(player.id);
+      const isEveryone = rawIds.length === 0;
       if (!isDesignated && !isEveryone) continue;
-      const headcount = ids.length > 0 ? ids.length : playerCount;
+      const headcount = rawIds.length > 0 ? liveIds.length : playerCount;
       if (headcount <= 0) continue;
       total += Math.ceil(amount / headcount);
     }
