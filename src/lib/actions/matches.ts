@@ -1100,6 +1100,14 @@ export async function recordMatchScoreAction(input: {
   if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
   if (!input.games.length) return { error: "ต้องมีอย่างน้อย 1 เกม" };
+  // Validate each game's scores are integers within [0, 99] (ScoreForm clamps to
+  // this; a direct action call could pass negatives/NaN/huge values that corrupt
+  // point totals + group standings — server validated only games.length before).
+  for (const g of input.games) {
+    if (!Number.isInteger(g.a) || !Number.isInteger(g.b) || g.a < 0 || g.b < 0 || g.a > 99 || g.b > 99) {
+      return { error: "คะแนนเกมไม่ถูกต้อง (0–99)" };
+    }
+  }
 
   const sb = await createAdminClient();
 

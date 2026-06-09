@@ -374,7 +374,10 @@ export async function addTeamPlayerAction(
     display_name: input.display_name,
     role: input.role,
     level_id: input.level_id,
-    profile_id: session.profileId,
+    // Manually-added roster players are not LINE accounts — leave profile_id null.
+    // (Was wrongly stamped with the actor's own profileId, tagging every added
+    // player as the owner; nothing reads team_players.profile_id, so null is safe.)
+    profile_id: null,
   });
   if (error) {
     console.error("[addTeamPlayerAction]", error);
@@ -582,14 +585,23 @@ export async function importPairsCsvAction(
   const unknownClassCodes = new Set<string>();
 
   const playerByCsvId = new Map<string, { id: string; teamId: string; real: number | null }>();
+  const dupCsvIds = new Set<string>();
   for (const p of players ?? []) {
     if (p.csv_id && teamIdSet.has(p.team_id)) {
+      if (playerByCsvId.has(p.csv_id)) dupCsvIds.add(p.csv_id);
       playerByCsvId.set(p.csv_id, {
         id: p.id,
         teamId: p.team_id,
         real: embeddedReal((p as unknown as { levels: unknown }).levels),
       });
     }
+  }
+  // csv_id has no unique constraint. If two players in this tournament share one,
+  // a pair row referencing it would silently resolve to whichever was inserted last
+  // (wrong player). Surface it instead of last-write-wins. (Cross-tournament reuse
+  // is fine — the query is already scoped to this tournament's teams.)
+  if (dupCsvIds.size > 0) {
+    return { error: `id_player ซ้ำในทัวร์นาเมนต์ (แก้ให้ไม่ซ้ำก่อนนำเข้าคู่): ${[...dupCsvIds].join(", ")}` };
   }
 
   // Existing pairs indexed by id for upsert

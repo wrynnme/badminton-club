@@ -1129,6 +1129,18 @@ export async function finishClubMatchAction(input: {
   if ("error" in guard) return { error: guard.error };
   const { match } = guard;
 
+  // Validate caller-supplied score/winner — a server action is a directly-invokable
+  // POST endpoint and TS types are erased at runtime. Scores must be integers in
+  // [0, 99]; winnerSide ∈ {a,b}. Otherwise garbage flows straight into the RPC.
+  if (input.winnerSide != null && input.winnerSide !== "a" && input.winnerSide !== "b") {
+    return { error: "ผู้ชนะไม่ถูกต้อง" };
+  }
+  for (const s of [input.scoreA, input.scoreB]) {
+    if (s != null && (!Number.isInteger(s) || s < 0 || s > 99)) {
+      return { error: "คะแนนไม่ถูกต้อง (0–99)" };
+    }
+  }
+
   // Full-score finish derives the winner from the score (server-authoritative);
   // an explicit winnerSide (winner-only finish) is honored as-is.
   const winnerSide =

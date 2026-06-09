@@ -252,20 +252,23 @@ export async function deleteClassAction(
   const { tournament_id: tournamentId } = classRow;
   if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
-  // Guard: refuse if any completed match exists for this class.
-  const { count: completedCount, error: countErr } = await sb
+  // Guard: refuse if any completed OR in-progress match exists for this class.
+  // matches.class_id is ON DELETE CASCADE, so deleting a class with a live game on
+  // a court would silently wipe that match mid-play; in_progress was not counted.
+  // (Residual TOCTOU between count and delete is acceptable for this rare admin op.)
+  const { count: liveCount, error: countErr } = await sb
     .from("matches")
     .select("id", { count: "exact", head: true })
     .eq("class_id", classId)
-    .eq("status", "completed");
+    .in("status", ["completed", "in_progress"]);
 
   if (countErr) {
     console.error("[deleteClassAction] count check:", countErr);
     return { error: "ตรวจสอบแมตช์ไม่สำเร็จ" };
   }
 
-  if ((completedCount ?? 0) > 0) {
-    return { error: "ลบไม่ได้ — มีแมตช์ที่จบแล้วใน class นี้" };
+  if ((liveCount ?? 0) > 0) {
+    return { error: "ลบไม่ได้ — มีแมตช์ที่จบแล้วหรือกำลังแข่งใน class นี้" };
   }
 
   // FK CASCADE on groups + matches; SET NULL on pairs — all handled by DB.
