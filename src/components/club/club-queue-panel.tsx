@@ -65,6 +65,7 @@ import {
   finishClubMatchAction,
   cancelClubMatchAction,
   setClubMatchShuttlesAction,
+  setClubMatchCourtAction,
   createClubManualMatchAction,
   reorderClubQueueAction,
   deleteClubMatchAction,
@@ -149,47 +150,48 @@ function ShuttleCounter({
   }
 
   return (
-    <div className="flex items-center gap-1 shrink-0">
-      <span className="text-xs text-muted-foreground tabular-nums">
+    <div className="flex items-center gap-1.5 shrink-0">
+      <span className="text-xs tabular-nums font-medium">
         🏸 {match.shuttles_used}
       </span>
       {canManage && (
-        <>
-          {match.shuttles_used > 0 && (
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 w-6 p-0 text-muted-foreground"
-                    disabled={busy}
-                    onClick={() => adjust(-1)}
-                  >
-                    <Minus className="h-3 w-3" />
-                  </Button>
-                }
-              />
-              <TooltipContent>ลดลูกที่ใช้ในแมตช์นี้</TooltipContent>
-            </Tooltip>
-          )}
+        // Symmetric outline stepper so −/+ read as a clear "ลูก" control rather
+        // than two faint ghost glyphs. Minus stays visible (disabled at 0) so the
+        // pair doesn't reflow when the count hits zero.
+        <div className="flex items-center gap-1">
           <Tooltip>
             <TooltipTrigger
               render={
                 <Button
                   size="sm"
-                  variant="ghost"
-                  className="h-6 px-1.5 text-xs text-muted-foreground"
+                  variant="outline"
+                  className="h-7 px-2 text-xs gap-0.5"
+                  disabled={busy || match.shuttles_used === 0}
+                  onClick={() => adjust(-1)}
+                >
+                  <Minus className="h-3.5 w-3.5" /> ลูก
+                </Button>
+              }
+            />
+            <TooltipContent>ลดลูกที่ใช้ในแมตช์นี้</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-xs gap-0.5"
                   disabled={busy}
                   onClick={() => adjust(1)}
                 >
-                  +ลูก
+                  <Plus className="h-3.5 w-3.5" /> ลูก
                 </Button>
               }
             />
             <TooltipContent>เพิ่มลูกที่ใช้ในแมตช์นี้</TooltipContent>
           </Tooltip>
-        </>
+        </div>
       )}
     </div>
   );
@@ -268,11 +270,69 @@ function DeleteMatchButton({
   );
 }
 
+// ─── Court badge / picker ─────────────────────────────────────────────────────
+// Read-only viewers (or a club with ≤1 court) see a static badge; managers get a
+// Select that moves a pending / in_progress match to another court via
+// setClubMatchCourtAction (server enforces occupancy on in_progress).
+function CourtSelect({
+  match,
+  courts,
+  canManage,
+  onRefresh,
+  badgeClassName,
+}: {
+  match: ClubMatch;
+  courts: string[];
+  canManage: boolean;
+  onRefresh: () => void;
+  badgeClassName?: string;
+}) {
+  const [busy, startTransition] = useTransition();
+
+  if (!canManage || courts.length <= 1) {
+    return (
+      <Badge variant="outline" className={badgeClassName ?? "shrink-0 text-xs"}>
+        สนาม {match.court}
+      </Badge>
+    );
+  }
+
+  function handleChange(next: string) {
+    if (!next || next === match.court) return;
+    startTransition(async () => {
+      const res = await setClubMatchCourtAction({ matchId: match.id, court: next });
+      if ("error" in res) toast.error(res.error);
+      else onRefresh();
+    });
+  }
+
+  return (
+    <Select value={match.court} onValueChange={(v) => { if (v) handleChange(v); }}>
+      <SelectTrigger
+        aria-label="เปลี่ยนสนาม"
+        title="เปลี่ยนสนาม"
+        disabled={busy}
+        className="h-7 w-auto gap-1 text-xs shrink-0"
+      >
+        <SelectValue>{(v: string) => `สนาม ${v}`}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {courts.map((c) => (
+          <SelectItem key={c} value={c}>
+            สนาม {c}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 // ─── Pending match row ────────────────────────────────────────────────────────
 
 function PendingRow({
   match,
   nameMap,
+  courts,
   canManage,
   onRefresh,
   dragHandleProps,
@@ -280,6 +340,7 @@ function PendingRow({
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
+  courts: string[];
   canManage: boolean;
   onRefresh: () => void;
   dragHandleProps?: Record<string, unknown> | null;
@@ -337,9 +398,13 @@ function PendingRow({
           {rowNumber}.
         </span>
       )}
-      <Badge variant="outline" className="shrink-0 text-xs">
-        สนาม {match.court}
-      </Badge>
+      <CourtSelect
+        match={match}
+        courts={courts}
+        canManage={canManage}
+        onRefresh={onRefresh}
+        badgeClassName="shrink-0 text-xs"
+      />
       <span className="flex-1 text-sm truncate">
         {sideA} <span className="text-muted-foreground">vs</span> {sideB}
       </span>
@@ -388,11 +453,13 @@ function PendingRow({
 function SortablePendingRow({
   match,
   nameMap,
+  courts,
   onRefresh,
   rowNumber,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
+  courts: string[];
   onRefresh: () => void;
   rowNumber: number;
 }) {
@@ -410,6 +477,7 @@ function SortablePendingRow({
       <PendingRow
         match={match}
         nameMap={nameMap}
+        courts={courts}
         canManage
         onRefresh={onRefresh}
         dragHandleProps={{ ...attributes, ...listeners }}
@@ -424,11 +492,13 @@ function SortablePendingRow({
 function InProgressRow({
   match,
   nameMap,
+  courts,
   canManage,
   onRefresh,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
+  courts: string[];
   canManage: boolean;
   onRefresh: () => void;
 }) {
@@ -479,9 +549,13 @@ function InProgressRow({
   return (
     <div className="py-2 border-b last:border-0">
       <div className="flex items-center gap-2">
-        <Badge className="shrink-0 text-xs bg-warning/20 text-warning-foreground border-warning/40">
-          สนาม {match.court}
-        </Badge>
+        <CourtSelect
+          match={match}
+          courts={courts}
+          canManage={canManage}
+          onRefresh={onRefresh}
+          badgeClassName="shrink-0 text-xs bg-warning/20 text-warning-foreground border-warning/40"
+        />
         <span className="flex-1 text-sm truncate">
           {sideA} <span className="text-muted-foreground">vs</span> {sideB}
         </span>
@@ -1210,6 +1284,7 @@ export function ClubQueuePanel({
                         key={m.id}
                         match={m}
                         nameMap={nameMap.current}
+                        courts={courts}
                         onRefresh={onRefresh}
                         rowNumber={i + 1}
                       />
@@ -1223,6 +1298,7 @@ export function ClubQueuePanel({
                   key={m.id}
                   match={m}
                   nameMap={nameMap.current}
+                  courts={courts}
                   canManage={false}
                   onRefresh={onRefresh}
                   rowNumber={i + 1}
@@ -1247,6 +1323,7 @@ export function ClubQueuePanel({
                   key={m.id}
                   match={m}
                   nameMap={nameMap.current}
+                  courts={courts}
                   canManage={canManage}
                   onRefresh={onRefresh}
                 />
