@@ -63,7 +63,7 @@ export default async function TournamentDetailPage({
   // awaiting the teams list (cast required because the join column shape isn't
   // part of the generated PairWithPlayers type).
   const [teamsRes, groupsRes, matchesRes, pairsRes, classesRes, levels] = await Promise.all([
-    sb.from("teams").select("*, players:team_players(*)").eq("tournament_id", id).order("created_at"),
+    sb.from("teams").select("*, players:team_players(*, levels:level_id(real))").eq("tournament_id", id).order("created_at"),
     sb.from("groups").select("*, group_teams(*, team:teams(*)), matches(*)").eq("tournament_id", id).order("name"),
     sb.from("matches").select("*").eq("tournament_id", id).order("round_type", { ascending: true }).order("match_number"),
     sb

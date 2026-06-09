@@ -1,5 +1,7 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createHmac, timingSafeEqual } from "crypto";
+import { createAdminClient } from "@/lib/supabase/server";
 
 const COOKIE_NAME = "bc_session";
 const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
@@ -22,21 +24,21 @@ function sign(value: string) {
 }
 
 // Internal wire shape: the public payload plus an issued-at timestamp (epoch
-// seconds) that the server uses to enforce expiry. `iat` is stamped here, so
-// callers of setSession() never pass it.
-type StoredPayload = SessionPayload & { iat: number };
+// seconds, for expiry) and a `sv` session_version (for per-profile revocation).
+// Both are stamped by setSession(), so callers never pass them.
+type StoredPayload = SessionPayload & { iat: number; sv: number };
 
 function nowSec() {
   return Math.floor(Date.now() / 1000);
 }
 
-function encode(payload: SessionPayload) {
-  const stored: StoredPayload = { ...payload, iat: nowSec() };
+function encode(payload: SessionPayload, sv: number) {
+  const stored: StoredPayload = { ...payload, iat: nowSec(), sv };
   const json = Buffer.from(JSON.stringify(stored)).toString("base64url");
   return `${json}.${sign(json)}`;
 }
 
-function decode(token: string): SessionPayload | null {
+function decode(token: string): (SessionPayload & { sv: number }) | null {
   const [json, sig] = token.split(".");
   if (!json || !sig) return null;
   const expected = sign(json);
@@ -66,12 +68,24 @@ function decode(token: string): SessionPayload | null {
     displayName: parsed.displayName,
     pictureUrl: parsed.pictureUrl ?? null,
     isGuest: parsed.isGuest,
+    // Graceful revocation: a token minted before the session_version rollout has
+    // no `sv` → treat as 0 (the column default) so it is NOT force-invalidated.
+    sv: typeof parsed.sv === "number" ? parsed.sv : 0,
   };
 }
 
 export async function setSession(payload: SessionPayload) {
+  // Stamp the profile's current session_version into the token. A later
+  // revokeSessionsAction bumps that column, which invalidates this token.
+  const sb = await createAdminClient();
+  const { data } = await sb
+    .from("profiles")
+    .select("session_version")
+    .eq("id", payload.profileId)
+    .maybeSingle();
+  const sv = (data?.session_version as number | null) ?? 0;
   const store = await cookies();
-  store.set(COOKIE_NAME, encode(payload), {
+  store.set(COOKIE_NAME, encode(payload, sv), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
@@ -80,12 +94,43 @@ export async function setSession(payload: SessionPayload) {
   });
 }
 
-export async function getSession(): Promise<SessionPayload | null> {
+// React cache(): per-request dedupe. getSession() has ~97 call sites and a single
+// page render hits it several times (site-header + page + helpers) — without
+// cache() each call would repeat the session_version SELECT. With it, the
+// revocation check costs exactly ONE profiles PK lookup per request; a bump
+// takes effect on the next request, which is all "logout everywhere" needs.
+export const getSession = cache(async (): Promise<SessionPayload | null> => {
   const store = await cookies();
   const tok = store.get(COOKIE_NAME)?.value;
   if (!tok) return null;
-  return decode(tok);
-}
+  const decoded = decode(tok);
+  if (!decoded) return null;
+  // Per-profile revocation: compare the token's stamped session_version with the
+  // live one ("log out everywhere" / a future compromise response bumps it).
+  const sb = await createAdminClient();
+  const { data, error } = await sb
+    .from("profiles")
+    .select("session_version")
+    .eq("id", decoded.profileId)
+    .maybeSingle();
+  if (error) {
+    // Fail open on a transient DB blip: the HMAC + iat checks already passed, so
+    // skip the best-effort revocation check rather than log every user out.
+    console.error("session_version check failed", error);
+  } else if (!data) {
+    return null; // profile no longer exists → session invalid
+  } else if (decoded.sv !== ((data.session_version as number | null) ?? 0)) {
+    // Revoked: bump_session_version ran after this token was minted. (A new login
+    // does NOT bump — multi-device sessions stay valid side by side by design.)
+    return null;
+  }
+  return {
+    profileId: decoded.profileId,
+    displayName: decoded.displayName,
+    pictureUrl: decoded.pictureUrl,
+    isGuest: decoded.isGuest,
+  };
+});
 
 export async function clearSession() {
   const store = await cookies();

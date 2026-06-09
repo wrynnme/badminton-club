@@ -6,7 +6,7 @@
 
 - Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1
 - Supabase Postgres (service role, bypass RLS) · MCP connected
-- Auth: LINE Login + Guest (HMAC-signed `bc_session` cookie; payload carries `iat`, `decode()` rejects tokens older than `MAX_AGE`=30d server-side — cookie maxAge alone is browser-only. 2026-06-09 review fix)
+- Auth: LINE Login + Guest (HMAC-signed `bc_session` cookie; payload carries `iat`, `decode()` rejects tokens older than `MAX_AGE`=30d server-side — cookie maxAge alone is browser-only. 2026-06-09 review fix). **Session revocation (2026-06-10):** payload also carries `sv` = `profiles.session_version` (stamped at login); `getSession()` — wrapped in `React.cache()` so the check costs exactly 1 profiles PK read per request (fail-open on DB error) — rejects tokens whose `sv` ≠ live column. Missing `sv` = 0 (graceful — pre-rollout cookies stay valid). `POST /api/auth/logout-all` calls RPC `bump_session_version` (+1) → every previously minted token for that profile dies on the next request; "ออกทุกอุปกรณ์" buttons in `site-header.tsx` (md+) + `mobile-nav.tsx`. A new login does NOT bump — multi-device sessions coexist by design.
 - Theme: **"Court Energy" (D2) — court-green primary + green-tinted neutral + vivid orange `--brand`** (design-language overhaul 2026-05-30, replaced Teal+Zinc). Picked from a 3-direction compare (`design-preview.html`, throwaway artifact at repo root). Applied via CSS vars in `src/app/globals.css` `:root`/`.dark` only. Light primary/ring = `oklch(0.52 0.16 150)`, dark = `oklch(0.78 0.2 148)`; neutrals green-tinted (hue ~150–158, not Zinc); `--accent` stays a **subtle neutral** (shadcn hover/selected role — NOT the brand orange). Charts = green-family ramp.
   - **Semantic tokens** (theme-aware — light/dark baked into the var, so no `dark:` at call sites): `--success` `--warning` `--live` `--winner` `--brand` `--destructive`. Division palette `--div-1..8` (1=top). Elevation ladder `--e-1..3` + `--glow` (consume via `var()`), `--shadow-color` HSL triplet. All new colors registered in `@theme inline` so `bg-success`/`text-winner`/`bg-div-1/14` utilities + opacity modifiers exist.
   - **Display font** Chakra Petch via `next/font` (`--font-chakra` → `@theme --font-heading`); body still Anuphan, mono Geist Mono. `font-heading` utility is **inert until phase-2 components adopt it** (headings/scoreboard numerals).
@@ -370,7 +370,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 ### Cost Split (court + shuttle) — ✅ DONE
 
 หาร 2 ก้อนแยกอิสระ (ดู design เต็มใน `## Todo`):
-- **DB** `clubs`: `court_fee` · `court_split` (`even`|`by_time`) · `shuttle_split` (`even`|`per_match`|`per_player`, CHECK `clubs_shuttle_split_check`) · `shuttle_price` (**ราคา/ลูก** — ใช้ทุก mode) · `court_gap_policy` (`spread`|`owner`|`ignore`). `shuttle_fee` = legacy DB column ค้างไว้ (deprecated; code ไม่อ้างแล้ว ทั้ง type/schema/UI — รอ DROP). `club_players`: `start_time`/`end_time` (time, null = ช่วงก๊วนเต็ม) · `games_played` · `last_finished_at`.
+- **DB** `clubs`: `court_fee` · `court_split` (`even`|`by_time`) · `shuttle_split` (`even`|`per_match`|`per_player`, CHECK `clubs_shuttle_split_check`) · `shuttle_price` (**ราคา/ลูก** — ใช้ทุก mode) · `court_gap_policy` (`spread`|`owner`|`ignore`). `shuttle_fee` = **DROPPED แล้ว** (migration `20260607001200`, introspect-confirmed 2026-06-10). `club_players`: `start_time`/`end_time` (time, null = ช่วงก๊วนเต็ม) · `games_played` · `last_finished_at`.
 - **Shuttle model (redesign 2026-06-07):** ค่าลูก = ราคา/ลูก × ลูกที่ใช้ (`club_matches.shuttles_used`), ทุก mode derive จาก matches (ไม่ใช้คิว → ค่าลูก = 0). **even** (หารเท่า) = `Σ shuttles ทั้งหมด × price ÷ N ทุกคนเท่ากัน`; **per_match** (ตามแมตช์) = `Σ ต่อแมตช์ (shuttles × price ÷ คนในแมตช์)`; **per_player** (ต่อคน ไม่หาร) = แต่ละคนในแมตช์จ่ายเต็ม `shuttles × price` (ไม่หารด้วยจำนวนคน). by_games เดิม = per_match → merge (migration `20260607000400` drop CHECK เก่า `(even,by_games)` ที่บล็อก per_match [latent bug ของ commit 95488da] → migrate by_games→per_match → re-add). `20260607000600` เพิ่ม per_player → CHECK `(even,per_match,per_player)`.
 - **Pure** `src/lib/club/cost-split.ts` `computeClubSplit(input)`: court `by_time` = segment ตามช่วงผู้เล่น; shuttle `SplitInput` รับ `shuttlePrice?` + `matches?: SplitMatch[]`; even/per_match ตามบน; whole-baht rounding = **ปัดขึ้น (ceil) ทุกคน** (`ceilBucket`, เปลี่ยน 2026-06-09 จาก round-nearest+remainder→คนจ่ายมากสุด ซึ่งทำให้คนเวลาเท่ากันต่างกันได้หลายบาท เช่น 104 vs 107) → คนแชร์เท่ากันได้เลขเท่ากัน, ยอดรวมอาจ over-collect เล็กน้อย (by design — บิลถูกคุ้มเสมอ ไม่ขาด), epsilon `1e-9` กัน float dust ไม่ให้ integer share เด้งขึ้นบาท. **Cross-midnight (2026-06-09):** session ข้ามเที่ยงคืน (เช่น 21:00→01:00) ทำ `sessionEnd < sessionStart` → เดิม `sessionMin` ติดลบ → guard ตัดค่าสนามทิ้งทั้งก้อน. แก้: เมื่อ `s1 < s0` extend `s1 += 1440` + helper `place()` เลื่อนเวลาผู้เล่นช่วงเช้ามืด (`< s0`) ไป +24h บน timeline เดียวกัน; `s1 === s0` คงเป็น zero-window (ไม่เก็บค่าสนาม) ไม่ใช่ 24h เต็ม; non-crossing byte-identical. cost-split 37 vitest (+6 cross-midnight).
 - **Actions**: `updateClubCostConfigAction` (`CostConfigSchema` shuttle_split `even`|`per_match`|`per_player` + shuttle_price; `shuttle_fee` ลบจาก schema แล้ว) · `updateClubPlayerSessionAction` (time/games). match-lifecycle actions (start/finish/cancel/shuttles/delete) ใช้ `loadClubMatchForManage()` helper ร่วมกัน. expense add/update/delete = `assertCanManageClub` (owner + co-admin). lock create = RPC `create_club_locked_pair` (club-row lock ปิด TOCTOU); finish RPC decrement lock เฉพาะคู่ฝั่งเดียวกัน.
@@ -424,7 +424,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 ระดับฝีมือย้ายจาก free-text → ตาราง `levels` (global lookup) อ้างผ่าน FK. **Scope: club ก่อน** (tournament `team_players.level` ยังเป็น text เดิม — ยังไม่แตะ).
 - **DB** migration `20260607000700`: ตาราง `levels` (id, `real` numeric unique [ค่าคำนวณ], `label` text unique [แสดง], `sort_order`, created_at; RLS read-all) seed 1=BG · 1.25=BG+ · 1.5=N- · 2=N · 2.5=S- · 3=S · 3.5=P- · 4=P. `club_players +level_id` FK → levels ON DELETE SET NULL (+index); legacy `level` text คงไว้เป็น fallback. migrate ค่าเดิม (BG+/N/N-) → level_id ตาม label.
 - **Actions** (`clubs.ts`): `getLevelsAction()` · `createLevelAction`/`updateLevelAction`/`deleteLevelAction` (non-guest session; global ref data) · `joinClubAction`/`addGuestPlayerAction` รับ `level_id`. `buildNextClubMatchAction` resolve queue level จาก `levels.real` (embed `levels:level_id(real)`) fallback text. `Level` type.
-- **UI**: `join-form`/`add-guest-player` level **Select** (sentinel `__none__` = ไม่ระบุ → level_id null) · `sortable-player-list` badge = label จาก level_id · page fetch levels → props. `club-levels-manager.tsx` มีอยู่แต่ **ถอดจาก club settings tab → dev-only** (เรียกผ่าน action โดยตรง / future dev page). legacy `club_players.level` text **ถอด refs ออกหมดแล้ว** (level_id เป็น source of truth) — column ค้างใน DB รอ DROP (additive). tsc 0 · vitest 401 · build OK. live-smoke PASS (per_player + level badge render).
+- **UI**: `join-form`/`add-guest-player` level **Select** (sentinel `__none__` = ไม่ระบุ → level_id null) · `sortable-player-list` badge = label จาก level_id · page fetch levels → props. `club-levels-manager.tsx` มีอยู่แต่ **ถอดจาก club settings tab → dev-only** (เรียกผ่าน action โดยตรง / future dev page). legacy `club_players.level` text **DROPPED แล้ว** (migration `20260607000900`, introspect-confirmed 2026-06-10; level_id เป็น source of truth). tsc 0 · vitest 401 · build OK. live-smoke PASS (per_player + level badge render).
 - **Tournament (ยังไม่ทำ):** `team_players`/`pairs.pair_level` + `computePairDivision`/thresholds ไม่แตะ — เมื่อทำ ต้อง map real=parseFloat(ค่าเดิม) เพื่อให้ pair_level + thresholds เท่าเดิม (impact วิเคราะห์แล้ว).
 
 ### Score Matrix View (2026-05-27)
@@ -626,6 +626,48 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 ## Todo
 
 (Phase 12 DONE — see below.)
+
+### Roadmap — prioritized next steps (วิเคราะห์ 2026-06-10)
+
+Consolidated จากการ review spec ทั้งฉบับ + `bug.md` (ไม่มี P0/P1 เปิดค้าง — จังหวะดีสุดสำหรับเก็บหนี้เทคนิคก่อนเพิ่ม feature ใหม่).
+
+**Sprint ถัดไป — เก็บหนี้ที่มีเงื่อนเวลา:**
+
+1. ~~**Migration รอบเดียว**~~ → **✅ #1/#2/#3 SHIPPED 2026-06-10 (ดู "Migration batch 2026-06-10" ด้านล่าง)** — เหลือเฉพาะ **M4 DROP `team_players.level`** (introspect 2026-06-10 พบว่า `club_players.level` + `clubs.shuttle_fee` ถูก DROP ไปแล้วตั้งแต่ 2026-06-07 — migration `20260607000900`/`20260607001200`; spec/memory เดิม stale) — M4 ต้องรอ develop→master deploy ก่อน (prod code เก่ายังเขียน `level` text) + Gate-4 พิมพ์ยืนยัน
+2. **CI pipeline** — GitHub Actions รัน `tsc --noEmit` + `vitest run` + `next build` ต่อ PR (ตอนนี้รันมือทุกครั้ง — วินัยดีแต่พึ่งคน)
+3. **Repo hygiene** — gitignore หรือย้าย throwaway HTML ที่ root (`code-review-core-2026-06-09.html`, `phase13-session-summary.html`, `tournament-backlog-T2-T5.html`) เข้า `docs/reviews/`
+
+**Feature ลำดับถัดไป (เรียงตาม ROI):**
+
+4. **Club Preset** — ตอบโจทย์ user ตรงสุด (เปิดก๊วนประจำซ้ำได้เร็ว); ต้องเคาะ 4 open decisions ก่อน (ดู section "ระบบ Preset ก๊วน" ด้านล่าง)
+5. **Advance rule "best Nth place" — pair/class mode** — `advance_rule jsonb` (`{ top_per_group, plus_best_nth }`); T2 (`knockout_fill_byes`) ครอบแค่ team mode แต่ pattern วีนฉ่ำจริง (NB top-2 + best-4-third → KO16) คือ pair/class → ปิด gap ให้ competition mode จัดงานจริงได้เต็มรูป
+6. **Phase 13 polish ชุดเล็ก** (~ครึ่งวัน) — pair-tab `Class: [All|…]` filter + `X/cap` registration progress · bracket page (`/tournaments/[id]/bracket`) แยก section ต่อ class (ตอนนี้ปนกัน) · class color (ตอนนี้ใช้ primary tint)
+
+**ระยะกลาง:**
+
+7. **i18n TH/EN** — ตัดสินใจ go/no-go ให้ชัด (ยิ่งเลื่อนยิ่งแพง — ทุก feature ใหม่เพิ่ม Thai string ที่ต้อง extract); แผนละเอียด ~12–16 ชม. อยู่ใน UX polish backlog
+8. **Club queue Realtime** — club ยัง manual refresh; reuse pattern `TournamentLiveWrapper` (subscribe `club_matches` + `club_players`)
+9. **Security follow-ups** — ~~session revocation~~ ✅ DONE 2026-06-10 (M3 — ดู "Migration batch 2026-06-10"); เหลือ guest-profile rate limit (P2 จาก core review) + apply hardening migration `20260610000400_revoke_rpc_execute_anon.sql` (รอ user approve — ดู bug.md Open)
+10. **Prize summary + Wheelspin** — design ไว้แล้วด้านล่าง; ทำก่อน event ใหญ่ครั้งถัดไปก็ทัน
+
+**Gaps ที่ระบุเพิ่มจาก review 2026-06-10 (ไม่เคยอยู่ใน spec):**
+
+- **ไม่มี E2E suite ถาวร** — live-smoke ปัจจุบันเป็น throwaway playwright-cli ทุกครั้ง (ดีที่ net-zero) แต่ flow หลัก (สร้างก๊วน → คิว → จบแมตช์ → cost) ควรมี Playwright spec ที่ rerun ได้
+- **T5 multi-client ยังไม่ verify** — ก่อนแนะนำให้เปิด `queue_payload_sync` ใช้จริงในงานแข่ง ต้องทดสอบ ≥2 client พร้อมกัน (multi-court races, optimistic-vs-payload, dnd-vs-realtime)
+- **`clubs.ts` โตเกินขนาด** — action file เดียวรวม permission helpers + ~30 actions; ควรแตกเป็น `club-players.ts` / `club-matches.ts` / `club-cost.ts` (mirror โครง tournament ที่แยก `matches.ts`/`pairs.ts`/`admins.ts`/`classes.ts`)
+- **T2 ไม่มี consumer จริง** — team-mode only, prod มีแต่ pair tournament; ต้อง seed throwaway team tournament ถ้าจะ live-smoke
+
+### Migration batch 2026-06-10 — ✅ #1/#2/#3 shipped (develop; M1–M3 applied to prod)
+
+tsc 0 · vitest **470/470** · introspect-verified pre/post apply (per-column + pg_proc + RLS). รายละเอียด resolved entries ใน `bug.md`.
+
+- **M1 `apply_group_team_delta`** (migration `20260610000100`, applied): atomic `col = GREATEST(0, col + delta)` ต่อ row — `matches.ts` `updateGroupTeamStandings`/`reverseGroupTeamStandings` dedup เป็น `applyGroupTeamStandings(sign: 1|-1)` เรียก RPC; ปิด lost-update race ตอนบันทึกผล 2 แมตช์ในกลุ่มเดียวกันพร้อมกัน. Forward path floor เป็น no-op (delta ≥ 0), reverse ตรง `Math.max(0,…)` เดิม.
+- **M2 `add_club_player`** (migration `20260610000200`, applied): นับ active + ตัดสิน `active|reserve` + INSERT ใต้ `clubs` row `FOR UPDATE` ใน transaction เดียว — `clubs.ts` `addGuestPlayerAction` เรียก RPC แทน read-then-insert; ปิด capacity overshoot race. `position = total+1` ตาม behavior เดิม.
+- **M3 session revocation** (migration `20260610000300`, applied; 11/11 profiles sv=0): `profiles.session_version int NOT NULL DEFAULT 0` + RPC `bump_session_version`. Code: ดูบรรทัด Auth ใน `### Stack` (sv stamp + `React.cache()`'d `getSession` + `/api/auth/logout-all` + ปุ่ม 2 จุด).
+- **Bundled — dead `level` refs removed**: `types.ts` `TeamPlayer.level` ลบทิ้ง (+ optional `levels?` embed); `/tournaments/[id]/page.tsx` + print roster + `csv.ts` `generateRosterCsv` อ่าน level ผ่าน `embeddedReal(p.levels)` (embed `levels:level_id(real)`). = prerequisite ฝั่ง code ของ M4.
+- **M4 (ยังไม่ apply — Gate 4)**: `ALTER TABLE team_players DROP COLUMN IF EXISTS level` — ต้องรอ develop→master deploy ก่อน (prod code เก่ายังเขียน `level` text ใน `addTeamPlayerAction`) แล้วพิมพ์ยืนยันแยก. Introspect 2026-06-10: `club_players.level` + `clubs.shuttle_fee` ถูก DROP ไปแล้ว 2026-06-07 (`20260607000900`/`20260607001200`) — เหลือ `team_players.level` ตัวเดียว.
+- **Hardening pending (รอ approve)**: grant audit หลัง apply พบ RPC 8 ตัว (เก่า 5 + ใหม่ 3) มี anon/authenticated EXECUTE จาก Supabase default privileges — ยังไม่ exploitable (ทุกตารางที่แตะ RLS-on + SELECT-only policies) แต่ผิด invariant "service_role only"; migration เขียนรอที่ `20260610000400_revoke_rpc_execute_anon.sql` (ยังไม่ apply/commit).
+- **Smoke ที่ต้องทำบน preview ก่อน merge master**: auth round-trip (login เดิมไม่หลุด — cookie ไม่มี `sv` ต้องยังใช้ได้, login ใหม่ได้ `sv`, ปุ่ม "ออกทุกอุปกรณ์" เด้งทุก session ของ profile นั้น), เพิ่มผู้เล่น guest ผ่าน RPC ใหม่, บันทึก/รีเซ็ตผลแมตช์กลุ่ม (standings ขยับถูกผ่าน RPC ใหม่).
 
 ### ระบบก๊วน (Club session) — create form + rotation queue + cost split  [✅ DONE — rotation queue + cost (court/shuttle/per_match) + locked pairs + manual match; canonical summary in `## Club System`]
 

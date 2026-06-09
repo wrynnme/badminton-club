@@ -221,28 +221,20 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
     return { error: "ไม่มีสิทธิ์" };
   }
 
-  const { data: club } = await sb
-    .from("clubs")
-    .select("max_players")
-    .eq("id", parsed.data.club_id)
-    .single();
-  if (!club) return { error: "ไม่พบก๊วนนี้" };
-
-  const { total, active } = await countClubPlayers(sb, parsed.data.club_id);
-  // Full → add as reserve; auto-promoted when an active player leaves.
-  const status = active >= club.max_players ? "reserve" : "active";
-
-  const { error } = await sb.from("club_players").insert({
-    club_id: parsed.data.club_id,
-    profile_id: null,
-    display_name: parsed.data.display_name.trim(),
-    level_id: parsed.data.level_id || null,
-    note: parsed.data.note || null,
-    position: total + 1,
-    status,
+  // Atomic capacity check + insert under a club-row lock (add_club_player RPC):
+  // it counts active players and inserts as 'active', or 'reserve' when at cap,
+  // in one transaction — so concurrent adds at the cap can't overshoot
+  // max_players (the previous read-then-insert could). Auto-promoted when an
+  // active player later leaves.
+  const { error } = await sb.rpc("add_club_player", {
+    p_club_id: parsed.data.club_id,
+    p_display_name: parsed.data.display_name.trim(),
+    p_level_id: parsed.data.level_id || null,
+    p_note: parsed.data.note || null,
   });
-
-  if (error) return { error: error.message };
+  if (error) {
+    return { error: error.message.includes("club not found") ? "ไม่พบก๊วนนี้" : error.message };
+  }
 
   revalidatePath(`/clubs/${parsed.data.club_id}`);
   return { ok: true };
