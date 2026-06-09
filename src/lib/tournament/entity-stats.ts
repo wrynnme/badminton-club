@@ -500,9 +500,13 @@ export function computeDivisionStats(opts: {
   }
 
   // Filter completed matches in this division using the stored column AND require
-  // at least one side to be a known division pair — defensive guard against
-  // matches whose `division` column was mis-stamped or stale relative to current
-  // bucketing (otherwise wins/h2h from another division would leak in).
+  // BOTH sides to be known division pairs. A one-sided guard (OR) let a match whose
+  // `division` column matched but whose opponent belonged to another bucket through:
+  // the aggregate W/L loop below then counted it, while the per-pair standings only
+  // credited the in-division side — so the summary and the standings table disagreed.
+  // Requiring both sides keeps the aggregate consistent with the standings and drops
+  // mis-stamped/stale cross-bucket matches entirely. (When no thresholds are set every
+  // pair is in the single bucket, so AND is a no-op — both ids are always present.)
   // Skip BYE walkovers (`games=[]`) — see computePairStats.
   const relevant = matches
     .filter(
@@ -510,8 +514,8 @@ export function computeDivisionStats(opts: {
         m.status === "completed" &&
         m.games.length > 0 &&
         m.division === divStr &&
-        (divisionPairIds.has(m.pair_a_id ?? "") ||
-          divisionPairIds.has(m.pair_b_id ?? ""))
+        divisionPairIds.has(m.pair_a_id ?? "") &&
+        divisionPairIds.has(m.pair_b_id ?? "")
     )
     .sort((a, b) => a.match_number - b.match_number);
 
