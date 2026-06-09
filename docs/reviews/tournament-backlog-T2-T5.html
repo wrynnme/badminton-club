@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tournament Backlog — T2–T5 รายละเอียด</title>
+<style>
+  :root{
+    --green:#1f9d55; --green-d:#157a40; --bg:#0f1410; --card:#161d17;
+    --line:#27332a; --txt:#e6efe8; --muted:#90a596; --brand:#ff7a33;
+    --code:#0c100d; --warn:#e0b341; --blue:#4a9fd4;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:"Chakra Petch","Anuphan",-apple-system,"Segoe UI",sans-serif;
+    line-height:1.65;font-size:15px}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 20px 80px}
+  header{border-bottom:2px solid var(--green);padding-bottom:18px;margin-bottom:8px}
+  h1{font-size:27px;margin:0 0 6px;letter-spacing:.3px}
+  .sub{color:var(--muted);font-size:14px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin:18px 0 30px;font-size:12.5px}
+  .legend span{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+  .dot{width:10px;height:10px;border-radius:50%}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:24px 26px;margin:0 0 26px;box-shadow:0 1px 0 #0006}
+  .tid{display:inline-block;background:var(--green);color:#04140a;font-weight:700;
+    border-radius:7px;padding:2px 11px;font-size:14px;letter-spacing:.5px}
+  h2{font-size:21px;margin:10px 0 4px;display:flex;align-items:center;gap:11px;flex-wrap:wrap}
+  .tag{font-size:11px;font-weight:600;border-radius:20px;padding:3px 11px;border:1px solid}
+  .t-effort{color:var(--warn);border-color:#5c4d1e;background:#1c1709}
+  .t-risk{color:var(--blue);border-color:#214258;background:#0b1620}
+  .t-type{color:var(--muted);border-color:var(--line);background:#0e140f}
+  h3{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--green);
+    margin:22px 0 8px;border-left:3px solid var(--green);padding-left:9px}
+  p{margin:8px 0}
+  code{background:var(--code);border:1px solid var(--line);border-radius:5px;
+    padding:1px 6px;font-size:13px;color:#bfe9cf;font-family:"SF Mono",Menlo,monospace}
+  pre{background:var(--code);border:1px solid var(--line);border-radius:10px;
+    padding:14px 16px;overflow-x:auto;font-size:12.5px;line-height:1.55;
+    font-family:"SF Mono",Menlo,monospace;color:#c8e6d3}
+  pre .c{color:#5f7a68}
+  pre .k{color:var(--brand)}
+  pre .s{color:#9ad28c}
+  .ex{background:#0c1410;border:1px solid #1d3326;border-left:3px solid var(--brand);
+    border-radius:0 10px 10px 0;padding:14px 18px;margin:12px 0}
+  .ex b{color:var(--brand)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13px}
+  th,td{border:1px solid var(--line);padding:6px 10px;text-align:center}
+  th{background:#101a12;color:var(--muted);font-weight:600}
+  td.l,th.l{text-align:left}
+  .hi{background:#13251a;color:#9af0bd;font-weight:700}
+  .out{color:var(--muted);text-decoration:line-through}
+  ul{margin:8px 0;padding-left:22px}
+  li{margin:4px 0}
+  .files{font-size:12.5px;color:var(--muted)}
+  .files code{color:#a9d9bd}
+  .arrow{color:var(--brand);font-weight:700}
+  .foot{color:var(--muted);font-size:12px;text-align:center;margin-top:40px;
+    border-top:1px solid var(--line);padding-top:18px}
+  .now{color:#e98a8a}.then{color:#9af0bd}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Tournament Backlog — T2–T5</h1>
+  <div class="sub">รายละเอียด + ตัวอย่าง · badminton-club · develop @ 9669411 · 2026-06-08</div>
+</header>
+
+<div class="legend">
+  <span><span class="dot" style="background:var(--warn)"></span> Effort = เวลาโดยประมาณ</span>
+  <span><span class="dot" style="background:var(--blue)"></span> Risk = ความเสี่ยง regression</span>
+  <span><span class="dot" style="background:var(--brand)"></span> ตัวอย่าง worked example</span>
+</div>
+
+<!-- ============ T2 ============ -->
+<div class="card">
+  <span class="tid">T2</span>
+  <h2>Advance rule — "best of Nth place"
+    <span class="tag t-effort">Effort ~6–10h</span>
+    <span class="tag t-risk">Risk: กลาง–สูง</span>
+    <span class="tag t-type">schema + algo + UI</span>
+  </h2>
+
+  <h3>ปัญหาปัจจุบัน</h3>
+  <p>ตอนสร้าง knockout ทุกกลุ่มส่งตัวเข้ารอบ <b>เท่ากันหมด</b> = top-<code>advance_count</code> ต่อกลุ่ม
+  (<code>seedsFromStandings(standings, advanceCount)</code> ที่ <code>matches.ts:659</code> / <code>classes.ts:842</code>
+  แค่ <code>.slice(0, count)</code> ต่อกลุ่ม ไม่มีการเทียบข้ามกลุ่ม).</p>
+  <p>เลยทำ bracket ที่ผู้เข้ารอบ <span class="now">≠</span> ทุกกลุ่มเท่ากันไม่ได้ — เช่นอยากได้
+  <b>16 ทีมเข้ารอบ จาก 6 กลุ่ม</b> (กลุ่มละ 4 คู่). Top 2 ทุกกลุ่ม = 12 ขาดอีก 4.
+  รูปแบบมาตรฐาน (เหมือน World Cup / รายการแบดหลายรายการ) คือเอา
+  <b>"อันดับ 3 ที่ดีที่สุด 4 กลุ่ม"</b> มาเติม — ตอนนี้ทำไม่ได้.</p>
+
+  <h3>สิ่งที่ต้องทำ</h3>
+  <ul>
+    <li>เพิ่มคอลัมน์ <code>tournaments.advance_rule jsonb</code> (และ <code>tournament_classes.advance_rule</code> สำหรับ competition)</li>
+    <li>แก้ seeding ให้รวม <b>2 ชั้น</b>: (1) auto-per-group top-N เหมือนเดิม + (2) "best rest" — เก็บแถวอันดับเดียวกันจากทุกกลุ่ม มาเรียง tiebreak แล้วตัด M ตัวบน</li>
+    <li>วาง seed ข้ามกลุ่มไม่ให้คู่กลุ่มเดียวกันเจอกันรอบแรก</li>
+    <li>vitest: aggregate ranking + tiebreak + placement</li>
+    <li>UI: ช่องตั้ง rule ใน Settings / สร้าง bracket</li>
+  </ul>
+  <pre><span class="c">// รูปแบบ advance_rule jsonb ที่เสนอ</span>
+{
+  <span class="k">"auto_per_group"</span>: 2,   <span class="c">// ทุกกลุ่มส่ง top 2</span>
+  <span class="k">"best_rest"</span>: { <span class="k">"rank"</span>: 3, <span class="k">"take"</span>: 4 }  <span class="c">// + อันดับ 3 ที่ดีสุด 4 กลุ่ม</span>
+}
+<span class="c">// → target bracket = 6×2 + 4 = 16 (KO16)</span></pre>
+
+  <div class="ex">
+    <b>ตัวอย่าง:</b> 6 กลุ่ม กลุ่มละ 4 คู่. Top 2 ทุกกลุ่ม = 12 ผ่านอัตโนมัติ.
+    เหลือสล็อต 4 → เทียบ <b>คู่อันดับ 3 ของทั้ง 6 กลุ่ม</b> ด้วย tiebreak เดิม
+    (<code>leaguePoints</code> <span class="arrow">→</span> <code>pointDiff</code> <span class="arrow">→</span> <code>pointsFor</code>):
+    <table>
+      <tr><th>คู่ (อันดับ 3 ของกลุ่ม)</th><th>Pts</th><th>+/−</th><th>PF</th><th>ผล</th></tr>
+      <tr><td class="l">3rd กลุ่ม A</td><td>6</td><td>+8</td><td>52</td><td class="hi">ผ่าน #1</td></tr>
+      <tr><td class="l">3rd กลุ่ม D</td><td>6</td><td>+5</td><td>48</td><td class="hi">ผ่าน #2</td></tr>
+      <tr><td class="l">3rd กลุ่ม B</td><td>6</td><td>+5</td><td>44</td><td class="hi">ผ่าน #3</td></tr>
+      <tr><td class="l">3rd กลุ่ม F</td><td>4</td><td>+2</td><td>40</td><td class="hi">ผ่าน #4</td></tr>
+      <tr><td class="l out">3rd กลุ่ม C</td><td>4</td><td>−1</td><td>38</td><td class="out">ตกรอบ</td></tr>
+      <tr><td class="l out">3rd กลุ่ม E</td><td>3</td><td>−4</td><td>35</td><td class="out">ตกรอบ</td></tr>
+    </table>
+    ได้ครบ 16 → สร้าง KO16. (ปัจจุบันได้แค่ 12 หรือต้องตั้ง advance_count=3 ซึ่งจะกลายเป็น 18 ไม่ลงตัว power-of-2)
+  </div>
+
+  <h3>ไฟล์กระทบ</h3>
+  <p class="files">migration ใหม่ (<code>advance_rule</code>) · <code>matches.ts</code> (generateKnockoutAction + <code>seedsFromStandings</code>) ·
+  <code>classes.ts</code> (generateKnockoutForClassAction) · <code>bracket.ts</code> (seed placement) ·
+  <code>settings-manager.tsx</code> / สร้าง bracket UI · เพิ่ม <code>__tests__</code></p>
+</div>
+
+<!-- ============ T3 ============ -->
+<div class="card">
+  <span class="tid">T3</span>
+  <h2>Tournament level <span class="arrow">→</span> levels table
+    <span class="tag t-effort">Effort ~6–8h</span>
+    <span class="tag t-risk">Risk: กลาง (มี backfill)</span>
+    <span class="tag t-type">migration + UI</span>
+  </h2>
+
+  <h3>ปัญหาปัจจุบัน</h3>
+  <p>ฝั่ง tournament เก็บ level เป็น <b>free-text</b>: <code>team_players.level</code> (text), <code>pairs.pair_level</code> (text = ผลรวม).
+  Division แบ่งโดย <code>parseFloat(pair_level)</code> เทียบ <code>pair_division_thresholds[]</code>.
+  Free-text เลย <b>drift ได้ง่าย</b> — พิมพ์ <code>"3,5"</code> / <code>"N"</code> / <code>"3.5 "</code> (เว้นวรรค) /
+  <code>"มือ N"</code> ทำให้ <code>parseFloat</code> ได้ <code>NaN</code> หรือเลขผิด → คู่ตกไป Division ผิด หรือ <code>null</code>.</p>
+  <p>ฝั่ง <b>club ทำเสร็จแล้ว</b> — <code>club_players.level_id</code> FK <span class="arrow">→</span> <code>levels</code>
+  (<code>real</code> numeric สำหรับคำนวณ + <code>label</code> สำหรับแสดง). T3 = ยกแบบเดียวกันมาฝั่ง tournament.</p>
+
+  <h3>สิ่งที่ต้องทำ</h3>
+  <ul>
+    <li>เพิ่ม <code>team_players.level_id</code> FK <span class="arrow">→</span> <code>levels</code> (nullable, ระหว่าง migrate)</li>
+    <li>backfill: map text เดิม <span class="arrow">→</span> <code>level_id</code> ที่ตรง (<code>real = parseFloat</code>); ค่าที่ map ไม่ได้ flag ไว้แก้มือ</li>
+    <li>pair_level คำนวณจาก <code>real</code> ของผู้เล่น 2 คน (numeric แท้ ไม่ใช่ string sum)</li>
+    <li>Division compare ใช้ <code>real</code> โดยตรง — เลิก <code>parseFloat(text)</code></li>
+    <li>UI: เปลี่ยน level input เป็น Select จาก <code>levels</code> (เหมือน club)</li>
+  </ul>
+
+  <div class="ex">
+    <b>ตัวอย่าง drift ที่หายไป:</b> ผู้เล่น 3 คน "ระดับ N" แต่กรอกต่างกัน:
+    <table>
+      <tr><th>กรอก (ตอนนี้ free-text)</th><th>parseFloat ได้</th><th>หลัง T3 (level_id→real)</th></tr>
+      <tr><td><code>"N"</code></td><td class="now">NaN</td><td class="then">real 3 · label "N"</td></tr>
+      <tr><td><code>"3.5"</code></td><td>3.5</td><td class="then">real 3.5 · label "N+"</td></tr>
+      <tr><td><code>"3,5"</code></td><td class="now">3 (ผิด!)</td><td class="then">เลือกจาก list — ผิดไม่ได้</td></tr>
+    </table>
+    pair_level = real(A) + real(B) คำนวณตรง → threshold เทียบแม่น, ไม่มีคู่หล่นผิด Division.
+  </div>
+
+  <h3>ไฟล์กระทบ</h3>
+  <p class="files">migration (<code>add team_players.level_id</code> + backfill) · <code>divisions.ts</code> (<code>computePairDivision</code> ใช้ real) ·
+  <code>pairs.ts</code> (pair_level จาก real) · <code>tournaments.ts</code> (addTeamPlayer/updateTeamPlayer) ·
+  <code>team-manager.tsx</code> / <code>pair-manager.tsx</code> (Select) · CSV import (map level)</p>
+  <p class="files">⚠️ Gate 4: migration แตะ production data — เขียนไฟล์ + apply preview ก่อน ค่อย prod ตอน merge</p>
+</div>
+
+<!-- ============ T4 ============ -->
+<div class="card">
+  <span class="tid">T4</span>
+  <h2>Collapse divisions — หน้าแข่ง
+    <span class="tag t-effort">Effort ~2–3h</span>
+    <span class="tag t-risk">Risk: ต่ำ (UI ล้วน)</span>
+    <span class="tag t-type">frontend</span>
+  </h2>
+
+  <h3>ปัญหาปัจจุบัน</h3>
+  <p>หน้าแข่ง (<code>knockout-stage.tsx</code> / <code>pair-stage.tsx</code>) เรนเดอร์ทุก Division
+  <b>กางหมดพร้อมกัน</b>. รายการที่มี 6–8 Division <span class="arrow">→</span> scroll ยาวมากบนมือถือ
+  กว่าจะถึง Division ล่างสุด.</p>
+
+  <h3>สิ่งที่ต้องทำ</h3>
+  <ul>
+    <li>ห่อแต่ละ Division ใน collapsible (accordion / <code>&lt;details&gt;</code>)</li>
+    <li>หัวข้อโชว์สรุปย่อ: ชื่อ Division + จำนวนแมตช์ + champion (ถ้ามี)</li>
+    <li>จำ state เปิด/ปิด (เปิด Division แรกค้างไว้ default)</li>
+    <li>ไม่แตะ logic — แค่ wrap การแสดงผล</li>
+  </ul>
+
+  <div class="ex">
+    <b>ก่อน:</b> 8 Division กางหมด = หน้ายาว ~8 จอ
+    <pre><span class="now">▼ Division 1 — น็อคเอ้า (8 matches, champion: คู่ A/B)</span>
+   [ ...bracket เต็ม... ]
+<span class="now">▼ Division 2 — น็อคเอ้า (8 matches)</span>
+   [ ...bracket เต็ม... ]
+   ... อีก 6 division กางหมด</pre>
+    <b>หลัง T4:</b> ยุบเหลือหัวข้อ คลิกกางทีละอัน
+    <pre><span class="then">▼ Division 1 — 8 matches · 🏆 คู่ A/B</span>   <span class="c">(เปิดค้าง)</span>
+   [ ...bracket... ]
+<span class="then">▶ Division 2 — 8 matches</span>            <span class="c">(ยุบ — คลิกกาง)</span>
+<span class="then">▶ Division 3 — 6 matches</span>
+<span class="then">▶ Division 4 — 6 matches · 🏆 คู่ X/Y</span>
+   ... สั้นลง เห็นภาพรวมทันที</pre>
+  </div>
+
+  <h3>ไฟล์กระทบ</h3>
+  <p class="files"><code>knockout-stage.tsx</code> · <code>pair-stage.tsx</code> · <code>class-knockout-stage.tsx</code> (competition) ·
+  อาจเพิ่ม shared <code>&lt;CollapsibleSection&gt;</code> · ไม่มี migration ไม่มี server action</p>
+</div>
+
+<!-- ============ T5 ============ -->
+<div class="card">
+  <span class="tid">T5</span>
+  <h2>Granular queue Realtime
+    <span class="tag t-effort">Effort ~8–12h</span>
+    <span class="tag t-risk">Risk: สูง (race / state)</span>
+    <span class="tag t-type">realtime + optimistic UI</span>
+  </h2>
+
+  <h3>ปัญหาปัจจุบัน</h3>
+  <p><code>tournament-live-wrapper.tsx</code> subscribe <code>postgres_changes</code> แล้ว
+  <b>debounced <code>router.refresh()</code></b> (<code>setTimeout(..., REFRESH_DEBOUNCE_MS)</code> 400ms).
+  ทุกครั้งที่มี match เปลี่ยน (บันทึกผล/เริ่ม/เปลี่ยนสนาม) = <b>refetch RSC ทั้งหน้า</b> —
+  re-render ทุก tab/ทุกตาราง แม้เปลี่ยนแค่ row เดียว. หนัก + กระพริบ ตอนแข่งจริงหลายสนามพร้อมกัน.</p>
+
+  <h3>สิ่งที่ต้องทำ</h3>
+  <ul>
+    <li>flag <code>queue_payload_sync</code> ใน settings (เปิด/ปิดได้, default off ตอนแรก)</li>
+    <li>ใช้ payload จาก <code>postgres_changes</code> โดยตรง (<code>matches</code> มี <code>REPLICA IDENTITY FULL</code> อยู่แล้ว → payload มีทุกคอลัมน์)</li>
+    <li>patch เฉพาะ match row ที่เปลี่ยนเข้า local state — ไม่ refetch ทั้งหน้า</li>
+    <li>optimistic UI: กดเริ่ม/จบ <span class="arrow">→</span> อัปเดต UI ทันที แล้วค่อย reconcile กับ payload จริง</li>
+    <li>handle INSERT / UPDATE / DELETE + ลำดับ event + กัน stale (เทียบ <code>updated_at</code>/ค่าใหม่)</li>
+    <li>fallback กลับ <code>router.refresh()</code> เมื่อ flag off</li>
+  </ul>
+
+  <div class="ex">
+    <b>ตัวอย่าง:</b> 4 สนามแข่งพร้อมกัน, กรรมการสนาม 2 กดจบแมตช์ #7
+    <table>
+      <tr><th class="l">ขั้น</th><th class="now">ตอนนี้</th><th class="then">หลัง T5</th></tr>
+      <tr><td class="l">trigger</td><td>UPDATE match #7</td><td>UPDATE match #7</td></tr>
+      <tr><td class="l">ฝั่ง viewer</td><td class="now">refetch ทั้งหน้า (ทุก match, ทุก tab)</td><td class="then">patch แค่ card #7</td></tr>
+      <tr><td class="l">re-render</td><td class="now">ทั้ง tree + dnd-kit re-init</td><td class="then">1 row</td></tr>
+      <tr><td class="l">อาการ</td><td class="now">กระพริบทั้งจอ ~400ms debounce</td><td class="then">#7 เปลี่ยนสถานะนิ่ง ทันที</td></tr>
+    </table>
+    ผลรวม: ลด network + ไม่กระพริบ + queue ใช้ลื่นขึ้นตอน peak หลายสนาม.
+  </div>
+
+  <p><b>หมายเหตุความเสี่ยง:</b> optimistic UI + realtime patch เปิดช่อง race
+  (event มาสลับลำดับ, optimistic vs payload ขัดกัน, dnd reorder ชน Realtime update).
+  ต้องทดสอบ live หลายสนามจริง — static check จับไม่ได้.</p>
+
+  <h3>ไฟล์กระทบ</h3>
+  <p class="files"><code>tournament-live-wrapper.tsx</code> (payload handler) · <code>match-queue.tsx</code> (local state + optimistic) ·
+  <code>settings.ts</code> (<code>queue_payload_sync</code> flag) · <code>settings-manager.tsx</code> (toggle) ·
+  อาจเพิ่ม hook <code>use-match-realtime.ts</code></p>
+</div>
+
+<!-- ============ สรุป ============ -->
+<div class="card">
+  <h3 style="margin-top:0">สรุปเทียบ + ลำดับแนะนำ</h3>
+  <table>
+    <tr><th>Task</th><th class="l">สิ่งที่ได้</th><th>Effort</th><th>Risk</th><th>Migration</th></tr>
+    <tr><td><b>T4</b></td><td class="l">หน้าแข่งสั้นลง เห็นภาพรวม</td><td>2–3h</td><td class="then">ต่ำ</td><td>—</td></tr>
+    <tr><td><b>T2</b></td><td class="l">bracket รับ "best Nth place" (KO16 จากกลุ่มไม่เท่า)</td><td>6–10h</td><td>กลาง–สูง</td><td class="hi">มี</td></tr>
+    <tr><td><b>T3</b></td><td class="l">level เป็น FK — เลิก drift, Division แม่น</td><td>6–8h</td><td>กลาง</td><td class="hi">มี+backfill</td></tr>
+    <tr><td><b>T5</b></td><td class="l">queue realtime ลื่น ไม่กระพริบ</td><td>8–12h</td><td class="now">สูง</td><td>—</td></tr>
+  </table>
+  <p><b>แนะนำลำดับ:</b> <span class="arrow">T4</span> (เร็ว, เห็นผลทันที, เสี่ยงต่ำ) <span class="arrow">→</span>
+  <span class="arrow">T3</span> (ปูฐานข้อมูลให้นิ่งก่อน — T2 อาศัย standings ที่ level ถูก) <span class="arrow">→</span>
+  <span class="arrow">T2</span> (feature ใหญ่ ต่อยอดจาก T3) <span class="arrow">→</span>
+  <span class="arrow">T5</span> (เสี่ยงสุด ทำตอนพร้อมทดสอบ live หลายสนาม).</p>
+</div>
+
+<div class="foot">
+  badminton-club · Tournament backlog T2–T5 · ข้อมูล verify จาก source (matches.ts · classes.ts · divisions.ts · tournament-live-wrapper.tsx) · 2026-06-08
+</div>
+</div>
+</body>
+</html>
