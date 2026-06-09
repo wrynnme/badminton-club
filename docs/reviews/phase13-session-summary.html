@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Phase 13 — Competition Mode · สรุป Session</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&family=Chakra+Petch:wght@600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#0c1410; --panel:#121d18; --panel-2:#16241d; --line:#22362c;
+    --ink:#e9f3ed; --muted:#8fa89b; --faint:#5f776b;
+    --green:#34d27f; --green-deep:#1f9d5d; --teal:#2dd4bf; --orange:#ff7a45; --amber:#f5b62b;
+    --red:#ff6b6b;
+    --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;font-family:'Anuphan',system-ui,sans-serif;background:var(--bg);color:var(--ink);
+    line-height:1.6;-webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1040px;margin:0 auto;padding:0 20px 80px}
+
+  /* hero */
+  .hero{
+    position:relative;overflow:hidden;border-bottom:1px solid var(--line);
+    background:
+      radial-gradient(900px 420px at 12% -10%, rgba(52,210,127,.18), transparent 60%),
+      radial-gradient(700px 360px at 92% 0%, rgba(45,212,191,.12), transparent 55%),
+      linear-gradient(180deg,#0e1813,#0c1410);
+  }
+  .hero-in{max-width:1040px;margin:0 auto;padding:54px 20px 40px}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--green);margin:0 0 14px}
+  h1{font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:clamp(30px,5vw,50px);line-height:1.05;margin:0 0 12px;letter-spacing:-.01em}
+  h1 .accent{color:var(--orange)}
+  .lede{color:var(--muted);font-size:17px;max-width:62ch;margin:0}
+  .meta-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+  .chip{font-family:var(--mono);font-size:12px;padding:6px 11px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.02);color:var(--muted)}
+  .chip b{color:var(--ink);font-weight:600}
+
+  /* phase complete banner */
+  .done-banner{
+    display:flex;align-items:center;gap:16px;margin-top:30px;padding:18px 22px;border-radius:16px;
+    border:1px solid rgba(52,210,127,.35);
+    background:linear-gradient(120deg,rgba(52,210,127,.14),rgba(45,212,191,.05));
+  }
+  .done-banner .tick{width:42px;height:42px;border-radius:12px;flex:0 0 auto;display:grid;place-items:center;
+    background:rgba(52,210,127,.18);border:1px solid rgba(52,210,127,.4);color:var(--green);font-size:22px}
+  .done-banner b{font-family:'Chakra Petch',sans-serif;font-size:18px}
+  .done-banner span{color:var(--muted);font-size:14px}
+
+  /* sections */
+  section{margin-top:46px}
+  .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--teal);margin:0 0 6px}
+  h2{font-family:'Chakra Petch',sans-serif;font-size:24px;margin:0 0 18px;letter-spacing:-.01em}
+
+  /* timeline */
+  .timeline{position:relative;padding-left:30px}
+  .timeline::before{content:"";position:absolute;left:9px;top:8px;bottom:8px;width:2px;background:linear-gradient(var(--green-deep),var(--line))}
+  .node{position:relative;margin-bottom:18px}
+  .node::before{content:"";position:absolute;left:-30px;top:6px;width:18px;height:18px;border-radius:50%;
+    background:var(--bg);border:2px solid var(--green);box-shadow:0 0 0 4px rgba(52,210,127,.12)}
+  .node.ship::before{border-color:var(--orange);box-shadow:0 0 0 4px rgba(255,122,69,.14)}
+  .node .t{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em}
+  .node .h{font-weight:600;font-size:16px;margin:1px 0 3px}
+  .node p{margin:0;color:var(--muted);font-size:14px}
+  .node code{font-family:var(--mono);font-size:12px;color:var(--amber);background:rgba(245,182,43,.08);padding:1px 6px;border-radius:5px}
+
+  /* cards grid */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+  .card{background:linear-gradient(180deg,var(--panel),var(--panel-2));border:1px solid var(--line);border-radius:16px;padding:20px}
+  .card h3{margin:0 0 4px;font-size:16px;display:flex;align-items:center;gap:8px}
+  .card h3 .num{font-family:var(--mono);font-size:12px;color:var(--bg);background:var(--green);border-radius:6px;padding:2px 7px;font-weight:600}
+  .card .sub{color:var(--faint);font-size:12px;font-family:var(--mono);margin:0 0 12px}
+  .card ul{margin:0;padding-left:18px;color:var(--muted);font-size:13.5px}
+  .card li{margin:4px 0}
+  .card li b{color:var(--ink);font-weight:600}
+
+  /* verify badges */
+  .badges{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}
+  .b{font-family:var(--mono);font-size:11px;padding:4px 9px;border-radius:7px;border:1px solid var(--line);display:inline-flex;align-items:center;gap:5px}
+  .b.ok{color:var(--green);border-color:rgba(52,210,127,.3);background:rgba(52,210,127,.07)}
+  .b.live{color:var(--orange);border-color:rgba(255,122,69,.3);background:rgba(255,122,69,.07)}
+  .b.warn{color:var(--amber);border-color:rgba(245,182,43,.3);background:rgba(245,182,43,.07)}
+
+  /* file table */
+  table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);font-weight:600}
+  td.f{font-family:var(--mono);font-size:12px;color:var(--ink);white-space:nowrap}
+  td .new{color:var(--green);font-family:var(--mono);font-size:10px;border:1px solid rgba(52,210,127,.3);border-radius:4px;padding:0 5px;margin-left:6px}
+  tr:hover td{background:rgba(255,255,255,.015)}
+
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:680px){.two{grid-template-columns:1fr}}
+
+  .note{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:12px;padding:14px 18px;font-size:14px;color:var(--muted)}
+  .note b{color:var(--ink)}
+  .note.green{border-left-color:var(--green)}
+
+  footer{margin-top:50px;padding-top:22px;border-top:1px solid var(--line);color:var(--faint);font-size:12px;font-family:var(--mono);display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between}
+
+  .git{font-family:var(--mono);font-size:12.5px;background:#0a120e;border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow:auto}
+  .git .c{color:var(--green)} .git .m{color:var(--muted)} .git .o{color:var(--orange)}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-in">
+    <p class="eyebrow">ก๊วนแบด · Tournament System</p>
+    <h1>Phase 13 — <span class="accent">Competition Mode</span><br/>สรุปงาน Session</h1>
+    <p class="lede">ปิด Phase 13 จนจบ — multi-class pair tournament. Session นี้ทำ Slice 6 → 7 → 8, deploy ขึ้น production, และ verify ด้วย live browser smoke.</p>
+    <div class="meta-row">
+      <span class="chip">วันที่ <b>3–4 มิ.ย. 2026</b></span>
+      <span class="chip">branch <b>develop → master</b></span>
+      <span class="chip">stack <b>Next.js 16 · Supabase · TanStack Form</b></span>
+      <span class="chip">vitest <b>350/350</b></span>
+    </div>
+    <div class="done-banner">
+      <div class="tick">✓</div>
+      <div>
+        <b>Phase 13 COMPLETE</b> — Slices 1–8 ครบ<br/>
+        <span>class CRUD · team-aware grouping · per-class group/knockout · match-format · class assignment (UI+CSV) · mode selector · one-way upgrade</span>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- TIMELINE -->
+  <section>
+    <p class="kicker">ลำดับงาน</p>
+    <h2>Session นี้ทำอะไรบ้าง</h2>
+    <div class="timeline">
+      <div class="node">
+        <div class="t">เริ่ม</div>
+        <div class="h">เพิ่ม todo “ระบบก๊วน” + ดู backlog</div>
+        <p>บันทึกฟีเจอร์ casual session (court count / rotation / queue mode / cost split) เป็น <code>[PLANNED]</code> ใน spec.md พร้อม open-decisions</p>
+      </div>
+      <div class="node">
+        <div class="t">SLICE 6</div>
+        <div class="h">Per-class group/knockout tabs + class assignment + queue prefix + ScoreForm clamp</div>
+        <p>13 ไฟล์ · 2 component ใหม่ · tsc/vitest/build/<b style="color:var(--orange)">live-smoke</b> ผ่าน → commit <code>f54b178</code></p>
+      </div>
+      <div class="node ship">
+        <div class="t">DEPLOY</div>
+        <div class="h">push develop → Vercel preview</div>
+        <p>แล้ว merge develop → master (<code>59b1c2b</code>) — Phase 13 Slices 1–6 ขึ้น <b style="color:var(--orange)">production</b> ครั้งแรก</p>
+      </div>
+      <div class="node">
+        <div class="t">SLICE 7</div>
+        <div class="h">CSV class_code import</div>
+        <p>6 ไฟล์ · resolve <code>class_code → class_id</code> + class-aware template/dialog · tsc/vitest/build ผ่าน</p>
+      </div>
+      <div class="node">
+        <div class="t">SLICE 8</div>
+        <div class="h">Mode selector + upgrade-to-competition → ปิด Phase 13</div>
+        <p>5 ไฟล์ · radio ใน create form + one-way upgrade action · tsc/vitest/build/<b style="color:var(--orange)">live-smoke</b> ผ่าน</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SLICE CARDS -->
+  <section>
+    <p class="kicker">รายละเอียด</p>
+    <h2>3 Slices ที่ทำใน session นี้</h2>
+    <div class="grid">
+
+      <div class="card">
+        <h3><span class="num">6</span> Per-class UI</h3>
+        <p class="sub">commit f54b178 · 13 files</p>
+        <ul>
+          <li><b>ClassGroupStage</b> ใหม่ — pair-group standings คำนวณจาก matches (เพราะ team-only GroupStage reuse ไม่ได้)</li>
+          <li><b>ClassKnockoutStage</b> ใหม่ — reuse KnockoutStage null-division path + <code>classId</code></li>
+          <li>คู่ tab = class assignment (Select); queue <code>[BG]</code> badge; ScoreForm clamp ตาม match_format</li>
+        </ul>
+        <div class="badges">
+          <span class="b ok">✓ tsc</span><span class="b ok">✓ vitest 350</span><span class="b ok">✓ build</span><span class="b live">● live-smoke</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="num">7</span> CSV class_code</h3>
+        <p class="sub">6 files · import path</p>
+        <ul>
+          <li><code>PairCsvRow.class_code</code> → <b>importPairsCsvAction</b> resolve เป็น <code>class_id</code></li>
+          <li>code ผิด/ว่าง → ข้าม + รายงาน <code>unknownClassCodes</code></li>
+          <li>template + dialog hint/preview class-aware; sports_day ไม่กระทบ</li>
+        </ul>
+        <div class="badges">
+          <span class="b ok">✓ tsc</span><span class="b ok">✓ vitest 350</span><span class="b ok">✓ build</span><span class="b warn">○ static-verified</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3><span class="num">8</span> Mode + Upgrade</h3>
+        <p class="sub">5 files · ปิด Phase 13</p>
+        <ul>
+          <li>create form: radio <b>กีฬาสี / Competition</b> (competition → force pair, ซ่อน threshold)</li>
+          <li><b>upgradeToCompetitionAction</b> — สร้าง class “MAIN” + ย้าย pairs/groups/matches เดิม, flip mode ทีหลังสุด</li>
+          <li>edit: one-way (มี badge/ปุ่ม upgrade) — กัน downgrade orphan classes</li>
+        </ul>
+        <div class="badges">
+          <span class="b ok">✓ tsc</span><span class="b ok">✓ vitest 350</span><span class="b ok">✓ build</span><span class="b live">● live-smoke</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- VERIFY -->
+  <section>
+    <p class="kicker">วิธี verify</p>
+    <h2>Live browser smoke (create-then-cleanup)</h2>
+    <div class="two">
+      <div class="note green">
+        <b>Slice 6 smoke ✅</b> — seed throwaway competition tournament บน prod Supabase → คลิกปุ่ม generate จริง → ยืนยัน group standings มี pair rows, queue <code style="color:var(--amber)">[BG]</code> badge, ScoreForm clamp ที่ 3 เกม, knockout = bracket เดียว → ลบทิ้ง (count=0). <b>0 hydration error.</b>
+      </div>
+      <div class="note green">
+        <b>Slice 8 smoke ✅</b> — seed sports_day tournament + pairs/group/match → คลิก “อัปเกรดเป็น Competition” → DB ยืนยัน MAIN class + mode=competition + ย้าย child ครบ 3 ชนิด + tabs/ClassManager แสดง → ลบทิ้ง. <b>0 hydration error.</b>
+      </div>
+    </div>
+    <div class="note" style="margin-top:14px">
+      ทำไมต้อง live: static checks (tsc/vitest/build) จับ <b>hydration mismatch / RSC boundary ไม่ได้</b> — Slice 5 เคยมี bug ที่ผ่าน static หมดแต่พังตอน render จริง. เลยรัน live smoke กับทุก slice ที่เพิ่ม RSC/client boundary หรือ multi-table action.
+    </div>
+  </section>
+
+  <!-- FILES -->
+  <section>
+    <p class="kicker">ไฟล์ที่แตะ</p>
+    <h2>สรุปไฟล์</h2>
+    <table>
+      <thead><tr><th>ไฟล์</th><th>slice</th><th>ทำอะไร</th></tr></thead>
+      <tbody>
+        <tr><td class="f">class-group-stage.tsx <span class="new">NEW</span></td><td>6</td><td>competition group view — class sub-tabs + pair-group standings</td></tr>
+        <tr><td class="f">class-knockout-stage.tsx <span class="new">NEW</span></td><td>6</td><td>per-class wrapper รอบ KnockoutStage</td></tr>
+        <tr><td class="f">pair-stage.tsx</td><td>6·7</td><td>competition class assignment + CSV classCodes</td></tr>
+        <tr><td class="f">pair-manager.tsx</td><td>6</td><td>class Select บน add-pair + class badge</td></tr>
+        <tr><td class="f">match-queue.tsx</td><td>6</td><td>[CODE] class badge + ScoreForm clamp</td></tr>
+        <tr><td class="f">score-form.tsx · match-row.tsx · match-list.tsx</td><td>6</td><td>maxGames clamp thread</td></tr>
+        <tr><td class="f">knockout-stage.tsx</td><td>6</td><td>optional classId → per-class generate</td></tr>
+        <tr><td class="f">lib/actions/pairs.ts</td><td>6</td><td>createPairAction + classId</td></tr>
+        <tr><td class="f">lib/actions/tournaments.ts</td><td>7·8</td><td>importPairs class_code + mode schema + update strip mode</td></tr>
+        <tr><td class="f">lib/export/csv.ts</td><td>7</td><td>pair template + class_code column</td></tr>
+        <tr><td class="f">csv-import-dialog.tsx · export-buttons.tsx</td><td>7</td><td>classCodes prop → template/hint/toast</td></tr>
+        <tr><td class="f">create-tournament-form.tsx</td><td>8</td><td>mode radio + gating</td></tr>
+        <tr><td class="f">edit-tournament-form.tsx</td><td>8</td><td>upgrade button / competition badge</td></tr>
+        <tr><td class="f">lib/actions/classes.ts</td><td>8</td><td>upgradeToCompetitionAction</td></tr>
+        <tr><td class="f">tournaments/[id]/page.tsx</td><td>6·7·8</td><td>tab-gating + thread classes/maps/isOwner</td></tr>
+        <tr><td class="f">spec.md · bug.md</td><td>ทุก slice</td><td>milestone + test-run log</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- GIT -->
+  <section>
+    <p class="kicker">git</p>
+    <h2>สถานะ branch</h2>
+    <div class="git">
+<span class="c">59b1c2b</span> <span class="o">(master, deployed)</span> <span class="m">Merge develop into master: Phase 13 competition mode (Slices 1–6)</span><br/>
+<span class="c">f54b178</span> <span class="o">(develop)</span> <span class="m">feat(tournament): Phase 13 slice 6 — per-class tabs + class assignment + queue prefix + clamp</span><br/>
+<span class="m">… Slice 7 + Slice 8 — แก้ใน working tree, ยังไม่ commit</span>
+    </div>
+    <div class="note" style="margin-top:14px">
+      <b>ค้างอยู่:</b> Slice 7 + Slice 8 (code + spec + bug) ยังไม่ commit — รอสั่ง commit/push/merge. DB migrations (Slice 1) อยู่ prod แล้ว (backward-compat, sports_day = <code>class_id NULL</code>).
+    </div>
+  </section>
+
+  <!-- FOLLOW-UPS -->
+  <section>
+    <p class="kicker">ค้างไว้</p>
+    <h2>Follow-ups &amp; deferrals</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>🐛 Follow-ups (bug.md)</h3>
+        <ul>
+          <li><b>[P2]</b> queue แสดง 0 rows ตอน hard-nav แรกหลัง generate — reload หาย (RSC cache staleness; soft-nav/Realtime บังในใช้งานจริง)</li>
+          <li><b>recordMatchScoreAction</b> validate แค่ <code>games.length≥1</code> — format clamp เป็น client-only (candidate hardening)</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>✨ Deferred polish</h3>
+        <ul>
+          <li>pair-tab top <code>Class:[All|…]</code> filter + <code>X/cap</code> progress</li>
+          <li>class color ใน queue prefix (ยังไม่มี color column)</li>
+          <li>bracket page รวมทุก class — แยกตาม class</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>🗂️ Backlog ถัดไป</h3>
+        <ul>
+          <li><b>ระบบก๊วน</b> (casual session) — todo เพิ่มไว้แล้ว</li>
+          <li>BYE preset 21-15 · prize summary · i18n TH/EN</li>
+          <li>Wheelspin · granular queue Realtime</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>kuanbad · Phase 13 Competition Mode · session 3–4 มิ.ย. 2026</span>
+    <span>tsc clean · vitest 350/350 · build OK</span>
+  </footer>
+
+</div>
+</body>
+</html>

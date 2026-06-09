@@ -40,6 +40,11 @@ export async function SiteHeader() {
                 <span className="text-sm hidden sm:inline">{session.displayName}</span>
                 {session.isGuest && <Badge variant="secondary">guest</Badge>}
               </div>
+              <form action="/api/auth/logout-all" method="post" className="hidden md:block">
+                <Button variant="ghost" size="sm" type="submit" className="text-muted-foreground" title="ออกจากทุกอุปกรณ์ (เพิกถอน session ทั้งหมด)">
+                  ออกทุกอุปกรณ์
+                </Button>
+              </form>
               <form action="/api/auth/logout" method="post">
                 <Button variant="ghost" size="sm" type="submit">
                   ออก

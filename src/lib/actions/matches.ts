@@ -2163,6 +2163,44 @@ export async function cancelMatchAction(matchId: string, tournamentId: string) {
 
 // ============ Internal helpers ============
 
+// Apply (sign=+1) or reverse (sign=-1) a match result onto the two teams'
+// `group_teams` rows via the `apply_group_team_delta` RPC, which does an atomic
+// `col = GREATEST(0, col + delta)` per row. This closes the lost-update race the
+// old SELECT-then-UPDATE-with-JS-computed-value had: two concurrent score writes
+// on matches in the SAME group both read the same baseline and one overwrote the
+// other. GREATEST(0,…) floors both directions (matches the old Math.max(0,…) on
+// reversal); on the forward path the deltas are non-negative so the floor is a no-op.
+async function applyGroupTeamStandings(
+  groupId: string,
+  aId: string | null,
+  bId: string | null,
+  scoreA: number,
+  scoreB: number,
+  winner: "a" | "b" | "draw",
+  sign: 1 | -1
+) {
+  if (!aId || !bId) return;
+  const sb = await createAdminClient();
+  await Promise.all([aId, bId].map(async (teamId) => {
+    const isA = teamId === aId;
+    const myScore = isA ? scoreA : scoreB;
+    const oppScore = isA ? scoreB : scoreA;
+    const won = (isA && winner === "a") || (!isA && winner === "b");
+    const drew = winner === "draw";
+    const lost = !won && !drew;
+    const { error } = await sb.rpc("apply_group_team_delta", {
+      p_group_id: groupId,
+      p_team_id: teamId,
+      p_dwins: sign * (won ? 1 : 0),
+      p_ddraws: sign * (drew ? 1 : 0),
+      p_dlosses: sign * (lost ? 1 : 0),
+      p_dpf: sign * myScore,
+      p_dpa: sign * oppScore,
+    });
+    if (error) console.error("apply_group_team_delta failed", error);
+  }));
+}
+
 async function updateGroupTeamStandings(
   groupId: string,
   aId: string | null,
@@ -2171,25 +2209,7 @@ async function updateGroupTeamStandings(
   scoreB: number,
   winner: "a" | "b" | "draw"
 ) {
-  if (!aId || !bId) return;
-  const sb = await createAdminClient();
-  const { data: rows } = await sb.from("group_teams").select("*").eq("group_id", groupId).in("team_id", [aId, bId]);
-  if (!rows) return;
-
-  await Promise.all(rows.map((r) => {
-    const isA = r.team_id === aId;
-    const myScore = isA ? scoreA : scoreB;
-    const oppScore = isA ? scoreB : scoreA;
-    const won = (isA && winner === "a") || (!isA && winner === "b");
-    const drew = winner === "draw";
-    return sb.from("group_teams").update({
-      wins: r.wins + (won ? 1 : 0),
-      draws: r.draws + (drew ? 1 : 0),
-      losses: r.losses + (!won && !drew ? 1 : 0),
-      points_for: r.points_for + myScore,
-      points_against: r.points_against + oppScore,
-    }).eq("group_id", groupId).eq("team_id", r.team_id);
-  }));
+  await applyGroupTeamStandings(groupId, aId, bId, scoreA, scoreB, winner, 1);
 }
 
 async function reverseGroupTeamStandings(
@@ -2200,22 +2220,5 @@ async function reverseGroupTeamStandings(
   scoreB: number,
   winner: "a" | "b" | "draw"
 ) {
-  const sb = await createAdminClient();
-  const { data: rows } = await sb.from("group_teams").select("*").eq("group_id", groupId).in("team_id", [aId, bId]);
-  if (!rows) return;
-
-  await Promise.all(rows.map((r) => {
-    const isA = r.team_id === aId;
-    const myScore = isA ? scoreA : scoreB;
-    const oppScore = isA ? scoreB : scoreA;
-    const won = (isA && winner === "a") || (!isA && winner === "b");
-    const drew = winner === "draw";
-    return sb.from("group_teams").update({
-      wins: Math.max(0, r.wins - (won ? 1 : 0)),
-      draws: Math.max(0, r.draws - (drew ? 1 : 0)),
-      losses: Math.max(0, r.losses - (!won && !drew ? 1 : 0)),
-      points_for: Math.max(0, r.points_for - myScore),
-      points_against: Math.max(0, r.points_against - oppScore),
-    }).eq("group_id", groupId).eq("team_id", r.team_id);
-  }));
+  await applyGroupTeamStandings(groupId, aId, bId, scoreA, scoreB, winner, -1);
 }

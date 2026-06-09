@@ -72,6 +72,8 @@ import {
 } from "@/lib/actions/clubs";
 import type { ClubMatch } from "@/lib/types";
 import type { ClubQueueSettings } from "@/lib/club/queue-settings";
+import { firstFreeCourt, occupiedCourtMap } from "@/lib/club/courts";
+import { cn } from "@/lib/utils";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -888,20 +890,34 @@ function ManualMatchDialog({
   const [open, setOpen] = useState(false);
   const [busy, startTransition] = useTransition();
 
-  const [court, setCourt] = useState(courts[0] ?? "");
+  const [court, setCourt] = useState(() => firstFreeCourt(courts, matches));
   const [sideA1, setSideA1] = useState(UNSET);
   const [sideA2, setSideA2] = useState(UNSET);
   const [sideB1, setSideB1] = useState(UNSET);
   const [sideB2, setSideB2] = useState(UNSET);
 
+  // Latest matches read by the snap effect without being a dependency — occupancy
+  // churning every 30s refresh must NOT re-run the effect (it would re-pick a free
+  // court and could jump the selection on a background refresh while the dialog is open).
+  const matchesRef = useRef(matches);
+  matchesRef.current = matches;
+
   // The dialog stays mounted across refreshes, so `court` can outlive its court if
-  // the list changes (e.g. a court renamed/removed in Settings). Snap back to a
-  // valid court rather than submitting a stale name.
+  // the list changes (e.g. a court renamed/removed in Settings). Snap back to a valid
+  // court rather than submitting a stale name. Depends only on courts/court; reads
+  // matches via ref so only an actual court removal (not occupancy) moves the selection.
   useEffect(() => {
-    if (court && !courts.includes(court)) setCourt(courts[0] ?? "");
+    if (court && !courts.includes(court)) setCourt(firstFreeCourt(courts, matchesRef.current));
   }, [courts, court]);
 
-  const nameMap = new Map(players.map((p) => [p.id, p.display_name]));
+  const nameMap = useMemo(
+    () => new Map(players.map((p) => [p.id, p.display_name])),
+    [players],
+  );
+
+  // In-progress match occupying each court (for the court-picker grid) — same source
+  // `firstFreeCourt` derives from, so the grid labels and the default can't disagree.
+  const occupiedByCourt = useMemo(() => occupiedCourtMap(matches), [matches]);
 
   // Prior meetings: non-cancelled matches where the same two pairs (order-
   // independent, within-side and between-side) already faced each other.
@@ -950,7 +966,7 @@ function ManualMatchDialog({
   }, [priorMeetings, nameMap]);
 
   function reset() {
-    setCourt(courts[0] ?? "");
+    setCourt(firstFreeCourt(courts, matches));
     setSideA1(UNSET);
     setSideA2(UNSET);
     setSideB1(UNSET);
@@ -1005,28 +1021,50 @@ function ManualMatchDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Court */}
-          <div className="space-y-1">
-            <Label htmlFor="mm-court" className="text-sm font-medium">
-              สนาม
-            </Label>
+          {/* Court — toggle grid showing live occupancy (occupied courts stay selectable) */}
+          <div className="space-y-1.5">
+            <Label id="mm-court-label" className="text-sm font-medium">สนาม</Label>
             {courts.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 ยังไม่ได้ตั้งค่าสนาม — เพิ่มในแท็บตั้งค่า
               </p>
             ) : (
-              <Select value={court} onValueChange={(v) => setCourt(v ?? "")}>
-                <SelectTrigger id="mm-court" className="h-8 w-32 text-sm">
-                  <SelectValue>{(v: string) => `สนาม ${v}`}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  {courts.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      สนาม {c}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby="mm-court-label">
+                {courts.map((c) => {
+                  const occ = occupiedByCourt.get(c);
+                  const selected = court === c;
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCourt(c)}
+                      aria-pressed={selected}
+                      className={cn(
+                        "flex flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
+                        selected
+                          ? "border-primary bg-primary/10 ring-1 ring-primary"
+                          : "border-border hover:border-primary/50 hover:bg-muted/50",
+                      )}
+                    >
+                      <span className="flex w-full items-center gap-1.5 text-sm font-medium">
+                        สนาม {c}
+                        {selected && <Check className="h-3.5 w-3.5 text-primary" />}
+                      </span>
+                      {occ ? (
+                        <span className="line-clamp-2 text-[11px] leading-tight text-warning-foreground">
+                          กำลังเล่น: {resolveSide(occ.side_a_player1, occ.side_a_player2, nameMap)}
+                          {" vs "}
+                          {resolveSide(occ.side_b_player1, occ.side_b_player2, nameMap)}
+                        </span>
+                      ) : (
+                        <span className="text-[11px] leading-tight text-muted-foreground">
+                          ว่าง
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
 

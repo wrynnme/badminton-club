@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/ui/print-button";
+import { embeddedReal } from "@/lib/tournament/levels";
 import type { Tournament, TeamPlayer } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,7 @@ export default async function PrintRosterPage({
 
   const { data: teamsData } = await sb
     .from("teams")
-    .select("*, players:team_players(*)")
+    .select("*, players:team_players(*, levels:level_id(real))")
     .eq("tournament_id", id)
     .order("created_at");
   const teams: TeamWithPlayers[] = (teamsData ?? []) as unknown as TeamWithPlayers[];
@@ -114,15 +115,18 @@ export default async function PrintRosterPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedPlayers.map((p) => (
+                  {sortedPlayers.map((p) => {
+                    const lvl = embeddedReal(p.levels);
+                    return (
                     <tr key={p.id} className="border-b border-gray-100">
                       <td className="py-1 pr-3">{p.display_name}</td>
                       <td className="py-1 pr-3 text-gray-500">
                         {p.role === "captain" ? "กัปตัน" : "สมาชิก"}
                       </td>
-                      <td className="py-1">{p.level ?? "—"}</td>
+                      <td className="py-1">{lvl != null ? String(lvl) : "—"}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
 

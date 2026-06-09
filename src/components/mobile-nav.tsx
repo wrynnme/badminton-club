@@ -67,6 +67,15 @@ export function MobileNav({
                 ออก
               </Button>
             </form>
+            <form action="/api/auth/logout-all" method="post">
+              <Button
+                variant="ghost"
+                type="submit"
+                className="min-h-11 w-full justify-start text-muted-foreground"
+              >
+                ออกจากทุกอุปกรณ์
+              </Button>
+            </form>
           </>
         ) : (
           <Link href="/" className={item}>

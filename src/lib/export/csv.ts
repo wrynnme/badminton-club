@@ -1,15 +1,18 @@
 import type { Match, Team, TeamPlayer, PairWithPlayers, MatchUnit } from "@/lib/types";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { parseDivision } from "@/lib/tournament/divisions";
+import { embeddedReal } from "@/lib/tournament/levels";
 
-function escapeCsv(v: string | number | null | undefined): string {
+export function escapeCsv(v: string | number | null | undefined): string {
   const s = String(v ?? "");
   return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function row(...cols: (string | number | null | undefined)[]): string {
+export function csvRow(...cols: (string | number | null | undefined)[]): string {
   return cols.map(escapeCsv).join(",");
 }
+
+const row = csvRow;
 
 function roundLabel(m: Match): string {
   if (m.round_type === "group") return "กลุ่ม";
@@ -103,7 +106,8 @@ export function generateRosterCsv(teams: (Team & { players: TeamPlayer[] })[], p
     for (const p of sorted) {
       const pair = pairByPlayerId.get(p.id);
       const pairName = pair ? pair.display_pair_name ?? [pair.player1?.display_name, pair.player2?.display_name].filter(Boolean).join(" / ") : "";
-      lines.push(row(t.name, t.color ?? "", p.csv_id ?? "", p.display_name, p.role === "captain" ? "หัวหน้า" : "สมาชิก", p.level ?? "", pair?.id ?? "", pairName, pair?.pair_level ?? ""));
+      const lvl = embeddedReal(p.levels);
+      lines.push(row(t.name, t.color ?? "", p.csv_id ?? "", p.display_name, p.role === "captain" ? "หัวหน้า" : "สมาชิก", lvl != null ? String(lvl) : "", pair?.id ?? "", pairName, pair?.pair_level ?? ""));
     }
   }
 

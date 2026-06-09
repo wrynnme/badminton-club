@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useId, useEffect, useCallback } from "react";
+import { useState, useTransition, useId, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 // Progress-bar-aware router for user mutations; the plain one stays for the
 // 30s auto-refresh interval so the top bar doesn't flash on every tick.
@@ -16,9 +16,11 @@ import {
   closestCenter,
   KeyboardSensor,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -31,8 +33,9 @@ import { CSS } from "@dnd-kit/utilities";
 import { Pencil } from "lucide-react";
 import { LeaveButton } from "@/components/club/leave-button";
 import { KickButton } from "@/components/club/kick-button";
-import { reorderPlayersAction, toggleCheckInAction, updateClubPlayerSessionAction, renameClubGuestAction } from "@/lib/actions/clubs";
+import { reorderPlayersAction, toggleCheckInAction, updateClubPlayerSessionAction, renameClubGuestAction, promoteClubReserveAction } from "@/lib/actions/clubs";
 import type { ClubPlayer, Level } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type Props = {
   clubId: string;
@@ -454,7 +457,7 @@ function SortableItem({
     <button
       {...attributes}
       {...listeners}
-      className="cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
+      className="flex h-9 w-9 -ml-1.5 items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
       aria-label="ลาก"
       type="button"
     >
@@ -485,7 +488,7 @@ function SortableItem({
   );
 }
 
-// ─── Reserve row (non-draggable) ──────────────────────────────────────────────
+// ─── Reserve row (draggable → drop into active list to promote) ───────────────
 
 function ReserveItem({
   player,
@@ -506,8 +509,35 @@ function ReserveItem({
   sessionEnd?: string;
   levelById?: Map<string, { label: string }>;
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: player.id,
+    disabled: !canManage,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 0.7,
+  };
+
+  const dragHandle = canManage ? (
+    <button
+      {...attributes}
+      {...listeners}
+      className="flex h-9 w-9 -ml-1.5 items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
+      aria-label="ลากขึ้นเพื่อเป็นตัวจริง"
+      type="button"
+    >
+      <GripVertical className="h-4 w-4" />
+    </button>
+  ) : null;
+
   return (
-    <li className="flex flex-col border rounded px-3 py-2 bg-background text-sm opacity-70">
+    <li
+      ref={setNodeRef}
+      style={style}
+      className="flex flex-col border rounded px-3 py-2 bg-background text-sm"
+    >
       <PlayerRowBody
         player={player}
         clubId={clubId}
@@ -516,10 +546,61 @@ function ReserveItem({
         sessionStart={sessionStart}
         sessionEnd={sessionEnd}
         levelById={levelById}
-        dragHandle={null}
+        dragHandle={dragHandle}
         positionLabel={`#${rank}`}
       />
     </li>
+  );
+}
+
+// ─── Active drop zone — wraps the active list so a dragged reserve has a target ─
+
+/** Stable id for the active-list droppable zone (distinct from any player UUID). */
+const ACTIVE_ZONE_ID = "__active_zone__";
+
+function ActiveDropZone({
+  highlight,
+  dropDisabled,
+  children,
+}: {
+  /** True while a reserve is being dragged — show the "drop here to promote" cue. */
+  highlight: boolean;
+  /**
+   * Disable the zone droppable when active rows exist — dropping onto any active
+   * row already promotes a reserve, and an always-on zone (whose rect spans the
+   * whole list) would out-compete individual rows in closestCenter and silently
+   * no-op active reorders. The zone is only the drop target when active is empty.
+   */
+  dropDisabled: boolean;
+  children: ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id: ACTIVE_ZONE_ID, disabled: dropDisabled });
+  // Affordance must match where a drop actually lands:
+  //  - active empty (zone IS the droppable) → dashed "drop here" target + banner.
+  //  - active has rows (zone disabled, rows are the targets) → only a subtle ring;
+  //    a dashed "drop in this area" banner would be a false affordance, since a drop
+  //    on the banner/padding resolves to the nearest row, not the zone.
+  const showTarget = highlight && !dropDisabled;
+  const showRing = highlight && dropDisabled;
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "rounded-md transition-colors",
+        showTarget &&
+          `border-2 border-dashed p-1 ${
+            isOver ? "border-primary bg-primary/10" : "border-primary/40 bg-primary/5"
+          }`,
+        showRing && "ring-1 ring-primary/40",
+      )}
+    >
+      {showTarget && (
+        <p className="px-2 py-1 text-center text-[11px] font-medium text-primary">
+          วางที่นี่เพื่อเลื่อนเป็นตัวจริง
+        </p>
+      )}
+      {children}
+    </div>
   );
 }
 
@@ -538,14 +619,22 @@ export function SortablePlayerList({
     ? new Map(levels.map((l) => [l.id, l]))
     : undefined;
   const [items, setItems] = useState(players);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const [refreshing, startRefresh] = useTransition();
   const dndId = useId();
   const router = useRouter();
+  // True while an optimistic promote/reorder is in flight. The 30s auto-refresh
+  // skips its tick during this window so a stale server snapshot can't revert the
+  // optimistic state mid-action. (A ref, not state, so it doesn't churn `refresh`'s
+  // identity and reset the interval.) Note: this only guards the timer — `players`
+  // changing from any OTHER parent re-render still reconciles via the effect below.
+  const mutatingRef = useRef(false);
 
   useEffect(() => { setItems(players); }, [players]);
 
   const refresh = useCallback(() => {
+    if (mutatingRef.current) return;
     startRefresh(() => { router.refresh(); });
   }, [router]);
 
@@ -562,18 +651,64 @@ export function SortablePlayerList({
   // Split into active and reserve; preserve relative order within each group.
   const active = items.filter((p) => p.status === "active");
   const reserve = items.filter((p) => p.status === "reserve");
+  // A reserve is mid-drag → highlight the active list as the promote drop target.
+  const draggingReserve = draggingId != null && reserve.some((p) => p.id === draggingId);
+
+  function handleDragStart(event: DragStartEvent) {
+    setDraggingId(String(event.active.id));
+  }
 
   function handleDragEnd(event: DragEndEvent) {
+    setDraggingId(null);
     const { active: dragActive, over } = event;
-    if (!over || dragActive.id === over.id) return;
-    const oldIndex = active.findIndex((p) => p.id === dragActive.id);
-    const newIndex = active.findIndex((p) => p.id === over.id);
+    if (!over) return;
+
+    const draggedId = String(dragActive.id);
+    const overId = String(over.id);
+    const isReserveDragged = reserve.some((p) => p.id === draggedId);
+    const overActive = overId === ACTIVE_ZONE_ID || active.some((p) => p.id === overId);
+
+    // Reserve dragged into the active list → promote (admin override, ignores cap).
+    if (isReserveDragged) {
+      if (!overActive) return; // dropped back among reserves → no-op (cancel)
+      // Optimistic: flip status; the filters re-derive active/reserve. The page
+      // orders club_players by position ASC and the server promote keeps position,
+      // so a reserve (joined-later → higher position) renders at the active tail on
+      // both the optimistic array and the next server snapshot.
+      setItems((prev) =>
+        prev.map((p) => (p.id === draggedId ? { ...p, status: "active" } : p)),
+      );
+      mutatingRef.current = true;
+      startTransition(async () => {
+        try {
+          const res = await promoteClubReserveAction({ clubId, playerId: draggedId });
+          if ("error" in res) {
+            toast.error(res.error);
+            router.refresh(); // revert optimistic flip from server truth
+          }
+        } finally {
+          mutatingRef.current = false;
+        }
+      });
+      return;
+    }
+
+    // Active row reordered within the active list.
+    if (draggedId === overId) return;
+    const oldIndex = active.findIndex((p) => p.id === draggedId);
+    const newIndex = active.findIndex((p) => p.id === overId);
+    if (oldIndex === -1 || newIndex === -1) return; // dropped on zone/reserve → ignore
     const reorderedActive = arrayMove(active, oldIndex, newIndex);
     // Merge back: active first (reordered), reserves unchanged at tail.
     setItems([...reorderedActive, ...reserve]);
+    mutatingRef.current = true;
     startTransition(async () => {
-      // Requirement #3: pass ONLY active player ids.
-      await reorderPlayersAction(clubId, reorderedActive.map((p) => p.id));
+      try {
+        // Requirement #3: pass ONLY active player ids.
+        await reorderPlayersAction(clubId, reorderedActive.map((p) => p.id));
+      } finally {
+        mutatingRef.current = false;
+      }
     });
   }
 
@@ -619,56 +754,73 @@ export function SortablePlayerList({
         {refreshBtn}
       </div>
 
-      {/* Active players — drag-reorderable */}
+      {/* One DndContext over both lists so a reserve can be dragged up into the
+          active list (→ promote) as well as active rows reordered among themselves. */}
       <DndContext
         id={dndId}
         sensors={sensors}
         collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
+        onDragCancel={() => setDraggingId(null)}
       >
-        <SortableContext items={active.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-          <ol className="space-y-1">
-            {active.map((p, i) => (
-              <SortableItem
-                key={p.id}
-                player={p}
-                index={i}
-                clubId={clubId}
-                sessionProfileId={sessionProfileId}
-                canManage={canManage}
-                sessionStart={sessionStart}
-                sessionEnd={sessionEnd}
-                levelById={levelById}
-              />
-            ))}
-          </ol>
-        </SortableContext>
-      </DndContext>
+        {/* Active players — drag-reorderable; also the drop target to promote a reserve */}
+        <ActiveDropZone highlight={draggingReserve} dropDisabled={active.length > 0}>
+          <SortableContext items={active.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+            <ol className="space-y-1">
+              {active.length === 0 ? (
+                <li className="rounded border border-dashed px-3 py-3 text-center text-xs text-muted-foreground">
+                  ยังไม่มีตัวจริง
+                </li>
+              ) : (
+                active.map((p, i) => (
+                  <SortableItem
+                    key={p.id}
+                    player={p}
+                    index={i}
+                    clubId={clubId}
+                    sessionProfileId={sessionProfileId}
+                    canManage={canManage}
+                    sessionStart={sessionStart}
+                    sessionEnd={sessionEnd}
+                    levelById={levelById}
+                  />
+                ))
+              )}
+            </ol>
+          </SortableContext>
+        </ActiveDropZone>
 
-      {/* Reserve players — non-draggable waitlist */}
-      {reserve.length > 0 && (
-        <div className="mt-3 space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-muted-foreground">สำรอง ({reserve.length})</span>
-            <Badge variant="secondary" className="text-xs">รอคิว</Badge>
+        {/* Reserve players — drag up into the active list to promote */}
+        {reserve.length > 0 && (
+          <div className="mt-3 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground">สำรอง ({reserve.length})</span>
+              <Badge variant="secondary" className="text-xs">รอคิว</Badge>
+              {canManage && (
+                <span className="text-[11px] text-muted-foreground">ลากขึ้นเพื่อเลื่อนเป็นตัวจริง</span>
+              )}
+            </div>
+            <SortableContext items={reserve.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+              <ol className="space-y-1">
+                {reserve.map((p, i) => (
+                  <ReserveItem
+                    key={p.id}
+                    player={p}
+                    rank={i + 1}
+                    clubId={clubId}
+                    sessionProfileId={sessionProfileId}
+                    canManage={canManage}
+                    sessionStart={sessionStart}
+                    sessionEnd={sessionEnd}
+                    levelById={levelById}
+                  />
+                ))}
+              </ol>
+            </SortableContext>
           </div>
-          <ol className="space-y-1">
-            {reserve.map((p, i) => (
-              <ReserveItem
-                key={p.id}
-                player={p}
-                rank={i + 1}
-                clubId={clubId}
-                sessionProfileId={sessionProfileId}
-                canManage={canManage}
-                sessionStart={sessionStart}
-                sessionEnd={sessionEnd}
-                levelById={levelById}
-              />
-            ))}
-          </ol>
-        </div>
-      )}
+        )}
+      </DndContext>
     </div>
   );
 }

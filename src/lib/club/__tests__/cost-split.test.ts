@@ -245,17 +245,18 @@ describe("computeClubSplit — shuttle even (per-shuttle price)", () => {
     expect(r.A.shuttle).toBe(0);
   });
 
-  it("rounds to whole baht preserving the collected total", () => {
-    // 1 shuttle × 20 = 20 ÷ 3 = 6.67 each → rounds, remainder on largest, sum 20.
-    const sum = computeClubSplit(
+  it("ceils each share up to a whole baht (over-collects, equal figures)", () => {
+    // 1 shuttle × 20 = 20 ÷ 3 = 6.67 each → ceil 7 each → sum 21 (over-collects by 1).
+    const rows = computeClubSplit(
       base({
         courtFee: 0,
         shuttleSplit: "even",
         shuttlePrice: 20,
         matches: [{ playerIds: ["A"], shuttles: 1 }],
       }),
-    ).reduce((s, r) => s + r.shuttle, 0);
-    expect(sum).toBe(20);
+    );
+    expect(rows.map((r) => r.shuttle)).toEqual([7, 7, 7]);
+    expect(rows.reduce((s, r) => s + r.shuttle, 0)).toBe(21);
   });
 });
 
@@ -278,12 +279,12 @@ describe("computeClubSplit — combined + rounding", () => {
     expect(rows.reduce((s, x) => s + x.total, 0)).toBe(720 + 60);
   });
 
-  it("rounding remainder lands on the largest payer, bucket sum exact", () => {
-    // courtFee 100 / 3 even = 33.33 each → rounds 33/33/33 = 99, remainder +1 → largest gets 34.
+  it("ceils every share up — equal players get equal figures (over-collects)", () => {
+    // courtFee 100 / 3 even = 33.33 each → ceil 34 each = 102 (over-collects by 2); no single payer spikes.
     const rows = computeClubSplit(base({ courtFee: 100, courtSplit: "even" }));
     const sum = rows.reduce((s, x) => s + x.court, 0);
-    expect(sum).toBe(100);
-    expect(rows.map((x) => x.court).sort((a, b) => a - b)).toEqual([33, 33, 34]);
+    expect(rows.map((x) => x.court)).toEqual([34, 34, 34]);
+    expect(sum).toBe(102);
   });
 
   it("returns one row per player, input order preserved", () => {
@@ -350,9 +351,11 @@ describe("computeClubSplit — shuttle per_match", () => {
     expect(r.A.shuttle).toBe(0);
   });
 
-  it("rounds to whole baht preserving collected total (price 70 ÷ 4)", () => {
-    const sum = computeClubSplit(pm({ shuttlePrice: 70 })).reduce((s, r) => s + r.shuttle, 0);
-    expect(sum).toBe(70); // 17.5 each → rounds, remainder dumped on largest
+  it("ceils each share up to a whole baht (price 70 ÷ 4 → 18 each)", () => {
+    const rows = computeClubSplit(pm({ shuttlePrice: 70 }));
+    expect(rows.map((r) => r.shuttle)).toEqual([18, 18, 18, 18]);
+    // 17.5 each → ceil 18 each → 72 (over-collects by 2)
+    expect(rows.reduce((s, r) => s + r.shuttle, 0)).toBe(72);
   });
 
   it("drops the share of a player not in the roster (under-collect)", () => {
