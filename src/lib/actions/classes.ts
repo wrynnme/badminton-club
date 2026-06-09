@@ -78,22 +78,25 @@ async function revalidateTournamentPaths(
 }
 
 /**
- * Returns the tournament-global next match_number (max across ALL round_types).
- * Must continue from the overall max so class matches don't collide with
- * each other or with existing sports_day matches in the same tournament.
+ * Atomically reserve a contiguous block of `count` tournament-global match_numbers
+ * and return the base (assign match_number = base+1 .. base+count). Two concurrent
+ * class generations in the same tournament can no longer collide: the RPC bumps a
+ * per-tournament counter (tournaments.match_number_hwm) in a single UPDATE under a
+ * row lock, GREATEST-ed with the live max(match_number) so it also stays correct
+ * after a sports_day→competition upgrade. Replaces the old read-then-insert
+ * getNextGlobalMatchNumber (core-review P2 race).
  */
-async function getNextGlobalMatchNumber(
+async function reserveMatchNumbers(
   sb: Awaited<ReturnType<typeof createAdminClient>>,
   tournamentId: string,
+  count: number,
 ): Promise<number> {
-  const { data } = await sb
-    .from("matches")
-    .select("match_number")
-    .eq("tournament_id", tournamentId)
-    .order("match_number", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  return (data?.match_number ?? 0) + 1;
+  const { data, error } = await sb.rpc("reserve_match_numbers", {
+    p_tournament_id: tournamentId,
+    p_count: count,
+  });
+  if (error) throw new Error(`reserve_match_numbers: ${error.message}`);
+  return (data as number | null) ?? 0;
 }
 
 /** Resolve the tournament_id for a class row (used in permission checks). */
@@ -543,9 +546,6 @@ export async function generateGroupsForClassAction(
   // Build a lookup: pairId → teamId for round-robin construction.
   const pairTeamMap = new Map(pairs.map((p) => [p.id, p.team_id]));
 
-  // Reserve match_number range from tournament-global max.
-  let nextMatchNum = await getNextGlobalMatchNumber(sb, tournamentId);
-
   const matchInserts: Record<string, unknown>[] = [];
 
   for (let gi = 0; gi < groupPairArrays.length; gi++) {
@@ -568,7 +568,6 @@ export async function generateGroupsForClassAction(
         group_id: groupId,
         round_type: "group",
         round_number: 1,
-        match_number: nextMatchNum++,
         pair_a_id: m.pairAId,
         pair_b_id: m.pairBId,
         // team_a_id / team_b_id intentionally omitted — pair mode (null)
@@ -584,6 +583,10 @@ export async function generateGroupsForClassAction(
     await sb.from("groups").delete().eq("class_id", classId).eq("tournament_id", tournamentId);
     return { error: "ไม่สามารถสร้างแมตช์ได้ — ตรวจสอบจำนวนคู่ในกลุ่ม" };
   }
+
+  // Reserve a contiguous match_number block atomically (per-tournament counter).
+  const base = await reserveMatchNumbers(sb, tournamentId, matchInserts.length);
+  matchInserts.forEach((mi, i) => { mi.match_number = base + i + 1; });
 
   const { error: matchInsertErr } = await sb.from("matches").insert(matchInserts);
   if (matchInsertErr) {
@@ -681,7 +684,6 @@ export async function generatePairMatchesForClassAction(
     .eq("round_type", "group");
 
   const pairTeamMap = new Map(pairs.map((p) => [p.id, p.team_id]));
-  let nextMatchNum = await getNextGlobalMatchNumber(sb, tournamentId);
   const matchInserts: Record<string, unknown>[] = [];
 
   for (let gi = 0; gi < groupPairArrays.length; gi++) {
@@ -702,7 +704,6 @@ export async function generatePairMatchesForClassAction(
         group_id: groupId,
         round_type: "group",
         round_number: 1,
-        match_number: nextMatchNum++,
         pair_a_id: m.pairAId,
         pair_b_id: m.pairBId,
         division: null,
@@ -715,6 +716,10 @@ export async function generatePairMatchesForClassAction(
   if (matchInserts.length === 0) {
     return { error: "ไม่สามารถสร้างแมตช์ได้ — ตรวจสอบจำนวนคู่ในกลุ่ม" };
   }
+
+  // Reserve a contiguous match_number block atomically (per-tournament counter).
+  const base = await reserveMatchNumbers(sb, tournamentId, matchInserts.length);
+  matchInserts.forEach((mi, i) => { mi.match_number = base + i + 1; });
 
   const { error: matchInsertErr } = await sb.from("matches").insert(matchInserts);
   if (matchInsertErr) {
@@ -872,8 +877,8 @@ export async function generateKnockoutForClassAction(
     .eq("tournament_id", tournamentId)
     .eq("round_type", "knockout");
 
-  // match_number continues from tournament-global max.
-  const globalMax = (await getNextGlobalMatchNumber(sb, tournamentId)) - 1;
+  // Reserve a contiguous match_number block atomically (per-tournament counter).
+  const base = await reserveMatchNumbers(sb, tournamentId, allMatches.length);
 
   const colA = "pair_a_id";
   const colB = "pair_b_id";
@@ -884,7 +889,7 @@ export async function generateKnockoutForClassAction(
     class_id: classId,
     round_type: "knockout",
     round_number: m.roundNumber,
-    match_number: globalMax + i + 1,
+    match_number: base + i + 1,
     [colA]: m.teamAId,
     [colB]: m.teamBId,
     next_match_id: m.nextMatchId,
