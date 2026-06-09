@@ -647,7 +647,7 @@ Consolidated จากการ review spec ทั้งฉบับ + `bug.md` 
 
 7. **i18n TH/EN** — ตัดสินใจ go/no-go ให้ชัด (ยิ่งเลื่อนยิ่งแพง — ทุก feature ใหม่เพิ่ม Thai string ที่ต้อง extract); แผนละเอียด ~12–16 ชม. อยู่ใน UX polish backlog
 8. **Club queue Realtime** — club ยัง manual refresh; reuse pattern `TournamentLiveWrapper` (subscribe `club_matches` + `club_players`)
-9. **Security follow-ups** — ~~session revocation~~ ✅ DONE 2026-06-10 (M3 — ดู "Migration batch 2026-06-10"); เหลือ guest-profile rate limit (P2 จาก core review) + apply hardening migration `20260610000400_revoke_rpc_execute_anon.sql` (รอ user approve — ดู bug.md Open)
+9. **Security follow-ups** — ~~session revocation~~ ✅ DONE 2026-06-10 (M3 — ดู "Migration batch 2026-06-10"); ~~RPC grant hardening~~ ✅ APPLIED 2026-06-10 (`20260610000400`); เหลือ guest-profile rate limit (P2 จาก core review)
 10. **Prize summary + Wheelspin** — design ไว้แล้วด้านล่าง; ทำก่อน event ใหญ่ครั้งถัดไปก็ทัน
 
 **Gaps ที่ระบุเพิ่มจาก review 2026-06-10 (ไม่เคยอยู่ใน spec):**
@@ -666,7 +666,7 @@ tsc 0 · vitest **470/470** · introspect-verified pre/post apply (per-column + 
 - **M3 session revocation** (migration `20260610000300`, applied; 11/11 profiles sv=0): `profiles.session_version int NOT NULL DEFAULT 0` + RPC `bump_session_version`. Code: ดูบรรทัด Auth ใน `### Stack` (sv stamp + `React.cache()`'d `getSession` + `/api/auth/logout-all` + ปุ่ม 2 จุด).
 - **Bundled — dead `level` refs removed**: `types.ts` `TeamPlayer.level` ลบทิ้ง (+ optional `levels?` embed); `/tournaments/[id]/page.tsx` + print roster + `csv.ts` `generateRosterCsv` อ่าน level ผ่าน `embeddedReal(p.levels)` (embed `levels:level_id(real)`). = prerequisite ฝั่ง code ของ M4.
 - **M4 (ยังไม่ apply — Gate 4)**: `ALTER TABLE team_players DROP COLUMN IF EXISTS level` — ต้องรอ develop→master deploy ก่อน (prod code เก่ายังเขียน `level` text ใน `addTeamPlayerAction`) แล้วพิมพ์ยืนยันแยก. Introspect 2026-06-10: `club_players.level` + `clubs.shuttle_fee` ถูก DROP ไปแล้ว 2026-06-07 (`20260607000900`/`20260607001200`) — เหลือ `team_players.level` ตัวเดียว.
-- **Hardening pending (รอ approve)**: grant audit หลัง apply พบ RPC 8 ตัว (เก่า 5 + ใหม่ 3) มี anon/authenticated EXECUTE จาก Supabase default privileges — ยังไม่ exploitable (ทุกตารางที่แตะ RLS-on + SELECT-only policies) แต่ผิด invariant "service_role only"; migration เขียนรอที่ `20260610000400_revoke_rpc_execute_anon.sql` (ยังไม่ apply/commit).
+- **Hardening — ✅ APPLIED 2026-06-10 (user-approved)**: grant audit หลัง apply พบ RPC 8 ตัว (เก่า 5 + ใหม่ 3) มี anon/authenticated EXECUTE จาก Supabase default privileges — ยังไม่ exploitable (ทุกตารางที่แตะ RLS-on + SELECT-only policies) แต่ผิด invariant "service_role only". Migration `20260610000400_revoke_rpc_execute_anon` applied; verify แล้วทั้ง 8 เหลือ `postgres + service_role`. **Convention ใหม่สำหรับ RPC migration ทุกตัวต่อจากนี้: ต้อง `REVOKE EXECUTE ... FROM PUBLIC, anon, authenticated` เสมอ** (`REVOKE FROM PUBLIC` อย่างเดียวไม่พอ — ไม่ strip role-specific default grants).
 - **Smoke ที่ต้องทำบน preview ก่อน merge master**: auth round-trip (login เดิมไม่หลุด — cookie ไม่มี `sv` ต้องยังใช้ได้, login ใหม่ได้ `sv`, ปุ่ม "ออกทุกอุปกรณ์" เด้งทุก session ของ profile นั้น), เพิ่มผู้เล่น guest ผ่าน RPC ใหม่, บันทึก/รีเซ็ตผลแมตช์กลุ่ม (standings ขยับถูกผ่าน RPC ใหม่).
 
 ### ระบบก๊วน (Club session) — create form + rotation queue + cost split  [✅ DONE — rotation queue + cost (court/shuttle/per_match) + locked pairs + manual match; canonical summary in `## Club System`]
