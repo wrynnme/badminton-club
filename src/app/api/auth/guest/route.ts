@@ -19,13 +19,16 @@ export async function POST(req: NextRequest) {
   }
 
   const sb = await createAdminClient();
-  const { data: profile, error } = await sb
-    .from("profiles")
-    .insert({ display_name: name, is_guest: true })
-    .select()
-    .single();
+  // Create via RPC: bounded guest-signup rate limit (global cap/min under an
+  // advisory lock) so the open unauthenticated endpoint can't be scripted to bloat
+  // profiles unboundedly (core-review P2). No IP stored — global window, no PII.
+  const { data: profile, error } = await sb.rpc("create_guest_profile", { p_display_name: name });
 
-  if (error || !profile) {
+  if (error) {
+    const reason = error.message.includes("guest_rate_limit") ? "rate_limit" : "db";
+    return NextResponse.redirect(new URL(`/?auth_error=${reason}`, req.url), 303);
+  }
+  if (!profile) {
     return NextResponse.redirect(new URL("/?auth_error=db", req.url), 303);
   }
 

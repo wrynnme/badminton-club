@@ -27,6 +27,7 @@ export default async function Home({
     db: "บันทึก profile ไม่ได้",
     name: "ระบุชื่ออย่างน้อย 2 ตัวอักษร",
     login_required: "ต้องเข้าสู่ระบบก่อน",
+    rate_limit: "มีการสมัครเล่นเป็น guest มากเกินไป ลองใหม่อีกครั้งในอีกสักครู่",
   };
 
   return (
