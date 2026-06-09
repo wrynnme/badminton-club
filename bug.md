@@ -144,6 +144,26 @@ All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during ve
 
 ## Resolved
 
+### 2026-06-09 — Cost/usage cols + CSV export + delete-club + manager-only (develop) — static green
+
+Feature batch (see spec.md "Cost/usage columns + CSV export + delete-club + manager-only"): ceil-all rounding; cost table +ชม./ลูกที่ใช้ + Export CSV; dashboard player table +เวลา/ชม./ลูกที่ใช้/ค่าสนาม/ค่าลูก/รวม; owner-only delete-club (type-name confirm, CASCADE ×5 verified live); removed LINE self-join (`join-form` + `joinClubAction` deleted) + renamed เพิ่มผู้เล่น(guest)→เพิ่มผู้เล่น. **tsc 0 · vitest 95/95 club** (+12 new: cost-usage 8, cost-csv 4). New pure helpers all unit-tested (`clampedSessionMinutes`, `computePlayerUsage`, `formatHours`, `generateClubCostCsv`, `firstFreeCourt`/`occupiedCourtMap`). ⚠️ UI render paths (new columns, export download, delete dialog, removed join section) NOT live-smoked — verify on Vercel preview before master merge.
+
+### 2026-06-09 — Code review: court picker + reserve drag-promote (commit 3b2f09e) — 10 fixes (develop)
+
+`/code-review max` over the `master..develop` delta (court occupancy picker + reserve drag-promote + auto-promote-on-cap-raise, commit `3b2f09e`). 9 finder angles → no P0/P1; surfaced P2 concurrency/UX + P3 polish. All fixed in a follow-up commit. **Static-verified: tsc 0 · vitest 83/83 club (+7 new `courts.test.ts`).** ⚠️ **Live-smoke (DnD promote / cap-raise / reorder-mid-list / interval-gate-release) still PENDING — required before merge-to-master** (the touched code paths are DB/browser-coupled and unexercised by the unit suite).
+
+- **[P2] `promoteReservesToFill` ran on every `updateClubAction` + unlocked** — `clubs.ts`. Fix: fetch `max_players` in the existing auth select, gate `if (parsed.data.max_players > club.max_players)` → no wasted count queries on unrelated saves, no surprise promotes, narrows the unlocked race to the rare cap-raise. Residual (documented): a cap-raise still races a concurrent join (no row lock) → can exceed cap by the join count; promote to an RPC if it ever races hot.
+- **[P2] bulk promote missing status re-check** — added `.eq("status","reserve")` to the `.update(...).in("id",…)` so a concurrent kick/leave-promote can't be resurrected.
+- **[P2] `promoteClubReserveAction` false-error on concurrent promote** — when 0 rows flip, re-read status; if already `active` (leave-RPC won the race) return `{ok:true}` instead of "เลื่อนไม่ได้".
+- **[P2] `ActiveDropZone` false affordance** — dashed "วางที่นี่" target only renders when active is empty (zone IS the droppable); when active has rows the zone is disabled (rows are the targets) so it now shows only a subtle ring, not a misleading drop banner. (Boundary-gap drop still no-ops by design — preserves drop-back-to-cancel.)
+- **[P2] optimistic promote/reorder reverted by 30s auto-refresh** — `mutatingRef` (set before the transition, reset in `finally`) makes the interval skip its tick while an optimistic mutation is in flight. Partial by nature (only guards the timer; a non-interval parent re-render still reconciles via the `[players]` effect).
+- **[P3] court `<Label>` lost association** — added `role="group"` + `aria-labelledby` on the grid + `id` on the Label (kept `aria-pressed`, did not over-engineer to radiogroup).
+- **[P3] reserve drag handle ~16px touch target** — both active + reserve grab handles bumped to `h-9 w-9` (36px) tap area, no vertical negative margin (avoids adjacent-row overlap).
+- **[P3] court resync effect fired every 30s tick / jumped selection** — effect deps now `[courts, court]`; reads `matches` via `matchesRef` so only an actual court removal (not occupancy churn) moves the open dialog's selection.
+- **[P3] `nameMap` not memoized → `lastMeetingLabel` memo defeated** — wrapped in `useMemo([players])`.
+- **[Cleanup] occupancy filter duplicated** — extracted `firstFreeCourt` + `occupiedCourtMap` to pure `src/lib/club/courts.ts` (single source for grid + default; +7 vitest). The court-grid memo + default-court picker now derive from the same filter.
+- **[Won't fix] reserve rows animate as reorderable** — standard @dnd-kit drag feedback; converting reserves to `useDraggable` would break the working cross-container drop + remove drop-to-cancel. Left as-is.
+
 ### 2026-06-09 — Co-admin search leaked line_user_id (PII enumeration) (P2) (develop)
 
 tsc 0 · vitest 450 · build OK. No DB migration.

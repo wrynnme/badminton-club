@@ -53,31 +53,49 @@ function toMin(t: string): number {
 }
 
 /**
- * Round a bucket of exact per-player shares to whole baht while preserving the
- * collected total: every player rounds to nearest, then the leftover (target −
- * Σrounded) is dumped on the largest-exact payer. `target` is the rounded sum of
- * the EXACT shares (so an under-collecting gapPolicy stays under-collected).
+ * Minutes a player is present within the (possibly cross-midnight) session window,
+ * after clamping their window to it. Mirrors the by_time segmentation clamp so a
+ * "hours played" display column lines up with the court split. Returns 0 for a
+ * zero-length or inverted window.
  */
-function roundBucket(exact: Map<string, number>): Map<string, number> {
-  const rounded = new Map<string, number>();
-  let sum = 0;
-  let exactTotal = 0;
+export function clampedSessionMinutes(
+  start: string,
+  end: string,
+  sessionStart: string,
+  sessionEnd: string,
+): number {
+  const s0 = toMin(sessionStart);
+  let s1 = toMin(sessionEnd);
+  const crossesMidnight = s1 < s0;
+  if (crossesMidnight) s1 += 1440;
+  if (s1 - s0 <= 0) return 0;
+  const place = (t: string) => {
+    const m = toMin(t);
+    return crossesMidnight && m < s0 ? m + 1440 : m;
+  };
+  const ps = Math.max(place(start), s0);
+  const pe = Math.min(place(end), s1);
+  return Math.max(0, pe - ps);
+}
+
+/**
+ * Round every player's exact per-player share UP to the next whole baht
+ * (Math.ceil). Chosen over round-to-nearest + remainder-on-largest because that
+ * dumped the whole leftover on one payer, so two players with the identical share
+ * could differ by several baht (e.g. 104 vs 107). Ceil instead:
+ *  - every player in the same share bucket lands on the identical whole number,
+ *  - the collected sum is never short of the bill (it may OVER-collect by a few
+ *    baht — accepted by design: the organizer is covered),
+ *  - the column shows clean, equal figures.
+ * A tiny epsilon absorbs floating-point dust so an exact integer share isn't
+ * bumped up a baht; zero stays zero.
+ */
+function ceilBucket(exact: Map<string, number>): Map<string, number> {
+  const out = new Map<string, number>();
   for (const [id, v] of exact) {
-    const r = Math.round(v);
-    rounded.set(id, r);
-    sum += r;
-    exactTotal += v;
+    out.set(id, Math.max(0, Math.ceil(v - 1e-9)));
   }
-  const diff = Math.round(exactTotal) - sum;
-  if (diff !== 0 && exact.size > 0) {
-    let largestId = "";
-    let largestVal = -Infinity;
-    for (const [id, v] of exact) {
-      if (v > largestVal) { largestVal = v; largestId = id; }
-    }
-    rounded.set(largestId, (rounded.get(largestId) ?? 0) + diff);
-  }
-  return rounded;
+  return out;
 }
 
 function computeCourt(input: SplitInput): Map<string, number> {
@@ -192,13 +210,16 @@ function computeShuttle(input: SplitInput): Map<string, number> {
 }
 
 /**
- * Split a club session's court + shuttle fees across its players. Returns one
- * row per player with whole-baht court / shuttle / total shares; each bucket
- * sums to its collected total (court may under-collect when gapPolicy="ignore").
+ * Split a club session's court + shuttle fees across its players. Returns one row
+ * per player with whole-baht court / shuttle / total shares. Each share is rounded
+ * UP to a whole baht (see `ceilBucket`), so a bucket may slightly OVER-collect by
+ * design — equal players show equal figures and the bill is always covered. (Court
+ * can still fall short of the full fee at the segment level when gapPolicy="ignore"
+ * drops empty-court time — that's a deliberate non-charge, separate from rounding.)
  */
 export function computeClubSplit(input: SplitInput): SplitRow[] {
-  const court = roundBucket(computeCourt(input));
-  const shuttle = roundBucket(computeShuttle(input));
+  const court = ceilBucket(computeCourt(input));
+  const shuttle = ceilBucket(computeShuttle(input));
   return input.players.map((p) => {
     const c = court.get(p.id) ?? 0;
     const s = shuttle.get(p.id) ?? 0;

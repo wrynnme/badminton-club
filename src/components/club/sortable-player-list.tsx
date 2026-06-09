@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useId, useEffect, useCallback, type ReactNode } from "react";
+import { useState, useTransition, useId, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 // Progress-bar-aware router for user mutations; the plain one stays for the
 // 30s auto-refresh interval so the top bar doesn't flash on every tick.
@@ -35,6 +35,7 @@ import { LeaveButton } from "@/components/club/leave-button";
 import { KickButton } from "@/components/club/kick-button";
 import { reorderPlayersAction, toggleCheckInAction, updateClubPlayerSessionAction, renameClubGuestAction, promoteClubReserveAction } from "@/lib/actions/clubs";
 import type { ClubPlayer, Level } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 type Props = {
   clubId: string;
@@ -456,7 +457,7 @@ function SortableItem({
     <button
       {...attributes}
       {...listeners}
-      className="cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
+      className="flex h-9 w-9 -ml-1.5 items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
       aria-label="ลาก"
       type="button"
     >
@@ -523,7 +524,7 @@ function ReserveItem({
     <button
       {...attributes}
       {...listeners}
-      className="cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
+      className="flex h-9 w-9 -ml-1.5 items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
       aria-label="ลากขึ้นเพื่อเป็นตัวจริง"
       type="button"
     >
@@ -574,18 +575,26 @@ function ActiveDropZone({
   children: ReactNode;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: ACTIVE_ZONE_ID, disabled: dropDisabled });
+  // Affordance must match where a drop actually lands:
+  //  - active empty (zone IS the droppable) → dashed "drop here" target + banner.
+  //  - active has rows (zone disabled, rows are the targets) → only a subtle ring;
+  //    a dashed "drop in this area" banner would be a false affordance, since a drop
+  //    on the banner/padding resolves to the nearest row, not the zone.
+  const showTarget = highlight && !dropDisabled;
+  const showRing = highlight && dropDisabled;
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-md transition-colors ${
-        highlight
-          ? `border-2 border-dashed p-1 ${
-              isOver ? "border-primary bg-primary/10" : "border-primary/40 bg-primary/5"
-            }`
-          : ""
-      }`}
+      className={cn(
+        "rounded-md transition-colors",
+        showTarget &&
+          `border-2 border-dashed p-1 ${
+            isOver ? "border-primary bg-primary/10" : "border-primary/40 bg-primary/5"
+          }`,
+        showRing && "ring-1 ring-primary/40",
+      )}
     >
-      {highlight && (
+      {showTarget && (
         <p className="px-2 py-1 text-center text-[11px] font-medium text-primary">
           วางที่นี่เพื่อเลื่อนเป็นตัวจริง
         </p>
@@ -615,10 +624,17 @@ export function SortablePlayerList({
   const [refreshing, startRefresh] = useTransition();
   const dndId = useId();
   const router = useRouter();
+  // True while an optimistic promote/reorder is in flight. The 30s auto-refresh
+  // skips its tick during this window so a stale server snapshot can't revert the
+  // optimistic state mid-action. (A ref, not state, so it doesn't churn `refresh`'s
+  // identity and reset the interval.) Note: this only guards the timer — `players`
+  // changing from any OTHER parent re-render still reconciles via the effect below.
+  const mutatingRef = useRef(false);
 
   useEffect(() => { setItems(players); }, [players]);
 
   const refresh = useCallback(() => {
+    if (mutatingRef.current) return;
     startRefresh(() => { router.refresh(); });
   }, [router]);
 
@@ -654,18 +670,24 @@ export function SortablePlayerList({
 
     // Reserve dragged into the active list → promote (admin override, ignores cap).
     if (isReserveDragged) {
-      if (!overActive) return; // dropped back among reserves → no-op
-      // Optimistic: flip status; the filters below re-derive active/reserve. The
-      // promoted row keeps its array slot (after all active rows) so it lands at
-      // the active tail — matching the server, which only flips status.
+      if (!overActive) return; // dropped back among reserves → no-op (cancel)
+      // Optimistic: flip status; the filters re-derive active/reserve. The page
+      // orders club_players by position ASC and the server promote keeps position,
+      // so a reserve (joined-later → higher position) renders at the active tail on
+      // both the optimistic array and the next server snapshot.
       setItems((prev) =>
         prev.map((p) => (p.id === draggedId ? { ...p, status: "active" } : p)),
       );
+      mutatingRef.current = true;
       startTransition(async () => {
-        const res = await promoteClubReserveAction({ clubId, playerId: draggedId });
-        if ("error" in res) {
-          toast.error(res.error);
-          router.refresh(); // revert optimistic flip from server truth
+        try {
+          const res = await promoteClubReserveAction({ clubId, playerId: draggedId });
+          if ("error" in res) {
+            toast.error(res.error);
+            router.refresh(); // revert optimistic flip from server truth
+          }
+        } finally {
+          mutatingRef.current = false;
         }
       });
       return;
@@ -679,9 +701,14 @@ export function SortablePlayerList({
     const reorderedActive = arrayMove(active, oldIndex, newIndex);
     // Merge back: active first (reordered), reserves unchanged at tail.
     setItems([...reorderedActive, ...reserve]);
+    mutatingRef.current = true;
     startTransition(async () => {
-      // Requirement #3: pass ONLY active player ids.
-      await reorderPlayersAction(clubId, reorderedActive.map((p) => p.id));
+      try {
+        // Requirement #3: pass ONLY active player ids.
+        await reorderPlayersAction(clubId, reorderedActive.map((p) => p.id));
+      } finally {
+        mutatingRef.current = false;
+      }
     });
   }
 

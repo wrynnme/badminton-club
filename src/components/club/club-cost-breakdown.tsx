@@ -2,11 +2,14 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
-import { Loader2 } from "lucide-react";
+import { Loader2, Download } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { computeClubSplit, computeExpenseShares } from "@/lib/club/cost-split";
-import { buildClubSplitInput, playerSessionTotal } from "@/lib/club/cost-summary";
+import { buildClubSplitInput, playerSessionTotal, computePlayerUsage, formatHours } from "@/lib/club/cost-summary";
+import { generateClubCostCsv } from "@/lib/club/cost-csv";
+import { downloadCsv } from "@/lib/export/csv";
 import { updateClubPlayerDiscountAction } from "@/lib/actions/clubs";
 import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
 import type { ClubExpense } from "@/lib/actions/clubs";
@@ -143,6 +146,16 @@ export function ClubCostBreakdown({
   // the dashboard "ค่าใช้จ่ายรวม" card derive identical numbers (cost-summary.ts).
   const rows = computeClubSplit(buildClubSplitInput(club, players, matches));
 
+  // Per-player presence hours + shuttles used (info columns; same shared helper the
+  // CSV export uses, so the table and the download agree).
+  const usage = computePlayerUsage({ club, players, matches });
+
+  function handleExport() {
+    const csv = generateClubCostCsv({ club, players, matches, expenses });
+    const datePart = club.play_date ? `-${club.play_date}` : "";
+    downloadCsv(csv, `ค่าใช้จ่าย-${club.name}${datePart}.csv`);
+  }
+
   // Personal expense shares per player
   const expShare = computeExpenseShares(
     players.map((p) => p.id),
@@ -188,14 +201,29 @@ export function ClubCostBreakdown({
 
   return (
     <div className="space-y-2">
-      {splitDesc && (
-        <p className="text-xs text-muted-foreground">{splitDesc}</p>
-      )}
+      <div className="flex items-start justify-between gap-2">
+        {splitDesc ? (
+          <p className="text-xs text-muted-foreground">{splitDesc}</p>
+        ) : (
+          <span />
+        )}
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 shrink-0 gap-1 text-xs"
+          onClick={handleExport}
+        >
+          <Download className="h-3.5 w-3.5" />
+          Export CSV
+        </Button>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-muted-foreground text-xs">
               <th className="text-left py-1.5 pr-3 font-medium">ผู้เล่น</th>
+              <th className="text-right py-1.5 px-2 font-medium tabular-nums">ชม.</th>
+              <th className="text-right py-1.5 px-2 font-medium tabular-nums">ลูกที่ใช้</th>
               {hasCourt && (
                 <th className="text-right py-1.5 px-2 font-medium tabular-nums">
                   ค่าสนาม
@@ -226,6 +254,12 @@ export function ClubCostBreakdown({
                   <td className="py-1.5 pr-3 font-medium">
                     {nameById.get(row.playerId) ?? row.playerId}
                   </td>
+                  <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
+                    {formatHours((usage.get(row.playerId)?.hours ?? 0))}
+                  </td>
+                  <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
+                    {usage.get(row.playerId)?.shuttles ?? 0}
+                  </td>
                   {hasCourt && (
                     <td className="py-1.5 px-2 text-right tabular-nums">
                       {row.court.toLocaleString()}
@@ -255,6 +289,8 @@ export function ClubCostBreakdown({
           <tfoot>
             <tr className="border-t-2 font-semibold">
               <td className="py-1.5 pr-3 text-sm">รวมทั้งหมด</td>
+              <td className="py-1.5 px-2" aria-hidden />
+              <td className="py-1.5 px-2" aria-hidden />
               {hasCourt && (
                 <td className="py-1.5 px-2 text-right tabular-nums text-sm">
                   {totalCourt.toLocaleString()}

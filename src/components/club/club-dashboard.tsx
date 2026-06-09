@@ -20,8 +20,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { computeClubDashboard } from "@/lib/club/dashboard";
+import {
+  computeClubCostSummary,
+  computePlayerUsage,
+  playerSessionTotal,
+  formatHours,
+} from "@/lib/club/cost-summary";
 import { truncate } from "@/lib/utils";
-import type { ClubPlayer, ClubMatch, Level } from "@/lib/types";
+import type { Club, ClubPlayer, ClubMatch, Level } from "@/lib/types";
+import type { ClubExpense } from "@/lib/actions/clubs";
 
 const chartConfig = {
   games: { label: "เกม", color: "var(--chart-1)" },
@@ -29,16 +36,29 @@ const chartConfig = {
 } satisfies ChartConfig;
 
 type Props = {
+  club: Club;
   players: ClubPlayer[];
   matches: ClubMatch[];
   levels: Level[];
+  expenses: ClubExpense[];
   /** Session grand total from computeClubCostSummary (the canonical money path). */
   costTotal: number;
   maxPlayers: number;
 };
 
-export function ClubDashboard({ players, matches, levels, costTotal, maxPlayers }: Props) {
+export function ClubDashboard({ club, players, matches, levels, expenses, costTotal, maxPlayers }: Props) {
   const d = useMemo(() => computeClubDashboard(players, matches), [players, matches]);
+
+  // Per-player cost (court/shuttle/total) + usage (hours/shuttles) via the SAME
+  // shared helpers the cost-breakdown tab + CSV use, so every surface reconciles.
+  const cost = useMemo(
+    () => computeClubCostSummary({ club, players, matches, expenses }),
+    [club, players, matches, expenses],
+  );
+  const usage = useMemo(
+    () => computePlayerUsage({ club, players, matches }),
+    [club, players, matches],
+  );
 
   const nameById = useMemo(
     () => new Map(players.map((p) => [p.id, p.display_name])),
@@ -69,18 +89,33 @@ export function ClubDashboard({ players, matches, levels, costTotal, maxPlayers 
     [d.courtUsage],
   );
 
-  // Player table — sorted by games desc then name.
+  // Player table — sorted by games desc then name. Cost columns come from the
+  // shared cost summary (court/shuttle per player + expense − discount → total).
   const tableRows = useMemo(() => {
+    const courtById = new Map(cost.rows.map((r) => [r.playerId, r.court]));
+    const shuttleCostById = new Map(cost.rows.map((r) => [r.playerId, r.shuttle]));
     return players
-      .map((p) => ({
-        id: p.id,
-        name: p.display_name,
-        level: levelLabelById(p.level_id),
-        games: d.gamesByPlayer.get(p.id) ?? 0,
-        status: p.status,
-      }))
+      .map((p) => {
+        const u = usage.get(p.id) ?? { hours: 0, shuttles: 0 };
+        const court = courtById.get(p.id) ?? 0;
+        const shuttleCost = shuttleCostById.get(p.id) ?? 0;
+        const exp = cost.expShareById.get(p.id) ?? 0;
+        return {
+          id: p.id,
+          name: p.display_name,
+          level: levelLabelById(p.level_id),
+          time: `${(p.start_time ?? club.start_time).slice(0, 5)}–${(p.end_time ?? club.end_time).slice(0, 5)}`,
+          hours: u.hours,
+          games: d.gamesByPlayer.get(p.id) ?? 0,
+          shuttles: u.shuttles,
+          court,
+          shuttleCost,
+          total: playerSessionTotal({ court, shuttle: shuttleCost, expense: exp, discount: p.discount ?? 0 }),
+          status: p.status,
+        };
+      })
       .sort((a, b) => b.games - a.games || a.name.localeCompare(b.name, "th"));
-  }, [players, d.gamesByPlayer, levelLabelById]);
+  }, [players, d.gamesByPlayer, levelLabelById, cost, usage, club.start_time, club.end_time]);
 
   if (players.length === 0 && matches.length === 0) {
     return (
@@ -225,7 +260,13 @@ export function ClubDashboard({ players, matches, levels, costTotal, maxPlayers 
                   <TableHead className="w-8 text-center">#</TableHead>
                   <TableHead>ชื่อ</TableHead>
                   <TableHead className="w-16 text-center">ระดับ</TableHead>
+                  <TableHead className="w-24 text-center whitespace-nowrap">เวลา</TableHead>
+                  <TableHead className="w-12 text-center">ชม.</TableHead>
                   <TableHead className="w-12 text-center">เกม</TableHead>
+                  <TableHead className="w-16 text-center whitespace-nowrap">ลูกที่ใช้</TableHead>
+                  <TableHead className="w-16 text-right whitespace-nowrap">ค่าสนาม</TableHead>
+                  <TableHead className="w-16 text-right">ค่าลูก</TableHead>
+                  <TableHead className="w-16 text-right">รวม</TableHead>
                   <TableHead className="w-20 text-center">สถานะ</TableHead>
                 </TableRow>
               </TableHeader>
@@ -235,7 +276,13 @@ export function ClubDashboard({ players, matches, levels, costTotal, maxPlayers 
                     <TableCell className="text-center text-muted-foreground tabular-nums">{i + 1}</TableCell>
                     <TableCell className="font-medium">{r.name}</TableCell>
                     <TableCell className="text-center text-muted-foreground">{r.level}</TableCell>
+                    <TableCell className="text-center text-muted-foreground tabular-nums whitespace-nowrap text-xs">{r.time}</TableCell>
+                    <TableCell className="text-center tabular-nums text-muted-foreground">{formatHours(r.hours)}</TableCell>
                     <TableCell className="text-center tabular-nums font-semibold">{r.games}</TableCell>
+                    <TableCell className="text-center tabular-nums text-muted-foreground">{r.shuttles}</TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">{r.court.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums text-muted-foreground">{r.shuttleCost.toLocaleString()}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{r.total.toLocaleString()}</TableCell>
                     <TableCell className="text-center">
                       <Badge variant={r.status === "active" ? "secondary" : "outline"} className="text-[10px]">
                         {r.status === "active" ? "ตัวจริง" : "สำรอง"}

@@ -63,7 +63,7 @@ export function AddGuestPlayer({ clubId, full, levels }: Props) {
       <div className="flex flex-col gap-1.5">
         <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
           <UserPlus className="h-4 w-4 mr-1" />
-          เพิ่มผู้เล่น (guest)
+          เพิ่มผู้เล่น
         </Button>
         {full && (
           <p className="text-sm text-muted-foreground">เต็มแล้ว — เพิ่มเป็นสำรอง (รอคิว)</p>
@@ -80,7 +80,7 @@ export function AddGuestPlayer({ clubId, full, levels }: Props) {
       }}
       className="border rounded-lg p-4"
     >
-      <p className="text-sm font-medium mb-3">เพิ่มผู้เล่น (guest) — ไม่ต้องมี LINE</p>
+      <p className="text-sm font-medium mb-3">เพิ่มผู้เล่น</p>
       <FieldGroup>
         <form.Field
           name="display_name"

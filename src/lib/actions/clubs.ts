@@ -81,24 +81,64 @@ export async function updateClubAction(input: UpdateClubInput) {
   }
 
   const sb = await createAdminClient();
-  const { data: club } = await sb.from("clubs").select("owner_id").eq("id", id).single();
+  const { data: club } = await sb
+    .from("clubs")
+    .select("owner_id, max_players")
+    .eq("id", id)
+    .single();
   if (!club || club.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
 
   const { error } = await sb.from("clubs").update(parsed.data).eq("id", id);
   if (error) return { error: error.message };
 
-  // Raising max_players opens slots → auto-promote earliest reserves to fill them.
-  await promoteReservesToFill(sb, id, parsed.data.max_players);
+  // Only a RAISED cap opens slots → auto-promote earliest reserves to fill them.
+  // Gating on an actual increase (vs running on every settings save) avoids two
+  // wasted count queries per save, prevents surprise promotes on unrelated edits,
+  // and narrows the unlocked promote race to the rare cap-raise path.
+  if (parsed.data.max_players > club.max_players) {
+    await promoteReservesToFill(sb, id, parsed.data.max_players);
+  }
 
   revalidatePath(`/clubs/${id}`);
   return { ok: true };
 }
 
 /**
- * Promote earliest reserves (position asc, joined_at asc tiebreak) to active
- * until the active count reaches `maxPlayers`. No-op when already at/over cap or
- * no reserves wait. Called after max_players is raised in settings so the queue
- * fills the freed slots automatically — mirrors the leave-time promote RPC.
+ * OWNER-ONLY hard delete of a club. Co-admins cannot delete (uses the exact
+ * owner_id check, NOT assertCanManageClub). All child rows (club_players,
+ * club_matches, club_expenses, club_admins, club_locked_pairs) are removed by
+ * FK ON DELETE CASCADE — verified live, so a single delete on the club row is
+ * enough. Redirects to /clubs on success (redirect throws → called last).
+ */
+export async function deleteClubAction(clubId: string): Promise<{ error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  const { data: club } = await sb
+    .from("clubs")
+    .select("owner_id")
+    .eq("id", clubId)
+    .single();
+  if (!club || club.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
+
+  const { error } = await sb.from("clubs").delete().eq("id", clubId);
+  if (error) return { error: error.message };
+
+  revalidatePath("/clubs");
+  redirect("/clubs");
+}
+
+/**
+ * Promote earliest reserves (position asc, joined_at asc tiebreak) to active until
+ * the active count reaches `maxPlayers`. No-op when already at/over cap or no reserves
+ * wait. Called only on a max_players raise — mirrors the leave-time promote RPC.
+ *
+ * Not transactional/row-locked (unlike `remove_club_player_and_promote`): the
+ * select-then-update window can race a concurrent join that adds a fresh active,
+ * letting the headcount exceed the cap by the join count. The `.eq("status","reserve")`
+ * re-check on the write keeps two concurrent raises from double-promoting the same
+ * reserve. Acceptable for the rare cap-raise path; promote to an RPC if it ever races hot.
  */
 async function promoteReservesToFill(
   sb: Awaited<ReturnType<typeof createAdminClient>>,
@@ -122,20 +162,14 @@ async function promoteReservesToFill(
   await sb
     .from("club_players")
     .update({ status: "active" })
+    // Re-assert under the write: don't resurrect a row a concurrent kick/leave-promote
+    // already moved out of 'reserve' between the select above and this update.
+    .eq("status", "reserve")
     .in(
       "id",
       reserves.map((r) => r.id),
     );
 }
-
-const JoinSchema = z.object({
-  club_id: z.string().uuid(),
-  display_name: z.string().min(2, "ชื่อสั้นไป"),
-  level_id: z.string().uuid().optional().nullable(),
-  note: z.string().optional().nullable(),
-});
-
-export type JoinClubInput = z.infer<typeof JoinSchema>;
 
 /**
  * Head-counts for a club: `total` (for the next sequential position) and
@@ -157,47 +191,6 @@ async function countClubPlayers(
       .eq("status", "active"),
   ]);
   return { total: total ?? 0, active: active ?? 0 };
-}
-
-export async function joinClubAction(input: JoinClubInput) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-
-  const parsed = JoinSchema.safeParse(input);
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
-  }
-
-  const sb = await createAdminClient();
-
-  const { data: club } = await sb
-    .from("clubs")
-    .select("max_players")
-    .eq("id", parsed.data.club_id)
-    .single();
-  if (!club) return { error: "ไม่พบก๊วนนี้" };
-
-  const { total, active } = await countClubPlayers(sb, parsed.data.club_id);
-  // Full → join as reserve; auto-promoted when an active player leaves.
-  const status = active >= club.max_players ? "reserve" : "active";
-
-  const { error } = await sb.from("club_players").insert({
-    club_id: parsed.data.club_id,
-    profile_id: session.profileId,
-    display_name: parsed.data.display_name,
-    level_id: parsed.data.level_id || null,
-    note: parsed.data.note || null,
-    position: total + 1,
-    status,
-  });
-
-  if (error) {
-    if (error.code === "23505") return { error: "คุณลงชื่อไว้แล้ว" };
-    return { error: error.message };
-  }
-
-  revalidatePath(`/clubs/${parsed.data.club_id}`);
-  return { ok: true };
 }
 
 const GuestSchema = z.object({
@@ -571,7 +564,18 @@ export async function promoteClubReserveAction(input: { clubId: string; playerId
     .maybeSingle();
 
   if (error) return { error: error.message };
-  if (!updated) return { error: "ผู้เล่นนี้เลื่อนเป็นตัวจริงไม่ได้" };
+  if (!updated) {
+    // No reserve row flipped — either the player isn't here, or a concurrent
+    // leave/kick auto-promote already made them active. Re-read to tell the two
+    // apart so a benign double-promote returns success instead of a false error.
+    const { data: current } = await sb
+      .from("club_players")
+      .select("status")
+      .eq("id", input.playerId)
+      .eq("club_id", input.clubId)
+      .maybeSingle();
+    if (current?.status !== "active") return { error: "ผู้เล่นนี้เลื่อนเป็นตัวจริงไม่ได้" };
+  }
 
   revalidatePath(`/clubs/${input.clubId}`);
   return { ok: true };

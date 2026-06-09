@@ -8,6 +8,7 @@
 // over-collect, and per-player discounts are all reflected identically).
 
 import {
+  clampedSessionMinutes,
   computeClubSplit,
   computeExpenseShares,
   type SplitInput,
@@ -145,4 +146,51 @@ export function computeClubCostSummary(input: {
   const totalDiscount = players.reduce((s, p) => s + (p.discount ?? 0), 0);
 
   return { rows, expShareById, totalCourt, totalShuttle, totalExp, totalDiscount, grandTotal };
+}
+
+/** Format decimal hours for display: 3.0 → "3", 2.5 → "2.5", 1.333… → "1.3". */
+export function formatHours(h: number): string {
+  const r = Math.round(h * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+/** Per-player session usage: presence hours + shuttles consumed in matches joined. */
+export type PlayerUsage = { hours: number; shuttles: number };
+
+/**
+ * Per-player presence hours + shuttles used, summed over the in_progress+completed
+ * matches the player joined (same match filter the cost split uses, so the usage
+ * columns line up with the cost columns). `hours` is decimal hours (minutes ÷ 60).
+ * Shuttles credit the FULL match shuttle count to every participant — a usage count,
+ * NOT a fair share (the per-player shuttle COST is the ค่าลูก column).
+ */
+export function computePlayerUsage(input: {
+  club: Pick<Club, "start_time" | "end_time">;
+  players: Pick<ClubPlayer, "id" | "start_time" | "end_time">[];
+  matches: Pick<
+    ClubMatch,
+    "status" | "side_a_player1" | "side_a_player2" | "side_b_player1" | "side_b_player2" | "shuttles_used"
+  >[];
+}): Map<string, PlayerUsage> {
+  const usage = new Map<string, PlayerUsage>();
+  for (const p of input.players) {
+    const mins = clampedSessionMinutes(
+      p.start_time ?? input.club.start_time,
+      p.end_time ?? input.club.end_time,
+      input.club.start_time,
+      input.club.end_time,
+    );
+    usage.set(p.id, { hours: mins / 60, shuttles: 0 });
+  }
+  for (const m of input.matches) {
+    if (m.status !== "in_progress" && m.status !== "completed") continue;
+    const ids = [m.side_a_player1, m.side_a_player2, m.side_b_player1, m.side_b_player2].filter(
+      (id): id is string => Boolean(id),
+    );
+    for (const id of ids) {
+      const u = usage.get(id);
+      if (u) u.shuttles += m.shuttles_used;
+    }
+  }
+  return usage;
 }

@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { format } from "date-fns";
 import { CalendarDays, Clock, MapPin, Users, Wallet } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -9,12 +9,12 @@ import { Badge } from "@/components/ui/badge";
 import { ClubTabs } from "@/components/club/club-tabs";
 import { ClubDashboard } from "@/components/club/club-dashboard";
 import { computeClubCostSummary } from "@/lib/club/cost-summary";
-import { JoinForm } from "@/components/club/join-form";
 import { AddGuestPlayer } from "@/components/club/add-guest-player";
 import { EditClubForm } from "@/components/club/edit-club-form";
 import { SortablePlayerList } from "@/components/club/sortable-player-list";
 import { ExpenseManager } from "@/components/club/expense-manager";
 import { ClubCoAdminControls } from "@/components/club/club-co-admin-controls";
+import { DeleteClubButton } from "@/components/club/delete-club-button";
 import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
 import { HourlyHeadcount } from "@/components/club/hourly-headcount";
@@ -105,12 +105,18 @@ export default async function ClubDetailPage({
   const activeCount = players.filter((p) => p.status === "active").length;
   const reserveCount = players.filter((p) => p.status === "reserve").length;
   const full = activeCount >= club.max_players;
-  const myRow = session
-    ? players.find((p) => p.profile_id === session.profileId)
-    : null;
   const isOwner = session?.profileId === club.owner_id;
   const isCoAdmin = session ? coAdmins.some((a) => a.user_id === session.profileId) : false;
   const canManage = isOwner || isCoAdmin;
+
+  // Clubs are owner/co-admin only — non-managers can't view the club at all.
+  // Not logged in → login (return here after); logged-in non-manager → club list.
+  if (!canManage) {
+    if (!session) {
+      redirect(`/?auth_error=login_required&redirectTo=${encodeURIComponent(`/clubs/${club.id}`)}`);
+    }
+    redirect("/clubs");
+  }
 
   const queueSettings = parseQueueSettings(club.queue_settings);
 
@@ -192,32 +198,17 @@ export default async function ClubDetailPage({
           showSettings={canManage}
           dashboard={
             <ClubDashboard
+              club={club}
               players={players}
               matches={clubMatches}
               levels={levels}
+              expenses={expenses}
               costTotal={clubCostTotal}
               maxPlayers={club.max_players}
             />
           }
           checkin={
             <div className="space-y-6">
-              <section className="space-y-3">
-                <h2 className="font-semibold">ลงชื่อเล่น</h2>
-                {!session ? (
-                  <p className="text-sm text-muted-foreground">
-                    <a href="/" className="underline">เข้าสู่ระบบ</a> ก่อนลงชื่อ
-                  </p>
-                ) : (
-                  <JoinForm
-                    clubId={club.id}
-                    defaultName={session.displayName}
-                    full={full}
-                    alreadyJoined={!!myRow}
-                    levels={levels}
-                  />
-                )}
-              </section>
-
               <section className="space-y-2">
                 <h2 className="font-semibold">รายชื่อผู้เล่น ({joined})</h2>
                 {canManage && <AddGuestPlayer clubId={club.id} full={full} levels={levels} />}
@@ -326,6 +317,15 @@ export default async function ClubDetailPage({
               {canManage && <ClubCourtManager clubId={club.id} initialCourts={clubCourts} />}
               {canManage && <ClubQueueSettings clubId={club.id} initial={queueSettings} />}
               {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}
+              {isOwner && (
+                <div className="border-t border-destructive/30 pt-4 mt-2 space-y-3">
+                  <h2 className="font-semibold text-destructive">เขตอันตราย</h2>
+                  <p className="text-sm text-muted-foreground">
+                    ลบก๊วนนี้ถาวร พร้อมผู้เล่น แมตช์ และค่าใช้จ่ายทั้งหมด — กู้คืนไม่ได้
+                  </p>
+                  <DeleteClubButton clubId={club.id} clubName={club.name} />
+                </div>
+              )}
             </div>
           }
         />

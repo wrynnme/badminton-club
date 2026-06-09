@@ -72,6 +72,7 @@ import {
 } from "@/lib/actions/clubs";
 import type { ClubMatch } from "@/lib/types";
 import type { ClubQueueSettings } from "@/lib/club/queue-settings";
+import { firstFreeCourt, occupiedCourtMap } from "@/lib/club/courts";
 import { cn } from "@/lib/utils";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -870,21 +871,6 @@ function sideKey(ids: (string | null | undefined)[]): string {
   return ids.filter(Boolean).slice().sort().join("|");
 }
 
-/**
- * Default court for a new manual match: the first court with no in_progress
- * match on it (occupied courts stay selectable — a manual match is inserted as
- * pending and doesn't claim the court until started). Falls back to the first
- * court, then "".
- */
-function firstFreeCourt(courts: string[], matches: ClubMatch[]): string {
-  const occupied = new Set(
-    matches
-      .filter((m) => m.status === "in_progress" && m.court)
-      .map((m) => m.court as string),
-  );
-  return courts.find((c) => !occupied.has(c)) ?? courts[0] ?? "";
-}
-
 function ManualMatchDialog({
   clubId,
   players,
@@ -910,24 +896,28 @@ function ManualMatchDialog({
   const [sideB1, setSideB1] = useState(UNSET);
   const [sideB2, setSideB2] = useState(UNSET);
 
+  // Latest matches read by the snap effect without being a dependency — occupancy
+  // churning every 30s refresh must NOT re-run the effect (it would re-pick a free
+  // court and could jump the selection on a background refresh while the dialog is open).
+  const matchesRef = useRef(matches);
+  matchesRef.current = matches;
+
   // The dialog stays mounted across refreshes, so `court` can outlive its court if
-  // the list changes (e.g. a court renamed/removed in Settings). Snap back to a
-  // valid court rather than submitting a stale name. (Occupancy changing while the
-  // dialog is open does NOT move the selection — occupied courts stay valid.)
+  // the list changes (e.g. a court renamed/removed in Settings). Snap back to a valid
+  // court rather than submitting a stale name. Depends only on courts/court; reads
+  // matches via ref so only an actual court removal (not occupancy) moves the selection.
   useEffect(() => {
-    if (court && !courts.includes(court)) setCourt(firstFreeCourt(courts, matches));
-  }, [courts, court, matches]);
+    if (court && !courts.includes(court)) setCourt(firstFreeCourt(courts, matchesRef.current));
+  }, [courts, court]);
 
-  const nameMap = new Map(players.map((p) => [p.id, p.display_name]));
+  const nameMap = useMemo(
+    () => new Map(players.map((p) => [p.id, p.display_name])),
+    [players],
+  );
 
-  // In-progress match occupying each court (for the court-picker grid).
-  const occupiedByCourt = useMemo(() => {
-    const m = new Map<string, ClubMatch>();
-    for (const mt of matches) {
-      if (mt.status === "in_progress" && mt.court) m.set(mt.court, mt);
-    }
-    return m;
-  }, [matches]);
+  // In-progress match occupying each court (for the court-picker grid) — same source
+  // `firstFreeCourt` derives from, so the grid labels and the default can't disagree.
+  const occupiedByCourt = useMemo(() => occupiedCourtMap(matches), [matches]);
 
   // Prior meetings: non-cancelled matches where the same two pairs (order-
   // independent, within-side and between-side) already faced each other.
@@ -1033,13 +1023,13 @@ function ManualMatchDialog({
         <div className="space-y-4 py-2">
           {/* Court — toggle grid showing live occupancy (occupied courts stay selectable) */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium">สนาม</Label>
+            <Label id="mm-court-label" className="text-sm font-medium">สนาม</Label>
             {courts.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 ยังไม่ได้ตั้งค่าสนาม — เพิ่มในแท็บตั้งค่า
               </p>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby="mm-court-label">
                 {courts.map((c) => {
                   const occ = occupiedByCourt.get(c);
                   const selected = court === c;
