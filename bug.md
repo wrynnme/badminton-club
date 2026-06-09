@@ -4,20 +4,11 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-Open items below come from the 2026-06-09 whole-system core review (full report: `code-review-core-2026-06-09.html`). The IDOR cluster (P0 + 3×P1) is fixed (see Resolved); the rest remain open.
+**No open bugs as of 2026-06-10.** Every finding from the 2026-06-09 whole-system core review (`docs/reviews/code-review-core-2026-06-09.html` — 1 P0 + 4 P1 + 23 P2) is closed — full records in Resolved.
 
-### 2026-06-09 — Core code review: open follow-ups (develop)
+The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open)**: `computeExpenseShares` ceil-per-head over-collects a few baht (100฿/3 → 34×3 = 102). By design — equal players pay the same whole baht, the organizer is never short, and it stays reconciled across the cost-breakdown table + ExpenseManager. A fair largest-remainder split was offered and declined (user, 2026-06-09).
 
-Remaining after the IDOR-cluster + session-expiry + bracket-visual P1 fixes (all in Resolved). None block; surfaced by the core review.
-
-- ~~**[P2 ×11 remaining]** correctness/concurrency/hardening leads~~ **ALL CLOSED 2026-06-10** (re-verified vs current code — `importPairsCsv` whole-table-scan part was already fixed by the team-scoped `.in("team_id", allTeamIds)` query). 5 via the code-only batch + 3 via migrations. Sub-items:
-  - ~~**[P2] `route.ts:19` unbounded guest-profile creation**~~ **RESOLVED 2026-06-10** — migration `20260610000800_create_guest_profile` (RPC: advisory lock + global cap **60 guest signups / 1-minute window**; no IP/PII). `guest/route.ts` calls it; `auth_error=rate_limit` shows a friendly message. Applied to prod + DO-block rollback live-test (happy-path ok / 61-recent blocked / net-zero). See Resolved.
-  - ~~**[P2] `classes.ts:544` class match_number collision race**~~ **RESOLVED 2026-06-10** — migration `20260610000700_reserve_match_numbers` (`tournaments.match_number_hwm` counter + RPC: atomic `UPDATE … GREATEST(hwm, max)+count RETURNING base` under the row lock → durable contiguous reservation). All 3 class generate actions now reserve then insert (DB defaults preserved). Applied to prod + DO-block live-test (two reservations don't overlap: base2 = base1+count / net-zero). See Resolved.
-  - ~~**[P2] `clubs.ts:819` concurrent buildNextClubMatch double-draft**~~ **RESOLVED 2026-06-10** — migration `20260610000600_club_match_player_guard` (BEFORE INSERT/UPDATE trigger on `club_matches`: on `in_progress` transition takes `pg_advisory_xact_lock(club_id)` + rejects if any player is already in another in_progress match via array-overlap). Applied to prod + DO-block rollback live-test (first start ok, second-with-shared-player blocked, net-zero). See Resolved.
-- ~~**[P2 — needs prod migration, deferred]** two read-then-write concurrency races~~ **RESOLVED 2026-06-10** — both fixed via RPC migrations `20260610000100` (group_teams atomic delta) + `20260610000200` (club add under row lock), applied to prod. See Resolved.
-- ~~**[P2] RPC EXECUTE grants open to anon/authenticated**~~ **RESOLVED 2026-06-10 (user-approved)** — migration `20260610000400_revoke_rpc_execute_anon` applied; post-apply verify: all 8 functions (`apply_group_team_delta`, `add_club_player`, `bump_session_version`, `finish_club_match`, `delete_club_match`, `create_club_locked_pair`, `remove_club_player_and_promote`, `start_match_atomic`) now `postgres + service_role` only. Root cause: Supabase default privileges grant EXECUTE to anon+authenticated on every new public function (`REVOKE FROM PUBLIC` doesn't strip role-specific grants); was never exploitable (RLS-on + SELECT-only policies everywhere). Lesson for future RPC migrations: always `REVOKE ... FROM PUBLIC, anon, authenticated` explicitly.
-- **[P2 — won't fix, intended]** `computeExpenseShares` ceil-per-head over-collects by a few baht (100฿/3 → 102). Confirmed by user 2026-06-09 as by-design: everyone pays the same whole baht, organizer is covered, and it stays reconciled between the cost-breakdown table and ExpenseManager. Fair largest-remainder split was offered and declined.
-- ~~**[P1 follow-up] session revocation**~~ **RESOLVED 2026-06-10** — `profiles.session_version` + `bump_session_version` RPC (migration `20260610000300`, applied) + `sv` in the cookie + `React.cache()`'d `getSession()` check + `POST /api/auth/logout-all`. See Resolved.
+Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
 ### 2026-06-09 — Dashboard + cost review fixes (#9+#10): static + live-smoke, no findings (develop)
 
