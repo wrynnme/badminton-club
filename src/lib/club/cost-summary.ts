@@ -201,6 +201,7 @@ export function computePlayerUsage(input: {
 export type ClubCostRow = {
   playerId: string;
   hours: number;
+  games: number;
   shuttles: number;
   court: number;
   shuttle: number;
@@ -223,10 +224,22 @@ export function computeClubCostRows(input: {
   >[];
   matches: Parameters<typeof buildClubSplitInput>[2];
   expenses: CostExpenseInput[];
-}): { rows: ClubCostRow[]; totalCourt: number; totalShuttle: number; totalExp: number; totalDiscount: number; grandTotal: number } {
+}): {
+  rows: ClubCostRow[];
+  totalCourt: number;
+  totalShuttle: number;
+  totalExp: number;
+  totalDiscount: number;
+  grandTotal: number;
+  /** Physical total shuttles consumed (Σ shuttles_used over in_progress+completed
+   * matches — once per match). NOT the sum of the per-player `shuttles` column,
+   * which full-credits every participant and so over-counts. */
+  totalShuttlesUsed: number;
+} {
   const summary = computeClubCostSummary(input);
   const usage = computePlayerUsage(input);
   const discountById = new Map(input.players.map((p) => [p.id, p.discount ?? 0]));
+  const gamesById = new Map(input.players.map((p) => [p.id, p.games_played ?? 0]));
 
   const rows: ClubCostRow[] = summary.rows.map((r) => {
     const u = usage.get(r.playerId) ?? { hours: 0, shuttles: 0 };
@@ -235,6 +248,7 @@ export function computeClubCostRows(input: {
     return {
       playerId: r.playerId,
       hours: u.hours,
+      games: gamesById.get(r.playerId) ?? 0,
       shuttles: u.shuttles,
       court: r.court,
       shuttle: r.shuttle,
@@ -244,6 +258,10 @@ export function computeClubCostRows(input: {
     };
   });
 
+  const totalShuttlesUsed = input.matches
+    .filter((m) => m.status === "in_progress" || m.status === "completed")
+    .reduce((s, m) => s + m.shuttles_used, 0);
+
   return {
     rows,
     totalCourt: summary.totalCourt,
@@ -251,5 +269,6 @@ export function computeClubCostRows(input: {
     totalExp: summary.totalExp,
     totalDiscount: summary.totalDiscount,
     grandTotal: summary.grandTotal,
+    totalShuttlesUsed,
   };
 }

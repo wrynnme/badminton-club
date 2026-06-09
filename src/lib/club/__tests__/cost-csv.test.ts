@@ -41,14 +41,14 @@ describe("generateClubCostCsv", () => {
     });
     const lines = csv.split("\n");
     expect(lines[0]).toBe(
-      "ผู้เล่น,ชั่วโมงที่เล่น,ลูกที่ใช้,ค่าสนาม,ค่าลูก,ค่าใช้จ่ายส่วนบุคคล,ส่วนลด,รวม",
+      "ผู้เล่น,ชั่วโมงที่เล่น,เกม,ลูกที่ใช้,ค่าสนาม,ค่าลูก,ค่าใช้จ่ายส่วนบุคคล,ส่วนลด,รวม",
     );
     expect(lines).toHaveLength(4); // header + 2 players + total
-    // court 100 even / 2 = 50 each; full 3h window, 0 shuttles.
-    expect(lines[1]).toBe("A,3,0,50,0,0,0,50");
-    expect(lines[2]).toBe("B,3,0,50,0,0,0,50");
-    // total row: activity columns (hours, shuttles) blank; money summed.
-    expect(lines[3]).toBe("รวมทั้งหมด,,,100,0,0,0,100");
+    // court 100 even / 2 = 50 each; full 3h window, 0 games, 0 shuttles.
+    expect(lines[1]).toBe("A,3,0,0,50,0,0,0,50");
+    expect(lines[2]).toBe("B,3,0,0,50,0,0,0,50");
+    // total row: hours/games blank; ลูกที่ใช้ = physical total (0); money summed.
+    expect(lines[3]).toBe("รวมทั้งหมด,,,0,100,0,0,0,100");
   });
 
   it("ceil over-collect is reflected (court 100 ÷ 3 → 34 each, total 102)", () => {
@@ -59,8 +59,8 @@ describe("generateClubCostCsv", () => {
       expenses: [],
     });
     const lines = csv.split("\n");
-    expect(lines[1]).toBe("A,3,0,34,0,0,0,34");
-    expect(lines[4]).toBe("รวมทั้งหมด,,,102,0,0,0,102");
+    expect(lines[1]).toBe("A,3,0,0,34,0,0,0,34");
+    expect(lines[4]).toBe("รวมทั้งหมด,,,0,102,0,0,0,102");
   });
 
   it("escapes a name containing a comma", () => {
@@ -70,10 +70,10 @@ describe("generateClubCostCsv", () => {
       matches: [],
       expenses: [],
     });
-    expect(csv.split("\n")[1]).toBe('"a,b",3,0,0,0,0,0,0');
+    expect(csv.split("\n")[1]).toBe('"a,b",3,0,0,0,0,0,0,0');
   });
 
-  it("includes shuttles used from completed matches", () => {
+  it("includes shuttles used; total row shows the physical shuttle total", () => {
     const m = {
       status: "completed",
       side_a_player1: "A",
@@ -89,8 +89,10 @@ describe("generateClubCostCsv", () => {
       expenses: [],
     });
     const lines = csv.split("\n");
-    // shuttles column (index 2) = 2 for both participants
-    expect(lines[1].split(",")[2]).toBe("2");
-    expect(lines[2].split(",")[2]).toBe("2");
+    // ลูกที่ใช้ column is now index 3 (after name, hours, games); full-credit = 2 each.
+    expect(lines[1].split(",")[3]).toBe("2");
+    expect(lines[2].split(",")[3]).toBe("2");
+    // total row ลูกที่ใช้ = physical total (Σ shuttles_used = 2), not 2+2.
+    expect(lines[3].split(",")[3]).toBe("2");
   });
 });

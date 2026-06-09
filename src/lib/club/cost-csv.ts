@@ -10,6 +10,7 @@ import type { Club, ClubPlayer, ClubMatch } from "@/lib/types";
 const HEADERS = [
   "ผู้เล่น",
   "ชั่วโมงที่เล่น",
+  "เกม",
   "ลูกที่ใช้",
   "ค่าสนาม",
   "ค่าลูก",
@@ -29,7 +30,7 @@ export function generateClubCostCsv(input: {
   matches: ClubMatch[];
   expenses: CostExpenseInput[];
 }): string {
-  const { rows, totalCourt, totalShuttle, totalExp, totalDiscount, grandTotal } =
+  const { rows, totalCourt, totalShuttle, totalExp, totalDiscount, grandTotal, totalShuttlesUsed } =
     computeClubCostRows(input);
   const nameById = new Map(input.players.map((p) => [p.id, p.display_name]));
 
@@ -39,6 +40,7 @@ export function generateClubCostCsv(input: {
       csvRow(
         nameById.get(r.playerId) ?? r.playerId,
         formatHours(r.hours),
+        r.games,
         r.shuttles,
         r.court,
         r.shuttle,
@@ -48,7 +50,10 @@ export function generateClubCostCsv(input: {
       ),
     );
   }
-  lines.push(csvRow("รวมทั้งหมด", "", "", totalCourt, totalShuttle, totalExp, totalDiscount, grandTotal));
+  // Total row: hours/games blank; ลูกที่ใช้ = physical total (Σ shuttles_used).
+  lines.push(
+    csvRow("รวมทั้งหมด", "", "", totalShuttlesUsed, totalCourt, totalShuttle, totalExp, totalDiscount, grandTotal),
+  );
 
   return lines.join("\n");
 }

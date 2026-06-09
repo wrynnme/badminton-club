@@ -93,7 +93,7 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
           level: levelLabelById(p.level_id),
           time: `${(p.start_time ?? club.start_time).slice(0, 5)}–${(p.end_time ?? club.end_time).slice(0, 5)}`,
           hours: c?.hours ?? 0,
-          games: d.gamesByPlayer.get(p.id) ?? 0,
+          games: c?.games ?? 0,
           shuttles: c?.shuttles ?? 0,
           court: c?.court ?? 0,
           shuttleCost: c?.shuttle ?? 0,

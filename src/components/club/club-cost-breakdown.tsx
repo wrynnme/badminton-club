@@ -144,7 +144,7 @@ export function ClubCostBreakdown({
   // Per-player cost + usage rows via the shared builder — this table, the dashboard
   // table and the CSV export all render from the SAME source so they can't drift
   // (cost-summary.ts). `row.shuttle` = shuttle cost, `row.shuttles` = physical count.
-  const { rows, totalCourt, totalShuttle, totalExp, totalDiscount, grandTotal } =
+  const { rows, totalCourt, totalShuttle, totalExp, totalDiscount, grandTotal, totalShuttlesUsed } =
     computeClubCostRows({ club, players, matches, expenses });
 
   function handleExport() {
@@ -191,6 +191,7 @@ export function ClubCostBreakdown({
             <tr className="border-b text-muted-foreground text-xs">
               <th className="text-left py-1.5 pr-3 font-medium">ผู้เล่น</th>
               <th className="text-right py-1.5 px-2 font-medium tabular-nums">ชม.</th>
+              <th className="text-right py-1.5 px-2 font-medium tabular-nums">เกม</th>
               <th className="text-right py-1.5 px-2 font-medium tabular-nums">ลูกที่ใช้</th>
               {hasCourt && (
                 <th className="text-right py-1.5 px-2 font-medium tabular-nums">
@@ -222,6 +223,9 @@ export function ClubCostBreakdown({
                   </td>
                   <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
                     {formatHours(row.hours)}
+                  </td>
+                  <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
+                    {row.games}
                   </td>
                   <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
                     {row.shuttles}
@@ -257,6 +261,9 @@ export function ClubCostBreakdown({
               <td className="py-1.5 pr-3 text-sm">รวมทั้งหมด</td>
               <td className="py-1.5 px-2" aria-hidden />
               <td className="py-1.5 px-2" aria-hidden />
+              <td className="py-1.5 px-2 text-right tabular-nums text-sm">
+                {totalShuttlesUsed.toLocaleString()}
+              </td>
               {hasCourt && (
                 <td className="py-1.5 px-2 text-right tabular-nums text-sm">
                   {totalCourt.toLocaleString()}
