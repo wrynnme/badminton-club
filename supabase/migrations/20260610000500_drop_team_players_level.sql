@@ -1,0 +1,12 @@
+-- M4 — drop the deprecated free-text team_players.level column.
+-- Superseded by team_players.level_id FK -> levels (T3, migration
+-- 20260608000100). All code paths read level via levels:level_id(real)
+-- (embeddedReal helper); no SQL select names `level` explicitly, no view /
+-- check-constraint / index / function references it (introspect-verified
+-- 2026-06-10). DROP is the contract step of the EXPAND/contract pattern.
+--
+-- ORDERING (critical): this DROP must run ONLY AFTER the develop->master deploy
+-- is live on prod. Pre-T3 prod code still wrote `level` text in
+-- addTeamPlayerAction; dropping before that code is replaced would break player
+-- inserts. Applied via MCP post-deploy 2026-06-10.
+ALTER TABLE public.team_players DROP COLUMN IF EXISTS level;
