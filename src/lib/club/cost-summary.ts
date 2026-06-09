@@ -194,3 +194,62 @@ export function computePlayerUsage(input: {
   }
   return usage;
 }
+
+/** One fully-assembled per-player cost+usage display row (the shape every cost
+ * surface — cost table, dashboard table, CSV — renders). `shuttle` is the shuttle
+ * COST; `shuttles` is the physical count. */
+export type ClubCostRow = {
+  playerId: string;
+  hours: number;
+  shuttles: number;
+  court: number;
+  shuttle: number;
+  expense: number;
+  discount: number;
+  total: number;
+};
+
+/**
+ * The single builder of the per-player cost+usage rows. Folds the court/shuttle
+ * split, personal-expense share, discount and usage (hours/shuttles) into one row
+ * each (+ session totals) so the cost table, dashboard table and CSV all render
+ * from ONE source and can't drift. Costs round per `computeClubSplit` (ceil).
+ */
+export function computeClubCostRows(input: {
+  club: ClubCostFields;
+  players: Pick<
+    ClubPlayer,
+    "id" | "profile_id" | "start_time" | "end_time" | "games_played" | "discount"
+  >[];
+  matches: Parameters<typeof buildClubSplitInput>[2];
+  expenses: CostExpenseInput[];
+}): { rows: ClubCostRow[]; totalCourt: number; totalShuttle: number; totalExp: number; totalDiscount: number; grandTotal: number } {
+  const summary = computeClubCostSummary(input);
+  const usage = computePlayerUsage(input);
+  const discountById = new Map(input.players.map((p) => [p.id, p.discount ?? 0]));
+
+  const rows: ClubCostRow[] = summary.rows.map((r) => {
+    const u = usage.get(r.playerId) ?? { hours: 0, shuttles: 0 };
+    const expense = summary.expShareById.get(r.playerId) ?? 0;
+    const discount = discountById.get(r.playerId) ?? 0;
+    return {
+      playerId: r.playerId,
+      hours: u.hours,
+      shuttles: u.shuttles,
+      court: r.court,
+      shuttle: r.shuttle,
+      expense,
+      discount,
+      total: playerSessionTotal({ court: r.court, shuttle: r.shuttle, expense, discount }),
+    };
+  });
+
+  return {
+    rows,
+    totalCourt: summary.totalCourt,
+    totalShuttle: summary.totalShuttle,
+    totalExp: summary.totalExp,
+    totalDiscount: summary.totalDiscount,
+    grandTotal: summary.grandTotal,
+  };
+}

@@ -15,11 +15,33 @@ export default async function ClubsPage() {
   const canCreate = !!session && !session.isGuest;
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data: clubs } = await sb
-    .from("clubs")
-    .select("id, name, venue, play_date, start_time, end_time, max_players")
-    .gte("play_date", today)
-    .order("play_date", { ascending: true });
+  // Clubs are owner/co-admin only — list only the clubs this user owns or co-admins.
+  type ClubRow = {
+    id: string;
+    name: string;
+    venue: string;
+    play_date: string;
+    start_time: string;
+    end_time: string;
+    max_players: number;
+  };
+  let clubs: ClubRow[] = [];
+  if (session) {
+    const { data: adminRows } = await sb
+      .from("club_admins")
+      .select("club_id")
+      .eq("user_id", session.profileId);
+    const adminClubIds = (adminRows ?? []).map((r) => r.club_id);
+    const orFilter = [`owner_id.eq.${session.profileId}`];
+    if (adminClubIds.length) orFilter.push(`id.in.(${adminClubIds.join(",")})`);
+    const { data } = await sb
+      .from("clubs")
+      .select("id, name, venue, play_date, start_time, end_time, max_players")
+      .gte("play_date", today)
+      .or(orFilter.join(","))
+      .order("play_date", { ascending: true });
+    clubs = (data ?? []) as ClubRow[];
+  }
 
   const { data: counts } = await sb
     .from("club_players")

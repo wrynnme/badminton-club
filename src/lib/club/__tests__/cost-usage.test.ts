@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { clampedSessionMinutes } from "@/lib/club/cost-split";
-import { computePlayerUsage, formatHours } from "@/lib/club/cost-summary";
+import { computePlayerUsage, formatHours, computeClubCostRows } from "@/lib/club/cost-summary";
 import type { Club, ClubPlayer, ClubMatch } from "@/lib/types";
 
 describe("clampedSessionMinutes", () => {
@@ -77,5 +77,39 @@ describe("computePlayerUsage", () => {
     });
     expect(usage.get("A")?.shuttles).toBe(4);
     expect(usage.get("B")?.shuttles).toBe(4);
+  });
+});
+
+describe("computeClubCostRows", () => {
+  const club = {
+    owner_id: "owner",
+    court_fee: 100,
+    court_split: "even",
+    shuttle_split: "even",
+    shuttle_price: 0,
+    start_time: "18:00",
+    end_time: "21:00",
+    court_gap_policy: "spread",
+  } as Club;
+  const players = [
+    { id: "A", profile_id: null, start_time: null, end_time: null, games_played: 0, discount: 5 },
+    { id: "B", profile_id: null, start_time: null, end_time: null, games_played: 0, discount: 0 },
+  ] as ClubPlayer[];
+
+  it("folds court + expense − discount + usage into one row each; totals reconcile", () => {
+    const { rows, totalCourt, totalExp, totalDiscount, grandTotal } = computeClubCostRows({
+      club,
+      players,
+      matches: [],
+      expenses: [{ amount: 20, payer_player_ids: [] }], // split all → ceil(10) each
+    });
+    const byId = Object.fromEntries(rows.map((r) => [r.playerId, r]));
+    // court 100/2 = 50 each; expense 10 each; A −5 discount.
+    expect(byId.A).toMatchObject({ court: 50, expense: 10, discount: 5, hours: 3, shuttles: 0, total: 55 });
+    expect(byId.B).toMatchObject({ court: 50, expense: 10, discount: 0, total: 60 });
+    expect(totalCourt).toBe(100);
+    expect(totalExp).toBe(20);
+    expect(totalDiscount).toBe(5);
+    expect(grandTotal).toBe(115); // 55 + 60
   });
 });

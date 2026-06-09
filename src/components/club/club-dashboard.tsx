@@ -20,12 +20,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { computeClubDashboard } from "@/lib/club/dashboard";
-import {
-  computeClubCostSummary,
-  computePlayerUsage,
-  playerSessionTotal,
-  formatHours,
-} from "@/lib/club/cost-summary";
+import { computeClubCostRows, formatHours } from "@/lib/club/cost-summary";
 import { truncate } from "@/lib/utils";
 import type { Club, ClubPlayer, ClubMatch, Level } from "@/lib/types";
 import type { ClubExpense } from "@/lib/actions/clubs";
@@ -49,15 +44,11 @@ type Props = {
 export function ClubDashboard({ club, players, matches, levels, expenses, costTotal, maxPlayers }: Props) {
   const d = useMemo(() => computeClubDashboard(players, matches), [players, matches]);
 
-  // Per-player cost (court/shuttle/total) + usage (hours/shuttles) via the SAME
-  // shared helpers the cost-breakdown tab + CSV use, so every surface reconciles.
+  // Per-player cost + usage rows via the SAME shared builder the cost-breakdown
+  // tab + CSV use, so every surface reconciles by construction.
   const cost = useMemo(
-    () => computeClubCostSummary({ club, players, matches, expenses }),
+    () => computeClubCostRows({ club, players, matches, expenses }),
     [club, players, matches, expenses],
-  );
-  const usage = useMemo(
-    () => computePlayerUsage({ club, players, matches }),
-    [club, players, matches],
   );
 
   const nameById = useMemo(
@@ -92,30 +83,26 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
   // Player table — sorted by games desc then name. Cost columns come from the
   // shared cost summary (court/shuttle per player + expense − discount → total).
   const tableRows = useMemo(() => {
-    const courtById = new Map(cost.rows.map((r) => [r.playerId, r.court]));
-    const shuttleCostById = new Map(cost.rows.map((r) => [r.playerId, r.shuttle]));
+    const costById = new Map(cost.rows.map((r) => [r.playerId, r]));
     return players
       .map((p) => {
-        const u = usage.get(p.id) ?? { hours: 0, shuttles: 0 };
-        const court = courtById.get(p.id) ?? 0;
-        const shuttleCost = shuttleCostById.get(p.id) ?? 0;
-        const exp = cost.expShareById.get(p.id) ?? 0;
+        const c = costById.get(p.id);
         return {
           id: p.id,
           name: p.display_name,
           level: levelLabelById(p.level_id),
           time: `${(p.start_time ?? club.start_time).slice(0, 5)}–${(p.end_time ?? club.end_time).slice(0, 5)}`,
-          hours: u.hours,
+          hours: c?.hours ?? 0,
           games: d.gamesByPlayer.get(p.id) ?? 0,
-          shuttles: u.shuttles,
-          court,
-          shuttleCost,
-          total: playerSessionTotal({ court, shuttle: shuttleCost, expense: exp, discount: p.discount ?? 0 }),
+          shuttles: c?.shuttles ?? 0,
+          court: c?.court ?? 0,
+          shuttleCost: c?.shuttle ?? 0,
+          total: c?.total ?? 0,
           status: p.status,
         };
       })
       .sort((a, b) => b.games - a.games || a.name.localeCompare(b.name, "th"));
-  }, [players, d.gamesByPlayer, levelLabelById, cost, usage, club.start_time, club.end_time]);
+  }, [players, d.gamesByPlayer, levelLabelById, cost, club.start_time, club.end_time]);
 
   if (players.length === 0 && matches.length === 0) {
     return (

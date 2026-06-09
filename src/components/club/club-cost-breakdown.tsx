@@ -6,8 +6,7 @@ import { Loader2, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { computeClubSplit, computeExpenseShares } from "@/lib/club/cost-split";
-import { buildClubSplitInput, playerSessionTotal, computePlayerUsage, formatHours } from "@/lib/club/cost-summary";
+import { computeClubCostRows, formatHours } from "@/lib/club/cost-summary";
 import { generateClubCostCsv } from "@/lib/club/cost-csv";
 import { downloadCsv } from "@/lib/export/csv";
 import { updateClubPlayerDiscountAction } from "@/lib/actions/clubs";
@@ -142,48 +141,17 @@ export function ClubCostBreakdown({
     players.map((p) => [p.id, p.display_name])
   );
 
-  // Court + shuttle split — assembled via the shared adapter so this table and
-  // the dashboard "ค่าใช้จ่ายรวม" card derive identical numbers (cost-summary.ts).
-  const rows = computeClubSplit(buildClubSplitInput(club, players, matches));
-
-  // Per-player presence hours + shuttles used (info columns; same shared helper the
-  // CSV export uses, so the table and the download agree).
-  const usage = computePlayerUsage({ club, players, matches });
+  // Per-player cost + usage rows via the shared builder — this table, the dashboard
+  // table and the CSV export all render from the SAME source so they can't drift
+  // (cost-summary.ts). `row.shuttle` = shuttle cost, `row.shuttles` = physical count.
+  const { rows, totalCourt, totalShuttle, totalExp, totalDiscount, grandTotal } =
+    computeClubCostRows({ club, players, matches, expenses });
 
   function handleExport() {
     const csv = generateClubCostCsv({ club, players, matches, expenses });
     const datePart = club.play_date ? `-${club.play_date}` : "";
     downloadCsv(csv, `ค่าใช้จ่าย-${club.name}${datePart}.csv`);
   }
-
-  // Personal expense shares per player
-  const expShare = computeExpenseShares(
-    players.map((p) => p.id),
-    expenses.map((e) => ({
-      amount: Number(e.amount),
-      payerPlayerIds: e.payer_player_ids,
-    }))
-  );
-
-  // Build a discount lookup from players (initialised from DB; editable cells manage own state)
-  const discountById = new Map<string, number>(
-    players.map((p) => [p.id, p.discount ?? 0])
-  );
-
-  // Per-player grand total — shared helper so this table and the dashboard card
-  // derive the identical figure (cost-summary.ts).
-  const playerTotals = rows.map((row) => {
-    const exp = expShare.get(row.playerId) ?? 0;
-    const disc = discountById.get(row.playerId) ?? 0;
-    return playerSessionTotal({ court: row.court, shuttle: row.shuttle, expense: exp, discount: disc });
-  });
-
-  // Footer sums from actual row values
-  const totalCourt = rows.reduce((s, r) => s + r.court, 0);
-  const totalShuttle = rows.reduce((s, r) => s + r.shuttle, 0);
-  const totalExp = [...expShare.values()].reduce((s, v) => s + v, 0);
-  const totalDiscount = players.reduce((s, p) => s + (p.discount ?? 0), 0);
-  const grandTotal = playerTotals.reduce((s, v) => s + v, 0);
 
   const splitDesc = [
     hasCourt
@@ -246,19 +214,17 @@ export function ClubCostBreakdown({
             </tr>
           </thead>
           <tbody>
-            {rows.map((row, i) => {
-              const exp = expShare.get(row.playerId) ?? 0;
-              const playerTotal = playerTotals[i];
+            {rows.map((row) => {
               return (
                 <tr key={row.playerId} className="border-b last:border-0">
                   <td className="py-1.5 pr-3 font-medium">
                     {nameById.get(row.playerId) ?? row.playerId}
                   </td>
                   <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
-                    {formatHours((usage.get(row.playerId)?.hours ?? 0))}
+                    {formatHours(row.hours)}
                   </td>
                   <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
-                    {usage.get(row.playerId)?.shuttles ?? 0}
+                    {row.shuttles}
                   </td>
                   {hasCourt && (
                     <td className="py-1.5 px-2 text-right tabular-nums">
@@ -271,16 +237,16 @@ export function ClubCostBreakdown({
                     </td>
                   )}
                   <td className="py-1.5 px-2 text-right tabular-nums">
-                    {exp.toLocaleString()}
+                    {row.expense.toLocaleString()}
                   </td>
                   <DiscountCell
                     clubId={clubId}
                     playerId={row.playerId}
-                    initialDiscount={discountById.get(row.playerId) ?? 0}
+                    initialDiscount={row.discount}
                     canManage={canManage}
                   />
                   <td className="py-1.5 pl-2 text-right font-semibold tabular-nums">
-                    {playerTotal.toLocaleString()}
+                    {row.total.toLocaleString()}
                   </td>
                 </tr>
               );

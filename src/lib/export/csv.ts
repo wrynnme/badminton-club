@@ -2,14 +2,16 @@ import type { Match, Team, TeamPlayer, PairWithPlayers, MatchUnit } from "@/lib/
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { parseDivision } from "@/lib/tournament/divisions";
 
-function escapeCsv(v: string | number | null | undefined): string {
+export function escapeCsv(v: string | number | null | undefined): string {
   const s = String(v ?? "");
   return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-function row(...cols: (string | number | null | undefined)[]): string {
+export function csvRow(...cols: (string | number | null | undefined)[]): string {
   return cols.map(escapeCsv).join(",");
 }
+
+const row = csvRow;
 
 function roundLabel(m: Match): string {
   if (m.round_type === "group") return "กลุ่ม";
