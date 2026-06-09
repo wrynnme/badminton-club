@@ -550,17 +550,18 @@ export type ClubAdmin = {
   added_at: string;
 };
 
+// line_user_id omitted (PII) — exposing it to the owner turns profile search into a
+// PII-enumeration oracle. The add-co-admin flow keys on the opaque profile id instead.
 export type ClubProfileSearchResult = {
   id: string;
   display_name: string | null;
-  line_user_id: string | null;
 };
 
-const LINE_USER_ID_RE = /^U[0-9a-f]{32}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function addClubCoAdminAction(
   clubId: string,
-  lineUserId: string
+  profileId: string
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -568,17 +569,17 @@ export async function addClubCoAdminAction(
   const sb = await createAdminClient();
   if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
-  const trimmed = lineUserId.trim();
-  if (!LINE_USER_ID_RE.test(trimmed))
-    return { error: "LINE user ID ไม่ถูกต้อง" };
+  const trimmed = profileId.trim();
+  if (!UUID_RE.test(trimmed)) return { error: "เลือกผู้ใช้จากผลการค้นหา" };
 
+  // Resolve by opaque profile id (from searchClubProfilesAction) — never by line_user_id.
   const { data: profile } = await sb
     .from("profiles")
     .select("id")
-    .eq("line_user_id", trimmed)
+    .eq("id", trimmed)
     .maybeSingle();
 
-  if (!profile) return { error: "ไม่พบผู้ใช้ที่ login ด้วย LINE นี้" };
+  if (!profile) return { error: "ไม่พบผู้ใช้" };
   if (profile.id === session.profileId) return { error: "ไม่สามารถเพิ่มตัวเองเป็น co-admin" };
 
   const { error } = await sb.from("club_admins").insert({
@@ -641,7 +642,9 @@ export async function searchClubProfilesAction(
   // excludeIds always has session.profileId — never empty
   const { data, error } = await sb
     .from("profiles")
-    .select("id, display_name, line_user_id")
+    // line_user_id is NOT selected (PII) — only used as a server-side filter to
+    // exclude guests (null line_user_id), never returned to the client.
+    .select("id, display_name")
     .ilike("display_name", `%${escapedQ}%`)
     .not("line_user_id", "is", null)
     .not("id", "in", `(${excludeIds.join(",")})`)
