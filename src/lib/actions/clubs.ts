@@ -1049,6 +1049,11 @@ export async function startClubMatchAction(
 
   if (updateError) {
     if (updateError.code === "23505") return { error: "สนามนี้มีแมตช์กำลังเล่นอยู่" };
+    // trg_club_match_player_guard: a player on this match is already in another
+    // in_progress match of the club (closes the concurrent double-start race).
+    if (updateError.message.includes("club_player_busy")) {
+      return { error: "ผู้เล่นในแมตช์นี้กำลังแข่งอยู่ในอีกสนาม" };
+    }
     return { error: updateError.message };
   }
 
