@@ -42,7 +42,7 @@ export function MobileNav({
           ก๊วน
         </Link>
         <Link href="/tournaments" className={item}>
-          Tournament
+          ทัวร์นาเมนต์
         </Link>
         {loggedIn && !isGuest && (
           <Link href="/clubs/new" className={item}>
