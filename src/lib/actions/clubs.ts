@@ -87,8 +87,45 @@ export async function updateClubAction(input: UpdateClubInput) {
   const { error } = await sb.from("clubs").update(parsed.data).eq("id", id);
   if (error) return { error: error.message };
 
+  // Raising max_players opens slots → auto-promote earliest reserves to fill them.
+  await promoteReservesToFill(sb, id, parsed.data.max_players);
+
   revalidatePath(`/clubs/${id}`);
   return { ok: true };
+}
+
+/**
+ * Promote earliest reserves (position asc, joined_at asc tiebreak) to active
+ * until the active count reaches `maxPlayers`. No-op when already at/over cap or
+ * no reserves wait. Called after max_players is raised in settings so the queue
+ * fills the freed slots automatically — mirrors the leave-time promote RPC.
+ */
+async function promoteReservesToFill(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  clubId: string,
+  maxPlayers: number,
+): Promise<void> {
+  const { active } = await countClubPlayers(sb, clubId);
+  const slots = maxPlayers - active;
+  if (slots <= 0) return;
+
+  const { data: reserves } = await sb
+    .from("club_players")
+    .select("id")
+    .eq("club_id", clubId)
+    .eq("status", "reserve")
+    .order("position", { ascending: true })
+    .order("joined_at", { ascending: true })
+    .limit(slots);
+  if (!reserves || reserves.length === 0) return;
+
+  await sb
+    .from("club_players")
+    .update({ status: "active" })
+    .in(
+      "id",
+      reserves.map((r) => r.id),
+    );
 }
 
 const JoinSchema = z.object({
@@ -507,6 +544,36 @@ export async function kickPlayerAction(formData: FormData) {
     p_club_id: clubId,
   });
   revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
+/**
+ * Manager drags a reserve up into the active list → promote it. Admin override:
+ * promotes regardless of the max_players cap (the manager is deliberately
+ * over-filling). Status flip only — keeps the player's position. No-op (error)
+ * if the player isn't a reserve of this club.
+ */
+export async function promoteClubReserveAction(input: { clubId: string; playerId: string }) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId)))
+    return { error: "ไม่มีสิทธิ์" };
+
+  const { data: updated, error } = await sb
+    .from("club_players")
+    .update({ status: "active" })
+    .eq("id", input.playerId)
+    .eq("club_id", input.clubId)
+    .eq("status", "reserve")
+    .select("id")
+    .maybeSingle();
+
+  if (error) return { error: error.message };
+  if (!updated) return { error: "ผู้เล่นนี้เลื่อนเป็นตัวจริงไม่ได้" };
+
+  revalidatePath(`/clubs/${input.clubId}`);
   return { ok: true };
 }
 
