@@ -67,6 +67,99 @@ describe("computeClubSplit — court", () => {
   });
 });
 
+describe("computeClubSplit — court by_time cross-midnight", () => {
+  // Session 21:00 → 01:00 (crosses midnight, 4h window). courtFee 480 → 2 baht/min.
+  function night(overrides: Partial<SplitInput> = {}): SplitInput {
+    return {
+      players: [],
+      courtFee: 480,
+      courtSplit: "by_time",
+      shuttleSplit: "even",
+      sessionStart: "21:00",
+      sessionEnd: "01:00",
+      gapPolicy: "spread",
+      ...overrides,
+    };
+  }
+
+  it("does not drop the court fee (regression: end < start → negative sessionMin)", () => {
+    const r = byId(
+      computeClubSplit(
+        night({
+          players: [
+            { id: "A", start: "21:00", end: "01:00", games: 1 },
+            { id: "B", start: "21:00", end: "01:00", games: 1 },
+          ],
+        }),
+      ),
+    );
+    expect(r.A.court).toBe(240);
+    expect(r.B.court).toBe(240);
+    expect(r.A.court + r.B.court).toBe(480); // whole fee collected, not 0
+  });
+
+  it("segments by presence across midnight", () => {
+    // A 21–23 (before midnight), B 23–01 (across midnight) → each pays their 2h half.
+    const r = byId(
+      computeClubSplit(
+        night({
+          players: [
+            { id: "A", start: "21:00", end: "23:00", games: 1 },
+            { id: "B", start: "23:00", end: "01:00", games: 1 },
+          ],
+        }),
+      ),
+    );
+    expect(r.A.court).toBe(240);
+    expect(r.B.court).toBe(240);
+  });
+
+  it("single player across midnight pays the whole court", () => {
+    const r = byId(
+      computeClubSplit(night({ players: [{ id: "A", start: "21:00", end: "01:00", games: 1 }] })),
+    );
+    expect(r.A.court).toBe(480);
+  });
+
+  it("clamps a window that overstays past the cross-midnight end", () => {
+    // A leaves 02:00 but session ends 01:00 → clamped to the full session.
+    const r = byId(
+      computeClubSplit(night({ players: [{ id: "A", start: "21:00", end: "02:00", games: 1 }] })),
+    );
+    expect(r.A.court).toBe(480);
+  });
+
+  it("overlapping windows across midnight split the shared segment", () => {
+    // A 21–00:00, B 22:00–01:00. 21–22 A-only, 22–00 shared, 00–01 B-only.
+    const r = byId(
+      computeClubSplit(
+        night({
+          players: [
+            { id: "A", start: "21:00", end: "00:00", games: 1 },
+            { id: "B", start: "22:00", end: "01:00", games: 1 },
+          ],
+        }),
+      ),
+    );
+    expect(r.A.court).toBe(240); // 60min solo + half of 120min shared
+    expect(r.B.court).toBe(240);
+    expect(r.A.court + r.B.court).toBe(480);
+  });
+
+  it("start === end stays a zero-length window (no court fee), not a full 24h", () => {
+    const r = byId(
+      computeClubSplit(
+        night({
+          sessionStart: "21:00",
+          sessionEnd: "21:00",
+          players: [{ id: "A", start: "21:00", end: "21:00", games: 1 }],
+        }),
+      ),
+    );
+    expect(r.A.court).toBe(0);
+  });
+});
+
 describe("computeClubSplit — court gap policy", () => {
   // session 18–21, A(18–19), B(20–21); 19–20 is a gap. court 180.
   const players = [
