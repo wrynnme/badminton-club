@@ -722,6 +722,7 @@ describe("computeTeamStats — ignores non-completed", () => {
 const DIV_PAIR_1 = "div-pair-1";
 const DIV_PAIR_2 = "div-pair-2";
 const DIV_PAIR_3 = "div-pair-3";
+const DIV_PAIR_4 = "div-pair-4";
 
 // thresholds [5] → Division 1 = pair_level > 5, Division 2 = pair_level ≤ 5
 const THRESHOLDS_1 = [5];
@@ -742,11 +743,12 @@ function makeDivPair(id: string, level: string): PairWithPlayers {
 }
 
 // DIV_PAIR_1 and DIV_PAIR_2 have level 7 → Division 1 (> threshold 5)
-// DIV_PAIR_3 has level 4 → Division 2 (≤ threshold 5)
+// DIV_PAIR_3 and DIV_PAIR_4 have level 4 → Division 2 (≤ threshold 5)
 const divPairs = [
   makeDivPair(DIV_PAIR_1, "7"),
   makeDivPair(DIV_PAIR_2, "7"),
   makeDivPair(DIV_PAIR_3, "4"),
+  makeDivPair(DIV_PAIR_4, "4"),
 ];
 
 // ---------------------------------------------------------------------------
@@ -774,7 +776,9 @@ describe("computeDivisionStats — 0 matches", () => {
 // 21. computeDivisionStats — filters by division column
 // ---------------------------------------------------------------------------
 describe("computeDivisionStats — filters by division column", () => {
-  // m1 is division "1", m2 is division "2", m3 has no division
+  // m1 is division "1" (both pairs div 1), m2 is division "2" (both pairs div 2),
+  // m3 has no division. Both sides of each match share the division — a proper
+  // intra-division match (see the cross-bucket regression test below for the anomaly).
   const m1 = makeMatch({
     pair_a_id: DIV_PAIR_1,
     pair_b_id: DIV_PAIR_2,
@@ -783,7 +787,7 @@ describe("computeDivisionStats — filters by division column", () => {
   });
   const m2 = makeMatch({
     pair_a_id: DIV_PAIR_3,
-    pair_b_id: DIV_PAIR_1,
+    pair_b_id: DIV_PAIR_4,
     games: [{ a: 15, b: 21 }, { a: 10, b: 21 }],
     division: "2",
   });
@@ -815,6 +819,57 @@ describe("computeDivisionStats — filters by division column", () => {
     });
     expect(stats.played).toBe(1);
     expect(stats.matches[0].id).toBe(m2.id);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 21b. computeDivisionStats — cross-bucket match (one side in another division)
+//      is excluded from BOTH the aggregate AND the per-pair standings.
+//      Regression: the old OR guard admitted it into the aggregate W/L while the
+//      per-pair standings dropped the foreign pair, so the summary and the
+//      standings table disagreed. Requiring BOTH sides in-division fixes it.
+// ---------------------------------------------------------------------------
+describe("computeDivisionStats — excludes cross-bucket matches", () => {
+  // division column says "1" but pair_b (DIV_PAIR_3) is a Division-2 pair.
+  const crossBucket = makeMatch({
+    pair_a_id: DIV_PAIR_1, // Division 1
+    pair_b_id: DIV_PAIR_3, // Division 2
+    games: [{ a: 21, b: 10 }, { a: 21, b: 12 }],
+    division: "1",
+  });
+  // a clean intra-division-1 match alongside it
+  const intra = makeMatch({
+    pair_a_id: DIV_PAIR_1,
+    pair_b_id: DIV_PAIR_2,
+    games: [{ a: 21, b: 15 }, { a: 21, b: 18 }],
+    division: "1",
+  });
+
+  it("drops the cross-bucket match from played + aggregate", () => {
+    const stats = computeDivisionStats({
+      division: 1,
+      pairs: divPairs,
+      matches: [crossBucket, intra],
+      thresholds: THRESHOLDS_1,
+    });
+    // only `intra` survives — `crossBucket` is excluded
+    expect(stats.played).toBe(1);
+    expect(stats.matches).toHaveLength(1);
+    expect(stats.matches[0].id).toBe(intra.id);
+  });
+
+  it("keeps per-pair standings consistent with the aggregate", () => {
+    const stats = computeDivisionStats({
+      division: 1,
+      pairs: divPairs,
+      matches: [crossBucket, intra],
+      thresholds: THRESHOLDS_1,
+    });
+    // DIV_PAIR_3 (the foreign Division-2 pair) never appears in standings
+    expect(stats.headToHead[DIV_PAIR_3]).toBeUndefined();
+    // DIV_PAIR_1 / DIV_PAIR_2 each played exactly the one intra match
+    expect(stats.headToHead[DIV_PAIR_1]?.played).toBe(1);
+    expect(stats.headToHead[DIV_PAIR_2]?.played).toBe(1);
   });
 });
 
@@ -1018,7 +1073,11 @@ describe("computeDivisionStats — cross-bucketed matches don't leak (#1)", () =
     expect(stats.headToHead[DIV_PAIR_3]).toBeUndefined();
   });
 
-  it("keeps a match where one side is in-division (defensive boundary)", () => {
+  it("excludes a one-sided match where only one pair is in-division", () => {
+    // mixed: stamped division="1" but only DIV_PAIR_1 is in div 1; DIV_PAIR_3 is
+    // div 2. The old OR guard kept it (played=1) yet the per-pair standings dropped
+    // DIV_PAIR_3 — so the aggregate counted a match its own standings half-ignored.
+    // Requiring BOTH sides in-division drops it entirely, keeping the two consistent.
     const mixed = makeMatch({
       pair_a_id: DIV_PAIR_1, // in division 1
       pair_b_id: DIV_PAIR_3, // mis-bucketed pair (level 3 → division 2)
@@ -1035,9 +1094,9 @@ describe("computeDivisionStats — cross-bucketed matches don't leak (#1)", () =
       matches: [mixed],
       thresholds: THRESHOLDS_1,
     });
-    expect(stats.played).toBe(1);
-    // DIV_PAIR_1 (in-division) gets standings entry; DIV_PAIR_3 does NOT
-    expect(stats.headToHead[DIV_PAIR_1]).toBeDefined();
+    expect(stats.played).toBe(0);
+    expect(stats.matches).toHaveLength(0);
+    expect(stats.headToHead[DIV_PAIR_1]).toBeUndefined();
     expect(stats.headToHead[DIV_PAIR_3]).toBeUndefined();
   });
 });

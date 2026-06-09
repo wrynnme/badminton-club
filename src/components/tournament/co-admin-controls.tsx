@@ -59,9 +59,9 @@ export function CoAdminControls({
   }, [query, tournamentId]);
 
   async function handleAdd() {
-    if (!selected?.line_user_id) return;
+    if (!selected) return;
     setAdding(true);
-    const res = await addCoAdminAction(tournamentId, selected.line_user_id);
+    const res = await addCoAdminAction(tournamentId, selected.id);
     setAdding(false);
     if ("error" in res) {
       toast.error(res.error);
@@ -73,7 +73,7 @@ export function CoAdminControls({
       {
         tournament_id: tournamentId,
         user_id: selected.id,
-        line_user_id: selected.line_user_id,
+        line_user_id: null,
         display_name: selected.display_name,
         added_by: "",
         added_at: new Date().toISOString(),
@@ -150,7 +150,7 @@ export function CoAdminControls({
                 >
                   <span className="truncate">
                     {selected
-                      ? (selected.display_name ?? selected.line_user_id ?? "(ไม่มีชื่อ)")
+                      ? (selected.display_name ?? "(ไม่มีชื่อ)")
                       : "ค้นหาผู้ใช้..."}
                   </span>
                   <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
@@ -188,9 +188,6 @@ export function CoAdminControls({
                         <div className="flex flex-col flex-1 min-w-0">
                           <span className="truncate">
                             {r.display_name ?? "(ไม่มีชื่อ)"}
-                          </span>
-                          <span className="text-xs font-mono text-muted-foreground truncate">
-                            {r.line_user_id}
                           </span>
                         </div>
                         {selected?.id === r.id && (

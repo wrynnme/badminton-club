@@ -59,12 +59,9 @@ export function ClubCoAdminControls({
   }, [query, clubId]);
 
   async function handleAdd() {
-    if (!selected?.line_user_id) {
-      toast.error("ผู้ใช้นี้ไม่มี LINE account");
-      return;
-    }
+    if (!selected) return;
     setAdding(true);
-    const res = await addClubCoAdminAction(clubId, selected.line_user_id);
+    const res = await addClubCoAdminAction(clubId, selected.id);
     setAdding(false);
     if ("error" in res) { toast.error(res.error); return; }
     toast.success("เพิ่ม co-admin แล้ว");
@@ -74,7 +71,7 @@ export function ClubCoAdminControls({
         club_id: clubId,
         user_id: selected.id,
         display_name: selected.display_name,
-        line_user_id: selected.line_user_id,
+        line_user_id: null,
         added_by: null,
         added_at: new Date().toISOString(),
       },
@@ -143,7 +140,7 @@ export function ClubCoAdminControls({
                 >
                   <span className="truncate">
                     {selected
-                      ? (selected.display_name ?? selected.line_user_id ?? "(ไม่มีชื่อ)")
+                      ? (selected.display_name ?? "(ไม่มีชื่อ)")
                       : "ค้นหาผู้ใช้..."}
                   </span>
                   <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
@@ -174,9 +171,6 @@ export function ClubCoAdminControls({
                       >
                         <div className="flex flex-col flex-1 min-w-0">
                           <span className="truncate">{r.display_name ?? "(ไม่มีชื่อ)"}</span>
-                          <span className="text-xs font-mono text-muted-foreground truncate">
-                            {r.line_user_id}
-                          </span>
                         </div>
                         {selected?.id === r.id && <Check className="h-4 w-4 shrink-0" />}
                       </CommandItem>

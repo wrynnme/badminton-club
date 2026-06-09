@@ -94,14 +94,29 @@ function computeCourt(input: SplitInput): Map<string, number> {
 
   // by_time — segment the session by every player's clamped window boundary.
   const s0 = toMin(input.sessionStart);
-  const s1 = toMin(input.sessionEnd);
+  let s1 = toMin(input.sessionEnd);
+  // Cross-midnight session (e.g. 21:00 → 01:00): the end is on the next day, so it
+  // reads as a smaller minute-of-day than the start. Extend it by 24h so the window
+  // is positive instead of negative (which previously hit the `sessionMin <= 0` guard
+  // and silently dropped the ENTIRE court fee). `s1 === s0` is left as a zero-length
+  // window (→ no court fee, unchanged) rather than treated as a full 24h.
+  const crossesMidnight = s1 < s0;
+  if (crossesMidnight) s1 += 1440;
   const sessionMin = s1 - s0;
   if (sessionMin <= 0) return out;
 
+  // Place a "HH:MM" onto the (possibly midnight-spanning) session timeline: an
+  // early-morning time (< the start-of-day minute) belongs to the next day, so it
+  // gets the same +24h shift as the session end. No-op for non-crossing sessions.
+  const place = (t: string) => {
+    const m = toMin(t);
+    return crossesMidnight && m < s0 ? m + 1440 : m;
+  };
+
   // Per-player clamped window [ps, pe).
   const win = players.map((p) => {
-    const ps = Math.max(toMin(p.start), s0);
-    const pe = Math.min(toMin(p.end), s1);
+    const ps = Math.max(place(p.start), s0);
+    const pe = Math.min(place(p.end), s1);
     return { id: p.id, ps, pe };
   });
 

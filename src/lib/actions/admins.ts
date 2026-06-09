@@ -32,12 +32,14 @@ export type TournamentAdmin = {
   added_at: string;
 };
 
-const LINE_USER_ID_RE = /^U[0-9a-f]{32}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// No line_user_id: it's the LINE platform identifier and exposing it to the owner
+// turns profile search into a PII-enumeration oracle. The add-co-admin flow keys on
+// the opaque profile `id` instead (see addCoAdminAction).
 export type ProfileSearchResult = {
   id: string;
   display_name: string | null;
-  line_user_id: string | null;
 };
 
 export type AuditLogEntry = {
@@ -56,28 +58,26 @@ export type AuditLogEntry = {
 
 export async function addCoAdminAction(
   tournamentId: string,
-  lineUserId: string
+  profileId: string
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
   if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
-  const trimmed = lineUserId.trim();
-  if (!LINE_USER_ID_RE.test(trimmed)) {
-    return { error: "LINE user ID ต้องขึ้นต้นด้วย U ตามด้วย 32 hex (เช่น U30d2f650...)" };
-  }
+  const trimmed = profileId.trim();
+  if (!UUID_RE.test(trimmed)) return { error: "เลือกผู้ใช้จากผลการค้นหา" };
 
   const sb = await createAdminClient();
 
-  // Look up profile UUID from LINE user_id
+  // Resolve by opaque profile id (from searchProfilesAction) — never by line_user_id.
   const { data: profile } = await sb
     .from("profiles")
     .select("id, display_name, is_guest")
-    .eq("line_user_id", trimmed)
+    .eq("id", trimmed)
     .maybeSingle();
 
-  if (!profile) return { error: "ไม่พบผู้ใช้ที่ login ด้วย LINE นี้" };
+  if (!profile) return { error: "ไม่พบผู้ใช้" };
   if (profile.id === session.profileId) return { error: "ไม่สามารถเพิ่มตัวเองเป็น co-admin" };
   if (profile.is_guest) return { error: "ไม่สามารถเพิ่ม guest เป็นผู้ดูแลร่วม" };
 
@@ -100,7 +100,7 @@ export async function addCoAdminAction(
     event_type: "admin_added",
     entity_type: "admin",
     entity_id: profile.id,
-    description: `เพิ่ม co-admin: ${targetName} (${trimmed})`,
+    description: `เพิ่ม co-admin: ${targetName}`,
   });
 
   revalidatePath(`/tournaments/${tournamentId}`);
@@ -200,7 +200,9 @@ export async function searchProfilesAction(
 
   const baseQuery = sb
     .from("profiles")
-    .select("id, display_name, line_user_id")
+    // line_user_id is NOT selected (PII) — it's only used as a server-side filter
+    // to exclude guests (null line_user_id), never returned to the client.
+    .select("id, display_name")
     .ilike("display_name", `%${escapedQ}%`)
     .not("line_user_id", "is", null);
 

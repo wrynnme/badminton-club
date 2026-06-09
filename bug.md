@@ -10,7 +10,8 @@ Open items below come from the 2026-06-09 whole-system core review (full report:
 
 Remaining after the IDOR-cluster + session-expiry + bracket-visual P1 fixes (all in Resolved). None block; surfaced by the core review.
 
-- **[P2 ×15 remaining]** correctness/concurrency/hardening leads — see the HTML report. Notable: `by_time` court split drops fee on cross-midnight session, unbounded guest-profile creation (no rate limit), remaining read-then-write races (join capacity, group_teams unlocked RMW), division-stats cross-bucket counts. Not individually re-verified. (8 of 23 closed 2026-06-09 — see Resolved; settings per-field fallback now recovers nested sub-flags.)
+- **[P2 ×11 remaining]** correctness/concurrency/hardening leads — see the HTML report. Notable: unbounded guest-profile creation (no rate limit), `importPairsCsv` whole-table scan + intra-tournament csv_id last-wins, `addTeamPlayer` stamps actor profile_id, recordMatchScore no per-game validation. Not individually re-verified. (12 of 23 closed 2026-06-09 — see Resolved.)
+- **[P2 — needs prod migration, deferred]** two read-then-write concurrency races whose correct fix needs an advisory-lock/atomic-increment RPC (prod migration), so deferred per the P2+migration conservative preference: (a) **club join capacity** (`clubs.ts:143/201`) — `joinClubAction`/`addGuestPlayerAction` read active count then insert, so concurrent joins at the cap overshoot `max_players` by a few actives (soft cap; reserves auto-promote, so impact is minor); (b) **group_teams unlocked RMW** (`matches.ts:2166/2195`) — `updateGroupTeamStandings`/`reverseGroupTeamStandings` SELECT then UPDATE `value+delta` in JS, so two concurrent score recordings on matches in the SAME group lose an update. Both require concurrent writers on the same entity (rare with one scorer). Fix when a migration window opens: `pg_advisory_xact_lock` per club/group, or `UPDATE … SET col = col + delta` via RPC.
 - **[P2 — won't fix, intended]** `computeExpenseShares` ceil-per-head over-collects by a few baht (100฿/3 → 102). Confirmed by user 2026-06-09 as by-design: everyone pays the same whole baht, organizer is covered, and it stays reconciled between the cost-breakdown table and ExpenseManager. Fair largest-remainder split was offered and declined.
 - **[P1 follow-up] session revocation** — the expiry fix below closes "valid forever", but there is still no per-token revocation (can't kill one leaked cookie without rotating `SESSION_SECRET`, which logs everyone out). Deferred — needs a per-profile token-version column + a lookup on every `getSession()` (DB hit on the auth hot path).
 
@@ -142,6 +143,24 @@ Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upse
 All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
 
 ## Resolved
+
+### 2026-06-09 — Co-admin search leaked line_user_id (PII enumeration) (P2) (develop)
+
+tsc 0 · vitest 450 · build OK. No DB migration.
+
+- **[P2] profile search returned `line_user_id` to any owner → PII-enumeration oracle** (`actions/admins.ts:203` + mirror `actions/clubs.ts:644`) — `searchProfilesAction` / `searchClubProfilesAction` selected `id, display_name, line_user_id` and the UI rendered the `line_user_id` under each result, so an owner could enumerate the LINE platform id of every user whose `display_name` ILIKE-matched a probe. Fix: drop `line_user_id` from the SELECT + the `ProfileSearchResult` / `ClubProfileSearchResult` types (it stays as a server-side `.not(...is null)` guest filter, never returned); re-key `addCoAdminAction` / `addClubCoAdminAction` on the opaque profile **id** (UUID-validated, looked up by `id`) instead of `line_user_id`; UI (`co-admin-controls.tsx` + `club-co-admin-controls.tsx`) passes `selected.id` and no longer displays the line id in search results. Existing co-admin list (owner's own deliberately-added admins, from `getCoAdmins`) unchanged — not an enumeration vector. Sole-caller verified for both actions before the signature swap (both `string`→`string`, so tsc couldn't catch a stray caller). Live add-flow smoke deferred (needs owner + 2 real LINE profiles); static checks + unchanged insert logic cover the path.
+
+### 2026-06-09 — Division stats: cross-bucket matches double-standard (P2 ×2) (develop)
+
+tsc 0 · vitest 450 (entity-stats 49, +1 cross-bucket; 1 existing test corrected) · build OK. No DB migration.
+
+- **[P2] `computeDivisionStats` counted cross-bucket matches in the aggregate that the per-pair standings dropped** (`tournament/entity-stats.ts:513` + `:537`) — `relevant` admitted a match when the stored `division` matched AND **either** side was a division pair (OR). The aggregate W/L loop then counted such a one-sided/mis-stamped match (played++/wins++/losses++), but the per-pair standings only credited the in-division side — so the division summary and its own standings table disagreed (e.g. "1 played" but the opponent pair absent from standings). Fix: require **both** sides in-division (OR→AND) so a cross-bucket match is dropped entirely from played, aggregate, and standings — consistent by construction. No-split (`thresholds=[]`) is a no-op (every pair in the single bucket). New regression test asserts a `division="1"` match with a Division-2 opponent is excluded from played + standings; one prior test that asserted the old one-sided "defensive boundary" behavior was corrected (it encoded the bug).
+
+### 2026-06-09 — Club cost: by_time court split dropped fee on cross-midnight session (P2) (develop)
+
+tsc 0 · vitest 448 (+6 cross-midnight) · build OK. No DB migration.
+
+- **[P2] `computeCourt` by_time silently dropped the ENTIRE court fee when the session crosses midnight** (`club/cost-split.ts:97`) — a session like 21:00→01:00 gives `s0=toMin("21:00")=1260`, `s1=toMin("01:00")=60`, so `sessionMin = 60-1260 = -1200` hit the `if (sessionMin <= 0) return out` guard → everyone's court share = 0 (the whole fee vanished). Player windows also collapsed (`pe < ps`). Fix: detect `s1 < s0` (cross-midnight) and extend `s1 += 1440`; a new `place()` helper shifts early-morning player times (`< s0`) by +24h onto the same timeline so segments/presence compute correctly. `s1 === s0` is preserved as a zero-length window (→ no fee, unchanged) — NOT a full 24h. Non-crossing sessions are byte-identical (helper is a no-op). 6 new tests: regression (fee not dropped), cross-midnight segmenting, single-player-whole-court, overstay clamp, overlapping windows, start==end zero. **Known limitation (benign):** a player whose explicit `start_time` is *before* a cross-midnight session start is ambiguous from HH:MM alone and maps to next-day; the fee is still fully collected (via gap-spread), never dropped.
 
 ### 2026-06-09 — Settings: per-field fallback wiped sibling flags (P2) (develop)
 

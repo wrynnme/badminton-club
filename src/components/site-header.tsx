@@ -23,7 +23,7 @@ export async function SiteHeader() {
             ก๊วน
           </Link>
           <Link href="/tournaments" className="text-sm hover:underline">
-            Tournament
+            ทัวร์นาเมนต์
           </Link>
           {session ? (
             <>
