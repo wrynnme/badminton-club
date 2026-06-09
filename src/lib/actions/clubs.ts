@@ -994,6 +994,59 @@ export async function startClubMatchAction(
 }
 
 /**
+ * Owner / co-admin moves a pending or in_progress match to another court.
+ * Completed / cancelled matches keep their (historical) court. Moving an
+ * in_progress match onto a court that already has a live match raises 23505 via
+ * the partial UNIQUE index (club_id, court) WHERE status='in_progress'.
+ */
+export async function setClubMatchCourtAction(input: {
+  matchId: string;
+  court: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+
+  const guard = await loadClubMatchForManage(sb, input.matchId, session.profileId);
+  if ("error" in guard) return { error: guard.error };
+  const { match } = guard;
+
+  const court = input.court.trim();
+  if (!court) return { error: "เลือกสนาม" };
+
+  // Court must be one of the club's named courts (when the club has any configured).
+  const { data: club } = await sb
+    .from("clubs")
+    .select("courts")
+    .eq("id", match.club_id)
+    .single();
+  const courts = (club?.courts ?? []) as string[];
+  if (courts.length > 0 && !courts.includes(court)) {
+    return { error: "ไม่พบสนามนี้ในก๊วน" };
+  }
+
+  // Only movable while pending / in_progress. The status filter no-ops (0 rows)
+  // for completed/cancelled rows → reported below.
+  const { data: updated, error } = await sb
+    .from("club_matches")
+    .update({ court })
+    .eq("id", input.matchId)
+    .in("status", ["pending", "in_progress"])
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "23505") return { error: "สนามนี้มีแมตช์กำลังเล่นอยู่" };
+    return { error: error.message };
+  }
+  if (!updated) return { error: "แมตช์นี้เปลี่ยนสนามไม่ได้" };
+
+  revalidatePath(`/clubs/${match.club_id}`);
+  return { ok: true };
+}
+
+/**
  * Owner / co-admin records the result and finishes a match.
  * games_played + last_finished_at are incremented atomically inside the RPC —
  * do NOT also update them here.
