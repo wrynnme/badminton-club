@@ -31,8 +31,8 @@ export function ClubTabs({
   /** Public read-only view: drop the cost/money tab entirely. */
   hideCost?: boolean;
 }) {
-  const validTabs: readonly ClubTabId[] = (
-    ["dashboard", "checkin", "queue", ...(hideCost ? [] : ["cost"]), ...(showSettings ? ["settings"] : [])] as ClubTabId[]
+  const validTabs: readonly ClubTabId[] = ALL_TABS.filter(
+    (t) => (t !== "cost" || !hideCost) && (t !== "settings" || showSettings),
   );
 
   const { active, mounted, onChange } = useTabSync<ClubTabId>({

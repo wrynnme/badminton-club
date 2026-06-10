@@ -24,6 +24,8 @@ import { ClubCourtManager } from "@/components/club/club-court-manager";
 import { ClubQueuePanel } from "@/components/club/club-queue-panel";
 import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
+import { resolveClubCourts } from "@/lib/club/courts";
+import { ClubInfoRow } from "@/components/club/club-info-row";
 import type { ClubExpense, ClubAdmin } from "@/lib/actions/clubs";
 import type { ClubMatch, ClubLockedPair, Level } from "@/lib/types";
 
@@ -121,14 +123,8 @@ export default async function ClubDetailPage({
 
   const queueSettings = parseQueueSettings(club.queue_settings);
 
-  // Named courts (clubs.courts). Fall back to ['1'..'N'] derived from the legacy
-  // queue_settings.court_count so the queue UI works before the named-courts
-  // migration is applied / for clubs that have never set a court list. Once an
-  // owner saves a list (or the backfill runs) club.courts becomes the source.
-  const clubCourts =
-    club.courts && club.courts.length > 0
-      ? club.courts
-      : Array.from({ length: queueSettings.court_count }, (_, i) => String(i + 1));
+  // Named courts (clubs.courts), else a legacy ['1'..'N'] fallback (see resolveClubCourts).
+  const clubCourts = resolveClubCourts(club.courts, queueSettings.court_count);
 
   // Canonical session cost (court + shuttle + personal expenses − discounts) —
   // same calc the cost-breakdown table uses, so the dashboard card reconciles.
@@ -166,26 +162,26 @@ export default async function ClubDetailPage({
 
       <Card>
         <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
-          <Info label={<MapPin className="h-4 w-4" />} text={club.venue} />
-          <Info
+          <ClubInfoRow label={<MapPin className="h-4 w-4" />} text={club.venue} />
+          <ClubInfoRow
             label={<CalendarDays className="h-4 w-4" />}
             text={format(new Date(club.play_date), "EEE d MMM yyyy")}
           />
-          <Info
+          <ClubInfoRow
             label={<Clock className="h-4 w-4" />}
             text={`${club.start_time.slice(0, 5)} – ${club.end_time.slice(0, 5)}`}
           />
-          <Info
+          <ClubInfoRow
             label={<Users className="h-4 w-4" />}
             text={`${activeCount}${reserveCount > 0 ? ` (+${reserveCount} สำรอง)` : ""} / ${club.max_players} คน`}
           />
           {clubCostTotal > 0 && (
-            <Info
+            <ClubInfoRow
               label={<Wallet className="h-4 w-4" />}
               text={`รวมค่าใช้จ่าย ${clubCostTotal.toLocaleString()} บาท`}
             />
           )}
-          {club.shuttle_info && <Info label="🏸" text={club.shuttle_info} />}
+          {club.shuttle_info && <ClubInfoRow label="🏸" text={club.shuttle_info} />}
         </CardContent>
       </Card>
 
@@ -336,15 +332,6 @@ export default async function ClubDetailPage({
           }
         />
       </Suspense>
-    </div>
-  );
-}
-
-function Info({ label, text }: { label: React.ReactNode; text: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-muted-foreground">{label}</span>
-      <span>{text}</span>
     </div>
   );
 }

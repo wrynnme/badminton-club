@@ -12,7 +12,9 @@ import { HourlyHeadcount } from "@/components/club/hourly-headcount";
 import { ClubQueuePanel } from "@/components/club/club-queue-panel";
 import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
-import type { Club, ClubMatch, ClubLockedPair, Level } from "@/lib/types";
+import { resolveClubCourts } from "@/lib/club/courts";
+import { ClubInfoRow } from "@/components/club/club-info-row";
+import type { Club, ClubPlayer, ClubMatch, ClubLockedPair, Level } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -57,26 +59,54 @@ export default async function PublicClubPage({
   const reserveCount = players.filter((p) => p.status === "reserve").length;
 
   const queueSettings = parseQueueSettings(club.queue_settings);
-  const clubCourts =
-    club.courts && club.courts.length > 0
-      ? club.courts
-      : Array.from({ length: queueSettings.court_count }, (_, i) => String(i + 1));
+  const clubCourts = resolveClubCourts(club.courts, queueSettings.court_count);
 
-  // Public viewers don't see money: strip every cost/price channel before it reaches
-  // the client so nothing ships in the RSC props (hideCost only hides the UI; props
-  // serialize regardless). Club-level: zero the fees + null the free-text notes /
-  // shuttle_info (owners often write prices there). Per-player: zero `discount`
-  // (money) + null `note` (free-text, may hold fees) + `profile_id` (internal id).
-  // Usage (hours/games/shuttles) computes from sessions+matches, unaffected.
+  // Public viewers don't see money / PII. Build the client props as an ALLOWLIST —
+  // list every field explicitly (sourced from the real row for safe ones, zeroed/
+  // nulled for sensitive ones) instead of spreading `...club` and subtracting. This
+  // is fail-safe: a new column added to Club / ClubPlayer becomes a TS compile error
+  // here, forcing an explicit safe-vs-sensitive decision rather than leaking by
+  // default in the RSC props. Sensitive: fees, total_cost, free-text notes /
+  // shuttle_info (often hold prices); per-player discount, note, profile_id.
   const publicClub: Club = {
-    ...club,
+    id: club.id,
+    owner_id: club.owner_id,
+    name: club.name,
+    venue: club.venue,
+    play_date: club.play_date,
+    start_time: club.start_time,
+    end_time: club.end_time,
+    max_players: club.max_players,
+    created_at: club.created_at,
+    court_split: club.court_split,
+    shuttle_split: club.shuttle_split,
+    court_gap_policy: club.court_gap_policy,
+    queue_settings: club.queue_settings,
+    courts: club.courts,
+    is_public: club.is_public,
     court_fee: 0,
     shuttle_price: 0,
     total_cost: 0,
     notes: null,
     shuttle_info: null,
   };
-  const publicPlayers = players.map((p) => ({ ...p, discount: 0, note: null, profile_id: null }));
+  const publicPlayers: ClubPlayer[] = players.map((p) => ({
+    id: p.id,
+    club_id: p.club_id,
+    display_name: p.display_name,
+    level_id: p.level_id,
+    joined_at: p.joined_at,
+    position: p.position,
+    status: p.status,
+    checked_in_at: p.checked_in_at,
+    start_time: p.start_time,
+    end_time: p.end_time,
+    games_played: p.games_played,
+    last_finished_at: p.last_finished_at,
+    profile_id: null,
+    note: null,
+    discount: 0,
+  }));
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto px-3 sm:px-4 py-6">
@@ -92,10 +122,10 @@ export default async function PublicClubPage({
 
       <Card>
         <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
-          <Info label={<MapPin className="h-4 w-4" />} text={club.venue} />
-          <Info label={<CalendarDays className="h-4 w-4" />} text={format(new Date(club.play_date), "EEE d MMM yyyy")} />
-          <Info label={<Clock className="h-4 w-4" />} text={`${club.start_time.slice(0, 5)} – ${club.end_time.slice(0, 5)}`} />
-          <Info
+          <ClubInfoRow label={<MapPin className="h-4 w-4" />} text={club.venue} />
+          <ClubInfoRow label={<CalendarDays className="h-4 w-4" />} text={format(new Date(club.play_date), "EEE d MMM yyyy")} />
+          <ClubInfoRow label={<Clock className="h-4 w-4" />} text={`${club.start_time.slice(0, 5)} – ${club.end_time.slice(0, 5)}`} />
+          <ClubInfoRow
             label={<Users className="h-4 w-4" />}
             text={`${activeCount}${reserveCount > 0 ? ` (+${reserveCount} สำรอง)` : ""} / ${club.max_players} คน`}
           />
@@ -165,15 +195,6 @@ export default async function PublicClubPage({
           }
         />
       </Suspense>
-    </div>
-  );
-}
-
-function Info({ label, text }: { label: React.ReactNode; text: string }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-muted-foreground">{label}</span>
-      <span>{text}</span>
     </div>
   );
 }

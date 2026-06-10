@@ -4,6 +4,16 @@
 import type { ClubMatch } from "@/lib/types";
 
 /**
+ * Resolve the club's court list: the named `clubs.courts` when set, else a legacy
+ * `['1'..'N']` derived from `queue_settings.court_count` (for clubs created before
+ * the named-courts migration / never given a list). Single source for both the
+ * manager page and the public page.
+ */
+export function resolveClubCourts(courts: string[], courtCount: number): string[] {
+  return courts.length > 0 ? courts : Array.from({ length: courtCount }, (_, i) => String(i + 1));
+}
+
+/**
  * Map of court name → the in-progress match occupying it. Single source of truth
  * for "which courts are busy" — both the occupancy grid and `firstFreeCourt`
  * derive from this so they can't disagree.
