@@ -32,19 +32,14 @@ export async function SiteHeader() {
                   <Button size="sm">สร้างก๊วน</Button>
                 </Link>
               )}
-              <div className="flex items-center gap-2">
+              <Link href="/settings" className="flex items-center gap-2 rounded-md px-1 py-0.5 hover:bg-accent transition-colors" title="ตั้งค่าบัญชี">
                 <Avatar className="h-8 w-8">
                   {session.pictureUrl && <AvatarImage src={session.pictureUrl} />}
                   <AvatarFallback>{session.displayName.slice(0, 1)}</AvatarFallback>
                 </Avatar>
                 <span className="text-sm hidden sm:inline">{session.displayName}</span>
                 {session.isGuest && <Badge variant="secondary">guest</Badge>}
-              </div>
-              <form action="/api/auth/logout-all" method="post" className="hidden md:block">
-                <Button variant="ghost" size="sm" type="submit" className="text-muted-foreground" title="ออกจากทุกอุปกรณ์ (เพิกถอน session ทั้งหมด)">
-                  ออกทุกอุปกรณ์
-                </Button>
-              </form>
+              </Link>
               <form action="/api/auth/logout" method="post">
                 <Button variant="ghost" size="sm" type="submit">
                   ออก
@@ -60,10 +55,12 @@ export async function SiteHeader() {
         <div className="flex sm:hidden items-center gap-1">
           <ThemeToggle />
           {session && (
-            <Avatar className="h-8 w-8">
-              {session.pictureUrl && <AvatarImage src={session.pictureUrl} />}
-              <AvatarFallback>{session.displayName.slice(0, 1)}</AvatarFallback>
-            </Avatar>
+            <Link href="/settings" aria-label="ตั้งค่าบัญชี">
+              <Avatar className="h-8 w-8">
+                {session.pictureUrl && <AvatarImage src={session.pictureUrl} />}
+                <AvatarFallback>{session.displayName.slice(0, 1)}</AvatarFallback>
+              </Avatar>
+            </Link>
           )}
           <MobileNav
             loggedIn={!!session}

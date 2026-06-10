@@ -58,6 +58,9 @@ export function MobileNav({
                 {isGuest && <Badge variant="secondary">guest</Badge>}
               </div>
             )}
+            <Link href="/settings" className={item}>
+              ตั้งค่า
+            </Link>
             <form action="/api/auth/logout" method="post">
               <Button
                 variant="ghost"
@@ -65,15 +68,6 @@ export function MobileNav({
                 className="min-h-11 w-full justify-start text-destructive hover:text-destructive"
               >
                 ออก
-              </Button>
-            </form>
-            <form action="/api/auth/logout-all" method="post">
-              <Button
-                variant="ghost"
-                type="submit"
-                className="min-h-11 w-full justify-start text-muted-foreground"
-              >
-                ออกจากทุกอุปกรณ์
               </Button>
             </form>
           </>
