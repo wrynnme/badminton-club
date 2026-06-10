@@ -1,5 +1,8 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { format } from "date-fns";
 import { getSession } from "@/lib/auth/session";
+import { createAdminClient } from "@/lib/supabase/server";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +15,22 @@ export const dynamic = "force-dynamic";
 export default async function SettingsPage() {
   const session = await getSession();
   if (!session) redirect("/?auth_error=login_required&redirectTo=/settings");
+
+  // Owner-only past clubs (play_date already passed) — the /clubs list shows only
+  // today/upcoming (play_date >= today), so expired clubs we own live here as history.
+  // Guests can't own clubs, so skip the query for them.
+  let pastClubs: { id: string; name: string; venue: string; play_date: string }[] = [];
+  if (!session.isGuest) {
+    const sb = await createAdminClient();
+    const today = new Date().toISOString().slice(0, 10);
+    const { data } = await sb
+      .from("clubs")
+      .select("id, name, venue, play_date")
+      .eq("owner_id", session.profileId)
+      .lt("play_date", today)
+      .order("play_date", { ascending: false });
+    pastClubs = data ?? [];
+  }
 
   return (
     <div className="mx-auto max-w-lg space-y-6 px-4 py-8">
@@ -37,6 +56,38 @@ export default async function SettingsPage() {
           <EditProfileForm displayName={session.displayName} />
         </CardContent>
       </Card>
+
+      {!session.isGuest && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">ก๊วนของเราที่หมดอายุแล้ว</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {pastClubs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">ยังไม่มีก๊วนที่ผ่านมา</p>
+            ) : (
+              <ul className="space-y-2">
+                {pastClubs.map((c) => (
+                  <li key={c.id}>
+                    <Link
+                      href={`/clubs/${c.id}`}
+                      className="flex items-center justify-between gap-3 rounded-md border px-3 py-2 transition-colors hover:bg-muted/50"
+                    >
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate text-sm font-medium">{c.name}</span>
+                        <span className="truncate text-xs text-muted-foreground">{c.venue}</span>
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {format(new Date(c.play_date), "d MMM yyyy")}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="pb-3">
