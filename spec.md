@@ -646,7 +646,7 @@ Consolidated จากการ review spec ทั้งฉบับ + `bug.md` 
 
 1. ~~**Migration รอบเดียว**~~ → **✅ #1/#2/#3 SHIPPED 2026-06-10 (ดู "Migration batch 2026-06-10" ด้านล่าง)** — เหลือเฉพาะ **M4 DROP `team_players.level`** (introspect 2026-06-10 พบว่า `club_players.level` + `clubs.shuttle_fee` ถูก DROP ไปแล้วตั้งแต่ 2026-06-07 — migration `20260607000900`/`20260607001200`; spec/memory เดิม stale) — M4 ต้องรอ develop→master deploy ก่อน (prod code เก่ายังเขียน `level` text) + Gate-4 พิมพ์ยืนยัน
 2. **CI pipeline** — GitHub Actions รัน `tsc --noEmit` + `vitest run` + `next build` ต่อ PR (ตอนนี้รันมือทุกครั้ง — วินัยดีแต่พึ่งคน)
-3. **Repo hygiene** — gitignore หรือย้าย throwaway HTML ที่ root (`code-review-core-2026-06-09.html`, `phase13-session-summary.html`, `tournament-backlog-T2-T5.html`) เข้า `docs/reviews/`
+3. ~~**Repo hygiene**~~ → **✅ DONE 2026-06-10** — (a) 3 throwaway HTML ที่ root ย้ายเข้า `docs/reviews/` แล้วตั้งแต่ 2026-06-09 (`code-review-core-2026-06-09.html`, `phase13-session-summary.html`, `tournament-backlog-T2-T5.html` — tracked); (b) ไฟล์ที่ 4 `session-2026-06-10-status.html` track เพิ่มให้ครบ → review HTML ทั้ง 4 เป็น docs ถาวร (สอดคล้องกับที่ `bug.md` อ้างอิง path เหล่านี้เป็น record); (c) `.codex/` (Codex CLI tooling config) เพิ่มใน `.gitignore` มิเรอร์ pattern `.claude` / `/.agents`
 
 **Feature ลำดับถัดไป (เรียงตาม ROI):**
 
