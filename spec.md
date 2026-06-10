@@ -811,6 +811,20 @@ computeClubSplit(input: {
 - `winner_stays` — กติกาผู้ชนะอยู่ต่อกี่เกมติด, เปลี่ยนคู่ฝั่งไหน
 - skill-level scale — เลขอิสระเหมือน tournament `level` หรือ fixed scale
 
+### หน้า Settings โปรไฟล์ + ย้าย "ออกทุกอุปกรณ์" — TODO (captured 2026-06-10, กำลังทำ)
+
+หน้าตั้งค่าโปรไฟล์ผู้ใช้ที่ `/settings` (route ใหม่ใน `(app)` group → ได้ `SiteHeader` + ต้อง login) รวบ account actions ไว้ที่เดียว และย้ายปุ่ม "ออกทุกอุปกรณ์" ออกจาก header/mobile-nav มาไว้ที่นี่. ขอบเขตเคาะแล้ว: **ข้อมูลโปรไฟล์ + actions บัญชี + แก้ไข display name** (ไม่รวม theme toggle — คงไว้ที่ header).
+
+**Tasks (task list #1–#6):**
+1. ⬜ `updateProfileDisplayNameAction` — ไฟล์ใหม่ `src/lib/actions/profile.ts`: getSession → zod (trim 1–40) → update `profiles.display_name` (service role) → `setSession(...)` re-issue cookie (sync header) → `revalidatePath`.
+2. ✅ **DONE 2026-06-10** — LINE callback (`api/auth/line/callback/route.ts`) เลิก `upsert` ที่ overwrite ทุกคอลัมน์ → เปลี่ยนเป็น update-first (refresh เฉพาะ `picture_url`+`is_guest`) / insert เฉพาะ first-login (seed `display_name` จาก LINE) + ดัก unique-violation `23505` re-read กัน concurrent-first-login race. ทำให้ชื่อที่ผู้ใช้แก้คงอยู่. **Trade-off: เลิก mirror ชื่อจากฝั่ง LINE** (เปลี่ยนชื่อใน LINE app จะไม่ตามมา). tsc 0.
+3. ⬜ หน้า `/settings/page.tsx` (server component) — redirect ถ้าไม่ login; การ์ดโปรไฟล์ (avatar + ชื่อ + badge LINE/guest) + `EditProfileForm` + ปุ่ม "ออก" + "ออกทุกอุปกรณ์" (form POST `/api/auth/logout` + `/api/auth/logout-all`) ครอบ Tooltip.
+4. ⬜ `EditProfileForm` (client) — TanStack Form + zod + shadcn Input/Button/Tooltip; เรียก action #1; `router.refresh()` หลังสำเร็จ.
+5. ⬜ ลบ form "ออกทุกอุปกรณ์" ออกจาก `site-header.tsx` (บรรทัด ~43-47) + `mobile-nav.tsx` (บรรทัด ~70-78); ทำ avatar เป็น `<Link href="/settings">` + เพิ่มเมนู "ตั้งค่า" ใน mobile-nav. (route `/api/auth/logout-all` คงเดิม)
+6. ⬜ Verify (`tsc` + smoke ทั้ง LINE + guest) + update spec.md (mark DONE) + bug.md test-run note.
+
+**Note:** guest user แก้ชื่อได้ด้วย (เขียนลง `profiles.display_name` เหมือนกัน — guest ไม่ผ่าน LINE callback). `bump_session_version` RPC + `/api/auth/logout-all` route logic ไม่ต้องแตะ.
+
 ### ระบบ Preset ก๊วน (user-owned templates) — TODO (captured 2026-06-08, ยังไม่เริ่ม)
 
 Preset = เทมเพลตก๊วนที่ user **เพิ่ม/ลบ/แก้** ของตัวเองได้ เก็บ config + roster ที่ใช้ประจำ เพื่อเปิดก๊วนรอบใหม่ได้เร็ว. ตัวอย่าง: "NOMKON · วันพุธ · 19:00–21:00".
