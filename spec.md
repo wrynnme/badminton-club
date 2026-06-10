@@ -334,6 +334,17 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 | Edit club / Expenses / Cost config / Queue / Locked / Match | ✓     | ✓        | ✗      |
 | Add/remove co-admins / Share link                           | ✓     | ✗        | ✗      |
 
+### Visibility — Private / Public (ก๊วน public) — ✅ DONE (2026-06-10, develop)
+
+ก๊วนเป็น **private (default)** = manager เท่านั้น (non-manager โดน redirect ที่ `clubs/[id]/page.tsx`). owner เปิดเป็น **public** ได้ → ดู read-only ที่ `/c/[id]` โดยไม่ต้อง login (ลิงก์ถาวรอิง club id, ไม่ใช่ secret token; gate ด้วย flag).
+- **DB**: migration `20260610000900_clubs_is_public` — `clubs.is_public boolean NOT NULL DEFAULT false` + partial index `idx_clubs_is_public WHERE is_public`. APPLIED to prod 2026-06-10 (additive; 0 public = behavior เดิม).
+- **Action** (`clubs.ts`): `setClubVisibilityAction(clubId, isPublic)` — **owner-only** (`assertClubOwner`), UPDATE `is_public`, revalidate `/clubs/[id]` + `/c/[id]`. ไม่มี audit (clubs ไม่มี audit_logs). `Club.is_public` ใน types.
+- **Public route**: `src/app/(public)/c/[id]/page.tsx` (`force-dynamic`) — `createAdminClient()` fetch by id, `if (!club || !club.is_public) notFound()`. render `<ClubTabs hideCost showSettings={false}>` (dashboard/ลงชื่อ/ล็อคคู่+คิว เท่านั้น) ด้วย `canManage=false`, `sessionProfileId=null`. **ซ่อนเงิน**: ส่ง `publicClub = {...club, court_fee:0, shuttle_price:0, total_cost:0}` + `expenses=[]` ลง client (ราคา/expense ไม่ ship ไป client เลย ไม่ใช่แค่ซ่อน UI); usage (ชม./เกม/ลูก) คำนวณจาก sessions+matches ปกติ.
+- **`hideCost` prop** (ใหม่): `club-tabs.tsx` (ตัดแท็บค่าใช้จ่ายทั้งแท็บ + จาก validTabs) · `club-dashboard.tsx` (ซ่อน stat card `ค่าใช้จ่ายรวม`/`เฉลี่ย/คน` + column `ค่าสนาม`/`ค่าลูก`/`รวม` ในตารางผู้เล่น; คง usage columns).
+- **Owner UI**: `club-visibility-controls.tsx` (mirror tournament `share-controls.tsx` แต่เป็น Checkbox flag ไม่ใช่ generate/revoke token) — toggle "เปิดให้คนทั่วไปดู" + ลิงก์ `${appUrl}/c/${clubId}` + copy + QR dialog (`react-qr-code` dynamic). mount ในแท็บตั้งค่า (owner-only, ข้าง EditClubForm). `appUrl = NEXT_PUBLIC_APP_URL`.
+- tsc 0 · vitest 470/470 · live-smoke (throwaway guest club, net-zero): private→/c/[id] not-found (ไม่มี club data) · toggle public→club render เต็ม + **0 cost marker** + ไม่มีแท็บค่าใช้จ่าย/ตั้งค่า · cleanup net-zero (NOMKONZ intact).
+- **Phase 2 (optional, ยังไม่ทำ)**: public directory `/(public)/c` list ก๊วน `is_public=true`.
+
 ### Co-Admin
 
 - **DB**: `club_admins` — PK `(club_id, user_id)`; FK `club_admins_club_id_fkey → clubs ON DELETE CASCADE`; FK `club_admins_user_id_fkey → profiles ON DELETE CASCADE`; `added_by` nullable FK → profiles ON DELETE SET NULL

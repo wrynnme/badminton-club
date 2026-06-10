@@ -39,9 +39,11 @@ type Props = {
   /** Session grand total from computeClubCostSummary (the canonical money path). */
   costTotal: number;
   maxPlayers: number;
+  /** Public read-only view: hide all money figures (cost cards + cost columns). */
+  hideCost?: boolean;
 };
 
-export function ClubDashboard({ club, players, matches, levels, expenses, costTotal, maxPlayers }: Props) {
+export function ClubDashboard({ club, players, matches, levels, expenses, costTotal, maxPlayers, hideCost = false }: Props) {
   const d = useMemo(() => computeClubDashboard(players, matches), [players, matches]);
 
   // Per-player cost + usage rows via the SAME shared builder the cost-breakdown
@@ -117,7 +119,7 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
   return (
     <div className="space-y-4">
       {/* ── Stat cards ── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${hideCost ? "lg:grid-cols-3" : "lg:grid-cols-5"}`}>
         <StatCard
           icon={<Users className="h-4 w-4" />}
           label="ผู้เล่น"
@@ -136,18 +138,22 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
           value={d.totalShuttles}
           sub="ใช้ไปทั้งหมด"
         />
-        <StatCard
-          icon={<Wallet className="h-4 w-4" />}
-          label="ค่าใช้จ่ายรวม"
-          value={`${costTotal.toLocaleString()} ฿`}
-          sub="สนาม + ลูก + อื่นๆ"
-        />
-        <StatCard
-          icon={<Coins className="h-4 w-4" />}
-          label="เฉลี่ย/คน"
-          value={`${perPlayer.toLocaleString()} ฿`}
-          sub={`หาร ${d.totalPlayers} คน`}
-        />
+        {!hideCost && (
+          <StatCard
+            icon={<Wallet className="h-4 w-4" />}
+            label="ค่าใช้จ่ายรวม"
+            value={`${costTotal.toLocaleString()} ฿`}
+            sub="สนาม + ลูก + อื่นๆ"
+          />
+        )}
+        {!hideCost && (
+          <StatCard
+            icon={<Coins className="h-4 w-4" />}
+            label="เฉลี่ย/คน"
+            value={`${perPlayer.toLocaleString()} ฿`}
+            sub={`หาร ${d.totalPlayers} คน`}
+          />
+        )}
       </div>
 
       {/* ── Charts ── */}
@@ -251,9 +257,13 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
                   <TableHead className="w-12 text-center">ชม.</TableHead>
                   <TableHead className="w-12 text-center">เกม</TableHead>
                   <TableHead className="w-16 text-center whitespace-nowrap">ลูกที่ใช้</TableHead>
-                  <TableHead className="w-16 text-right whitespace-nowrap">ค่าสนาม</TableHead>
-                  <TableHead className="w-16 text-right">ค่าลูก</TableHead>
-                  <TableHead className="w-16 text-right">รวม</TableHead>
+                  {!hideCost && (
+                    <>
+                      <TableHead className="w-16 text-right whitespace-nowrap">ค่าสนาม</TableHead>
+                      <TableHead className="w-16 text-right">ค่าลูก</TableHead>
+                      <TableHead className="w-16 text-right">รวม</TableHead>
+                    </>
+                  )}
                   <TableHead className="w-20 text-center">สถานะ</TableHead>
                 </TableRow>
               </TableHeader>
@@ -267,9 +277,13 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
                     <TableCell className="text-center tabular-nums text-muted-foreground">{formatHours(r.hours)}</TableCell>
                     <TableCell className="text-center tabular-nums font-semibold">{r.games}</TableCell>
                     <TableCell className="text-center tabular-nums text-muted-foreground">{r.shuttles}</TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">{r.court.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums text-muted-foreground">{r.shuttleCost.toLocaleString()}</TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">{r.total.toLocaleString()}</TableCell>
+                    {!hideCost && (
+                      <>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">{r.court.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums text-muted-foreground">{r.shuttleCost.toLocaleString()}</TableCell>
+                        <TableCell className="text-right tabular-nums font-semibold">{r.total.toLocaleString()}</TableCell>
+                      </>
+                    )}
                     <TableCell className="text-center">
                       <Badge variant={r.status === "active" ? "secondary" : "outline"} className="text-[10px]">
                         {r.status === "active" ? "ตัวจริง" : "สำรอง"}

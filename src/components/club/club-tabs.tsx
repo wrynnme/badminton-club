@@ -20,6 +20,7 @@ export function ClubTabs({
   cost,
   settings,
   showSettings,
+  hideCost = false,
 }: {
   dashboard: ReactNode;
   checkin: ReactNode;
@@ -27,10 +28,12 @@ export function ClubTabs({
   cost: ReactNode;
   settings: ReactNode;
   showSettings: boolean;
+  /** Public read-only view: drop the cost/money tab entirely. */
+  hideCost?: boolean;
 }) {
-  const validTabs: readonly ClubTabId[] = showSettings
-    ? ALL_TABS
-    : (["dashboard", "checkin", "queue", "cost"] as const);
+  const validTabs: readonly ClubTabId[] = (
+    ["dashboard", "checkin", "queue", ...(hideCost ? [] : ["cost"]), ...(showSettings ? ["settings"] : [])] as ClubTabId[]
+  );
 
   const { active, mounted, onChange } = useTabSync<ClubTabId>({
     allTabs: ALL_TABS,
@@ -44,14 +47,16 @@ export function ClubTabs({
         <TabsTrigger value="dashboard">แดชบอร์ด</TabsTrigger>
         <TabsTrigger value="checkin">ลงชื่อ / เช็คอิน</TabsTrigger>
         <TabsTrigger value="queue">ล็อคคู่ + คิว</TabsTrigger>
-        <TabsTrigger value="cost">ค่าใช้จ่าย</TabsTrigger>
+        {!hideCost && <TabsTrigger value="cost">ค่าใช้จ่าย</TabsTrigger>}
         {showSettings && <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>}
       </TabsList>
 
       <TabsContent value="dashboard">{mounted.has("dashboard") && dashboard}</TabsContent>
       <TabsContent value="checkin">{mounted.has("checkin") && checkin}</TabsContent>
       <TabsContent value="queue">{mounted.has("queue") && queue}</TabsContent>
-      <TabsContent value="cost">{mounted.has("cost") && cost}</TabsContent>
+      {!hideCost && (
+        <TabsContent value="cost">{mounted.has("cost") && cost}</TabsContent>
+      )}
       {showSettings && (
         <TabsContent value="settings">{mounted.has("settings") && settings}</TabsContent>
       )}

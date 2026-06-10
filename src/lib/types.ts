@@ -30,6 +30,9 @@ export type Club = {
   queue_settings: Record<string, unknown>;
   // Named courts (mirror tournaments.courts); replaces queue_settings.court_count.
   courts: string[];
+  // Visibility: false = manager-only (default); true = public read-only at /c/[id]
+  // (cost/money hidden from public viewers). Toggled by the owner.
+  is_public: boolean;
 };
 
 // Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").

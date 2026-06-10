@@ -15,6 +15,7 @@ import { SortablePlayerList } from "@/components/club/sortable-player-list";
 import { ExpenseManager } from "@/components/club/expense-manager";
 import { ClubCoAdminControls } from "@/components/club/club-co-admin-controls";
 import { DeleteClubButton } from "@/components/club/delete-club-button";
+import { ClubVisibilityControls } from "@/components/club/club-visibility-controls";
 import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
 import { HourlyHeadcount } from "@/components/club/hourly-headcount";
@@ -137,6 +138,8 @@ export default async function ClubDetailPage({
   // they never disagree. Prefer the computed session total; fall back to legacy
   // total_cost only before any court/shuttle/expense/discount input is set.
   const clubCostTotal = costSummary.grandTotal > 0 ? costSummary.grandTotal : (club.total_cost ?? 0);
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
@@ -314,6 +317,9 @@ export default async function ClubDetailPage({
           settings={
             <div className="space-y-4">
               {isOwner && <EditClubForm club={club} />}
+              {isOwner && (
+                <ClubVisibilityControls clubId={club.id} isPublic={club.is_public} appUrl={appUrl} />
+              )}
               {canManage && <ClubCourtManager clubId={club.id} initialCourts={clubCourts} />}
               {canManage && <ClubQueueSettings clubId={club.id} initial={queueSettings} />}
               {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}
