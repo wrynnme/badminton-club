@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Loader2, Globe } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,17 +24,7 @@ export function ClubVisibilityControls({
   appUrl: string;
 }) {
   const [isPublic, setIsPublic] = useState(initial);
-  const [origin, setOrigin] = useState(appUrl);
   const [isPending, start] = useTransition();
-
-  // Fall back to the live origin when NEXT_PUBLIC_APP_URL is unset so the copied
-  // link / QR carries a real host. Done in an effect (not at render) so SSR and the
-  // first client render both use `appUrl` → no hydration mismatch.
-  useEffect(() => {
-    if (!appUrl && typeof window !== "undefined") setOrigin(window.location.origin);
-  }, [appUrl]);
-
-  const shareUrl = `${origin}/c/${clubId}`;
 
   const toggle = (next: boolean) =>
     start(async () => {
@@ -74,9 +64,7 @@ export function ClubVisibilityControls({
         </label>
 
         {isPublic && (
-          <div className="flex gap-2">
-            <ShareLinkRow url={shareUrl} qrTitle="QR Code ลิงก์ก๊วน" />
-          </div>
+          <ShareLinkRow appUrl={appUrl} path={`/c/${clubId}`} qrTitle="QR Code ลิงก์ก๊วน" />
         )}
       </CardContent>
     </Card>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { Copy, Check, QrCode } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -16,14 +16,34 @@ import {
 } from "@/components/ui/dialog";
 
 /**
- * Read-only share-link row: link Input + copy button + QR-code dialog. Renders as
- * a fragment (no wrapper) so a caller can place it in its own flex row and append
- * extra controls (e.g. a revoke button). Shared by ClubVisibilityControls and the
- * tournament ShareControls.
+ * Self-contained read-only share-link row: resolves the link host from `appUrl`
+ * (falling back to the live `window.location.origin` when NEXT_PUBLIC_APP_URL is
+ * unset — in an effect so SSR and the first client render match, no hydration
+ * mismatch), then renders link Input + copy + QR dialog inside its own flex row.
+ * `trailing` slots extra controls (e.g. a revoke button) after the QR button.
+ * Shared by ClubVisibilityControls and the tournament ShareControls.
  */
-export function ShareLinkRow({ url, qrTitle }: { url: string; qrTitle: string }) {
+export function ShareLinkRow({
+  appUrl,
+  path,
+  qrTitle,
+  trailing,
+}: {
+  appUrl: string;
+  /** Path appended to the resolved origin, e.g. `/c/<id>` or `/t/<token>`. */
+  path: string;
+  qrTitle: string;
+  trailing?: ReactNode;
+}) {
+  const [origin, setOrigin] = useState(appUrl);
   const [copied, setCopied] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+
+  useEffect(() => {
+    if (!appUrl && typeof window !== "undefined") setOrigin(window.location.origin);
+  }, [appUrl]);
+
+  const url = `${origin}${path}`;
 
   const copy = async () => {
     try {
@@ -36,7 +56,7 @@ export function ShareLinkRow({ url, qrTitle }: { url: string; qrTitle: string })
   };
 
   return (
-    <>
+    <div className="flex gap-2">
       <Input value={url} readOnly className="h-8 flex-1 font-mono text-xs" />
       <Button size="sm" variant="outline" className="h-8 shrink-0" aria-label="คัดลอกลิงก์" onClick={copy}>
         {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
@@ -58,6 +78,7 @@ export function ShareLinkRow({ url, qrTitle }: { url: string; qrTitle: string })
           </div>
         </DialogContent>
       </Dialog>
-    </>
+      {trailing}
+    </div>
   );
 }

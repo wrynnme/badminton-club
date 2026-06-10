@@ -26,8 +26,6 @@ export function ShareControls({
   const [token, setToken] = useState(shareToken);
   const [isPending, start] = useTransition();
 
-  const shareUrl = token ? `${appUrl}/t/${token}` : null;
-
   const generate = () =>
     start(async () => {
       const res = await generateShareTokenAction(tournamentId);
@@ -46,15 +44,19 @@ export function ShareControls({
 
   return (
     <div className="flex flex-col gap-2">
-      {shareUrl ? (
-        <div className="flex gap-2">
-          <ShareLinkRow url={shareUrl} qrTitle="QR Code สำหรับลิงก์แชร์" />
-          {isOwner && (
-            <Button size="sm" variant="outline" className="h-8 shrink-0 text-destructive hover:text-destructive" aria-label="เพิกถอนลิงก์" onClick={revoke} disabled={isPending}>
-              <Link2Off className="h-3.5 w-3.5" />
-            </Button>
-          )}
-        </div>
+      {token ? (
+        <ShareLinkRow
+          appUrl={appUrl}
+          path={`/t/${token}`}
+          qrTitle="QR Code สำหรับลิงก์แชร์"
+          trailing={
+            isOwner && (
+              <Button size="sm" variant="outline" className="h-8 shrink-0 text-destructive hover:text-destructive" aria-label="เพิกถอนลิงก์" onClick={revoke} disabled={isPending}>
+                <Link2Off className="h-3.5 w-3.5" />
+              </Button>
+            )
+          }
+        />
       ) : isOwner ? (
         <Button size="sm" variant="outline" onClick={generate} className="self-start" disabled={isPending}>
           {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
@@ -63,7 +65,7 @@ export function ShareControls({
       ) : (
         <p className="text-xs text-muted-foreground">ยังไม่ได้สร้างลิงก์แชร์ — ขอเจ้าของทัวร์สร้างให้</p>
       )}
-      {shareUrl && (
+      {token && (
         <p className="text-xs text-muted-foreground">ลิงก์นี้ดูได้โดยไม่ต้อง login</p>
       )}
     </div>
