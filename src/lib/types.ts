@@ -257,3 +257,13 @@ export type ClubWithPlayers = Club & {
   players: ClubPlayer[];
   owner?: Pick<Profile, "display_name" | "picture_url"> | null;
 };
+
+import type { ClubPresetConfig } from "@/lib/club/preset";
+
+export type ClubPreset = {
+  id: string;
+  owner_id: string;
+  name: string;
+  config: ClubPresetConfig;
+  created_at: string;
+};

@@ -6,6 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, MapPin, Users } from "lucide-react";
+import { listClubPresetsAction } from "@/lib/actions/club-presets";
+import { PresetManager } from "@/components/club/preset-manager";
+import type { ClubPreset } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +46,15 @@ export default async function ClubsPage() {
     clubs = (data ?? []) as ClubRow[];
   }
 
+  // Fetch presets only for LINE users. The action redirects null (anonymous)
+  // sessions and returns { error } for guests, so calling it unconditionally
+  // would bounce anonymous visitors off this (otherwise viewable) page.
+  let presets: ClubPreset[] = [];
+  if (canCreate) {
+    const presetsResult = await listClubPresetsAction();
+    if ("presets" in presetsResult) presets = presetsResult.presets;
+  }
+
   const { data: counts } = await sb
     .from("club_players")
     .select("club_id");
@@ -68,6 +80,9 @@ export default async function ClubsPage() {
           เข้าสู่ระบบด้วย LINE เพื่อสร้างก๊วน (โหมด guest เข้าร่วมก๊วนได้เท่านั้น)
         </p>
       )}
+
+      {/* Preset section — visible only for LINE-authenticated users */}
+      {canCreate && <PresetManager presets={presets} />}
 
       {!clubs?.length ? (
         <p className="text-muted-foreground">
