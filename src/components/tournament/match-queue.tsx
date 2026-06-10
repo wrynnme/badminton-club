@@ -54,6 +54,7 @@ import {
 } from "@/lib/actions/matches";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { parseDivision, divisionTone } from "@/lib/tournament/divisions";
+import { classTone, type ClassTone } from "@/lib/tournament/class-color";
 import { MATCH_STATUS_LABEL_TH, MATCH_STATUS_PILL_CLASS } from "@/lib/tournament/status-display";
 import { maxGamesForFormat } from "@/lib/tournament/match-format";
 import type { Match, MatchUnit, TournamentClass } from "@/lib/types";
@@ -103,6 +104,14 @@ export function MatchQueue({
   const router = useRouter();
   const progressRouter = useProgressRouter();
   const [items, setItems] = useState<Match[]>([]);
+
+  // Build a stable id→tone map from classById insertion order (= position order from page).
+  const classToneMap = useMemo(() => {
+    if (!classById) return undefined;
+    const m = new Map<string, ClassTone>();
+    Array.from(classById.values()).forEach((c, i) => { m.set(c.id, classTone(i)); });
+    return m;
+  }, [classById]);
   const [reorderPending, startReorder] = useTransition();
   const [autoPending, startAuto] = useTransition();
   // T5: suppress realtime row-patches while the user is dragging or a reorder is
@@ -327,6 +336,7 @@ export function MatchQueue({
                       courtStrict={courtStrict}
                       occupiedCourts={occupiedCourts}
                       classById={classById}
+                      classToneMap={classToneMap}
                     />
                   ))}
                 </ul>
@@ -342,6 +352,7 @@ export function MatchQueue({
                   unit={unit}
                   courts={courts}
                   classById={classById}
+                  classToneMap={classToneMap}
                 />
               ))}
             </ul>
@@ -366,6 +377,7 @@ export function MatchQueue({
                   courtStrict={courtStrict}
                   occupiedCourts={occupiedCourts}
                   classById={classById}
+                  classToneMap={classToneMap}
                 />
               ))}
             </ul>
@@ -390,6 +402,7 @@ export function MatchQueue({
                   courtStrict={courtStrict}
                   occupiedCourts={occupiedCourts}
                   classById={classById}
+                  classToneMap={classToneMap}
                 />
               ))}
             </ul>
@@ -419,13 +432,16 @@ function getCompetitorNames(
 function DivisionBadge({
   match,
   classById,
+  classToneMap,
 }: {
   match: Match;
   classById?: Map<string, TournamentClass>;
+  classToneMap?: Map<string, ClassTone>;
 }) {
   const div = parseDivision(match.division);
   const isKO = match.round_type === "knockout";
   const cls = match.class_id ? classById?.get(match.class_id) : undefined;
+  const clsTone = match.class_id ? classToneMap?.get(match.class_id) : undefined;
   const bracketLabel = !isKO
     ? null
     : match.bracket === "upper" ? "W" : match.bracket === "lower" ? "L" : match.bracket === "grand_final" ? "F" : null;
@@ -449,7 +465,7 @@ function DivisionBadge({
         <Tooltip>
           <TooltipTrigger
             render={
-              <span className="text-[10px] px-1.5 py-0.5 rounded border font-medium cursor-help border-primary/40 bg-primary/10 text-primary">
+              <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium cursor-help ${clsTone ? `${clsTone.border} ${clsTone.bg} ${clsTone.text}` : "border-primary/40 bg-primary/10 text-primary"}`}>
                 {cls.code}
               </span>
             }
@@ -544,6 +560,7 @@ function SortableQueueRow(props: {
   courtStrict: boolean;
   occupiedCourts: Set<string>;
   classById?: Map<string, TournamentClass>;
+  classToneMap?: Map<string, ClassTone>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: props.match.id,
@@ -569,6 +586,7 @@ function SortableQueueRow(props: {
         courtStrict={props.courtStrict}
         occupiedCourts={props.occupiedCourts}
         classById={props.classById}
+        classToneMap={props.classToneMap}
       />
     </li>
   );
@@ -585,6 +603,7 @@ function NonDraggableRow(props: {
   courtStrict: boolean;
   occupiedCourts: Set<string>;
   classById?: Map<string, TournamentClass>;
+  classToneMap?: Map<string, ClassTone>;
 }) {
   return (
     <li>
@@ -600,6 +619,7 @@ function NonDraggableRow(props: {
         courtStrict={props.courtStrict}
         occupiedCourts={props.occupiedCourts}
         classById={props.classById}
+        classToneMap={props.classToneMap}
       />
     </li>
   );
@@ -611,6 +631,7 @@ function QueueRowReadOnly(props: {
   unit: MatchUnit;
   courts: string[];
   classById?: Map<string, TournamentClass>;
+  classToneMap?: Map<string, ClassTone>;
 }) {
   return (
     <li>
@@ -626,6 +647,7 @@ function QueueRowReadOnly(props: {
         courtStrict={true}
         occupiedCourts={new Set()}
         classById={props.classById}
+        classToneMap={props.classToneMap}
       />
     </li>
   );
@@ -643,6 +665,7 @@ function QueueRowBody({
   courtStrict,
   occupiedCourts,
   classById,
+  classToneMap,
 }: {
   match: Match;
   competitorById: Map<string, Competitor>;
@@ -655,6 +678,7 @@ function QueueRowBody({
   courtStrict: boolean;
   occupiedCourts: Set<string>;
   classById?: Map<string, TournamentClass>;
+  classToneMap?: Map<string, ClassTone>;
 }) {
   const { a, b, unknownLabel } = getCompetitorNames(match, unit, competitorById);
   const isCourtOccupied = useMemo(
@@ -719,7 +743,7 @@ function QueueRowBody({
             #{match.match_number}
           </div>
 
-          <DivisionBadge match={match} classById={classById} />
+          <DivisionBadge match={match} classById={classById} classToneMap={classToneMap} />
 
           <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_1fr] items-center gap-x-1">
             <CompetitorLine c={a} unknownLabel={unknownLabel} align="right" entityType={unit === "pair" ? "pair" : "team"} entityId={unit === "pair" ? match.pair_a_id : match.team_a_id} />

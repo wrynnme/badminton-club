@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { createPairAction, deletePairAction } from "@/lib/actions/pairs";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { PairScheduleLink } from "@/components/tournament/pair-schedule-link";
+import { classToneById, type ClassTone } from "@/lib/tournament/class-color";
 import type { Level, TeamWithPlayers, PairWithPlayers, TournamentClass } from "@/lib/types";
 
 function CreatePairForm({ teamId, availablePlayers, classes = [], levelById, onDone }: {
@@ -109,11 +110,12 @@ function CreatePairForm({ teamId, availablePlayers, classes = [], levelById, onD
   );
 }
 
-function PairItem({ pair, isOwner, color, classCode, levelById }: {
+function PairItem({ pair, isOwner, color, classCode, classTone, levelById }: {
   pair: PairWithPlayers;
   isOwner: boolean;
   color?: string | null;
   classCode?: string;
+  classTone?: ClassTone;
   levelById: Map<string, string>;
 }) {
   const [delPending, startDel] = useTransition();
@@ -130,7 +132,7 @@ function PairItem({ pair, isOwner, color, classCode, levelById }: {
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           {classCode && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 border-primary/40 bg-primary/10 text-primary">{classCode}</Badge>
+            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 shrink-0 ${classTone ? `${classTone.border} ${classTone.bg} ${classTone.text}` : "border-primary/40 bg-primary/10 text-primary"}`}>{classCode}</Badge>
           )}
           <span className="text-xs text-muted-foreground font-mono shrink-0">{pair.id.slice(0, 6)}</span>
           {pair.display_pair_name && <span className="font-medium truncate">{pair.display_pair_name}</span>}
@@ -192,6 +194,8 @@ export function PairManager({ team, pairs, isOwner, classes = [], levels = [] }:
   const available = team.players.filter((p) => !pairedIds.has(p.id));
   const classCodeById = new Map(classes.map((c) => [c.id, c.code]));
   const levelById = new Map(levels.map((l) => [l.id, l.label]));
+  // Derive tone per pair so the badge colour matches the class position in the palette.
+  const toneForPair = (classId: string | null | undefined) => classToneById(classes, classId);
 
   return (
     <Card>
@@ -215,7 +219,7 @@ export function PairManager({ team, pairs, isOwner, classes = [], levels = [] }:
         ) : (
           <div className="space-y-1">
             {pairs.map((p) => (
-              <PairItem key={p.id} pair={p} isOwner={isOwner} color={team.color} classCode={p.class_id ? classCodeById.get(p.class_id) : undefined} levelById={levelById} />
+              <PairItem key={p.id} pair={p} isOwner={isOwner} color={team.color} classCode={p.class_id ? classCodeById.get(p.class_id) : undefined} classTone={classes.length > 0 ? toneForPair(p.class_id) : undefined} levelById={levelById} />
             ))}
           </div>
         )}

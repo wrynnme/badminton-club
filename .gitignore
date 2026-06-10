@@ -52,3 +52,6 @@ next-env.d.ts
 .claude
 .vscode
 supabase/.temp/
+
+# codex (tooling-local config — mirrors .claude / .agents)
+/.codex

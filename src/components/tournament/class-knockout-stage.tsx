@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KnockoutStage } from "@/components/tournament/knockout-stage";
+import { classToneById } from "@/lib/tournament/class-color";
 import type { Match, PairWithPlayers, Team, TournamentClass } from "@/lib/types";
 
 // Per-class knockout view rendered inside the น็อคเอ้า tab for competition-mode
@@ -96,7 +97,7 @@ export function ClassKnockoutStage({
   if (koClasses.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        ยังไม่มี class ที่มีรอบน็อคเอ้า — เพิ่ม class ในแท็บ “ตั้งค่า”
+        ยังไม่มี class ที่มีรอบน็อคเอ้า — เพิ่ม class ในแท็บ "ตั้งค่า"
       </p>
     );
   }
@@ -104,11 +105,15 @@ export function ClassKnockoutStage({
   return (
     <Tabs defaultValue={koClasses[0].id} className="space-y-4">
       <TabsList className="w-full flex-wrap h-auto">
-        {koClasses.map((c) => (
-          <TabsTrigger key={c.id} value={c.id}>
-            {c.code}
-          </TabsTrigger>
-        ))}
+        {koClasses.map((c) => {
+          const tone = classToneById(classes, c.id);
+          return (
+            <TabsTrigger key={c.id} value={c.id} className="gap-1.5">
+              <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${tone.bg} border ${tone.border}`} />
+              {c.code}
+            </TabsTrigger>
+          );
+        })}
       </TabsList>
       {koClasses.map((c) => (
         <TabsContent key={c.id} value={c.id} className="space-y-4">

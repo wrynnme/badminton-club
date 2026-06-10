@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>สถานะงาน — Session 2026-06-10</title>
+<style>
+  :root {
+    --green: #16a34a; --amber: #d97706; --red: #dc2626; --gray: #64748b;
+    --bg: #0f172a; --card: #1e293b; --line: #334155; --text: #e2e8f0; --dim: #94a3b8;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", "Noto Sans Thai", sans-serif;
+    background: var(--bg); color: var(--text); margin: 0; padding: 24px; line-height: 1.55; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--dim); font-size: 13px; margin-bottom: 24px; }
+  h2 { font-size: 16px; margin: 28px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin: 10px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  tr:last-child td { border-bottom: none; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+  .done { background: rgba(22,163,74,.15); color: #4ade80; }
+  .partial { background: rgba(217,119,6,.15); color: #fbbf24; }
+  .todo { background: rgba(100,116,139,.18); color: #cbd5e1; }
+  .block { background: rgba(220,38,38,.15); color: #f87171; }
+  code { background: #0b1220; padding: 1px 6px; border-radius: 5px; font-size: 12.5px; color: #93c5fd; }
+  .num { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .flow { counter-reset: step; list-style: none; padding: 0; margin: 8px 0 0; }
+  .flow li { position: relative; padding: 8px 0 8px 36px; border-bottom: 1px dashed var(--line); }
+  .flow li:last-child { border-bottom: none; }
+  .flow li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 7px;
+    width: 24px; height: 24px; border-radius: 50%; background: var(--line); color: #fff;
+    display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+  .me { color: #93c5fd; font-weight: 600; } .you { color: #fbbf24; font-weight: 600; }
+  .legend { font-size: 12px; color: var(--dim); margin-top: 6px; }
+  .legend .pill { margin-right: 4px; }
+  .footer { margin-top: 28px; font-size: 12px; color: var(--dim); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>สถานะงาน — Session 2026-06-10</h1>
+  <div class="sub">เทียบกับ roadmap report ที่วิเคราะห์ไว้ต้น session · branch <code>develop</code> นำหน้า <code>master</code> 3 commits · vitest 470/470 · tsc 0</div>
+
+  <h2>✅ ทำเสร็จแล้วใน session นี้</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:40%">งาน</th><th style="width:14%">สถานะ</th><th>หมายเหตุ</th></tr>
+      <tr>
+        <td><b>Roadmap #1 (บางส่วน)</b> — Migration batch M1/M2/M3</td>
+        <td><span class="pill done">APPLIED prod</span></td>
+        <td>M1 <code>apply_group_team_delta</code> (กันคะแนนกลุ่มหายตอนบันทึกพร้อมกัน) · M2 <code>add_club_player</code> (กันรับคนเกิน max) · M3 <code>session_version</code> + RPC bump. introspect-verified ก่อน/หลัง</td>
+      </tr>
+      <tr>
+        <td><b>Roadmap #9 (ครึ่งหนึ่ง)</b> — Session revocation</td>
+        <td><span class="pill done">DONE</span></td>
+        <td><code>sv</code> ใน cookie + <code>getSession()</code> wrap <code>React.cache()</code> (1 DB read/request) + <code>POST /api/auth/logout-all</code> + ปุ่ม "ออกทุกอุปกรณ์" 2 จุด. Graceful — cookie เก่าไม่หลุด</td>
+      </tr>
+      <tr>
+        <td><b>Bonus</b> — RPC grant hardening</td>
+        <td><span class="pill done">APPLIED prod</span></td>
+        <td>เจอตอน verify: RPC 8 ตัวเปิดสิทธิ์ anon/authenticated จาก Supabase default. <code>20260610000400</code> revoke แล้ว → service_role only. ไม่เคย exploitable (RLS กันอยู่)</td>
+      </tr>
+      <tr>
+        <td><b>Roadmap #3</b> — Repo hygiene</td>
+        <td><span class="pill done">DONE</span></td>
+        <td>ย้าย review HTML 3 ไฟล์ จาก root → <code>docs/reviews/</code></td>
+      </tr>
+      <tr>
+        <td><b>แถม</b> — แก้ data stale + ตัด dead refs</td>
+        <td><span class="pill done">DONE</span></td>
+        <td>introspect พบ <code>club_players.level</code> + <code>clubs.shuttle_fee</code> ถูก DROP ไปแล้ว (spec/memory เดิมผิด) · ตัด <code>team_players.level</code> text refs ออกจาก code (prereq ของ M4) · update spec.md + bug.md</td>
+      </tr>
+    </table>
+    <div class="legend"><b>Commits (develop):</b> <code>f8bb46f</code> M1+M2+M3+session · <code>eae0c2a</code> docs move · <code>23d4fe6</code> RPC hardening</div>
+  </div>
+
+  <h2>⏳ ค้างทันที — ปิด loop ของงานวันนี้</h2>
+  <div class="card">
+    <ol class="flow">
+      <li><span class="you">[คุณ]</span> เทสบน <code>localhost:3000</code> (server พร้อมแล้ว) — login เดิมไม่หลุด · ปุ่ม "ออกทุกอุปกรณ์" · เพิ่ม guest · บันทึก/รีเซ็ตผลแมตช์กลุ่ม</li>
+      <li><span class="you">[คุณสั่ง]</span> merge <code>develop → master</code> → deploy prod</li>
+      <li><span class="you">[Gate-4 พิมพ์ยืนยัน]</span> <span class="me">[ผม apply]</span> M4 <code>DROP team_players.level</code> — <b>ต้องหลัง deploy ข้อ 2 เท่านั้น</b> (prod code เก่ายังเขียน column นี้)</li>
+    </ol>
+  </div>
+
+  <h2>📋 เหลือจาก roadmap (ยังไม่เริ่ม)</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:6%">#</th><th style="width:34%">รายการ</th><th style="width:14%">สถานะ</th><th>หมายเหตุ</th></tr>
+      <tr><td class="num">1*</td><td>M4 DROP <code>team_players.level</code></td><td><span class="pill block">รอ deploy + Gate-4</span></td><td>เศษเดียวที่เหลือของ Migration batch</td></tr>
+      <tr><td class="num">2</td><td>CI pipeline (GitHub Actions)</td><td><span class="pill todo">TODO</span></td><td>tsc + vitest + build ต่อ PR — งานครึ่งวัน คุ้มทันที</td></tr>
+      <tr><td class="num">4</td><td>Club Preset (เทมเพลตก๊วน)</td><td><span class="pill todo">TODO</span></td><td>ROI สูงสุดต่อ user; ต้องเคาะ 4 open decisions ก่อน</td></tr>
+      <tr><td class="num">5</td><td>Advance rule "best Nth place" (pair/class)</td><td><span class="pill todo">TODO</span></td><td><code>advance_rule jsonb</code>; ปิด gap วีนฉ่ำให้ competition mode</td></tr>
+      <tr><td class="num">6</td><td>Phase 13 polish ชุดเล็ก</td><td><span class="pill todo">TODO</span></td><td>class filter + X/cap + bracket แยก class — ~ครึ่งวัน</td></tr>
+      <tr><td class="num">7</td><td>i18n TH/EN</td><td><span class="pill todo">go/no-go</span></td><td>ยิ่งเลื่อนยิ่งแพง — ตัดสินใจให้ชัด</td></tr>
+      <tr><td class="num">8</td><td>Club queue Realtime</td><td><span class="pill todo">TODO</span></td><td>reuse pattern <code>TournamentLiveWrapper</code></td></tr>
+      <tr><td class="num">9*</td><td>Guest-profile rate limit</td><td><span class="pill partial">ครึ่งเดียว</span></td><td>session revocation เสร็จแล้ว; เหลือ rate limit (P2)</td></tr>
+      <tr><td class="num">10</td><td>Prize summary + Wheelspin</td><td><span class="pill todo">TODO</span></td><td>ทำก่อน event ใหญ่ครั้งถัดไปก็ทัน</td></tr>
+    </table>
+  </div>
+
+  <h2>🔍 Gaps (นอก roadmap เดิม — ยังเปิดอยู่)</h2>
+  <div class="card">
+    <table>
+      <tr><th style="width:34%">รายการ</th><th style="width:14%">สถานะ</th><th>หมายเหตุ</th></tr>
+      <tr><td>E2E suite ถาวร</td><td><span class="pill todo">TODO</span></td><td>ตอนนี้ live-smoke เป็น throwaway playwright-cli ทุกครั้ง</td></tr>
+      <tr><td>T5 multi-client verify</td><td><span class="pill todo">TODO</span></td><td>ก่อนเปิด <code>queue_payload_sync</code> ใช้จริง ต้องเทส ≥2 client</td></tr>
+      <tr><td><code>clubs.ts</code> แตกไฟล์</td><td><span class="pill todo">TODO</span></td><td>action file เดียว ~30 actions → แยก players/matches/cost</td></tr>
+      <tr><td>T2 ไม่มี consumer จริง</td><td><span class="pill todo">TODO</span></td><td>team-mode only; prod มีแต่ pair tournament</td></tr>
+    </table>
+  </div>
+
+  <div class="footer">
+    Legend:
+    <span class="pill done">DONE</span> เสร็จ ·
+    <span class="pill partial">ครึ่งเดียว</span> ทำบางส่วน ·
+    <span class="pill todo">TODO</span> ยังไม่เริ่ม ·
+    <span class="pill block">รอ gate</span> ติดเงื่อนไข<br>
+    * = ข้อที่เป็นเศษค้างของงานที่ทำไปแล้วบางส่วน
+  </div>
+</div>
+</body>
+</html>
