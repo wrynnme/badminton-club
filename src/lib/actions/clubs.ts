@@ -33,6 +33,9 @@ async function loginRedirect(): Promise<never> {
   redirect(`/?auth_error=login_required&redirectTo=${encodeURIComponent(redirectTo)}`);
 }
 
+// Max length of a single court name (shared by updateClubCourtsAction + renameClubCourtAction).
+const COURT_NAME_MAX = 40;
+
 const ClubSchema = z.object({
   name: z.string().min(2, "ชื่อก๊วนสั้นไป"),
   venue: z.string().min(2, "ระบุสนาม"),
@@ -825,7 +828,6 @@ export async function updateClubCourtsAction(
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
 
-  const COURT_NAME_MAX = 40;
   const COURTS_MAX = 50;
   const cleaned = courts
     .map((c) => c.trim().slice(0, COURT_NAME_MAX))
@@ -840,6 +842,63 @@ export async function updateClubCourtsAction(
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true, courts: deduped };
+}
+
+/**
+ * Rename a single court in place. A whole-array update can't express a rename
+ * (it can't tell "1"→"A" from delete-"1"+add-"A"), so this is a dedicated action
+ * that (1) swaps the name at its existing position in `clubs.courts` and
+ * (2) cascades the rename onto `club_matches.court` (stored by name) so existing
+ * matches keep pointing at the same physical court instead of being orphaned.
+ */
+export async function renameClubCourtAction(
+  clubId: string,
+  oldName: string,
+  newName: string,
+): Promise<{ ok: true; courts: string[]; movedMatches: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const from = oldName.trim();
+  const to = newName.trim().slice(0, COURT_NAME_MAX);
+  if (!to) return { error: "ชื่อสนามว่างไม่ได้" };
+  if (from === to) return { error: "ชื่อเดิม" };
+
+  const { data: club, error: loadErr } = await sb
+    .from("clubs")
+    .select("courts")
+    .eq("id", clubId)
+    .maybeSingle();
+  if (loadErr || !club) return { error: "ไม่พบก๊วน" };
+
+  const courts = (club.courts ?? []) as string[];
+  if (!courts.includes(from)) return { error: "ไม่พบสนามเดิม" };
+  if (courts.includes(to)) return { error: "ชื่อสนามซ้ำ" };
+
+  const next = courts.map((c) => (c === from ? to : c));
+  const { error: updErr } = await sb.from("clubs").update({ courts: next }).eq("id", clubId);
+  if (updErr) {
+    console.error("[renameClubCourtAction]", updErr);
+    return { error: "เปลี่ยนชื่อสนามไม่สำเร็จ" };
+  }
+
+  // Cascade onto matches that reference this court by name. `to` is guaranteed
+  // not to collide with another court, so the in_progress occupancy unique index
+  // (club_id, court) cannot conflict. Best-effort: the courts list is already
+  // renamed; a cascade failure is logged but does not undo the rename.
+  const { data: moved, error: matchErr } = await sb
+    .from("club_matches")
+    .update({ court: to })
+    .eq("club_id", clubId)
+    .eq("court", from)
+    .select("id");
+  if (matchErr) console.error("[renameClubCourtAction] match cascade", matchErr);
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true, courts: next, movedMatches: moved?.length ?? 0 };
 }
 
 /**
