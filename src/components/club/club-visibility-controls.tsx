@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Copy, Check, Loader2, QrCode, Globe } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -36,9 +36,17 @@ export function ClubVisibilityControls({
   const [isPublic, setIsPublic] = useState(initial);
   const [copied, setCopied] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  const [origin, setOrigin] = useState(appUrl);
   const [isPending, start] = useTransition();
 
-  const shareUrl = `${appUrl}/c/${clubId}`;
+  // Fall back to the live origin when NEXT_PUBLIC_APP_URL is unset so the copied
+  // link / QR carries a real host. Done in an effect (not at render) so SSR and the
+  // first client render both use `appUrl` → no hydration mismatch.
+  useEffect(() => {
+    if (!appUrl && typeof window !== "undefined") setOrigin(window.location.origin);
+  }, [appUrl]);
+
+  const shareUrl = `${origin}/c/${clubId}`;
 
   const toggle = (next: boolean) =>
     start(async () => {
@@ -52,9 +60,13 @@ export function ClubVisibilityControls({
     });
 
   const copy = async () => {
-    await navigator.clipboard.writeText(shareUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("คัดลอกไม่สำเร็จ — คัดลอกลิงก์ด้วยตนเอง");
+    }
   };
 
   return (

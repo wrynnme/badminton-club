@@ -356,7 +356,10 @@ function PlayerRowBody({
 }: RowBodyProps) {
   const isCheckedIn = !!player.checked_in_at;
   const isGuest = player.profile_id == null;
-  const isSelf = sessionProfileId === player.profile_id;
+  // Require a non-null session: a public/anon viewer has sessionProfileId=null and
+  // guest players have profile_id=null, so a bare `===` would render the self-only
+  // LeaveButton on every guest row for anonymous viewers.
+  const isSelf = sessionProfileId != null && sessionProfileId === player.profile_id;
   const [renameOpen, setRenameOpen] = useState(false);
 
   // Partial session: player's effective window differs from the club's full window.

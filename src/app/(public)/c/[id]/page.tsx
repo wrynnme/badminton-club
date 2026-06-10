@@ -62,10 +62,21 @@ export default async function PublicClubPage({
       ? club.courts
       : Array.from({ length: queueSettings.court_count }, (_, i) => String(i + 1));
 
-  // Public viewers don't see money: strip the cost inputs before they reach the
-  // client so prices/expenses never ship in the props (hideCost only hides the UI).
-  // Usage columns (hours/games/shuttles) compute from sessions+matches, unaffected.
-  const publicClub: Club = { ...club, court_fee: 0, shuttle_price: 0, total_cost: 0 };
+  // Public viewers don't see money: strip every cost/price channel before it reaches
+  // the client so nothing ships in the RSC props (hideCost only hides the UI; props
+  // serialize regardless). Club-level: zero the fees + null the free-text notes /
+  // shuttle_info (owners often write prices there). Per-player: zero `discount`
+  // (money) + null `note` (free-text, may hold fees) + `profile_id` (internal id).
+  // Usage (hours/games/shuttles) computes from sessions+matches, unaffected.
+  const publicClub: Club = {
+    ...club,
+    court_fee: 0,
+    shuttle_price: 0,
+    total_cost: 0,
+    notes: null,
+    shuttle_info: null,
+  };
+  const publicPlayers = players.map((p) => ({ ...p, discount: 0, note: null, profile_id: null }));
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto px-3 sm:px-4 py-6">
@@ -88,7 +99,7 @@ export default async function PublicClubPage({
             label={<Users className="h-4 w-4" />}
             text={`${activeCount}${reserveCount > 0 ? ` (+${reserveCount} สำรอง)` : ""} / ${club.max_players} คน`}
           />
-          {club.shuttle_info && <Info label="🏸" text={club.shuttle_info} />}
+          {/* shuttle_info intentionally omitted on public — it commonly carries pricing */}
         </CardContent>
       </Card>
 
@@ -101,7 +112,7 @@ export default async function PublicClubPage({
           dashboard={
             <ClubDashboard
               club={publicClub}
-              players={players}
+              players={publicPlayers}
               matches={clubMatches}
               levels={levels}
               expenses={[]}
@@ -116,7 +127,7 @@ export default async function PublicClubPage({
                 <h2 className="font-semibold">รายชื่อผู้เล่น ({players.length})</h2>
                 <SortablePlayerList
                   clubId={club.id}
-                  players={players}
+                  players={publicPlayers}
                   sessionProfileId={null}
                   canManage={false}
                   levels={levels}
@@ -127,7 +138,7 @@ export default async function PublicClubPage({
               {players.length > 0 && (
                 <section className="space-y-2">
                   <h2 className="font-semibold">จำนวนคนต่อช่วง</h2>
-                  <HourlyHeadcount club={club} players={players} />
+                  <HourlyHeadcount club={publicClub} players={publicPlayers} />
                 </section>
               )}
             </div>

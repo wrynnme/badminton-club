@@ -139,6 +139,16 @@ All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during ve
 
 ## Resolved
 
+### 2026-06-10 — /code-review xhigh on club public/private feature: 5 findings, all FIXED pre-merge (develop)
+
+Self-review of the `feat(club): private/public` commit (`cd60e84`, develop only — never reached master/prod) via `/code-review xhigh` (3 finder angles → verify). 1 P0 leak + 4 lower; all fixed same session. tsc 0 · vitest 470/470 · re-smoke confirms the leak is gone (net-zero throwaway: seeded sensitive strings, raw `/c/[id]` payload contains 0 of them).
+
+- **[P0] money/PII leak in the public RSC payload** — `(public)/c/[id]/page.tsx` passed the full `ClubPlayer[]` to client components (`ClubDashboard`/`SortablePlayerList`); `ClubPlayer.discount` (money) + `note` + `profile_id` serialize into the wire payload to anonymous viewers even though no money UI renders. The cost-hiding had zeroed only club-level fees + `expenses=[]`, missing per-player `discount`. **Fix**: `publicPlayers = players.map(p => ({...p, discount:0, note:null, profile_id:null}))` passed to all client components; also stripped `notes`/`shuttle_info` from `publicClub` and removed the `shuttle_info` line from the public header (commonly carries prices). Verified: discount `777`, note `SECRETNOTELEAK`, `SHUTTLEPRICELEAK`, `CLUBNOTESLEAK`, court_fee `600` all → 0 occurrences in the public HTML.
+- **[P2] LeaveButton shown to anon** — `sortable-player-list.tsx` `isSelf = sessionProfileId === player.profile_id`; on the public page both are null → `null===null` rendered the self-only "ถอนชื่อ" on every guest row. **Fix**: `isSelf = sessionProfileId != null && ...` (no-op'd to a login-redirect anyway; cosmetic).
+- **[P2] share link relative when env unset** — `club-visibility-controls.tsx` `${appUrl}/c/${clubId}` with `appUrl=""` → bare `/c/<id>`. **Fix**: `useEffect` fallback to `window.location.origin` (in an effect to avoid hydration mismatch). Same latent issue exists in tournament `share-controls.tsx` (not touched — pre-existing).
+- **[P3] copy() unguarded** — added try/catch + toast on clipboard rejection (insecure origin).
+- Verified-correct (no fix): `notFound()` gate, `setClubVisibilityAction` owner-gate, migration default-false, all write affordances `canManage`-gated (defense-in-depth via server `getSession`), table column symmetry, `HourlyHeadcount` is a server component (props don't serialize — switched to publicClub/publicPlayers anyway for defense).
+
 ### 2026-06-10 — P2 migrations: guest rate-limit + class match_number race (develop; APPLIED to prod)
 
 The last two open P2s from the core review, both needing a migration. tsc 0 · vitest 470/470. Both applied to prod + DO-block-rollback live-tested (net-zero).
