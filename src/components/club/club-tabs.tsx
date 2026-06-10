@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTabSync } from "@/lib/hooks/use-tab-sync";
 
@@ -31,8 +31,13 @@ export function ClubTabs({
   /** Public read-only view: drop the cost/money tab entirely. */
   hideCost?: boolean;
 }) {
-  const validTabs: readonly ClubTabId[] = ALL_TABS.filter(
-    (t) => (t !== "cost" || !hideCost) && (t !== "settings" || showSettings),
+  // Single source of which tabs exist for this view; the TabsTrigger/TabsContent
+  // below gate off membership here (not off hideCost/showSettings directly) so the
+  // tab set can't drift. Memoized so useTabSync's deps stay reference-stable across
+  // the page's realtime/30s auto-refresh re-renders.
+  const validTabs = useMemo<readonly ClubTabId[]>(
+    () => ALL_TABS.filter((t) => (t !== "cost" || !hideCost) && (t !== "settings" || showSettings)),
+    [hideCost, showSettings],
   );
 
   const { active, mounted, onChange } = useTabSync<ClubTabId>({
@@ -47,17 +52,17 @@ export function ClubTabs({
         <TabsTrigger value="dashboard">แดชบอร์ด</TabsTrigger>
         <TabsTrigger value="checkin">ลงชื่อ / เช็คอิน</TabsTrigger>
         <TabsTrigger value="queue">ล็อคคู่ + คิว</TabsTrigger>
-        {!hideCost && <TabsTrigger value="cost">ค่าใช้จ่าย</TabsTrigger>}
-        {showSettings && <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>}
+        {validTabs.includes("cost") && <TabsTrigger value="cost">ค่าใช้จ่าย</TabsTrigger>}
+        {validTabs.includes("settings") && <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>}
       </TabsList>
 
       <TabsContent value="dashboard">{mounted.has("dashboard") && dashboard}</TabsContent>
       <TabsContent value="checkin">{mounted.has("checkin") && checkin}</TabsContent>
       <TabsContent value="queue">{mounted.has("queue") && queue}</TabsContent>
-      {!hideCost && (
+      {validTabs.includes("cost") && (
         <TabsContent value="cost">{mounted.has("cost") && cost}</TabsContent>
       )}
-      {showSettings && (
+      {validTabs.includes("settings") && (
         <TabsContent value="settings">{mounted.has("settings") && settings}</TabsContent>
       )}
     </Tabs>

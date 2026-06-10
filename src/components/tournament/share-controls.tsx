@@ -2,18 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Link2, Link2Off, Copy, Check, Loader2, QrCode } from "lucide-react";
-import dynamic from "next/dynamic";
-const QRCode = dynamic(() => import("react-qr-code"), { ssr: false });
+import { Link2, Link2Off, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { ShareLinkRow } from "@/components/share-link-row";
 import { generateShareTokenAction, revokeShareTokenAction } from "@/lib/actions/tournaments";
 
 export function ShareControls({
@@ -33,8 +24,6 @@ export function ShareControls({
   isOwner?: boolean;
 }) {
   const [token, setToken] = useState(shareToken);
-  const [copied, setCopied] = useState(false);
-  const [qrOpen, setQrOpen] = useState(false);
   const [isPending, start] = useTransition();
 
   const shareUrl = token ? `${appUrl}/t/${token}` : null;
@@ -55,38 +44,11 @@ export function ShareControls({
       toast.success("ยกเลิกลิงก์แล้ว");
     });
 
-  const copy = async () => {
-    if (!shareUrl) return;
-    await navigator.clipboard.writeText(shareUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
     <div className="flex flex-col gap-2">
       {shareUrl ? (
         <div className="flex gap-2">
-          <Input value={shareUrl} readOnly className="text-xs h-8 flex-1 font-mono" />
-          <Button size="sm" variant="outline" className="h-8 shrink-0" aria-label="คัดลอกลิงก์" onClick={copy}>
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-          </Button>
-          <Dialog open={qrOpen} onOpenChange={setQrOpen}>
-            <DialogTrigger render={<Button size="sm" variant="outline" className="h-8 shrink-0" />}>
-              <QrCode className="h-3.5 w-3.5" />
-              <span className="sr-only">QR Code</span>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-xs">
-              <DialogHeader>
-                <DialogTitle>QR Code สำหรับลิงก์แชร์</DialogTitle>
-              </DialogHeader>
-              <div className="flex flex-col items-center gap-4 py-4">
-                <div className="bg-white p-4 rounded-md">
-                  <QRCode value={shareUrl} size={240} />
-                </div>
-                <p className="text-xs text-muted-foreground break-all text-center font-mono">{shareUrl}</p>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <ShareLinkRow url={shareUrl} qrTitle="QR Code สำหรับลิงก์แชร์" />
           {isOwner && (
             <Button size="sm" variant="outline" className="h-8 shrink-0 text-destructive hover:text-destructive" aria-label="เพิกถอนลิงก์" onClick={revoke} disabled={isPending}>
               <Link2Off className="h-3.5 w-3.5" />

@@ -13,8 +13,9 @@ import { ClubQueuePanel } from "@/components/club/club-queue-panel";
 import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
 import { resolveClubCourts } from "@/lib/club/courts";
+import { toPublicClub, toPublicPlayer } from "@/lib/club/public-view";
 import { ClubInfoRow } from "@/components/club/club-info-row";
-import type { Club, ClubPlayer, ClubMatch, ClubLockedPair, Level } from "@/lib/types";
+import type { Club, ClubMatch, ClubLockedPair, Level } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -61,52 +62,15 @@ export default async function PublicClubPage({
   const queueSettings = parseQueueSettings(club.queue_settings);
   const clubCourts = resolveClubCourts(club.courts, queueSettings.court_count);
 
-  // Public viewers don't see money / PII. Build the client props as an ALLOWLIST —
-  // list every field explicitly (sourced from the real row for safe ones, zeroed/
-  // nulled for sensitive ones) instead of spreading `...club` and subtracting. This
-  // is fail-safe: a new column added to Club / ClubPlayer becomes a TS compile error
-  // here, forcing an explicit safe-vs-sensitive decision rather than leaking by
-  // default in the RSC props. Sensitive: fees, total_cost, free-text notes /
-  // shuttle_info (often hold prices); per-player discount, note, profile_id.
-  const publicClub: Club = {
-    id: club.id,
-    owner_id: club.owner_id,
-    name: club.name,
-    venue: club.venue,
-    play_date: club.play_date,
-    start_time: club.start_time,
-    end_time: club.end_time,
-    max_players: club.max_players,
-    created_at: club.created_at,
-    court_split: club.court_split,
-    shuttle_split: club.shuttle_split,
-    court_gap_policy: club.court_gap_policy,
-    queue_settings: club.queue_settings,
-    courts: club.courts,
-    is_public: club.is_public,
-    court_fee: 0,
-    shuttle_price: 0,
-    total_cost: 0,
-    notes: null,
-    shuttle_info: null,
-  };
-  const publicPlayers: ClubPlayer[] = players.map((p) => ({
-    id: p.id,
-    club_id: p.club_id,
-    display_name: p.display_name,
-    level_id: p.level_id,
-    joined_at: p.joined_at,
-    position: p.position,
-    status: p.status,
-    checked_in_at: p.checked_in_at,
-    start_time: p.start_time,
-    end_time: p.end_time,
-    games_played: p.games_played,
-    last_finished_at: p.last_finished_at,
-    profile_id: null,
-    note: null,
-    discount: 0,
-  }));
+  // Public viewers don't see money / PII. Sanitize at the source via the shared
+  // allowlist (toPublicClub / toPublicPlayer) so sensitive fields never ship in the
+  // RSC props and a new Club/ClubPlayer column becomes a compile error there. See
+  // src/lib/club/public-view.ts.
+  const publicClub = toPublicClub(club);
+  const publicPlayers = players.map(toPublicPlayer);
+  // The queue + locked-pairs panels only need id + name; derive once from the
+  // already-sanitized list instead of re-walking the raw players twice.
+  const nameList = publicPlayers.map((p) => ({ id: p.id, display_name: p.display_name }));
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto px-3 sm:px-4 py-6">
@@ -178,7 +142,7 @@ export default async function PublicClubPage({
               {queueSettings.players_per_team === 2 && (
                 <ClubLockedPairs
                   clubId={club.id}
-                  players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
+                  players={nameList}
                   locks={lockedPairs}
                   canManage={false}
                 />
@@ -186,7 +150,7 @@ export default async function PublicClubPage({
               <ClubQueuePanel
                 clubId={club.id}
                 matches={clubMatches}
-                players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
+                players={nameList}
                 settings={queueSettings}
                 courts={clubCourts}
                 canManage={false}
