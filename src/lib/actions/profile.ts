@@ -1,15 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession, setSession } from "@/lib/auth/session";
-
-const DisplayNameSchema = z.object({
-  display_name: z.string().trim().min(1, "ระบุชื่อ").max(40, "ชื่อยาวเกินไป (สูงสุด 40 ตัวอักษร)"),
-});
-
-export type UpdateProfileInput = z.infer<typeof DisplayNameSchema>;
+import { DisplayNameSchema, type UpdateProfileInput } from "@/lib/validation/profile";
 
 /**
  * Self-service display-name change for the logged-in user (LINE or guest). Updates
@@ -32,7 +26,10 @@ export async function updateProfileDisplayNameAction(input: UpdateProfileInput) 
     .from("profiles")
     .update({ display_name })
     .eq("id", session.profileId);
-  if (error) return { error: "บันทึกไม่สำเร็จ" };
+  if (error) {
+    console.error("updateProfileDisplayNameAction failed", error);
+    return { error: "บันทึกไม่สำเร็จ" };
+  }
 
   await setSession({
     profileId: session.profileId,

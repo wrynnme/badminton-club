@@ -1,7 +1,6 @@
 "use client";
 
 import { fieldErrors } from "@/lib/form-errors";
-import * as z from "zod";
 import { useForm } from "@tanstack/react-form";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -10,16 +9,13 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { updateProfileDisplayNameAction } from "@/lib/actions/profile";
-
-const formSchema = z.object({
-  display_name: z.string().trim().min(1, "ระบุชื่อ").max(40, "สูงสุด 40 ตัวอักษร"),
-});
+import { DisplayNameSchema } from "@/lib/validation/profile";
 
 export function EditProfileForm({ displayName }: { displayName: string }) {
   const router = useRouter();
   const form = useForm({
     defaultValues: { display_name: displayName },
-    validators: { onSubmit: formSchema },
+    validators: { onSubmit: DisplayNameSchema },
     onSubmit: async ({ value }) => {
       const res = await updateProfileDisplayNameAction(value);
       if (res?.error) {
