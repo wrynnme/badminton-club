@@ -130,6 +130,30 @@ export async function deleteClubAction(clubId: string): Promise<{ error: string 
 }
 
 /**
+ * Owner-only: toggle a club between private (manager-only, default) and public
+ * (read-only viewable by anyone at /c/[id], with cost/money hidden). Revalidates
+ * both the manager page and the public route. No share_token — the public URL is
+ * the stable club id, gated by this flag at the page level.
+ */
+export async function setClubVisibilityAction(
+  clubId: string,
+  isPublic: boolean,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+
+  const { error } = await sb.from("clubs").update({ is_public: isPublic }).eq("id", clubId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${clubId}`);
+  revalidatePath(`/c/${clubId}`);
+  return { ok: true };
+}
+
+/**
  * Promote earliest reserves (position asc, joined_at asc tiebreak) to active until
  * the active count reaches `maxPlayers`. No-op when already at/over cap or no reserves
  * wait. Called only on a max_players raise — mirrors the leave-time promote RPC.
