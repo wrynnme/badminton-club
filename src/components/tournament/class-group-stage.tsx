@@ -15,6 +15,7 @@ import {
   generateGroupsForClassAction,
   generatePairMatchesForClassAction,
 } from "@/lib/actions/classes";
+import { classToneById } from "@/lib/tournament/class-color";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import type { Competitor } from "@/lib/tournament/competitor";
 import type {
@@ -223,7 +224,7 @@ function ClassGroupPanel({
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
-          {isOwner ? "กด “แบ่งกลุ่ม” เพื่อจัดคู่เข้ากลุ่มอัตโนมัติ (ห้ามคู่จากทีมเดียวกันอยู่กลุ่มเดียวกัน)" : "ยังไม่มีการแบ่งกลุ่ม"}
+          {isOwner ? <>กด &ldquo;แบ่งกลุ่ม&rdquo; เพื่อจัดคู่เข้ากลุ่มอัตโนมัติ (ห้ามคู่จากทีมเดียวกันอยู่กลุ่มเดียวกัน)</> : "ยังไม่มีการแบ่งกลุ่ม"}
         </p>
       )}
     </div>
@@ -263,7 +264,7 @@ export function ClassGroupStage({
   if (groupClasses.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        ยังไม่มี class ที่มีรอบแบ่งกลุ่ม — เพิ่ม class ในแท็บ “ตั้งค่า”
+        ยังไม่มี class ที่มีรอบแบ่งกลุ่ม — เพิ่ม class ในแท็บ "ตั้งค่า"
       </p>
     );
   }
@@ -271,11 +272,15 @@ export function ClassGroupStage({
   return (
     <Tabs defaultValue={groupClasses[0].id} className="space-y-4">
       <TabsList className="w-full flex-wrap h-auto">
-        {groupClasses.map((c) => (
-          <TabsTrigger key={c.id} value={c.id}>
-            {c.code}
-          </TabsTrigger>
-        ))}
+        {groupClasses.map((c) => {
+          const tone = classToneById(classes, c.id);
+          return (
+            <TabsTrigger key={c.id} value={c.id} className="gap-1.5">
+              <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${tone.bg} border ${tone.border}`} />
+              {c.code}
+            </TabsTrigger>
+          );
+        })}
       </TabsList>
       {groupClasses.map((c) => (
         <TabsContent key={c.id} value={c.id} className="space-y-4">

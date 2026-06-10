@@ -652,7 +652,7 @@ Consolidated จากการ review spec ทั้งฉบับ + `bug.md` 
 
 4. **Club Preset** — ตอบโจทย์ user ตรงสุด (เปิดก๊วนประจำซ้ำได้เร็ว); ต้องเคาะ 4 open decisions ก่อน (ดู section "ระบบ Preset ก๊วน" ด้านล่าง)
 5. **Advance rule "best Nth place" — pair/class mode** — `advance_rule jsonb` (`{ top_per_group, plus_best_nth }`); T2 (`knockout_fill_byes`) ครอบแค่ team mode แต่ pattern วีนฉ่ำจริง (NB top-2 + best-4-third → KO16) คือ pair/class → ปิด gap ให้ competition mode จัดงานจริงได้เต็มรูป
-6. **Phase 13 polish ชุดเล็ก** (~ครึ่งวัน) — pair-tab `Class: [All|…]` filter + `X/cap` registration progress · bracket page (`/tournaments/[id]/bracket`) แยก section ต่อ class (ตอนนี้ปนกัน) · class color (ตอนนี้ใช้ primary tint)
+6. ~~**Phase 13 polish ชุดเล็ก**~~ → **✅ DONE 2026-06-11 (develop, /ship-check PASS — review+simplify+net-zero live-smoke)** — (a) pair-tab `[ทั้งหมด|…]` class filter (shadcn Tabs) + per-class `X/cap` progress chip (นับ pair ต่อ class จาก `pairs.class_id`, cap จาก `pair_capacity`, " เต็ม" เมื่อ count≥cap) · (b) bracket page (`/tournaments/[id]/bracket`) แยก section ต่อ class (filter `m.class_id`, header สีตาม class, skip class ที่ไม่มี match; sports_day คงเดิม) · (c) class color — helper `classTone(index)`/`classToneById` ใน `src/lib/tournament/class-color.ts` reuse `DIVISION_COLORS` (ไม่เพิ่ม column/migration); แทน hardcoded primary ที่ pair-manager badge + class tab dots (group/knockout) + queue `DivisionBadge`. index→tone มาจาก `position` order เดียวกันทุกจุด → สีตรงกัน. tsc 0 · vitest 475/475
 
 **ระยะกลาง:**
 

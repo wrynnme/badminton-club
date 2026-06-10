@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { generatePairMatchesAction } from "@/lib/actions/matches";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
+import { classTone } from "@/lib/tournament/class-color";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { computeStandings, aggregatePairStandingsToTeams } from "@/lib/tournament/scoring";
 import type { Level, Match, PairWithPlayers, Team, TeamWithPlayers, TournamentClass } from "@/lib/types";
@@ -158,18 +159,67 @@ export function PairStage({
   // Competition mode: the pair tab is class-assignment only. Group matches +
   // standings render in the กลุ่ม / น็อคเอ้า tabs (per-class), so the
   // division-based แข่งขัน / คะแนน sub-tabs are intentionally omitted here.
+  const [classFilter, setClassFilter] = useState<string>("all");
+
+  // Per-class pair counts derived from pairs already in component scope.
+  const pairCountByClass = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of pairs) {
+      if (p.class_id) map.set(p.class_id, (map.get(p.class_id) ?? 0) + 1);
+    }
+    return map;
+  }, [pairs]);
+
   if (isCompetition) {
+    const visibleTeams =
+      classFilter === "all"
+        ? teams
+        : teams.filter((t) =>
+            (pairsByTeam.get(t.id) ?? []).some((p) => p.class_id === classFilter),
+          );
+
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">จับคู่ + กำหนด Class</h2>
           {isOwner && <CsvImportDialog tournamentId={tournamentId} onlyMode="pairs" classCodes={classes.map((c) => c.code)} />}
         </div>
+
+        {/* Class filter tabs + per-class cap progress chips */}
+        <div className="space-y-2">
+          <Tabs value={classFilter} onValueChange={setClassFilter}>
+            <TabsList className="w-full flex-wrap h-auto">
+              <TabsTrigger value="all">ทั้งหมด</TabsTrigger>
+              {classes.map((cls, i) => {
+                const tone = classTone(i);
+                const count = pairCountByClass.get(cls.id) ?? 0;
+                const cap = cls.pair_capacity;
+                const full = cap != null && count >= cap;
+                return (
+                  <TabsTrigger key={cls.id} value={cls.id} className="gap-1.5">
+                    <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${tone.bg} border ${tone.border}`} />
+                    {cls.code}
+                    <Badge
+                      variant="outline"
+                      className={`text-[10px] px-1 py-0 ml-0.5 ${tone.border} ${tone.bg} ${tone.text}`}
+                    >
+                      {cap != null ? `${count}/${cap}` : `${count} คู่`}
+                      {full && " เต็ม"}
+                    </Badge>
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </Tabs>
+        </div>
+
         {teams.length === 0 ? (
           <p className="text-sm text-muted-foreground">เพิ่มทีมก่อนจัดคู่</p>
+        ) : visibleTeams.length === 0 ? (
+          <p className="text-sm text-muted-foreground">ไม่มีทีมที่มีคู่ใน class นี้</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {teams.map((t) => (
+            {visibleTeams.map((t) => (
               <PairManager
                 key={t.id}
                 team={t}
@@ -182,7 +232,7 @@ export function PairStage({
           </div>
         )}
         <p className="text-xs text-muted-foreground">
-          จัดกลุ่ม + สร้างตารางแข่ง ที่แท็บ “กลุ่ม” · สายน็อคเอ้า ที่แท็บ “น็อคเอ้า” (แยกตาม class)
+          จัดกลุ่ม + สร้างตารางแข่ง ที่แท็บ "กลุ่ม" · สายน็อคเอ้า ที่แท็บ "น็อคเอ้า" (แยกตาม class)
         </p>
       </div>
     );

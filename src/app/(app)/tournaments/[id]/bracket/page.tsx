@@ -8,7 +8,8 @@ import { BracketView } from "@/components/tournament/bracket-view";
 import { buildVisualBracket } from "@/lib/tournament/bracket-visual";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { PrintButton } from "@/components/ui/print-button";
-import type { Tournament, TeamWithPlayers, PairWithPlayers, Match, Team } from "@/lib/types";
+import { classTone, NEUTRAL_TONE, type ClassTone } from "@/lib/tournament/class-color";
+import type { Tournament, TeamWithPlayers, PairWithPlayers, Match, Team, TournamentClass } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ export default async function BracketPage({
 
   const teamIdList = (teamsRes.data ?? []).map((t) => t.id);
 
-  const [pairsRes, matchesRes] = await Promise.all([
+  const [pairsRes, matchesRes, classesRes] = await Promise.all([
     teamIdList.length
       ? sb
           .from("pairs")
@@ -45,27 +46,26 @@ export default async function BracketPage({
       .eq("tournament_id", id)
       .eq("round_type", "knockout")
       .order("match_number"),
+    sb
+      .from("tournament_classes")
+      .select("*")
+      .eq("tournament_id", id)
+      .order("position"),
   ]);
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];
   const flatTeams: Team[] = teams.map(({ players: _p, ...x }) => x as Team);
   const pairs: PairWithPlayers[] = (pairsRes.data ?? []) as unknown as PairWithPlayers[];
   const matches: Match[] = (matchesRes.data ?? []) as Match[];
+  const classes: TournamentClass[] = (classesRes.data ?? []) as TournamentClass[];
 
   const unit = t.match_unit;
   const competitorMap = buildCompetitorMap(unit, flatTeams, pairs);
+  const isCompetition = classes.length > 0;
 
-  const upperRounds = buildVisualBracket(matches, "upper");
-  const lowerRounds = buildVisualBracket(matches, "lower");
-  const grandFinalRounds = buildVisualBracket(matches, "grand_final");
-
-  const hasBracket = upperRounds.length > 0;
-  const hasLower = lowerRounds.length > 0;
-  const hasGrandFinal = grandFinalRounds.length > 0;
-  const isMultiSection = hasLower || hasGrandFinal;
-
-  return (
-    <div className="min-h-screen p-4 md:p-8 max-w-[1400px] mx-auto">
+  // ── Page shell ──────────────────────────────────────────────────────────────
+  const pageHeader = (
+    <>
       <div className="mb-6 flex items-center justify-between print:hidden">
         <div className="flex items-center gap-3">
           <Button render={<Link href={`/tournaments/${id}`} />} nativeButton={false} variant="ghost" size="sm">
@@ -83,6 +83,94 @@ export default async function BracketPage({
         <h1 className="text-lg font-bold leading-tight">{t.name}</h1>
         <p className="text-xs text-muted-foreground">สายการแข่งขัน</p>
       </div>
+    </>
+  );
+
+  // ── Competition mode: one section per class ──────────────────────────────────
+  if (isCompetition) {
+    const classIds = new Set(classes.map((c) => c.id));
+    // One display group per class (tone keyed to full position order so colors
+    // match the pair/queue/stage views) + an "unassigned" group catching any
+    // knockout match whose class_id is null/unknown so none silently vanish.
+    const groups: Array<{ key: string; code: string; name: string; tone: ClassTone; matches: Match[] }> = classes.map(
+      (cls, i) => ({ key: cls.id, code: cls.code, name: cls.name, tone: classTone(i), matches: matches.filter((m) => m.class_id === cls.id) }),
+    );
+    const orphanMatches = matches.filter((m) => !m.class_id || !classIds.has(m.class_id));
+    if (orphanMatches.length > 0) {
+      groups.push({ key: "__unassigned__", code: "ไม่ระบุ Class", name: "", tone: NEUTRAL_TONE, matches: orphanMatches });
+    }
+
+    const renderedGroups = groups
+      .map((g) => {
+        const upper = buildVisualBracket(g.matches, "upper");
+        const lower = buildVisualBracket(g.matches, "lower");
+        const grandFinal = buildVisualBracket(g.matches, "grand_final");
+        return { ...g, upper, lower, grandFinal, hasAny: upper.length > 0 || lower.length > 0 || grandFinal.length > 0 };
+      })
+      .filter((g) => g.hasAny);
+
+    return (
+      <div className="min-h-screen p-4 md:p-8 max-w-[1400px] mx-auto">
+        {pageHeader}
+        {renderedGroups.length === 0 && (
+          <p className="text-sm text-muted-foreground">ยังไม่มีสายน็อคเอ้า — กลับไปสร้างตารางก่อน</p>
+        )}
+        {renderedGroups.map(({ key, code, name, tone, upper, lower, grandFinal }, idx) => {
+          const hasLower = lower.length > 0;
+          const hasGrandFinal = grandFinal.length > 0;
+          const isMultiSection = hasLower || hasGrandFinal;
+          return (
+            <div key={key}>
+              {idx > 0 && <Separator className="my-10" />}
+              {/* Group header */}
+              <div className={`mb-4 pb-2 border-b-2 ${tone.border}`}>
+                <span className={`text-sm font-bold ${tone.text}`}>{code}</span>
+                {name && <span className="text-sm text-muted-foreground ml-2">{name}</span>}
+              </div>
+              <section className="space-y-1">
+                {isMultiSection && (
+                  <h3 className="text-xs font-semibold text-muted-foreground mb-3">สายบน</h3>
+                )}
+                <BracketView rounds={upper} competitorById={competitorMap} unit={unit} />
+              </section>
+              {hasLower && (
+                <>
+                  <Separator className="my-6" />
+                  <section className="space-y-1">
+                    <h3 className="text-xs font-semibold text-muted-foreground mb-3">สายล่าง</h3>
+                    <BracketView rounds={lower} competitorById={competitorMap} unit={unit} />
+                  </section>
+                </>
+              )}
+              {hasGrandFinal && (
+                <>
+                  <Separator className="my-6" />
+                  <section className="space-y-1">
+                    <h3 className="text-xs font-semibold text-muted-foreground mb-3">ชิงชนะเลิศ</h3>
+                    <BracketView rounds={grandFinal} competitorById={competitorMap} unit={unit} />
+                  </section>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ── Sports-day mode: existing single-view behavior ───────────────────────────
+  const upperRounds = buildVisualBracket(matches, "upper");
+  const lowerRounds = buildVisualBracket(matches, "lower");
+  const grandFinalRounds = buildVisualBracket(matches, "grand_final");
+
+  const hasBracket = upperRounds.length > 0;
+  const hasLower = lowerRounds.length > 0;
+  const hasGrandFinal = grandFinalRounds.length > 0;
+  const isMultiSection = hasLower || hasGrandFinal;
+
+  return (
+    <div className="min-h-screen p-4 md:p-8 max-w-[1400px] mx-auto">
+      {pageHeader}
 
       {!hasBracket && (
         <p className="text-sm text-muted-foreground">ยังไม่มีสายน็อคเอ้า — กลับไปสร้างตารางก่อน</p>
