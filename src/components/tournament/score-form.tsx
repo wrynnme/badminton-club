@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Plus, X, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { recordMatchScoreAction } from "@/lib/actions/matches";
@@ -26,6 +27,7 @@ export function ScoreForm({
   onDone: () => void;
   maxGames?: number;
 }) {
+  const t = useTranslations("tournament");
   const [games, setGames] = useState<Game[]>(
     initialGames.length ? initialGames : [{ a: 0, b: 0 }]
   );
@@ -48,7 +50,7 @@ export function ScoreForm({
     const res = await recordMatchScoreAction({ matchId, tournamentId, games });
     setPending(false);
     if (res?.error) toast.error(res.error);
-    else { toast.success("บันทึกผลแล้ว"); onDone(); }
+    else { toast.success(t("scoreForm.toastSaved")); onDone(); }
   };
 
   return (
@@ -61,7 +63,7 @@ export function ScoreForm({
       <div className="space-y-1.5">
         {games.map((g, i) => (
           <div key={i} className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground w-10">เกม {i + 1}</span>
+            <span className="text-xs text-muted-foreground w-10">{t("scoreForm.game", { n: i + 1 })}</span>
             <Input
               type="number" min={0} max={99} value={g.a}
               onChange={(e) => updateGame(i, "a", Number(e.target.value))}
@@ -82,19 +84,19 @@ export function ScoreForm({
         ))}
       </div>
       {allZero && (
-        <p className="text-xs text-destructive">ต้องกรอกอย่างน้อย 1 เกม</p>
+        <p className="text-xs text-destructive">{t("scoreForm.minOneGame")}</p>
       )}
       <div className="flex gap-2">
         {!atMax && (
           <Button type="button" size="sm" variant="outline" onClick={addGame} className="h-7 text-xs">
-            <Plus className="h-3 w-3 mr-1" />เพิ่มเกม
+            <Plus className="h-3 w-3 mr-1" />{t("scoreForm.btnAddGame")}
           </Button>
         )}
         <div className="flex-1" />
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>ยกเลิก</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>{t("scoreForm.btnCancel")}</Button>
         <Button type="button" size="sm" onClick={submit} disabled={!canSubmit}>
           {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-          {pending ? "บันทึก..." : "บันทึกผล"}
+          {pending ? t("scoreForm.btnSaving") : t("scoreForm.btnSave")}
         </Button>
       </div>
     </div>

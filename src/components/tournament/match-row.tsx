@@ -3,6 +3,7 @@
 import { memo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { RotateCcw, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { ScoreForm } from "@/components/tournament/score-form";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
@@ -29,6 +30,7 @@ function MatchRowImpl({
   size?: "compact" | "comfortable";
   matchFormatById?: Map<string, MatchFormat>;
 }) {
+  const t = useTranslations("tournament");
   const [editing, setEditing] = useState(false);
   const [resetPending, startReset] = useTransition();
 
@@ -86,18 +88,18 @@ function MatchRowImpl({
           <div className="flex gap-1">
             {match.status === "completed" ? (
               <Button variant="ghost" size="icon" className="h-6 w-6"
-                aria-label="รีเซ็ตผลแมตช์"
+                aria-label={t("matchRow.ariaReset")}
                 disabled={resetPending}
                 onClick={() => startReset(async () => {
                   const res = await resetMatchScoreAction(match.id, tournamentId);
                   if (res?.error) toast.error(res.error);
-                  else toast.success("รีเซ็ตผลแมตช์แล้ว");
+                  else toast.success(t("matchRow.toastReset"));
                 })}>
                 {resetPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
               </Button>
             ) : (
               <Button variant="outline" size="sm" className="h-6 text-xs px-2" onClick={() => setEditing(true)}>
-                กรอกผล
+                {t("matchRow.btnEnterScore")}
               </Button>
             )}
           </div>

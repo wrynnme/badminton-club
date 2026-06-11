@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import {
@@ -37,15 +38,16 @@ export type RowNameRenderer = (name: string, id: string) => ReactNode;
  *  - player view (partner breakdown) — entityType="player"
  *  - team view (h2h vs opponent teams) — entityType="team"
  *
- * `nameLabel` defaults to "คู่แข่ง". Pass `color` per row to render a
- * left-aligned color dot (team-style); otherwise the name renders plain.
+ * `nameLabel` defaults to the i18n key "headToHeadTable.defaultNameLabel".
+ * Pass `color` per row to render a left-aligned color dot (team-style);
+ * otherwise the name renders plain.
  *
  * Provide `entityType` to wrap row names in {@link EntityLink}; omit (or pass
  * a no-op `renderName`) to render unwrapped text.
  */
 export function HeadToHeadTable({
   title,
-  nameLabel = "คู่แข่ง",
+  nameLabel,
   rows,
   entityType,
   renderName,
@@ -56,6 +58,10 @@ export function HeadToHeadTable({
   entityType?: "pair" | "team" | "player" | "division";
   renderName?: RowNameRenderer;
 }) {
+  const t = useTranslations("stats.headToHeadTable");
+
+  const resolvedNameLabel = nameLabel ?? t("defaultNameLabel");
+
   const renderRowName: RowNameRenderer =
     renderName ??
     (entityType
@@ -78,19 +84,19 @@ export function HeadToHeadTable({
           <TableHeader>
             <TableRow className="bg-muted/40 hover:bg-muted/40">
               <TableHead className="text-muted-foreground font-medium text-xs h-9">
-                {nameLabel}
+                {resolvedNameLabel}
               </TableHead>
               <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-12">
-                แมตช์
+                {t("colMatches")}
               </TableHead>
               <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-12">
-                ชนะ
+                {t("colWins")}
               </TableHead>
               <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-12">
-                แพ้
+                {t("colLosses")}
               </TableHead>
               <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-12">
-                เสมอ
+                {t("colDraws")}
               </TableHead>
             </TableRow>
           </TableHeader>

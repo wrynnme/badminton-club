@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Bar, BarChart, Cell, LabelList } from "recharts";
+import { useTranslations } from "next-intl";
 import {
   Card,
   CardContent,
@@ -73,11 +74,12 @@ function buildTeamSummary(
     .sort((a, b) => b.pts - a.pts);
 }
 
-const chartConfig = {
-  pts: { label: "คะแนน" },
-} satisfies ChartConfig;
-
 export function TeamSummary({ teams, matches, pairs, matchUnit, size = "default", orientation = "vertical", fillParent = false }: TeamSummaryProps) {
+  const t = useTranslations("tournament");
+  const chartConfig = {
+    pts: { label: t("teamSummary.chartLabel") },
+  } satisfies ChartConfig;
+
   const entries = useMemo(
     () => buildTeamSummary(teams, matches, pairs, matchUnit),
     [teams, matches, pairs, matchUnit]
@@ -105,8 +107,8 @@ export function TeamSummary({ teams, matches, pairs, matchUnit, size = "default"
   return (
     <Card className={fillParent ? "h-full flex flex-col" : undefined}>
       <CardHeader className="pb-2 shrink-0">
-        <CardTitle className={isTv ? "text-2xl lg:text-3xl 2xl:text-4xl" : "text-sm"}>คะแนนสะสมแต่ละทีม</CardTitle>
-        {!isTv && <CardDescription className="text-xs">เปรียบเทียบคะแนนระหว่างทีม</CardDescription>}
+        <CardTitle className={isTv ? "text-2xl lg:text-3xl 2xl:text-4xl" : "text-sm"}>{t("teamSummary.title")}</CardTitle>
+        {!isTv && <CardDescription className="text-xs">{t("teamSummary.description")}</CardDescription>}
       </CardHeader>
       <CardContent className={fillParent ? "px-2 pb-3 flex-1 min-h-0 flex flex-col" : "px-2 pb-3"}>
         <ChartContainer

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { divisionLabelTh, divisionTone, parseDivision } from "@/lib/tournament/divisions";
@@ -21,12 +22,14 @@ export function PairStatsView({
   pair: PairWithPlayers;
   competitorById: Map<string, CompetitorEntry>;
 }) {
+  const t = useTranslations("stats");
+
   const pairName =
     pair.display_pair_name ||
     [pair.player1?.display_name, pair.player2?.display_name]
       .filter(Boolean)
       .join(" / ") ||
-    "คู่ไม่มีชื่อ";
+    t("pairView.unnamedPair");
 
   const playerNames = [pair.player1?.display_name, pair.player2?.display_name]
     .filter(Boolean)
@@ -69,7 +72,7 @@ export function PairStatsView({
 
           {pair.pair_level && (
             <p className="text-xs text-muted-foreground">
-              ระดับคู่:{" "}
+              {t("pairView.pairLevelLabel")}{" "}
               <span className="font-medium text-foreground">{pair.pair_level}</span>
             </p>
           )}
@@ -77,7 +80,7 @@ export function PairStatsView({
           {/* my-matches-link: ดูตารางแข่ง cross-link — ลบ block นี้เพื่อถอด entry point */}
           <PairScheduleLink pairId={stats.entityId} className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors">
             <CalendarClock className="size-3.5" />
-            ดูตารางแข่ง
+            {t("pairView.scheduleLink")}
           </PairScheduleLink>
           {/* end my-matches-link */}
         </CardContent>
@@ -87,7 +90,7 @@ export function PairStatsView({
 
       {/* Streak pill */}
       <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">สถิติต่อเนื่อง:</span>
+        <span className="text-sm text-muted-foreground">{t("shared.streakLabel")}</span>
         <StreakPill streak={stats.streak} />
       </div>
 
@@ -98,7 +101,7 @@ export function PairStatsView({
       />
 
       <HeadToHeadTable
-        title="พบกัน (Head-to-Head)"
+        title={t("pairView.h2hTitle")}
         rows={h2hRows}
         entityType="pair"
       />

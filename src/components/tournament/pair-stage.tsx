@@ -21,6 +21,7 @@ import type { Level, Match, PairWithPlayers, Team, TeamWithPlayers, TournamentCl
 import { ChevronDown, Loader2, Swords } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 
 export function PairStage({
   tournamentId,
@@ -46,6 +47,7 @@ export function PairStage({
   /** Skill-level rows (BG…P) for the per-player level Select in PairManager. */
   levels?: Level[];
 }) {
+  const t = useTranslations("tournament");
   const isCompetition = classes.length > 0;
   const [genPending, startGen] = useTransition();
 
@@ -181,7 +183,7 @@ export function PairStage({
     return (
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">จับคู่ + กำหนด Class</h2>
+          <h2 className="font-semibold">{t("pairStage.title")}</h2>
           {isOwner && <CsvImportDialog tournamentId={tournamentId} onlyMode="pairs" classCodes={classes.map((c) => c.code)} />}
         </div>
 
@@ -189,7 +191,7 @@ export function PairStage({
         <div className="space-y-2">
           <Tabs value={classFilter} onValueChange={setClassFilter}>
             <TabsList className="w-full flex-wrap h-auto">
-              <TabsTrigger value="all">ทั้งหมด</TabsTrigger>
+              <TabsTrigger value="all">{t("pairStage.tabAll")}</TabsTrigger>
               {classes.map((cls, i) => {
                 const tone = classTone(i);
                 const count = pairCountByClass.get(cls.id) ?? 0;
@@ -203,8 +205,8 @@ export function PairStage({
                       variant="outline"
                       className={`text-[10px] px-1 py-0 ml-0.5 ${tone.border} ${tone.bg} ${tone.text}`}
                     >
-                      {cap != null ? `${count}/${cap}` : `${count} คู่`}
-                      {full && " เต็ม"}
+                      {cap != null ? `${count}/${cap}` : t("pairStage.pairCountBadge", { count })}
+                      {full && t("pairStage.badgeFull")}
                     </Badge>
                   </TabsTrigger>
                 );
@@ -214,9 +216,9 @@ export function PairStage({
         </div>
 
         {teams.length === 0 ? (
-          <p className="text-sm text-muted-foreground">เพิ่มทีมก่อนจัดคู่</p>
+          <p className="text-sm text-muted-foreground">{t("pairStage.emptyNeedTeams")}</p>
         ) : visibleTeams.length === 0 ? (
-          <p className="text-sm text-muted-foreground">ไม่มีทีมที่มีคู่ใน class นี้</p>
+          <p className="text-sm text-muted-foreground">{t("pairStage.emptyNoClassPairs")}</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {visibleTeams.map((t) => (
@@ -232,7 +234,7 @@ export function PairStage({
           </div>
         )}
         <p className="text-xs text-muted-foreground">
-          จัดกลุ่ม + สร้างตารางแข่ง ที่แท็บ "กลุ่ม" · สายน็อคเอ้า ที่แท็บ "น็อคเอ้า" (แยกตาม class)
+          {t("pairStage.hintGenPairs")}
         </p>
       </div>
     );
@@ -241,19 +243,19 @@ export function PairStage({
   return (
     <Tabs defaultValue="pairs" className="space-y-4">
       <TabsList className="w-full flex-wrap h-auto">
-        <TabsTrigger value="pairs">จับคู่</TabsTrigger>
-        <TabsTrigger value="matches">แข่งขัน</TabsTrigger>
-        <TabsTrigger value="standings" disabled={!showStandings}>คะแนน</TabsTrigger>
+        <TabsTrigger value="pairs">{t("pairStage.subTabPairs")}</TabsTrigger>
+        <TabsTrigger value="matches">{t("pairStage.subTabMatches")}</TabsTrigger>
+        <TabsTrigger value="standings" disabled={!showStandings}>{t("pairStage.subTabStandings")}</TabsTrigger>
       </TabsList>
 
       {/* Pair manager per team */}
       <TabsContent value="pairs" className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">จับคู่ภายในทีม</h2>
+          <h2 className="font-semibold">{t("pairStage.subTabPairs")}</h2>
           {isOwner && <CsvImportDialog tournamentId={tournamentId} onlyMode="pairs" />}
         </div>
         {teams.length === 0 ? (
-          <p className="text-sm text-muted-foreground">เพิ่มทีมก่อนจัดคู่</p>
+          <p className="text-sm text-muted-foreground">{t("pairStage.emptyNeedTeams")}</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
             {teams.map((t) => (
@@ -273,8 +275,8 @@ export function PairStage({
       <TabsContent value="matches" className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <h2 className="font-semibold">การแข่งขัน</h2>
-            {hasMatches && <Badge variant="outline" className="text-xs">{completedMatches}/{totalMatches} แมตช์</Badge>}
+            <h2 className="font-semibold">{t("pairStage.subTabMatches")}</h2>
+            {hasMatches && <Badge variant="outline" className="text-xs">{completedMatches}/{totalMatches}</Badge>}
           </div>
           {isOwner && (
             <div className="flex items-center gap-2">
@@ -292,12 +294,11 @@ export function PairStage({
                     const res = await generatePairMatchesAction(tournamentId);
                     if ("error" in res) toast.error(res.error);
                     else {
-                      const koNote = res.knockoutCleared ? " — รีเซ็ตสาย knockout" : "";
-                      toast.success(`สร้าง ${res.count} แมตช์${koNote}`);
+                      toast.success(t("pairStage.toastGenMatches", { count: res.count }));
                     }
                   })}>
                   {genPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Swords className="h-3.5 w-3.5 mr-1" />}
-                  {hasMatches ? "สร้างใหม่" : "สร้างตารางแข่ง"}
+                  {t("pairStage.btnGenMatches")}
                 </Button>
               )}
             </div>
@@ -305,7 +306,7 @@ export function PairStage({
         </div>
 
         {!hasMatches && teamsWithPairs < 2 && (
-          <p className="text-sm text-muted-foreground">ต้องมีอย่างน้อย 2 ทีมที่มีคู่</p>
+          <p className="text-sm text-muted-foreground">{t("pairStage.emptyNeedTeams")}</p>
         )}
 
         {hasMatches && (
@@ -313,7 +314,7 @@ export function PairStage({
             {divisionKeys.map((divKey) => {
               const matchList = matchesByDivision.get(divKey) ?? [];
               const open = isOpen(divKey);
-              const label = divKey !== null ? divisionLabelTh(divKey) : "ไม่มีกลุ่ม";
+              const label = divKey !== null ? divisionLabelTh(divKey) : t("pairStage.noGroupMatches");
               const tone = divKey !== null ? divisionTone(divKey) : null;
               const completedCount = matchList.filter((m) => m.status === "completed").length;
 
@@ -350,7 +351,7 @@ export function PairStage({
                               aria-pressed={!matrixDivs.has(String(divKey))}
                               className={`h-6 px-2 text-xs ${!matrixDivs.has(String(divKey)) ? "text-foreground font-medium" : "text-muted-foreground"}`}
                               onClick={() => matrixDivs.has(String(divKey)) && toggleDivMatrix(divKey)}>
-                              ตาราง
+                              {t("groupStage.viewTable")}
                             </Button>
                             <Button
                               type="button"
@@ -392,10 +393,10 @@ export function PairStage({
       {/* Standings */}
       <TabsContent value="standings" className="space-y-3">
         {!showStandings ? (
-          <p className="text-sm text-muted-foreground">ยังไม่มีผลการแข่งขัน</p>
+          <p className="text-sm text-muted-foreground">{t("pairStage.emptyNoResults")}</p>
         ) : (
           <>
-            <h2 className="font-semibold">อันดับ</h2>
+            <h2 className="font-semibold">{t("pairStage.subTabStandings")}</h2>
             {hasDivisions ? (
               <div className="space-y-4">
                 {divisionKeys.filter((k) => k !== null).map((divKey) => {
@@ -440,12 +441,12 @@ export function PairStage({
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
                 <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-sm">รวมทีม</CardTitle></CardHeader>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">{t("pairStage.colTeam")}</CardTitle></CardHeader>
                   <CardContent>
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="text-muted-foreground border-b">
-                          <th className="text-left pb-1 font-normal">ทีม</th>
+                          <th className="text-left pb-1 font-normal">{t("pairStage.colTeamLabel")}</th>
                           <th className="text-center pb-1 font-normal w-7">W</th>
                           <th className="text-center pb-1 font-normal w-7">D</th>
                           <th className="text-center pb-1 font-normal w-7">L</th>
@@ -455,13 +456,13 @@ export function PairStage({
                       </thead>
                       <tbody>
                         {teamAggRows.map((row, i) => {
-                          const t = teamById.get(row.competitorId);
+                          const team = teamById.get(row.competitorId);
                           return (
                             <tr key={row.competitorId} className={i === 0 ? "font-semibold" : ""}>
                               <td className="py-0.5">
                                 <div className="flex items-center gap-1.5">
-                                  {t?.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />}
-                                  <span>{t?.name ?? "—"}</span>
+                                  {team?.color && <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: team.color }} />}
+                                  <span>{team?.name ?? "—"}</span>
                                 </div>
                               </td>
                               <td className="text-center tabular-nums">{row.wins}</td>
@@ -477,7 +478,7 @@ export function PairStage({
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardHeader className="pb-2"><CardTitle className="text-sm">รายคู่</CardTitle></CardHeader>
+                  <CardHeader className="pb-2"><CardTitle className="text-sm">{t("pairStage.colPair")}</CardTitle></CardHeader>
                   <CardContent>
                     <StandingsTable matches={matches} competitors={pairCompetitors} unit="pair" />
                   </CardContent>

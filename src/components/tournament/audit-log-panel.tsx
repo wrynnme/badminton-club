@@ -4,12 +4,14 @@ import { useState } from "react";
 import { format } from "date-fns";
 import { th } from "date-fns/locale";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getAuditLogsAction } from "@/lib/actions/admins";
 import type { AuditLogEntry } from "@/lib/actions/admins";
 
 export function AuditLogPanel({ tournamentId }: { tournamentId: string }) {
+  const t = useTranslations("tournament");
   const [isOpen, setIsOpen] = useState(false);
   const [logs, setLogs] = useState<AuditLogEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -43,7 +45,7 @@ export function AuditLogPanel({ tournamentId }: { tournamentId: string }) {
     <Card>
       <CardContent className="pt-4 space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold">ประวัติการแก้ไข</p>
+          <p className="text-sm font-semibold">{t("auditLogPanel.title")}</p>
           <Button
             type="button"
             variant="ghost"
@@ -54,12 +56,12 @@ export function AuditLogPanel({ tournamentId }: { tournamentId: string }) {
             {isOpen ? (
               <>
                 <ChevronUp className="h-3.5 w-3.5" />
-                ซ่อน
+                {t("auditLogPanel.btnHide")}
               </>
             ) : (
               <>
                 <ChevronDown className="h-3.5 w-3.5" />
-                แสดง
+                {t("auditLogPanel.btnShow")}
               </>
             )}
           </Button>
@@ -68,7 +70,7 @@ export function AuditLogPanel({ tournamentId }: { tournamentId: string }) {
         {isOpen && (
           <>
             {loading && (
-              <p className="text-sm text-muted-foreground">กำลังโหลด...</p>
+              <p className="text-sm text-muted-foreground">{t("auditLogPanel.loading")}</p>
             )}
 
             {error && (
@@ -76,7 +78,7 @@ export function AuditLogPanel({ tournamentId }: { tournamentId: string }) {
             )}
 
             {!loading && !error && logs !== null && logs.length === 0 && (
-              <p className="text-sm text-muted-foreground">ยังไม่มีประวัติ</p>
+              <p className="text-sm text-muted-foreground">{t("auditLogPanel.emptyLogs")}</p>
             )}
 
             {!loading && !error && logs !== null && logs.length > 0 && (

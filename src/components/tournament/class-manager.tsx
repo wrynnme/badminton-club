@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, GripVertical, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import {
   DndContext,
   closestCenter,
@@ -58,33 +59,27 @@ import { MATCH_FORMAT_LABEL_TH } from "@/lib/tournament/match-format";
 import { fieldErrors } from "@/lib/form-errors";
 import type { TournamentClass, TournamentFormat, MatchFormat } from "@/lib/types";
 
-// ─── label maps ────────────────────────────────────────────────────────────
+// ─── props ──────────────────────────────────────────────────────────────────
 
-const FORMAT_LABEL: Record<TournamentFormat, string> = {
-  group_only: "แบ่งกลุ่ม",
-  group_knockout: "แบ่งกลุ่ม + น็อคเอ้า",
-  knockout_only: "น็อคเอ้า",
+type Props = {
+  tournamentId: string;
+  classes: TournamentClass[];
+  isOwner: boolean;
 };
 
-// ─── zod schema for the class form ─────────────────────────────────────────
+// ─── add / edit dialog ───────────────────────────────────────────────────────
 
-// Plain (non-coercing) schema: the number Fields already coerce to Number on
-// change (value is number | null), so the validator's input type must match the
-// form values exactly — z.coerce/z.preprocess would make the input `unknown` and
-// break TanStack Form's StandardSchema validator typing.
-const classSchema = z.object({
-  code: z.string().min(1, "ระบุรหัส class"),
-  name: z.string().min(1, "ระบุชื่อ class"),
-  pair_capacity: z.number().int().positive("ต้องมากกว่า 0").nullable(),
-  pairs_per_group: z.number().int().min(1, "ต้องอย่างน้อย 1"),
-  format: z.enum(["group_only", "group_knockout", "knockout_only"]),
-  advance_count: z.number().int().min(1, "ต้องอย่างน้อย 1"),
-  has_lower_bracket: z.boolean(),
-  allow_drop_to_lower: z.boolean(),
-  match_format: z.enum(["fixed_2", "best_of_3", "best_of_5"]),
-});
-
-type ClassFormValues = z.infer<typeof classSchema>;
+type ClassFormValues = {
+  code: string;
+  name: string;
+  pair_capacity: number | null;
+  pairs_per_group: number;
+  format: TournamentFormat;
+  advance_count: number;
+  has_lower_bracket: boolean;
+  allow_drop_to_lower: boolean;
+  match_format: MatchFormat;
+};
 
 const DEFAULT_VALUES: ClassFormValues = {
   code: "",
@@ -98,16 +93,6 @@ const DEFAULT_VALUES: ClassFormValues = {
   match_format: "best_of_3",
 };
 
-// ─── props ──────────────────────────────────────────────────────────────────
-
-type Props = {
-  tournamentId: string;
-  classes: TournamentClass[];
-  isOwner: boolean;
-};
-
-// ─── add / edit dialog ───────────────────────────────────────────────────────
-
 function ClassFormDialog({
   open,
   onClose,
@@ -119,8 +104,29 @@ function ClassFormDialog({
   editing: TournamentClass | null;
   tournamentId: string;
 }) {
+  const t = useTranslations("tournament");
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+
+  // zod schema defined inside component so t() is available
+  const classSchema = z.object({
+    code: z.string().min(1, t("classManager.errorCodeRequired")),
+    name: z.string().min(1, t("classManager.errorNameRequired")),
+    pair_capacity: z.number().int().positive(t("classManager.errorCapacityPositive")).nullable(),
+    pairs_per_group: z.number().int().min(1, t("classManager.errorMinOne")),
+    format: z.enum(["group_only", "group_knockout", "knockout_only"]),
+    advance_count: z.number().int().min(1, t("classManager.errorMinOne")),
+    has_lower_bracket: z.boolean(),
+    allow_drop_to_lower: z.boolean(),
+    match_format: z.enum(["fixed_2", "best_of_3", "best_of_5"]),
+  });
+
+  // FORMAT_LABEL defined inside component so t() is available
+  const FORMAT_LABEL: Record<TournamentFormat, string> = {
+    group_only: t("classManager.formatGroupOnly"),
+    group_knockout: t("classManager.formatGroupKnockout"),
+    knockout_only: t("classManager.formatKnockoutOnly"),
+  };
 
   const initialValues: ClassFormValues = editing
     ? {
@@ -159,7 +165,7 @@ function ClassFormDialog({
           toast.error(res.error);
           return;
         }
-        toast.success(editing ? "อัปเดต class แล้ว" : "เพิ่ม class แล้ว");
+        toast.success(editing ? t("classManager.toastUpdated") : t("classManager.toastAdded"));
         router.refresh();
         onClose();
       });
@@ -174,7 +180,7 @@ function ClassFormDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editing ? "แก้ไข class" : "เพิ่ม class"}</DialogTitle>
+          <DialogTitle>{editing ? t("classManager.dialogTitleEdit") : t("classManager.dialogTitleAdd")}</DialogTitle>
         </DialogHeader>
         <form
           onSubmit={(e) => { e.preventDefault(); form.handleSubmit(); }}
@@ -187,13 +193,13 @@ function ClassFormDialog({
                 const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
                 return (
                   <Field data-invalid={isInvalid}>
-                    <FieldLabel htmlFor={field.name}>รหัส class * <span className="text-xs text-muted-foreground">(เช่น NB, BG, N)</span></FieldLabel>
+                    <FieldLabel htmlFor={field.name}>{t("classManager.fieldCode")}</FieldLabel>
                     <Input
                       id={field.name}
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="เช่น NB"
+                      placeholder={t("classManager.placeholderCode")}
                       maxLength={20}
                     />
                     {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
@@ -208,13 +214,13 @@ function ClassFormDialog({
                 const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
                 return (
                   <Field data-invalid={isInvalid}>
-                    <FieldLabel htmlFor={field.name}>ชื่อ class *</FieldLabel>
+                    <FieldLabel htmlFor={field.name}>{t("classManager.fieldName")}</FieldLabel>
                     <Input
                       id={field.name}
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      placeholder="เช่น นกบินไกล"
+                      placeholder={t("classManager.placeholderName")}
                     />
                     {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
                   </Field>
@@ -229,7 +235,7 @@ function ClassFormDialog({
                 return (
                   <Field data-invalid={isInvalid}>
                     <FieldLabel htmlFor={field.name}>
-                      ความจุ (คู่) <span className="text-xs text-muted-foreground">ว่างไว้ = ไม่จำกัด</span>
+                      {t("classManager.fieldCapacity")}
                     </FieldLabel>
                     <Input
                       id={field.name}
@@ -240,7 +246,7 @@ function ClassFormDialog({
                       onChange={(e) =>
                         field.handleChange(e.target.value === "" ? null : Number(e.target.value))
                       }
-                      placeholder="ไม่จำกัด"
+                      placeholder={t("classManager.placeholderCapacity")}
                     />
                     {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
                   </Field>
@@ -252,7 +258,7 @@ function ClassFormDialog({
             <form.Field name="format">
               {(field) => (
                 <Field>
-                  <FieldLabel htmlFor={field.name}>รูปแบบ *</FieldLabel>
+                  <FieldLabel htmlFor={field.name}>{t("classManager.fieldFormat")}</FieldLabel>
                   <Select
                     value={field.state.value}
                     onValueChange={(v) => field.handleChange(v as TournamentFormat)}
@@ -263,9 +269,9 @@ function ClassFormDialog({
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="group_only">แบ่งกลุ่ม</SelectItem>
-                      <SelectItem value="group_knockout">แบ่งกลุ่ม + น็อคเอ้า</SelectItem>
-                      <SelectItem value="knockout_only">น็อคเอ้า</SelectItem>
+                      <SelectItem value="group_only">{t("classManager.formatGroupOnly")}</SelectItem>
+                      <SelectItem value="group_knockout">{t("classManager.formatGroupKnockout")}</SelectItem>
+                      <SelectItem value="knockout_only">{t("classManager.formatKnockoutOnly")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </Field>
@@ -279,7 +285,7 @@ function ClassFormDialog({
                   const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
                   return (
                     <Field data-invalid={isInvalid}>
-                      <FieldLabel htmlFor={field.name}>คู่ต่อกลุ่ม *</FieldLabel>
+                      <FieldLabel htmlFor={field.name}>{t("classManager.fieldPairsPerGroup")}</FieldLabel>
                       <Input
                         id={field.name}
                         type="number"
@@ -302,7 +308,7 @@ function ClassFormDialog({
                   const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
                   return (
                     <Field data-invalid={isInvalid}>
-                      <FieldLabel htmlFor={field.name}>ผ่านรอบกี่คู่/กลุ่ม *</FieldLabel>
+                      <FieldLabel htmlFor={field.name}>{t("classManager.fieldAdvanceCount")}</FieldLabel>
                       <Input
                         id={field.name}
                         type="number"
@@ -330,7 +336,7 @@ function ClassFormDialog({
                         onCheckedChange={(v) => field.handleChange(v === true)}
                       />
                       <Label htmlFor={field.name} className="text-sm cursor-pointer">
-                        มีสายล่าง (double elimination)
+                        {t("classManager.checkboxLowerBracket")}
                       </Label>
                     </div>
                   </Field>
@@ -350,7 +356,7 @@ function ClassFormDialog({
                         onCheckedChange={(v) => field.handleChange(v === true)}
                       />
                       <Label htmlFor={field.name} className="text-sm cursor-pointer">
-                        ตกรอบน็อคเอ้าได้ลงสายล่าง
+                        {t("classManager.checkboxDropToLower")}
                       </Label>
                     </div>
                   </Field>
@@ -362,7 +368,7 @@ function ClassFormDialog({
             <form.Field name="match_format">
               {(field) => (
                 <Field>
-                  <FieldLabel htmlFor={field.name}>รูปแบบแมตช์ *</FieldLabel>
+                  <FieldLabel htmlFor={field.name}>{t("classManager.fieldMatchFormat")}</FieldLabel>
                   <Select
                     value={field.state.value}
                     onValueChange={(v) => field.handleChange(v as MatchFormat)}
@@ -397,10 +403,10 @@ function ClassFormDialog({
                   className="flex-1"
                 >
                   {(isSubmitting || isPending) && <Loader2 className="h-4 w-4 animate-spin" />}
-                  {editing ? "บันทึก" : "เพิ่ม class"}
+                  {editing ? t("classManager.btnSave") : t("classManager.btnAddClass")}
                 </Button>
                 <Button type="button" variant="ghost" onClick={onClose}>
-                  ยกเลิก
+                  {t("classManager.btnCancel")}
                 </Button>
               </div>
             )}
@@ -418,12 +424,15 @@ function SortableClassRow({
   disabled,
   onEdit,
   onDelete,
+  formatLabel,
 }: {
   cls: TournamentClass;
   disabled: boolean;
   onEdit: (cls: TournamentClass) => void;
   onDelete: (cls: TournamentClass) => void;
+  formatLabel: (f: TournamentFormat) => string;
 }) {
+  const t = useTranslations("tournament");
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: cls.id,
   });
@@ -448,7 +457,7 @@ function SortableClassRow({
                 type="button"
                 {...attributes}
                 {...listeners}
-                aria-label="ลากเพื่อจัดลำดับ"
+                aria-label={t("classManager.ariaGrip")}
                 className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
                 disabled={disabled}
               >
@@ -456,7 +465,7 @@ function SortableClassRow({
               </button>
             }
           />
-          <TooltipContent>ลากเพื่อจัดลำดับ class</TooltipContent>
+          <TooltipContent>{t("classManager.tooltipGrip")}</TooltipContent>
         </Tooltip>
       </td>
 
@@ -467,7 +476,7 @@ function SortableClassRow({
       </td>
       <td className="py-2 px-2 text-sm text-center">{cls.pairs_per_group}</td>
       <td className="py-2 px-2 text-xs text-muted-foreground hidden sm:table-cell">
-        {FORMAT_LABEL[cls.format]}
+        {formatLabel(cls.format)}
       </td>
       <td className="py-2 px-2 text-sm text-center hidden sm:table-cell">{cls.advance_count}</td>
       <td className="py-2 px-2 text-xs text-muted-foreground hidden md:table-cell">
@@ -483,7 +492,7 @@ function SortableClassRow({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  aria-label={`แก้ไข ${cls.code}`}
+                  aria-label={t("classManager.ariaEdit", { code: cls.code })}
                   onClick={() => onEdit(cls)}
                   disabled={disabled}
                 >
@@ -491,7 +500,7 @@ function SortableClassRow({
                 </Button>
               }
             />
-            <TooltipContent>แก้ไขการตั้งค่า class &quot;{cls.code}&quot;</TooltipContent>
+            <TooltipContent>{t("classManager.tooltipEdit", { code: cls.code, name: cls.name })}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -499,7 +508,7 @@ function SortableClassRow({
                 <Button
                   size="icon-sm"
                   variant="ghost"
-                  aria-label={`ลบ ${cls.code}`}
+                  aria-label={t("classManager.ariaDelete", { code: cls.code })}
                   className="text-destructive hover:text-destructive"
                   onClick={() => onDelete(cls)}
                   disabled={disabled}
@@ -508,7 +517,7 @@ function SortableClassRow({
                 </Button>
               }
             />
-            <TooltipContent>ลบ class &quot;{cls.code}&quot; — ต้องไม่มีแมตช์ที่จบแล้ว</TooltipContent>
+            <TooltipContent>{t("classManager.tooltipDelete", { code: cls.code, name: cls.name })}</TooltipContent>
           </Tooltip>
         </div>
       </td>
@@ -519,12 +528,20 @@ function SortableClassRow({
 // ─── main component ──────────────────────────────────────────────────────────
 
 export function ClassManager({ tournamentId, classes: initialClasses, isOwner }: Props) {
+  const t = useTranslations("tournament");
   const router = useRouter();
   const [classes, setClasses] = useState<TournamentClass[]>(initialClasses);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<TournamentClass | null>(null);
   const [savePending, startSave] = useTransition();
   const [deletePending, startDelete] = useTransition();
+
+  // FORMAT_LABEL defined inside component so t() is available
+  const FORMAT_LABEL: Record<TournamentFormat, string> = {
+    group_only: t("classManager.formatGroupOnly"),
+    group_knockout: t("classManager.formatGroupKnockout"),
+    knockout_only: t("classManager.formatKnockoutOnly"),
+  };
 
   // Serialized-write refs for reorder — same pattern as court-manager
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -585,14 +602,14 @@ export function ClassManager({ tournamentId, classes: initialClasses, isOwner }:
   };
 
   const handleDelete = (cls: TournamentClass) => {
-    if (!confirm(`ลบ class "${cls.code} — ${cls.name}" ใช่ไหม?\nต้องไม่มีแมตช์ที่จบแล้วใน class นี้`)) return;
+    if (!confirm(t("classManager.confirmDelete", { code: cls.code, name: cls.name }))) return;
     startDelete(async () => {
       const res = await deleteClassAction(cls.id);
       if ("error" in res) {
         toast.error(res.error);
         return;
       }
-      toast.success(`ลบ class "${cls.code}" แล้ว`);
+      toast.success(t("classManager.toastDeleted", { code: cls.code }));
       router.refresh();
     });
   };
@@ -623,17 +640,17 @@ export function ClassManager({ tournamentId, classes: initialClasses, isOwner }:
         </CardHeader>
         <CardContent className="pt-0">
           {classes.length === 0 ? (
-            <p className="text-sm text-muted-foreground">ยังไม่มี class</p>
+            <p className="text-sm text-muted-foreground">{t("classManager.emptyNoClass")}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-xs text-muted-foreground">
-                    <th className="text-left py-1.5 px-2">รหัส</th>
-                    <th className="text-left py-1.5 px-2">ชื่อ</th>
-                    <th className="text-center py-1.5 px-2">ความจุ</th>
-                    <th className="text-center py-1.5 px-2 hidden sm:table-cell">รูปแบบ</th>
-                    <th className="text-center py-1.5 px-2 hidden md:table-cell">แมตช์</th>
+                    <th className="text-left py-1.5 px-2">{t("classManager.colCode")}</th>
+                    <th className="text-left py-1.5 px-2">{t("classManager.colName")}</th>
+                    <th className="text-center py-1.5 px-2">{t("classManager.colCapacity")}</th>
+                    <th className="text-center py-1.5 px-2 hidden sm:table-cell">{t("classManager.colFormat")}</th>
+                    <th className="text-center py-1.5 px-2 hidden md:table-cell">{t("classManager.colMatchFormat")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -673,17 +690,17 @@ export function ClassManager({ tournamentId, classes: initialClasses, isOwner }:
             <TooltipTrigger
               render={
                 <Button size="sm" onClick={openAdd} disabled={isDisabled}>
-                  <Plus className="h-3.5 w-3.5 mr-1" />เพิ่ม class
+                  <Plus className="h-3.5 w-3.5 mr-1" />{t("classManager.btnAddClass")}
                 </Button>
               }
             />
-            <TooltipContent>เพิ่ม event class ใหม่ให้ tournament นี้</TooltipContent>
+            <TooltipContent>{t("classManager.tooltipAddClass")}</TooltipContent>
           </Tooltip>
         </CardHeader>
         <CardContent className="pt-0">
           {classes.length === 0 ? (
             <p className="text-sm text-muted-foreground py-2">
-              ยังไม่มี class — กด &quot;เพิ่ม class&quot; เพื่อเริ่ม
+              {t("classManager.emptyHint")}
             </p>
           ) : (
             <DndContext
@@ -697,13 +714,13 @@ export function ClassManager({ tournamentId, classes: initialClasses, isOwner }:
                   <thead>
                     <tr className="border-b text-xs text-muted-foreground">
                       <th className="w-8" />
-                      <th className="text-left py-1.5 px-2">รหัส</th>
-                      <th className="text-left py-1.5 px-2">ชื่อ</th>
-                      <th className="text-center py-1.5 px-2">ความจุ</th>
-                      <th className="text-center py-1.5 px-2">คู่/กลุ่ม</th>
-                      <th className="text-left py-1.5 px-2 hidden sm:table-cell">รูปแบบ</th>
-                      <th className="text-center py-1.5 px-2 hidden sm:table-cell">ผ่าน</th>
-                      <th className="text-left py-1.5 px-2 hidden md:table-cell">แมตช์</th>
+                      <th className="text-left py-1.5 px-2">{t("classManager.colCode")}</th>
+                      <th className="text-left py-1.5 px-2">{t("classManager.colName")}</th>
+                      <th className="text-center py-1.5 px-2">{t("classManager.colCapacity")}</th>
+                      <th className="text-center py-1.5 px-2">{t("classManager.colPairsPerGroup")}</th>
+                      <th className="text-left py-1.5 px-2 hidden sm:table-cell">{t("classManager.colFormat")}</th>
+                      <th className="text-center py-1.5 px-2 hidden sm:table-cell">{t("classManager.colAdvance")}</th>
+                      <th className="text-left py-1.5 px-2 hidden md:table-cell">{t("classManager.colMatchFormat")}</th>
                       <th className="text-right py-1.5 pr-2">Actions</th>
                     </tr>
                   </thead>
@@ -716,6 +733,7 @@ export function ClassManager({ tournamentId, classes: initialClasses, isOwner }:
                           disabled={isDisabled}
                           onEdit={openEdit}
                           onDelete={handleDelete}
+                          formatLabel={(f) => FORMAT_LABEL[f]}
                         />
                       ))}
                     </tbody>

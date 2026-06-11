@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import type { ReactNode } from "react";
 
-export function StatsPageShell({
+export async function StatsPageShell({
   tournamentId,
   realtimeEnabled,
   backHref,
@@ -14,6 +15,8 @@ export function StatsPageShell({
   backHref: string;
   children: ReactNode;
 }) {
+  const t = await getTranslations("stats.shared");
+
   return (
     <TournamentLiveWrapper
       tournamentId={tournamentId}
@@ -25,7 +28,7 @@ export function StatsPageShell({
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          กลับ
+          {t("backLink")}
         </Link>
         {children}
       </div>

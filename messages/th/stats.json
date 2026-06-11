@@ -1,1 +1,77 @@
-{}
+{
+  "shared": {
+    "streakLabel": "สถิติต่อเนื่อง:",
+    "streakSuffix": "{count} ติด",
+    "backLink": "กลับ"
+  },
+  "statHeaderCards": {
+    "played": "แมตช์",
+    "record": "ผลงาน",
+    "winRate": "อัตราชนะ",
+    "pointsDiff": "ต่างคะแนน"
+  },
+  "headToHeadTable": {
+    "defaultNameLabel": "คู่แข่ง",
+    "colMatches": "แมตช์",
+    "colWins": "ชนะ",
+    "colLosses": "แพ้",
+    "colDraws": "เสมอ"
+  },
+  "matchHistoryList": {
+    "defaultTitle": "ประวัติแมตช์",
+    "defaultEmpty": "ยังไม่มีแมตช์ที่เสร็จสิ้น",
+    "colOpponent": "คู่แข่ง",
+    "colResult": "ผล",
+    "colScore": "คะแนน",
+    "colGames": "เกม"
+  },
+  "pairView": {
+    "unnamedPair": "คู่ไม่มีชื่อ",
+    "pairLevelLabel": "ระดับคู่:",
+    "scheduleLink": "ดูตารางแข่ง",
+    "h2hTitle": "พบกัน (Head-to-Head)"
+  },
+  "playerView": {
+    "levelLabel": "ระดับ:",
+    "roleLabel": "บทบาท:",
+    "roleCaptain": "กัปตัน",
+    "roleMember": "สมาชิก",
+    "partnerBreakdownTitle": "สถิติแยกตามคู่หู",
+    "partnerNameLabel": "คู่หู",
+    "h2hTitle": "พบกัน (Head-to-Head)"
+  },
+  "teamView": {
+    "pairCount": "{count} คู่",
+    "colPair": "คู่",
+    "colMatches": "แมตช์",
+    "colWins": "ชนะ",
+    "colLosses": "แพ้",
+    "colDraws": "เสมอ",
+    "pairBreakdownTitle": "ผลงานแยกตามคู่",
+    "unassignedDivision": "ไม่ระบุดิวิชั่น",
+    "myPairColumnLabel": "คู่ (ทีม)",
+    "h2hTitle": "พบกัน (Head-to-Head) ต่อทีม",
+    "h2hNameLabel": "ทีมคู่แข่ง"
+  },
+  "divisionView": {
+    "headerSubtitle": "{pairCount} คู่ · {matchCount} แมตช์ที่เสร็จสิ้น",
+    "statTotalMatches": "แมตช์ทั้งหมด",
+    "statActivePairs": "คู่ที่ลงเล่น",
+    "statTotalPairs": "คู่ทั้งหมด",
+    "statAvgPoints": "เฉลี่ยคะแนน/แมตช์",
+    "teamBreakdownTitle": "ผลงานแยกทีมใน {label}",
+    "colTeam": "ทีม",
+    "colPairs": "คู่",
+    "colMatches": "แมตช์",
+    "colWins": "ชนะ",
+    "colLosses": "แพ้",
+    "colDraws": "เสมอ",
+    "pairStandingsTitle": "ตารางคะแนนภายใน {label}",
+    "colPair": "คู่",
+    "recentMatchesTitle": "แมตช์ล่าสุด",
+    "colSideA": "คู่ A",
+    "colGames": "เกม",
+    "colSideB": "คู่ B",
+    "emptyState": "ยังไม่มีแมตช์ที่เสร็จสิ้นใน {label}"
+  }
+}

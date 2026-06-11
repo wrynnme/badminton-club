@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { KnockoutStage } from "@/components/tournament/knockout-stage";
 import { classToneById } from "@/lib/tournament/class-color";
@@ -88,6 +89,7 @@ export function ClassKnockoutStage({
   isOwner: boolean;
   matchRowSize?: "compact" | "comfortable";
 }) {
+  const t = useTranslations("tournament");
   // Only classes whose format includes a knockout stage
   const koClasses = useMemo(
     () => classes.filter((c) => c.format !== "group_only"),
@@ -97,7 +99,7 @@ export function ClassKnockoutStage({
   if (koClasses.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        ยังไม่มี class ที่มีรอบน็อคเอ้า — เพิ่ม class ในแท็บ "ตั้งค่า"
+        {t("classKnockoutStage.emptyNoKoClasses")}
       </p>
     );
   }

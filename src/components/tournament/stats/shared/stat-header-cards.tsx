@@ -1,19 +1,9 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { EntityStats } from "@/lib/tournament/entity-stats";
 import { formatWinRate, formatWlLabel } from "@/lib/tournament/result-display";
-
-/**
- * Default Thai labels shared by the pair/player/team stat views.
- * Division view passes its own overrides for the 4 slots.
- */
-export const DEFAULT_STAT_HEADER_LABELS = {
-  played: "แมตช์",
-  record: "ผลงาน",
-  winRate: "อัตราชนะ",
-  pointsDiff: "ต่างคะแนน",
-} as const;
 
 export type StatHeaderLabels = {
   played: string;
@@ -35,13 +25,22 @@ export type StatHeaderLabels = {
  */
 export function StatHeaderCards({
   stats,
-  labels = DEFAULT_STAT_HEADER_LABELS,
+  labels,
   hideWinRate = false,
 }: {
   stats: EntityStats;
   labels?: StatHeaderLabels;
   hideWinRate?: boolean;
 }) {
+  const t = useTranslations("stats.statHeaderCards");
+
+  const resolvedLabels: StatHeaderLabels = labels ?? {
+    played: t("played"),
+    record: t("record"),
+    winRate: t("winRate"),
+    pointsDiff: t("pointsDiff"),
+  };
+
   const wlLabel = formatWlLabel(stats);
   const diff = stats.pointsDiff;
   const diffClass =
@@ -60,7 +59,7 @@ export function StatHeaderCards({
       <Card>
         <CardHeader className="pb-1 pt-4 px-4">
           <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-            {labels.played}
+            {resolvedLabels.played}
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4">
@@ -71,7 +70,7 @@ export function StatHeaderCards({
       <Card>
         <CardHeader className="pb-1 pt-4 px-4">
           <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-            {labels.record}
+            {resolvedLabels.record}
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4">
@@ -83,7 +82,7 @@ export function StatHeaderCards({
         <Card>
           <CardHeader className="pb-1 pt-4 px-4">
             <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-              {labels.winRate}
+              {resolvedLabels.winRate}
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
@@ -97,7 +96,7 @@ export function StatHeaderCards({
       <Card>
         <CardHeader className="pb-1 pt-4 px-4">
           <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-            {labels.pointsDiff}
+            {resolvedLabels.pointsDiff}
           </CardTitle>
         </CardHeader>
         <CardContent className="px-4 pb-4">

@@ -3,6 +3,7 @@
 import { useState, useTransition, useMemo } from "react";
 import { toast } from "sonner";
 import { RefreshCw, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +46,7 @@ function buildColorSummary(groups: GroupWithTeams[], teams: Team[]): ColorEntry[
 }
 
 function ColorSummary({ groups, teams }: { groups: GroupWithTeams[]; teams: Team[] }) {
+  const t = useTranslations("tournament");
   const colors = useMemo(() => buildColorSummary(groups, teams), [groups, teams]);
   if (colors.length === 0) return null;
 
@@ -75,7 +77,7 @@ function ColorSummary({ groups, teams }: { groups: GroupWithTeams[]; teams: Team
       {/* Bar chart */}
       <Card>
         <CardContent className="px-4 py-3 space-y-2.5">
-          <p className="text-xs font-medium text-muted-foreground">คะแนนรวมต่อสี</p>
+          <p className="text-xs font-medium text-muted-foreground">{t("groupStage.colorSummaryTitle")}</p>
           {colors.map((c) => (
             <div key={c.color} className="flex items-center gap-2.5">
               <span
@@ -108,12 +110,13 @@ function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
   isOwner: boolean;
   matchRowSize?: "compact" | "comfortable";
 }) {
+  const t = useTranslations("tournament");
   const [showMatches, setShowMatches] = useState(true);
   const [view, setView] = useState<"list" | "matrix">("list");
 
   const competitors = useMemo(() => {
     const groupTeamIds = group.group_teams.map((gt) => gt.team_id);
-    return teams.filter((t) => groupTeamIds.includes(t.id)).map(teamToCompetitor);
+    return teams.filter((tt) => groupTeamIds.includes(tt.id)).map(teamToCompetitor);
   }, [group.group_teams, teams]);
   const competitorMap = useMemo(() => new Map(competitors.map((c) => [c.id, c])), [competitors]);
 
@@ -136,7 +139,7 @@ function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
                 className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => setShowMatches(!showMatches)}>
                 {showMatches ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                แมตช์ ({group.matches.length})
+                {t("groupStage.matchCount", { count: group.matches.length })}
               </Button>
               {showMatches && (
                 <div className="flex items-center gap-1 ml-auto">
@@ -147,7 +150,7 @@ function GroupCard({ group, teams, tournamentId, isOwner, matchRowSize }: {
                     aria-pressed={view === "list"}
                     className={`h-6 px-2 text-xs ${view === "list" ? "text-foreground font-medium" : "text-muted-foreground"}`}
                     onClick={() => setView("list")}>
-                    ตาราง
+                    {t("groupStage.viewTable")}
                   </Button>
                   <Button
                     type="button"
@@ -194,6 +197,7 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize,
   matchRowSize?: "compact" | "comfortable";
   showColorSummary?: boolean;
 }) {
+  const t = useTranslations("tournament");
   const [groupCount, setGroupCount] = useState(2);
   const [genPending, startGen] = useTransition();
   const [matchPending, startMatch] = useTransition();
@@ -206,9 +210,9 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize,
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold">รอบแบ่งกลุ่ม</h2>
+          <h2 className="font-semibold">{t("groupStage.sectionTitle")}</h2>
           {hasGroups && totalMatches > 0 && (
-            <Badge variant="outline" className="text-xs">{completedMatches}/{totalMatches} แมตช์</Badge>
+            <Badge variant="outline" className="text-xs">{t("groupStage.progressBadge", { completed: completedMatches, total: totalMatches })}</Badge>
           )}
         </div>
       </div>
@@ -218,13 +222,13 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize,
           <CardContent className="pt-4 space-y-3">
             <div className="flex items-center gap-3 flex-wrap">
               <Field>
-                <FieldLabel className="text-xs">จำนวนกลุ่ม</FieldLabel>
+                <FieldLabel className="text-xs">{t("groupStage.fieldGroupCount")}</FieldLabel>
                 <InputGroup className="w-28">
                   <InputGroupInput
                     type="number" min={1} max={teams.length} value={groupCount}
                     onChange={(e) => setGroupCount(Number(e.target.value))}
                     className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
-                  <InputGroupAddon align="inline-end"><InputGroupText>กลุ่ม</InputGroupText></InputGroupAddon>
+                  <InputGroupAddon align="inline-end"><InputGroupText>{t("groupStage.addonGroup")}</InputGroupText></InputGroupAddon>
                 </InputGroup>
               </Field>
               <Button size="sm" variant="outline"
@@ -232,10 +236,10 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize,
                 onClick={() => startGen(async () => {
                   const res = await generateGroupsAction(tournamentId, groupCount);
                   if (res?.error) toast.error(res.error);
-                  else toast.success(res?.knockoutCleared ? "แบ่งกลุ่มแล้ว — รีเซ็ตสาย knockout" : "แบ่งกลุ่มแล้ว");
+                  else toast.success(res?.knockoutCleared ? t("groupStage.toastGroupsWithReset") : t("groupStage.toastGroups"));
                 })}>
                 {genPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
-                {hasGroups ? "สุ่มใหม่" : "แบ่งกลุ่ม"}
+                {hasGroups ? t("groupStage.btnReshuffle") : t("groupStage.btnGenGroups")}
               </Button>
               {hasGroups && totalMatches === 0 && (
                 <Button size="sm"
@@ -243,15 +247,17 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize,
                   onClick={() => startMatch(async () => {
                     const res = await generateGroupMatchesAction(tournamentId);
                     if (res?.error) toast.error(res.error);
-                    else toast.success(`สร้าง ${res.count} แมตช์แล้ว${res?.knockoutCleared ? " — รีเซ็ตสาย knockout" : ""}`);
+                    else toast.success(res?.knockoutCleared
+                      ? t("groupStage.toastMatchesWithReset", { count: res.count ?? 0 })
+                      : t("groupStage.toastMatches", { count: res.count ?? 0 }));
                   })}>
                   {matchPending && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
-                  สร้างตารางแข่ง
+                  {t("groupStage.btnGenMatches")}
                 </Button>
               )}
             </div>
             {hasGroups && completedMatches > 0 && totalMatches > 0 && (
-              <p className="text-xs text-muted-foreground">กด "สุ่มใหม่" จะล้างผลการแข่งขันทั้งหมด</p>
+              <p className="text-xs text-muted-foreground">{t("groupStage.warnReshuffle")}</p>
             )}
           </CardContent>
         </Card>
@@ -271,7 +277,7 @@ export function GroupStage({ tournamentId, groups, teams, isOwner, matchRowSize,
           {completedMatches > 0 && <StandingsSortKeyNote />}
         </>
       ) : (
-        !isOwner && <p className="text-sm text-muted-foreground">ยังไม่มีการแบ่งกลุ่ม</p>
+        !isOwner && <p className="text-sm text-muted-foreground">{t("groupStage.emptyNoGroups")}</p>
       )}
     </div>
   );

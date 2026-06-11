@@ -1,4 +1,5 @@
 import { Trophy, CalendarClock } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import { computeStandings } from "@/lib/tournament/scoring";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -8,15 +9,16 @@ import { PairScheduleLink } from "@/components/tournament/pair-schedule-link";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
-export function StandingsSortKeyNote() {
+export async function StandingsSortKeyNote() {
+  const t = await getTranslations("tournament");
   return (
     <p className="mt-1.5 text-[10px] text-muted-foreground">
-      เกณฑ์จัดอันดับ: คะแนน → ผลต่างแต้ม → แต้มที่ได้
+      {t("standingsTable.sortKeyNote")}
     </p>
   );
 }
 
-export function StandingsTable({
+export async function StandingsTable({
   matches,
   competitors,
   unit,
@@ -25,6 +27,7 @@ export function StandingsTable({
   competitors: Competitor[];
   unit: "team" | "pair";
 }) {
+  const t = await getTranslations("tournament");
   const rows = computeStandings(matches, unit, competitors.map((c) => c.id));
   const compById = new Map(competitors.map((c) => [c.id, c]));
 
@@ -33,7 +36,7 @@ export function StandingsTable({
     <table className="w-full text-xs">
       <thead>
         <tr className="text-muted-foreground border-b">
-          <th className="text-left pb-1 font-normal">{unit === "team" ? "ทีม" : "คู่"}</th>
+          <th className="text-left pb-1 font-normal">{unit === "team" ? t("standingsTable.unitTeam") : t("standingsTable.unitPair")}</th>
           <th className="text-center pb-1 font-normal w-7">P</th>
           <th className="text-center pb-1 font-normal w-7">W</th>
           <th className="text-center pb-1 font-normal w-7">D</th>
@@ -48,11 +51,11 @@ export function StandingsTable({
                   </span>
                 }
               />
-              <TooltipContent>ชนะ = 3 · เสมอ = 1 · แพ้ = 0</TooltipContent>
+              <TooltipContent>{t("standingsTable.pointsTooltip")}</TooltipContent>
             </Tooltip>
           </th>
           {/* my-matches-link: ดูแมตช์ header (pair only) — ลบ <th> นี้คู่กับ <td> ด้านล่างเพื่อถอด entry point */}
-          {unit === "pair" && <th className="w-6 pb-1 font-normal" aria-label="ดูแมตช์" />}
+          {unit === "pair" && <th className="w-6 pb-1 font-normal" aria-label={t("standingsTable.viewMatchesAria")} />}
         </tr>
       </thead>
       <tbody>
@@ -81,7 +84,7 @@ export function StandingsTable({
                 <td className="text-center">
                   <PairScheduleLink
                     pairId={c?.id}
-                    label="ดูแมตช์"
+                    label={t("standingsTable.viewMatchesAria")}
                     className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground align-middle"
                   >
                     <CalendarClock className="h-3.5 w-3.5" />

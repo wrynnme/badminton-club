@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { RefreshCw, Trophy, GitBranch, CheckCircle2, XCircle, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,7 @@ function BracketSection({
   isLower?: boolean;
   matchRowSize?: "compact" | "comfortable";
 }) {
+  const t = useTranslations("tournament");
   const rounds = new Map<number, Match[]>();
   for (const m of matches) {
     if (!rounds.has(m.round_number)) rounds.set(m.round_number, []);
@@ -61,7 +63,7 @@ function BracketSection({
         const rl = isLower
           ? lowerRoundLabel(round, totalLowerRounds)
           : isFinalBracket
-          ? "รอบชิงชนะเลิศ"
+          ? t("knockoutStage.grandFinalRound")
           : roundLabel(round, maxRound, bracketSize);
 
         return (
@@ -80,7 +82,7 @@ function BracketSection({
                       return (
                         <div key={m.id} className="py-2 text-xs text-muted-foreground flex items-center gap-2">
                           <Badge variant="outline" className="text-[10px]">BYE</Badge>
-                          <span>{winner?.name ?? "—"} ผ่านโดยอัตโนมัติ</span>
+                          <span>{winner?.name ?? "—"} {t("knockoutStage.byeAuto")}</span>
                         </div>
                       );
                     }
@@ -138,6 +140,7 @@ export function KnockoutStage({
    *  per-class action instead of the tournament-wide one. */
   classId?: string;
 }) {
+  const t = useTranslations("tournament");
   const [isPending, startGen] = useTransition();
 
   const competitorMap = useMemo(
@@ -167,16 +170,16 @@ export function KnockoutStage({
   const reqs: Req[] = [];
   if (matchUnit === "pair") {
     const pairCount = (pairs ?? []).length;
-    reqs.push({ label: `มีคู่อย่างน้อย 2 คู่ (มี ${pairCount} คู่)`, met: pairCount >= 2 });
+    reqs.push({ label: t("knockoutStage.reqPairCount", { count: pairCount }), met: pairCount >= 2 });
     if (format === "group_knockout") {
-      reqs.push({ label: `มีตารางแข่งกลุ่ม (${groupMatchTotal ?? 0} นัด)`, met: (groupMatchTotal ?? 0) > 0 });
-      reqs.push({ label: `มีผลกลุ่มอย่างน้อย 1 นัด (${groupMatchCompleted ?? 0}/${groupMatchTotal ?? 0})`, met: (groupMatchCompleted ?? 0) > 0 });
+      reqs.push({ label: t("knockoutStage.reqGroupMatches", { count: groupMatchTotal ?? 0 }), met: (groupMatchTotal ?? 0) > 0 });
+      reqs.push({ label: t("knockoutStage.reqGroupResult", { completed: groupMatchCompleted ?? 0, total: groupMatchTotal ?? 0 }), met: (groupMatchCompleted ?? 0) > 0 });
     }
   } else {
-    reqs.push({ label: `มีทีมอย่างน้อย 2 ทีม (มี ${teams.length} ทีม)`, met: teams.length >= 2 });
+    reqs.push({ label: t("knockoutStage.reqTeamCount", { count: teams.length }), met: teams.length >= 2 });
     if (format === "group_knockout") {
-      reqs.push({ label: `แบ่งกลุ่มแล้ว (${groupCount ?? 0} กลุ่ม)`, met: (groupCount ?? 0) > 0 });
-      reqs.push({ label: `มีผลกลุ่มครบทุกนัด (${groupMatchCompleted ?? 0}/${groupMatchTotal ?? 0})`, met: (groupMatchTotal ?? 0) > 0 && groupMatchCompleted === groupMatchTotal });
+      reqs.push({ label: t("knockoutStage.reqGroupsDone", { count: groupCount ?? 0 }), met: (groupCount ?? 0) > 0 });
+      reqs.push({ label: t("knockoutStage.reqGroupComplete", { completed: groupMatchCompleted ?? 0, total: groupMatchTotal ?? 0 }), met: (groupMatchTotal ?? 0) > 0 && groupMatchCompleted === groupMatchTotal });
     }
   }
   const allReqsMet = reqs.every((r) => r.met);
@@ -233,16 +236,16 @@ export function KnockoutStage({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold">รอบน็อคเอ้า</h2>
+          <h2 className="font-semibold">{t("knockoutStage.sectionTitle")}</h2>
           {hasMatches && totalPlayable > 0 && (
-            <Badge variant="outline" className="text-xs">{completedPlayable}/{totalPlayable} แมตช์</Badge>
+            <Badge variant="outline" className="text-xs">{completedPlayable}/{totalPlayable} {t("knockoutStage.sectionTitle")}</Badge>
           )}
         </div>
         <div className="flex items-center gap-2">
           {hasMatches && (
             <Button render={<Link href={`/tournaments/${tournamentId}/bracket`} />} nativeButton={false} size="sm" variant="outline">
               <GitBranch className="h-3.5 w-3.5 mr-1" />
-              ดูสาย
+              {t("knockoutStage.btnViewBracket")}
             </Button>
           )}
           {isOwner && (
@@ -256,12 +259,12 @@ export function KnockoutStage({
                     ? await generateKnockoutForClassAction(classId)
                     : await generateKnockoutAction(tournamentId);
                   if ("error" in res) toast.error(res.error);
-                  else toast.success(`สร้างสาย ${res.count} แมตช์แล้ว`);
+                  else toast.success(t("knockoutStage.toastGenerated", { count: res.count }));
                 })
               }
             >
               {isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
-              {hasMatches ? "สร้างสายใหม่" : "สร้างสาย"}
+              {hasMatches ? t("knockoutStage.btnRegenBracket") : t("knockoutStage.btnGenBracket")}
             </Button>
           )}
         </div>
@@ -269,7 +272,7 @@ export function KnockoutStage({
 
       {/* Empty state for public viewers */}
       {!isOwner && !hasMatches && (
-        <p className="text-sm text-muted-foreground py-8 text-center">ยังไม่ได้สร้างสายการแข่งขัน</p>
+        <p className="text-sm text-muted-foreground py-8 text-center">{t("knockoutStage.emptyPublic")}</p>
       )}
 
       {/* Requirements checklist — admin only */}
@@ -284,7 +287,7 @@ export function KnockoutStage({
             </div>
           ))}
           {allReqsMet && !hasMatches && (
-            <p className="text-xs text-muted-foreground pt-1">พร้อมสร้างสายแล้ว</p>
+            <p className="text-xs text-muted-foreground pt-1">{t("knockoutStage.readyToGen")}</p>
           )}
         </div>
       )}
@@ -317,7 +320,7 @@ export function KnockoutStage({
               <>
                 {/* Upper / winner bracket */}
                 <BracketSection
-                  label={hasLower ? "สายชนะ" : ""}
+                  label={hasLower ? t("knockoutStage.bracketWinner") : ""}
                   matches={upper}
                   maxRound={maxUpperRound}
                   bracketSize={upperBracketSize}
@@ -333,7 +336,7 @@ export function KnockoutStage({
                   <>
                     <Separator />
                     <BracketSection
-                      label="สายแพ้"
+                      label={t("knockoutStage.bracketLoser")}
                       matches={lower}
                       maxRound={totalLowerRounds}
                       bracketSize={0}
@@ -353,7 +356,7 @@ export function KnockoutStage({
                   <>
                     <Separator />
                     <BracketSection
-                      label="ชิงชนะเลิศ"
+                      label={t("knockoutStage.bracketGrandFinal")}
                       matches={grandFinal}
                       maxRound={1}
                       bracketSize={2}
@@ -376,8 +379,8 @@ export function KnockoutStage({
                       <div>
                         <div className="text-xs text-muted-foreground">
                           {isMultiDivision && divKey !== null
-                            ? `แชมป์ ${divisionLabelTh(divKey)}`
-                            : "แชมป์"}
+                            ? t("knockoutStage.championDiv", { div: divisionLabelTh(divKey) })
+                            : t("knockoutStage.champion")}
                         </div>
                         <div className="font-bold text-lg flex items-center gap-2">
                           {champion.color && (

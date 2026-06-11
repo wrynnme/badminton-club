@@ -1,1 +1,77 @@
-{}
+{
+  "shared": {
+    "streakLabel": "Streak:",
+    "streakSuffix": "{count} in a row",
+    "backLink": "Back"
+  },
+  "statHeaderCards": {
+    "played": "Matches",
+    "record": "Record",
+    "winRate": "Win Rate",
+    "pointsDiff": "Point Diff"
+  },
+  "headToHeadTable": {
+    "defaultNameLabel": "Opponent",
+    "colMatches": "Matches",
+    "colWins": "Wins",
+    "colLosses": "Losses",
+    "colDraws": "Draws"
+  },
+  "matchHistoryList": {
+    "defaultTitle": "Match History",
+    "defaultEmpty": "No completed matches yet",
+    "colOpponent": "Opponent",
+    "colResult": "Result",
+    "colScore": "Score",
+    "colGames": "Games"
+  },
+  "pairView": {
+    "unnamedPair": "Unnamed Pair",
+    "pairLevelLabel": "Pair level:",
+    "scheduleLink": "View schedule",
+    "h2hTitle": "Head-to-Head"
+  },
+  "playerView": {
+    "levelLabel": "Level:",
+    "roleLabel": "Role:",
+    "roleCaptain": "Captain",
+    "roleMember": "Member",
+    "partnerBreakdownTitle": "Stats by Partner",
+    "partnerNameLabel": "Partner",
+    "h2hTitle": "Head-to-Head"
+  },
+  "teamView": {
+    "pairCount": "{count} pairs",
+    "colPair": "Pair",
+    "colMatches": "Matches",
+    "colWins": "Wins",
+    "colLosses": "Losses",
+    "colDraws": "Draws",
+    "pairBreakdownTitle": "Results by Pair",
+    "unassignedDivision": "No division",
+    "myPairColumnLabel": "Pair (Team)",
+    "h2hTitle": "Head-to-Head by Team",
+    "h2hNameLabel": "Opponent Team"
+  },
+  "divisionView": {
+    "headerSubtitle": "{pairCount} pairs · {matchCount} completed matches",
+    "statTotalMatches": "Total Matches",
+    "statActivePairs": "Active Pairs",
+    "statTotalPairs": "Total Pairs",
+    "statAvgPoints": "Avg Points/Match",
+    "teamBreakdownTitle": "Team Results in {label}",
+    "colTeam": "Team",
+    "colPairs": "Pairs",
+    "colMatches": "Matches",
+    "colWins": "Wins",
+    "colLosses": "Losses",
+    "colDraws": "Draws",
+    "pairStandingsTitle": "Pair Standings in {label}",
+    "colPair": "Pair",
+    "recentMatchesTitle": "Recent Matches",
+    "colSideA": "Side A",
+    "colGames": "Games",
+    "colSideB": "Side B",
+    "emptyState": "No completed matches in {label} yet"
+  }
+}

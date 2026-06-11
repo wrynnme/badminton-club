@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { gameWinner } from "@/lib/tournament/scoring";
@@ -27,6 +28,8 @@ export function TeamStatsView({
   teamById: Map<string, Team>;
   thresholds?: number[];
 }) {
+  const t = useTranslations("stats");
+
   const hasDivisions = thresholds.length > 0;
   // Map pairId -> division number (1..N) or null when unknown / no split
   const divisionByPairId = new Map<string, number | null>(
@@ -115,7 +118,7 @@ export function TeamStatsView({
                 <h1 className="text-xl font-bold">{team.name}</h1>
               </div>
               <p className="text-sm text-muted-foreground mt-0.5">
-                {teamPairs.length} คู่
+                {t("teamView.pairCount", { count: teamPairs.length })}
               </p>
             </div>
             {team.color && (
@@ -139,7 +142,7 @@ export function TeamStatsView({
 
       {/* Streak pill */}
       <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">สถิติต่อเนื่อง:</span>
+        <span className="text-sm text-muted-foreground">{t("shared.streakLabel")}</span>
         <StreakPill streak={stats.streak} />
       </div>
 
@@ -164,11 +167,11 @@ export function TeamStatsView({
           <CardContent className="p-0">
             <div className="grid grid-cols-[2rem_1fr_3rem_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium">
               <span>#</span>
-              <span>คู่</span>
-              <span className="text-right">แมตช์</span>
-              <span className="text-right">ชนะ</span>
-              <span className="text-right">แพ้</span>
-              <span className="text-right">เสมอ</span>
+              <span>{t("teamView.colPair")}</span>
+              <span className="text-right">{t("teamView.colMatches")}</span>
+              <span className="text-right">{t("teamView.colWins")}</span>
+              <span className="text-right">{t("teamView.colLosses")}</span>
+              <span className="text-right">{t("teamView.colDraws")}</span>
               <span className="text-right">Pts</span>
             </div>
             {rows.map((row, idx) => (
@@ -205,7 +208,7 @@ export function TeamStatsView({
           return (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">ผลงานแยกตามคู่</CardTitle>
+                <CardTitle className="text-base">{t("teamView.pairBreakdownTitle")}</CardTitle>
               </CardHeader>
               {renderTable(pairRows)}
             </Card>
@@ -216,13 +219,13 @@ export function TeamStatsView({
         return (
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">ผลงานแยกตามคู่</CardTitle>
+              <CardTitle className="text-base">{t("teamView.pairBreakdownTitle")}</CardTitle>
             </CardHeader>
             <CardContent className="p-0 space-y-4 pb-4">
               {divKeysSorted.map((divKey) => {
                 const rows = groups.get(divKey) ?? [];
                 const tone = divKey !== null ? divisionTone(divKey) : null;
-                const label = divKey !== null ? divisionLabelTh(divKey) : "ไม่ระบุดิวิชั่น";
+                const label = divKey !== null ? divisionLabelTh(divKey) : t("teamView.unassignedDivision");
                 return (
                   <div key={String(divKey)} className="space-y-1">
                     <p className={`text-xs font-medium px-4 ${tone?.text ?? "text-muted-foreground"}`}>
@@ -245,7 +248,7 @@ export function TeamStatsView({
         matches={stats.matches}
         isSideA={(m) => teamPairIds.has(m.pair_a_id ?? "")}
         competitorById={competitorById}
-        myColumnLabel="คู่ (ทีม)"
+        myColumnLabel={t("teamView.myPairColumnLabel")}
         renderMyColumn={(m, isSideA) => {
           const myPairId = isSideA ? m.pair_a_id : m.pair_b_id;
           const myPair = myPairId ? competitorById.get(myPairId) : undefined;
@@ -259,8 +262,8 @@ export function TeamStatsView({
       />
 
       <HeadToHeadTable
-        title="พบกัน (Head-to-Head) ต่อทีม"
-        nameLabel="ทีมคู่แข่ง"
+        title={t("teamView.h2hTitle")}
+        nameLabel={t("teamView.h2hNameLabel")}
         rows={h2hRows}
         entityType="team"
       />

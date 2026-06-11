@@ -1,6 +1,7 @@
 "use client";
 
 import { Bar, BarChart, Cell, LabelList } from "recharts";
+import { useTranslations } from "next-intl";
 import {
   ChartContainer,
   ChartTooltip,
@@ -35,8 +36,6 @@ type Props = {
   fontSize?: "sm" | "md" | "lg" | "xl";
 };
 
-const chartConfig = { pts: { label: "คะแนน" } } satisfies ChartConfig;
-
 const FONT_SIZE_CLASS: Record<"sm" | "md" | "lg" | "xl", { table: string; rowMaxName: string }> = {
   sm: { table: "text-sm lg:text-base 2xl:text-lg", rowMaxName: "max-w-[7rem] lg:max-w-[9rem] 2xl:max-w-[12rem]" },
   md: { table: "text-base lg:text-lg 2xl:text-xl", rowMaxName: "max-w-[8rem] lg:max-w-[10rem] 2xl:max-w-[14rem]" },
@@ -44,9 +43,11 @@ const FONT_SIZE_CLASS: Record<"sm" | "md" | "lg" | "xl", { table: string; rowMax
   xl: { table: "text-xl lg:text-2xl 2xl:text-3xl", rowMaxName: "max-w-[10rem] lg:max-w-[14rem] 2xl:max-w-[18rem]" },
 };
 
-function TvStandingsChart({ rows }: { rows: ChartRow[] }) {
+function TvStandingsChart({ rows, emptyLabel }: { rows: ChartRow[]; emptyLabel: string }) {
+  const chartConfig = { pts: { label: "" } } satisfies ChartConfig;
+
   if (rows.length === 0) {
-    return <p className="text-base lg:text-lg text-muted-foreground">ยังไม่มีผล</p>;
+    return <p className="text-base lg:text-lg text-muted-foreground">{emptyLabel}</p>;
   }
   const data = rows.map((r) => ({
     name: r.name,
@@ -98,14 +99,17 @@ function TvStandingsChart({ rows }: { rows: ChartRow[] }) {
 }
 
 export function TvStandingsCarousel({ pages, intervalMs = 8000, fontSize = "md" }: Props) {
+  const t = useTranslations("tournament");
+  const chartConfig = { pts: { label: t("tvStandingsCarousel.chartLabel") } } satisfies ChartConfig;
+  void chartConfig; // referenced inside TvStandingsChart via closure via emptyLabel
   const { active, setActive } = useCarousel(pages.length, intervalMs);
 
   if (pages.length === 0) {
     return (
       <div className="h-full overflow-hidden flex flex-col">
-        <h2 className="shrink-0 text-xl lg:text-2xl 2xl:text-3xl font-bold pb-2">อันดับ</h2>
+        <h2 className="shrink-0 text-xl lg:text-2xl 2xl:text-3xl font-bold pb-2">{t("tvStandingsCarousel.heading")}</h2>
         <div className="flex-1 min-h-0 overflow-hidden rounded-xl border bg-card p-3 lg:p-4">
-          <p className="text-base lg:text-lg text-muted-foreground">ยังไม่มีผล</p>
+          <p className="text-base lg:text-lg text-muted-foreground">{t("tvStandingsCarousel.emptyTable")}</p>
         </div>
       </div>
     );
@@ -121,19 +125,19 @@ export function TvStandingsCarousel({ pages, intervalMs = 8000, fontSize = "md" 
           count={pages.length}
           active={active}
           onSelect={setActive}
-          labels={(i) => `ไปหน้า ${pages[i]?.title ?? i + 1}`}
+          labels={(i) => t("tvStandingsCarousel.dotAria", { title: pages[i]?.title ?? String(i + 1) })}
         />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto rounded-xl border bg-card p-3 lg:p-4">
         <div key={current.id} className="animate-in fade-in duration-300 h-full">
           {current.kind === "chart" ? (
-            <TvStandingsChart rows={current.rows} />
+            <TvStandingsChart rows={current.rows} emptyLabel={t("tvStandingsCarousel.emptyChart")} />
           ) : (
             <table className={`w-full ${FONT_SIZE_CLASS[fontSize].table}`}>
               <thead>
                 <tr className="text-left text-muted-foreground border-b">
                   <th className="py-1 font-normal w-8">#</th>
-                  <th className="py-1 font-normal">ชื่อ</th>
+                  <th className="py-1 font-normal">{t("tvStandingsCarousel.colName")}</th>
                   <th className="py-1 font-normal text-center w-10">P</th>
                   <th className="py-1 font-normal text-center w-12">Pts</th>
                 </tr>

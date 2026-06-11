@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTranslations } from "next-intl";
 import {
   Table,
   TableBody,
@@ -24,6 +25,7 @@ export function ScoreMatrix({
   competitors: Competitor[];
   unit: "team" | "pair";
 }) {
+  const t = useTranslations("tournament");
   const grid = useMemo(
     () =>
       buildScoreMatrix(
@@ -42,7 +44,7 @@ export function ScoreMatrix({
         <TableRow className="hover:bg-transparent">
           {/* Corner cell */}
           <TableHead className="text-xs text-muted-foreground font-medium h-9 min-w-[8rem] max-w-[12rem]">
-            <span className="sr-only">{unit === "pair" ? "คู่" : "ทีม"}</span>
+            <span className="sr-only">{unit === "pair" ? t("scoreMatrix.srPair") : t("scoreMatrix.srTeam")}</span>
           </TableHead>
           {competitors.map((c) => (
             <TableHead

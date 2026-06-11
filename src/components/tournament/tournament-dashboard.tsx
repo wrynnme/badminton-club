@@ -18,6 +18,7 @@ import {
   MapPin,
   CalendarClock,
 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import {
   Card,
   CardContent,
@@ -67,15 +68,7 @@ type Props = {
 
 const accent = "var(--chart-1)";
 
-const chartConfig = {
-  pts: { label: "คะแนน", color: "var(--chart-1)" },
-  wins: { label: "ฝั่งชนะ", color: "var(--chart-2)" },
-  draws: { label: "เสมอ", color: "var(--chart-4)" },
-  losses: { label: "ฝั่งแพ้", color: "var(--chart-5)" },
-  count: { label: "แมตช์", color: "var(--chart-3)" },
-} satisfies ChartConfig;
-
-function EmptyBlock({ label = "ยังไม่มีข้อมูล" }: { label?: string }) {
+function EmptyBlock({ label }: { label: string }) {
   return (
     <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
       {label}
@@ -145,6 +138,7 @@ function formatHHmm(iso: string | null): string {
 }
 
 export function TournamentDashboard({ tournament, teams, pairs, matches }: Props) {
+  const t = useTranslations("tournament");
   const unit = tournament.match_unit;
   // Memoise: parseSettings runs a zod parse + per-field fallback; cheap but
   // pointless to redo on every render — settings only changes when the
@@ -159,6 +153,15 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
     () => buildCompetitorMap(unit, teams.map(({ players: _p, ...rest }) => rest), pairs),
     [unit, teams, pairs],
   );
+
+  // chartConfig defined inside component so t() is available
+  const chartConfig = useMemo<ChartConfig>(() => ({
+    pts: { label: t("tournamentDashboard.chartPts"), color: "var(--chart-1)" },
+    wins: { label: t("tournamentDashboard.chartWins"), color: "var(--chart-2)" },
+    draws: { label: t("tournamentDashboard.chartDraws"), color: "var(--chart-4)" },
+    losses: { label: t("tournamentDashboard.chartLosses"), color: "var(--chart-5)" },
+    count: { label: t("tournamentDashboard.chartCount"), color: "var(--chart-3)" },
+  }), [t]);
 
   const playerCount = useMemo(
     () => teams.reduce((acc, t) => acc + (t.players?.length ?? 0), 0),
@@ -413,7 +416,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
           </EntityLink>
         </span>
         <span className="text-xs text-muted-foreground tabular-nums shrink-0">
-          ชนะ {s.wins}
+          {t("tournamentDashboard.winsLabel", { wins: s.wins })}
         </span>
         <span className="text-sm font-semibold tabular-nums shrink-0">
           {valueLabel} {value}
@@ -422,7 +425,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
         {unit === "pair" && (
           <PairScheduleLink
             pairId={c?.id}
-            label="ดูตารางแข่ง"
+            label={t("tournamentDashboard.labelViewSchedule")}
             className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground shrink-0"
           >
             <CalendarClock className="h-3.5 w-3.5" />
@@ -439,34 +442,34 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <SummaryCard
           icon={<Users className="h-4 w-4" />}
-          label={unit === "pair" ? "คู่ทั้งหมด" : "ทีมทั้งหมด"}
+          label={unit === "pair" ? t("tournamentDashboard.labelPairs") : t("tournamentDashboard.labelTeams")}
           value={unit === "pair" ? pairs.length : teams.length}
           subtitle={
             unit === "pair"
-              ? `จาก ${teams.length} ทีม`
-              : `${tournament.team_count} ทีมที่ตั้งไว้`
+              ? t("tournamentDashboard.subtitleFromTeams", { count: teams.length })
+              : t("tournamentDashboard.subtitleTeamsPreset", { count: tournament.team_count })
           }
         />
         <SummaryCard
           icon={<Users className="h-4 w-4" />}
-          label="ผู้เล่นทั้งหมด"
+          label={t("tournamentDashboard.labelPlayers")}
           value={playerCount}
-          subtitle={`เฉลี่ย ${teams.length > 0 ? (playerCount / teams.length).toFixed(1) : "0"} คน/ทีม`}
+          subtitle={t("tournamentDashboard.subtitleAvgPlayers", { avg: teams.length > 0 ? (playerCount / teams.length).toFixed(1) : "0" })}
         />
         <SummaryCard
           icon={<Swords className="h-4 w-4" />}
-          label="แมตช์ทั้งหมด"
+          label={t("tournamentDashboard.labelMatches")}
           value={matchTotals.total}
-          subtitle={`จบแล้ว ${matchTotals.completed} / กำลังแข่ง ${matchTotals.inProgress} / รอ ${matchTotals.pending}`}
+          subtitle={t("tournamentDashboard.subtitleMatchStatus", { completed: matchTotals.completed, inProgress: matchTotals.inProgress, pending: matchTotals.pending })}
         />
         <SummaryCard
           icon={<Activity className="h-4 w-4" />}
-          label="ความคืบหน้า"
+          label={t("tournamentDashboard.labelProgress")}
           value={`${progressPct}%`}
           subtitle={
             matchTotals.total > 0
-              ? `${matchTotals.completed}/${matchTotals.total} แมตช์`
-              : "ยังไม่มีแมตช์"
+              ? t("tournamentDashboard.subtitleOfMatches", { completed: matchTotals.completed, total: matchTotals.total })
+              : t("tournamentDashboard.subtitleNoMatches")
           }
         >
           <div className="pt-1">
@@ -484,7 +487,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
           <Tabs value={selectedDiv} onValueChange={(v) => setSelectedDiv(v as string)}>
             <TabsList>
               <TabsTrigger value="all" className="text-xs px-2.5">
-                ทั้งหมด
+                {t("tournamentDashboard.tabAll")}
               </TabsTrigger>
               {Array.from({ length: divisionCountN }, (_, i) => i + 1).map((d) => (
                 <TabsTrigger key={d} value={String(d)} className="text-xs px-2.5">
@@ -500,19 +503,19 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <Trophy className="h-4 w-4 text-brand" />
-              อันดับสูงสุด
+              {t("tournamentDashboard.topByPoints")}
             </CardTitle>
-            <CardDescription className="text-xs">เรียงตามคะแนนรวม</CardDescription>
+            <CardDescription className="text-xs">{t("tournamentDashboard.topByPointsDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
             {topByPoints.length > 0 ? (
               <ol className="divide-y">
                 {topByPoints.map((s, i) =>
-                  renderRankRow(s, i, "คะแนน", s.leaguePoints),
+                  renderRankRow(s, i, t("tournamentDashboard.valuePoints"), s.leaguePoints),
                 )}
               </ol>
             ) : (
-              <EmptyBlock />
+              <EmptyBlock label={t("tournamentDashboard.emptyDefault")} />
             )}
           </CardContent>
         </Card>
@@ -521,17 +524,17 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <ListChecks className="h-4 w-4 text-primary" />
-              ผู้ชนะมากสุด
+              {t("tournamentDashboard.topByWins")}
             </CardTitle>
-            <CardDescription className="text-xs">เรียงตามจำนวนแมตช์ที่ชนะ</CardDescription>
+            <CardDescription className="text-xs">{t("tournamentDashboard.topByWinsDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="pt-0">
             {topByWins.length > 0 ? (
               <ol className="divide-y">
-                {topByWins.map((s, i) => renderRankRow(s, i, "ครั้ง", s.wins))}
+                {topByWins.map((s, i) => renderRankRow(s, i, t("tournamentDashboard.valueTimes"), s.wins))}
               </ol>
             ) : (
-              <EmptyBlock />
+              <EmptyBlock label={t("tournamentDashboard.emptyDefault")} />
             )}
           </CardContent>
         </Card>
@@ -542,10 +545,10 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-base font-semibold">
-              คะแนนรวมต่อ{unit === "pair" ? "คู่" : "ทีม"}
+              {unit === "pair" ? t("tournamentDashboard.chartTitlePairs") : t("tournamentDashboard.chartTitleTeams")}
             </CardTitle>
             <CardDescription className="text-xs">
-              สูงสุด 10 อันดับแรก
+              {t("tournamentDashboard.chartTop10")}
             </CardDescription>
           </CardHeader>
           <CardContent className="px-2 pb-3">
@@ -586,7 +589,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                 </BarChart>
               </ChartContainer>
             ) : (
-              <EmptyBlock />
+              <EmptyBlock label={t("tournamentDashboard.emptyDefault")} />
             )}
           </CardContent>
         </Card>
@@ -595,10 +598,10 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-semibold">
-                Win / Draw / Loss แยก Division
+                {t("tournamentDashboard.chartWDL")}
               </CardTitle>
               <CardDescription className="text-xs">
-                นับเฉพาะแมตช์ที่จบแล้ว
+                {t("tournamentDashboard.chartWDLDesc")}
               </CardDescription>
             </CardHeader>
             <CardContent className="px-2 pb-3">
@@ -643,13 +646,13 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
         <CardHeader className="pb-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <MapPin className="h-4 w-4" />
-            การใช้สนาม
+            {t("tournamentDashboard.courtUsageTitle")}
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-0 space-y-6">
           {/* Court frequency bar chart */}
           <div>
-            <div className="text-sm font-medium mb-2">สนามที่ใช้บ่อยสุด</div>
+            <div className="text-sm font-medium mb-2">{t("tournamentDashboard.courtMostUsed")}</div>
             {courtUsage.length > 0 ? (
               <ChartContainer
                 config={chartConfig}
@@ -685,13 +688,13 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                 </BarChart>
               </ChartContainer>
             ) : (
-              <EmptyBlock label="ยังไม่มีการจัดสนาม" />
+              <EmptyBlock label={t("tournamentDashboard.courtEmpty")} />
             )}
           </div>
 
           {/* Recent timeline */}
           <div>
-            <div className="text-sm font-medium mb-2">Match timeline (ล่าสุด 10 แมตช์)</div>
+            <div className="text-sm font-medium mb-2">{t("tournamentDashboard.timelineTitle")}</div>
             {recentTimeline.length > 0 ? (
               <ul className="divide-y text-sm">
                 {recentTimeline.map((row) => (
@@ -711,17 +714,17 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
                     </span>
                     <span className="flex flex-col items-end shrink-0 leading-tight">
                       <span className="font-semibold tabular-nums">
-                        เกม {row.games}
+                        {t("tournamentDashboard.timelineGame", { games: row.games })}
                       </span>
                       <span className="text-[10px] text-muted-foreground tabular-nums font-normal">
-                        รวมแต้ม {row.pointTotals}
+                        {t("tournamentDashboard.timelinePoints", { points: row.pointTotals })}
                       </span>
                     </span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <EmptyBlock label="ยังไม่มีแมตช์ที่จบแล้ว" />
+              <EmptyBlock label={t("tournamentDashboard.timelineEmpty")} />
             )}
           </div>
         </CardContent>

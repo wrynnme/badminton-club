@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Bell, ListOrdered, EyeOff, Loader2, Tv, Swords } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -111,6 +112,7 @@ function DivisionPriorityRow({
   value: number[];
   onChange: (next: number[]) => void;
 }) {
+  const t = useTranslations("tournament");
   const [raw, setRaw] = useState(() => value.join(","));
   const [error, setError] = useState("");
 
@@ -133,7 +135,7 @@ function DivisionPriorityRow({
     const valid = parts.filter((n) => Number.isFinite(n) && n >= 1 && n <= nDivisions);
     const deduped = [...new Set(valid)];
     if (deduped.length === 0 && raw.trim() !== "") {
-      setError(`ใส่เลข 1–${nDivisions} คั่นด้วยจุลภาค เช่น 1,2,3`);
+      setError(t("settingsManager.divisionPriorityError", { nDivisions }));
       return;
     }
     setError("");
@@ -145,9 +147,11 @@ function DivisionPriorityRow({
     <div className="flex flex-col gap-1 py-1.5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex flex-col gap-0.5">
-          <Label htmlFor="division-priority" className="text-sm font-medium">ลำดับ Division</Label>
+          <Label htmlFor="division-priority" className="text-sm font-medium">
+            {t("settingsManager.divisionPriorityLabel")}
+          </Label>
           <p className="text-xs text-muted-foreground">
-            ลำดับ Div ที่จะลงสนามก่อน (เช่น 2,1) — ว่างไว้ = 1..{nDivisions}
+            {t("settingsManager.divisionPriorityDesc", { nDivisions })}
           </p>
         </div>
         <Input
@@ -173,6 +177,7 @@ export function SettingsManager({
   initialSettings: unknown;
   pairDivisionThresholds?: number[];
 }) {
+  const t = useTranslations("tournament");
   const [settings, setSettings] = useState<TournamentSettings>(() =>
     parseSettings(initialSettings),
   );
@@ -240,40 +245,40 @@ export function SettingsManager({
   return (
     <Card>
       <CardHeader className="pb-3 flex flex-row items-center justify-between">
-        <CardTitle className="text-sm">ฟีเจอร์</CardTitle>
+        <CardTitle className="text-sm">{t("settingsManager.cardTitle")}</CardTitle>
         {pending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
       </CardHeader>
       <CardContent className="space-y-5">
         <section className="space-y-1">
           <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <Bell className="h-3.5 w-3.5" /> การแจ้งเตือน LINE
+            <Bell className="h-3.5 w-3.5" /> {t("settingsManager.sectionLineNotify")}
           </h3>
           <div className="grid sm:grid-cols-2 gap-x-4">
             <ToggleRow
               id="line-start"
-              label="เรียกแมตช์"
-              description="เมื่อกด เริ่ม"
+              label={t("settingsManager.lineStart")}
+              description={t("settingsManager.lineStartDesc")}
               checked={settings.line_notify.start}
               onChange={(v) => updateNotify("start", v)}
             />
             <ToggleRow
               id="line-score"
-              label="บันทึกผล"
-              description="เมื่อบันทึกคะแนน"
+              label={t("settingsManager.lineScore")}
+              description={t("settingsManager.lineScoreDesc")}
               checked={settings.line_notify.score}
               onChange={(v) => updateNotify("score", v)}
             />
             <ToggleRow
               id="line-bracket"
-              label="สร้างสาย"
-              description="เมื่อสร้างสายน็อคเอ้า"
+              label={t("settingsManager.lineBracket")}
+              description={t("settingsManager.lineBracketDesc")}
               checked={settings.line_notify.bracket}
               onChange={(v) => updateNotify("bracket", v)}
             />
             <ToggleRow
               id="line-status"
-              label="เปลี่ยนสถานะ"
-              description="เมื่อเปลี่ยน draft/ongoing/completed"
+              label={t("settingsManager.lineStatus")}
+              description={t("settingsManager.lineStatusDesc")}
               checked={settings.line_notify.status}
               onChange={(v) => updateNotify("status", v)}
             />
@@ -282,12 +287,12 @@ export function SettingsManager({
 
         <section className="space-y-1 border-t pt-4">
           <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <ListOrdered className="h-3.5 w-3.5" /> การจัดคิว
+            <ListOrdered className="h-3.5 w-3.5" /> {t("settingsManager.sectionQueue")}
           </h3>
           <NumberRow
             id="auto-rotate-gap"
-            label="Gap พักผู้เล่น"
-            description="auto-rotate จะหลีกเลี่ยงผู้เล่นใน N แมตช์ล่าสุด"
+            label={t("settingsManager.autoRotateGap")}
+            description={t("settingsManager.autoRotateGapDesc")}
             value={settings.auto_rotate_rest_gap}
             min={0}
             max={5}
@@ -295,8 +300,8 @@ export function SettingsManager({
           />
           <NumberRow
             id="cooldown"
-            label="Cooldown ระหว่างแมตช์ (นาที)"
-            description="0 = ปิด; กันการเรียกแมตช์ถี่เกิน"
+            label={t("settingsManager.cooldown")}
+            description={t("settingsManager.cooldownDesc")}
             value={settings.match_cooldown_minutes}
             min={0}
             max={30}
@@ -304,37 +309,39 @@ export function SettingsManager({
           />
           <ToggleRow
             id="court-strict"
-            label="บังคับเลือกสนามไม่ซ้อน"
-            description="เปิด = บล็อกตอนเลือกสนามที่ถูกใช้อยู่. ปิด = อนุญาตให้เลือกซ้อน แต่กดเริ่มไม่ได้ถ้าสนามไม่ว่าง"
+            label={t("settingsManager.courtStrict")}
+            description={t("settingsManager.courtStrictDesc")}
             checked={settings.court_strict}
             onChange={(v) => update("court_strict", v)}
           />
           <ToggleRow
             id="auto-advance"
-            label="Auto-advance แมตช์ถัดไป"
-            description="หลังบันทึกผล → ดึง pending #1 ขึ้นแข่ง (สืบสนามเดิม)"
+            label={t("settingsManager.autoAdvance")}
+            description={t("settingsManager.autoAdvanceDesc")}
             checked={settings.auto_advance_next}
             onChange={(v) => update("auto_advance_next", v)}
           />
           <ToggleRow
             id="require_court_to_start"
-            label="ต้องเลือกสนามก่อนเริ่มแมตช์"
-            description="บล็อกปุ่ม 'เริ่ม' ในแท็บตารางคิวจนกว่าจะเลือกสนาม"
+            label={t("settingsManager.requireCourt")}
+            description={t("settingsManager.requireCourtDesc")}
             checked={settings.require_court_to_start}
             onChange={(v) => commit({ require_court_to_start: v }, { ...settings, require_court_to_start: v })}
           />
           <ToggleRow
             id="require_checkin"
-            label="ต้องเช็คอินก่อนเริ่มแมตช์"
-            description="ผู้เล่นทุกคนในแมตช์ต้องเช็คอินก่อน กดเริ่มถึงไม่ติด (แท็บทีม)"
+            label={t("settingsManager.requireCheckIn")}
+            description={t("settingsManager.requireCheckInDesc")}
             checked={settings.require_checkin}
             onChange={(v) => commit({ require_checkin: v }, { ...settings, require_checkin: v })}
           />
           <div className="flex items-center justify-between gap-3 py-1">
             <div className="flex flex-col gap-0.5">
-              <Label htmlFor="queue-division-order" className="text-sm">ลำดับ Division ใน auto-rotate</Label>
+              <Label htmlFor="queue-division-order" className="text-sm">
+                {t("settingsManager.divisionOrder")}
+              </Label>
               <p className="text-xs text-muted-foreground">
-                กำหนดว่า Division ไหนแข่งก่อนในตารางคิว
+                {t("settingsManager.divisionOrderDesc")}
               </p>
             </div>
             <Select
@@ -344,14 +351,20 @@ export function SettingsManager({
               <SelectTrigger id="queue-division-order" className="w-36 h-8 text-xs">
                 <SelectValue>
                   {(value) =>
-                    value === "interleaved" ? "สลับ" : value === "sequential" ? "ตามลำดับ" : value === "chunked" ? "เป็นชุด" : ""
+                    value === "interleaved"
+                      ? t("settingsManager.orderInterleaved")
+                      : value === "sequential"
+                      ? t("settingsManager.orderSequential")
+                      : value === "chunked"
+                      ? t("settingsManager.orderChunked")
+                      : ""
                   }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="interleaved">สลับ</SelectItem>
-                <SelectItem value="sequential">ตามลำดับ</SelectItem>
-                <SelectItem value="chunked">เป็นชุด</SelectItem>
+                <SelectItem value="interleaved">{t("settingsManager.orderInterleaved")}</SelectItem>
+                <SelectItem value="sequential">{t("settingsManager.orderSequential")}</SelectItem>
+                <SelectItem value="chunked">{t("settingsManager.orderChunked")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -365,8 +378,8 @@ export function SettingsManager({
           {settings.queue_division_order === "chunked" && (
             <NumberRow
               id="chunk-size"
-              label="ขนาด chunk (N)"
-              description="แมตช์ต่อชุดเมื่อสลับ chunked"
+              label={t("settingsManager.chunkSize")}
+              description={t("settingsManager.chunkSizeDesc")}
               value={settings.queue_chunk_size}
               min={1}
               max={50}
@@ -375,8 +388,8 @@ export function SettingsManager({
           )}
           <ToggleRow
             id="manual-after-bracket"
-            label="Manual match หลังสร้างสาย (pair mode)"
-            description="ปิดเพื่อล็อกตารางหลังเข้าน็อคเอ้า"
+            label={t("settingsManager.manualAfterBracket")}
+            description={t("settingsManager.manualAfterBracketDesc")}
             checked={settings.allow_manual_match_after_bracket}
             onChange={(v) => update("allow_manual_match_after_bracket", v)}
           />
@@ -384,13 +397,15 @@ export function SettingsManager({
 
         <section className="space-y-1 border-t pt-4">
           <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <Swords className="h-3.5 w-3.5" /> การแข่งขัน
+            <Swords className="h-3.5 w-3.5" /> {t("settingsManager.sectionCompetition")}
           </h3>
           <div className="flex items-center justify-between gap-3 py-1">
             <div className="flex flex-col gap-0.5">
-              <Label htmlFor="default-match-format" className="text-sm">รูปแบบแมตช์เริ่มต้น</Label>
+              <Label htmlFor="default-match-format" className="text-sm">
+                {t("settingsManager.defaultMatchFormat")}
+              </Label>
               <p className="text-xs text-muted-foreground">
-                ใช้เมื่อ class ไม่ได้กำหนดรูปแบบเอง (sports_day หรือ class ที่ไม่ระบุ)
+                {t("settingsManager.defaultMatchFormatDesc")}
               </p>
             </div>
             <Select
@@ -417,62 +432,64 @@ export function SettingsManager({
 
         <section className="space-y-1 border-t pt-4">
           <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <EyeOff className="h-3.5 w-3.5" /> การแสดงผล + Privacy
+            <EyeOff className="h-3.5 w-3.5" /> {t("settingsManager.sectionDisplay")}
           </h3>
           <ToggleRow
             id="color-summary"
-            label="Color summary (group stage)"
-            description="การ์ด+กราฟแท่ง รวมคะแนนตามสี"
+            label={t("settingsManager.colorSummary")}
+            description={t("settingsManager.colorSummaryDesc")}
             checked={settings.color_summary}
             onChange={(v) => update("color_summary", v)}
           />
           <ToggleRow
             id="export-visible"
-            label="ปุ่ม Export / Print"
-            description="ซ่อนจาก public + owner page"
+            label={t("settingsManager.exportVisible")}
+            description={t("settingsManager.exportVisibleDesc")}
             checked={settings.export_visible}
             onChange={(v) => update("export_visible", v)}
           />
           <ToggleRow
             id="realtime"
-            label="Realtime updates"
-            description="ปิดเพื่อลด DB cost (TV ยัง auto-refresh 60s)"
+            label={t("settingsManager.realtime")}
+            description={t("settingsManager.realtimeDesc")}
             checked={settings.realtime_enabled}
             onChange={(v) => update("realtime_enabled", v)}
           />
           <ToggleRow
             id="queue-payload-sync"
-            label="อัปเดตคิวแบบ granular (ทดลอง)"
-            description="แพตช์เฉพาะแถวแมตช์ที่เปลี่ยนจาก Realtime payload แทนการรีเฟรชทั้งหน้า — คิวลื่นขึ้นตอนหลายสนาม (ต้องเปิด Realtime updates ด้วย)"
+            label={t("settingsManager.queuePayloadSync")}
+            description={t("settingsManager.queuePayloadSyncDesc")}
             checked={settings.queue_payload_sync}
             onChange={(v) => update("queue_payload_sync", v)}
           />
           <ToggleRow
             id="audit-log"
-            label="Audit log"
-            description="ปิดเพื่อ privacy / ลด write traffic"
+            label={t("settingsManager.auditLog")}
+            description={t("settingsManager.auditLogDesc")}
             checked={settings.audit_log_enabled}
             onChange={(v) => update("audit_log_enabled", v)}
           />
           <ToggleRow
             id="force-reset"
-            label="บังคับรีเซ็ตสายได้"
-            description="อนุญาตรีเซ็ตแมตช์น็อคเอ้าที่รอบถัดไปจบแล้ว พร้อม cascade 1 ขั้น (ใช้กรณีพลาดบันทึกผลแล้วต้องแก้)"
+            label={t("settingsManager.forceReset")}
+            description={t("settingsManager.forceResetDesc")}
             checked={settings.allow_force_bracket_reset}
             onChange={(v) => update("allow_force_bracket_reset", v)}
           />
           <ToggleRow
             id="knockout-fill-byes"
-            label="เติมช่อง BYE ด้วยทีม/คู่อันดับถัดไป"
-            description="เติมช่องบายในสายน็อคเอ้าต์ด้วยทีม/คู่อันดับถัดไปที่ดีที่สุด (ใช้ทั้งโหมดทีมและโหมดแข่งขัน) — ปิดอยู่ = อันดับ 1 ของกลุ่มได้ BYE รอบแรก"
+            label={t("settingsManager.knockoutFillByes")}
+            description={t("settingsManager.knockoutFillByesDesc")}
             checked={settings.knockout_fill_byes}
             onChange={(v) => update("knockout_fill_byes", v)}
           />
           <div className="flex items-center justify-between gap-3 py-1">
             <div className="flex flex-col gap-0.5">
-              <Label htmlFor="chart-orientation" className="text-sm">แนวกราฟแท่ง</Label>
+              <Label htmlFor="chart-orientation" className="text-sm">
+                {t("settingsManager.chartOrientation")}
+              </Label>
               <p className="text-xs text-muted-foreground">
-                เลือกแนวการแสดงผลกราฟแท่งใน Dashboard
+                {t("settingsManager.chartOrientationDesc")}
               </p>
             </div>
             <Select
@@ -481,12 +498,18 @@ export function SettingsManager({
             >
               <SelectTrigger id="chart-orientation" className="w-36 h-8 text-xs">
                 <SelectValue>
-                  {(value) => (value === "vertical" ? "แนวตั้ง" : value === "horizontal" ? "แนวนอน" : "")}
+                  {(value) =>
+                    value === "vertical"
+                      ? t("settingsManager.orientVertical")
+                      : value === "horizontal"
+                      ? t("settingsManager.orientHorizontal")
+                      : ""
+                  }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="vertical">แนวตั้ง</SelectItem>
-                <SelectItem value="horizontal">แนวนอน</SelectItem>
+                <SelectItem value="vertical">{t("settingsManager.orientVertical")}</SelectItem>
+                <SelectItem value="horizontal">{t("settingsManager.orientHorizontal")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -494,54 +517,54 @@ export function SettingsManager({
 
         <section className="space-y-1 border-t pt-4">
           <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            <Tv className="h-3.5 w-3.5" /> การแสดงผล TV
+            <Tv className="h-3.5 w-3.5" /> {t("settingsManager.sectionTv")}
           </h3>
 
-          <p className="text-xs text-muted-foreground/80 pt-1 pb-0.5">ส่วนต่างๆ ของหน้า TV</p>
+          <p className="text-xs text-muted-foreground/80 pt-1 pb-0.5">{t("settingsManager.tvSections")}</p>
           <div className="grid sm:grid-cols-2 gap-x-4">
             <ToggleRow
               id="tv-show-team-chart"
-              label="กราฟคะแนนสะสมแต่ละทีม"
+              label={t("settingsManager.tvShowTeamChart")}
               checked={settings.tv_show_team_chart}
               onChange={(v) => update("tv_show_team_chart", v)}
             />
             <ToggleRow
               id="tv-show-standings-carousel"
-              label="ตารางอันดับ (carousel)"
+              label={t("settingsManager.tvShowStandingsCarousel")}
               checked={settings.tv_show_standings_carousel}
               onChange={(v) => update("tv_show_standings_carousel", v)}
             />
             <ToggleRow
               id="tv-show-upcoming"
-              label="กำลังเล่น / ถัดไป"
+              label={t("settingsManager.tvShowUpcoming")}
               checked={settings.tv_show_upcoming}
               onChange={(v) => update("tv_show_upcoming", v)}
             />
             <ToggleRow
               id="tv-show-completed"
-              label="จบล่าสุด"
+              label={t("settingsManager.tvShowCompleted")}
               checked={settings.tv_show_completed}
               onChange={(v) => update("tv_show_completed", v)}
             />
             <ToggleRow
               id="tv-show-fullscreen-button"
-              label="ปุ่ม Fullscreen"
+              label={t("settingsManager.tvShowFullscreenButton")}
               checked={settings.tv_show_fullscreen_button}
               onChange={(v) => update("tv_show_fullscreen_button", v)}
             />
             <ToggleRow
               id="tv-show-bracket-link"
-              label="ลิงก์ดูสาย"
+              label={t("settingsManager.tvShowBracketLink")}
               checked={settings.tv_show_bracket_link}
               onChange={(v) => update("tv_show_bracket_link", v)}
             />
           </div>
 
-          <p className="text-xs text-muted-foreground/80 pt-3 pb-0.5">จำนวนรายการ</p>
+          <p className="text-xs text-muted-foreground/80 pt-3 pb-0.5">{t("settingsManager.tvCountSection")}</p>
           <NumberRow
             id="tv-completed-count"
-            label='จำนวน "จบล่าสุด"'
-            description="1–3 รายการ"
+            label={t("settingsManager.tvCompletedCount")}
+            description={t("settingsManager.tvCompletedCountDesc")}
             value={settings.tv_completed_count}
             min={1}
             max={3}
@@ -549,19 +572,19 @@ export function SettingsManager({
           />
           <NumberRow
             id="tv-standings-rows"
-            label="จำนวนแถวอันดับ"
-            description="0–50 แถวต่อหน้า carousel · 0 = ทั้งหมด"
+            label={t("settingsManager.tvStandingsRows")}
+            description={t("settingsManager.tvStandingsRowsDesc")}
             value={settings.tv_standings_rows}
             min={0}
             max={50}
             onChange={(v) => update("tv_standings_rows", v)}
           />
 
-          <p className="text-xs text-muted-foreground/80 pt-3 pb-0.5">การหมุน / รีเฟรช</p>
+          <p className="text-xs text-muted-foreground/80 pt-3 pb-0.5">{t("settingsManager.tvRotation")}</p>
           <NumberRow
             id="tv-carousel-interval"
-            label="รอบหมุนตารางอันดับ (วินาที)"
-            description="3–30 วินาที"
+            label={t("settingsManager.tvCarouselInterval")}
+            description={t("settingsManager.tvCarouselIntervalDesc")}
             value={settings.tv_carousel_interval_sec}
             min={3}
             max={30}
@@ -569,8 +592,8 @@ export function SettingsManager({
           />
           <NumberRow
             id="tv-upcoming-interval"
-            label='รอบหมุน "กำลังเล่น / ถัดไป" (วินาที)'
-            description="3–30 วินาที"
+            label={t("settingsManager.tvUpcomingInterval")}
+            description={t("settingsManager.tvUpcomingIntervalDesc")}
             value={settings.tv_upcoming_interval_sec}
             min={3}
             max={30}
@@ -578,20 +601,22 @@ export function SettingsManager({
           />
           <NumberRow
             id="tv-refresh-interval"
-            label="รอบรีเฟรชหน้า TV (วินาที)"
-            description="30–300 วินาที (fallback เมื่อปิด Realtime)"
+            label={t("settingsManager.tvRefreshInterval")}
+            description={t("settingsManager.tvRefreshIntervalDesc")}
             value={settings.tv_refresh_interval_sec}
             min={30}
             max={300}
             onChange={(v) => update("tv_refresh_interval_sec", v)}
           />
 
-          <p className="text-xs text-muted-foreground/80 pt-3 pb-0.5">ขนาดฟอนต์</p>
+          <p className="text-xs text-muted-foreground/80 pt-3 pb-0.5">{t("settingsManager.tvFontSection")}</p>
           <div className="flex items-center justify-between gap-3 py-1">
             <div className="flex flex-col gap-0.5">
-              <Label htmlFor="tv-standings-font-size" className="text-sm">ขนาดฟอนต์ตารางอันดับ</Label>
+              <Label htmlFor="tv-standings-font-size" className="text-sm">
+                {t("settingsManager.tvStandingsFontSize")}
+              </Label>
               <p className="text-xs text-muted-foreground">
-                ปรับขนาดตัวอักษรในตารางคะแนน Division
+                {t("settingsManager.tvStandingsFontSizeDesc")}
               </p>
             </div>
             <Select
@@ -601,15 +626,23 @@ export function SettingsManager({
               <SelectTrigger id="tv-standings-font-size" className="w-36 h-8 text-xs">
                 <SelectValue>
                   {(value) =>
-                    value === "sm" ? "เล็ก" : value === "md" ? "กลาง" : value === "lg" ? "ใหญ่" : value === "xl" ? "ใหญ่มาก" : ""
+                    value === "sm"
+                      ? t("settingsManager.fontSm")
+                      : value === "md"
+                      ? t("settingsManager.fontMd")
+                      : value === "lg"
+                      ? t("settingsManager.fontLg")
+                      : value === "xl"
+                      ? t("settingsManager.fontXl")
+                      : ""
                   }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="sm">เล็ก</SelectItem>
-                <SelectItem value="md">กลาง</SelectItem>
-                <SelectItem value="lg">ใหญ่</SelectItem>
-                <SelectItem value="xl">ใหญ่มาก</SelectItem>
+                <SelectItem value="sm">{t("settingsManager.fontSm")}</SelectItem>
+                <SelectItem value="md">{t("settingsManager.fontMd")}</SelectItem>
+                <SelectItem value="lg">{t("settingsManager.fontLg")}</SelectItem>
+                <SelectItem value="xl">{t("settingsManager.fontXl")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
