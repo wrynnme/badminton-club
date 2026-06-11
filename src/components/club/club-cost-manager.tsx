@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
-import { updateClubCostConfigAction } from "@/lib/actions/clubs";
+import { updateClubCostConfigAction } from "@/lib/actions/club-cost";
 import type { CourtSplit, ShuttleSplit, GapPolicy } from "@/lib/types";
 
 type Props = {

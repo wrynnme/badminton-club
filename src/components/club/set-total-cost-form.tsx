@@ -13,7 +13,7 @@ import {
   InputGroupInput,
   InputGroupText,
 } from "@/components/ui/input-group";
-import { setTotalCostAction } from "@/lib/actions/clubs";
+import { setTotalCostAction } from "@/lib/actions/club-cost";
 
 const formSchema = z.object({
   total_cost: z.number().min(0, "ค่าก๊วนต้องไม่ติดลบ"),

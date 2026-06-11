@@ -16,7 +16,7 @@ import {
   createLevelAction,
   updateLevelAction,
   deleteLevelAction,
-} from "@/lib/actions/clubs";
+} from "@/lib/actions/levels";
 import type { Level } from "@/lib/types";
 
 type Props = {

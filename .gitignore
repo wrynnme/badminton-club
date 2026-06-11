@@ -55,3 +55,6 @@ supabase/.temp/
 
 # codex (tooling-local config — mirrors .claude / .agents)
 /.codex
+
+# playwright-mcp smoke artifacts (snapshots / console logs)
+.playwright-mcp/

@@ -28,7 +28,7 @@ import { EditTournamentForm } from "@/components/tournament/edit-tournament-form
 import { SettingsManager } from "@/components/tournament/settings-manager";
 import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match, TournamentClass, MatchFormat, Level } from "@/lib/types";
 import type { TournamentAdmin } from "@/lib/actions/admins";
-import { getLevelsAction } from "@/lib/actions/clubs";
+import { getLevelsAction } from "@/lib/actions/levels";
 import { parseSettings } from "@/lib/tournament/settings";
 import { parseTournamentThresholds } from "@/lib/tournament/divisions";
 import { TOURNAMENT_STATUS_BADGE, TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";

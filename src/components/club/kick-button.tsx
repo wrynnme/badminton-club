@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { kickPlayerAction } from "@/lib/actions/clubs";
+import { kickPlayerAction } from "@/lib/actions/club-players";
 
 export function KickButton({
   clubId,

@@ -9,9 +9,9 @@ import { Input } from "@/components/ui/input";
 import { computeClubCostRows, formatHours } from "@/lib/club/cost-summary";
 import { generateClubCostCsv } from "@/lib/club/cost-csv";
 import { downloadCsv } from "@/lib/export/csv";
-import { updateClubPlayerDiscountAction } from "@/lib/actions/clubs";
+import { updateClubPlayerDiscountAction } from "@/lib/actions/club-players";
 import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
-import type { ClubExpense } from "@/lib/actions/clubs";
+import type { ClubExpense } from "@/lib/actions/club-cost";
 
 type Props = {
   club: Club;
