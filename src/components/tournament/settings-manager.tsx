@@ -463,8 +463,8 @@ export function SettingsManager({
           />
           <ToggleRow
             id="knockout-fill-byes"
-            label="เติมช่อง BYE ด้วยทีมอันดับถัดไป"
-            description="โหมดทีม + แบ่งกลุ่ม: เมื่อผู้เข้ารอบไม่พอเต็มสาย ดึงทีมอันดับถัดไปที่ดีที่สุดข้ามกลุ่ม (เช่นที่ 3 ที่ดีสุด) มาเติมแทนการให้ BYE — ปิดอยู่ = ทีมหัวกลุ่มได้ BYE รอบแรก"
+            label="เติมช่อง BYE ด้วยทีม/คู่อันดับถัดไป"
+            description="เติมช่องบายในสายน็อคเอ้าต์ด้วยทีม/คู่อันดับถัดไปที่ดีที่สุด (ใช้ทั้งโหมดทีมและโหมดแข่งขัน) — ปิดอยู่ = อันดับ 1 ของกลุ่มได้ BYE รอบแรก"
             checked={settings.knockout_fill_byes}
             onChange={(v) => update("knockout_fill_byes", v)}
           />
