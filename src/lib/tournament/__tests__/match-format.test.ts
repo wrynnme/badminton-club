@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   MATCH_FORMAT_BOUNDS,
-  MATCH_FORMAT_LABEL_TH,
   maxGamesForFormat,
   isMatchComplete,
   resolveMatchResult,
@@ -18,7 +17,7 @@ describe("maxGamesForFormat", () => {
   });
 });
 
-describe("MATCH_FORMAT_BOUNDS / labels", () => {
+describe("MATCH_FORMAT_BOUNDS", () => {
   it("only fixed_2 allows a draw", () => {
     expect(MATCH_FORMAT_BOUNDS.fixed_2.canDraw).toBe(true);
     expect(MATCH_FORMAT_BOUNDS.best_of_3.canDraw).toBe(false);
@@ -27,11 +26,6 @@ describe("MATCH_FORMAT_BOUNDS / labels", () => {
   it("winAt = ceil(maxGames/2) clinch", () => {
     expect(MATCH_FORMAT_BOUNDS.best_of_3.winAt).toBe(2);
     expect(MATCH_FORMAT_BOUNDS.best_of_5.winAt).toBe(3);
-  });
-  it("has a Thai label for every format", () => {
-    expect(MATCH_FORMAT_LABEL_TH.fixed_2).toBeTruthy();
-    expect(MATCH_FORMAT_LABEL_TH.best_of_3).toBeTruthy();
-    expect(MATCH_FORMAT_LABEL_TH.best_of_5).toBeTruthy();
   });
 });
 

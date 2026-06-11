@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
-import { RESULT_LABEL_TH, RESULT_TEXT_CLASS } from "@/lib/tournament/result-display";
+import { RESULT_TEXT_CLASS } from "@/lib/tournament/result-display";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import type { Match } from "@/lib/types";
 import {
@@ -53,6 +53,7 @@ function MatchHistoryRow({
   renderMyColumn: RenderMyColumn;
   renderOpponentName: OpponentNameRenderer;
 }) {
+  const t = useTranslations("tournament");
   const opponentId = isSideA ? match.pair_b_id : match.pair_a_id;
   const opponent = opponentId ? competitorById.get(opponentId) : undefined;
   const rawWinner = gameWinner(match.games);
@@ -94,7 +95,7 @@ function MatchHistoryRow({
         </span>
       </TableCell>
       <TableCell className={`text-right py-2.5 w-12 ${RESULT_TEXT_CLASS[result]}`}>
-        {RESULT_LABEL_TH[result]}
+        {t(`result.${result}`)}
       </TableCell>
       <TableCell className="tabular-nums text-right font-medium py-2.5 w-14">
         {myPoints}–{oppPoints}

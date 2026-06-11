@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
-import { MATCH_STATUS_LABEL_TH, MATCH_STATUS_PILL_CLASS } from "@/lib/tournament/status-display";
+import { MATCH_STATUS_PILL_CLASS } from "@/lib/tournament/status-display";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
@@ -132,7 +132,7 @@ export async function ScheduleMatchCard({
 
   // Canonical status label + pill — shared with match-queue + tv-match-card
   // (same `?? pending` defensive fallback as tv-match-card).
-  const statusLabel = MATCH_STATUS_LABEL_TH[match.status] ?? MATCH_STATUS_LABEL_TH.pending;
+  const statusLabel = t(`matchStatus.${match.status}`);
   const statusCls = MATCH_STATUS_PILL_CLASS[match.status] ?? MATCH_STATUS_PILL_CLASS.pending;
 
   // Division badge — text identical to the old inline `Division {n}`; tone color

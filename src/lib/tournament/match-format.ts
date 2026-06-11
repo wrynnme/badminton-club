@@ -19,12 +19,6 @@ export const MATCH_FORMAT_BOUNDS: Record<
   best_of_5: { maxGames: 5, winAt: 3, canDraw: false },
 };
 
-export const MATCH_FORMAT_LABEL_TH: Record<MatchFormat, string> = {
-  fixed_2: "2 เกมรวด",
-  best_of_3: "Best of 3 (ชนะ 2)",
-  best_of_5: "Best of 5 (ชนะ 3)",
-};
-
 /** Max number of game rows allowed for a format — used to clamp ScoreForm. */
 export function maxGamesForFormat(format: MatchFormat): number {
   return MATCH_FORMAT_BOUNDS[format].maxGames;

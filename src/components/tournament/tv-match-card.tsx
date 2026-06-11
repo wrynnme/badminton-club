@@ -1,9 +1,7 @@
+import { useTranslations } from "next-intl";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
-import {
-  MATCH_STATUS_LABEL_TH,
-  MATCH_STATUS_PILL_CLASS,
-} from "@/lib/tournament/status-display";
+import { MATCH_STATUS_PILL_CLASS } from "@/lib/tournament/status-display";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
@@ -28,7 +26,8 @@ export function TvMatchCard({
   const gamesA = match.team_a_score ?? 0;
   const gamesB = match.team_b_score ?? 0;
 
-  const statusLabel = MATCH_STATUS_LABEL_TH[match.status] ?? MATCH_STATUS_LABEL_TH.pending;
+  const t = useTranslations("tournament");
+  const statusLabel = t(`matchStatus.${match.status}`);
   const statusCls = MATCH_STATUS_PILL_CLASS[match.status] ?? MATCH_STATUS_PILL_CLASS.pending;
   const isLive = match.status === "in_progress";
 

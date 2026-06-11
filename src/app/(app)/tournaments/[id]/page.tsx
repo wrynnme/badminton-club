@@ -32,7 +32,7 @@ import type { TournamentAdmin } from "@/lib/actions/admins";
 import { getLevelsAction } from "@/lib/actions/levels";
 import { parseSettings } from "@/lib/tournament/settings";
 import { parseTournamentThresholds } from "@/lib/tournament/divisions";
-import { TOURNAMENT_STATUS_BADGE, TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";
+import { TOURNAMENT_STATUS_BADGE } from "@/lib/tournament/status";
 
 export const dynamic = "force-dynamic";
 
@@ -158,7 +158,7 @@ export default async function TournamentDetailPage({
             <Trophy className="h-6 w-6 shrink-0" />
             <h1 className="text-2xl font-bold">{t.name}</h1>
           </div>
-          <Badge variant={TOURNAMENT_STATUS_BADGE[t.status]}>{TOURNAMENT_STATUS_LABEL[t.status]}</Badge>
+          <Badge variant={TOURNAMENT_STATUS_BADGE[t.status]}>{tl(`tournamentStatus.${t.status}`)}</Badge>
         </div>
 
         {/* Info card */}

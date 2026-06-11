@@ -634,6 +634,27 @@
   "classKnockoutStage": {
     "emptyNoKoClasses": "ยังไม่มี class ที่มีรอบน็อคเอ้า — เพิ่ม class ในแท็บ \"ตั้งค่า\""
   },
+  "matchStatus": {
+    "pending": "รอแข่ง",
+    "in_progress": "กำลังแข่ง",
+    "completed": "จบแล้ว"
+  },
+  "result": {
+    "W": "ชนะ",
+    "L": "แพ้",
+    "D": "เสมอ"
+  },
+  "tournamentStatus": {
+    "draft": "แบบร่าง",
+    "registering": "เปิดรับสมัคร",
+    "ongoing": "กำลังแข่ง",
+    "completed": "จบแล้ว"
+  },
+  "matchFormat": {
+    "fixed_2": "2 เกมรวด",
+    "best_of_3": "Best of 3 (ชนะ 2)",
+    "best_of_5": "Best of 5 (ชนะ 3)"
+  },
   "page": {
     "back": "กลับ",
     "bracketTitle": "สายการแข่งขัน",

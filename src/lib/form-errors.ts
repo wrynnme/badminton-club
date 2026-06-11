@@ -7,6 +7,10 @@ export function fieldErrors(errors: unknown[]) {
     message:
       typeof e === "string"
         ? e
-        : (e as { message?: string } | null)?.message ?? "ไม่ถูกต้อง",
+        : // NOTE: This literal fallback ("ไม่ถูกต้อง") is intentionally kept here.
+          // This is a non-React module — it cannot call useTranslations(). The fallback
+          // is unreachable in practice because every validator in this codebase provides
+          // an explicit message string (translated at the call site via t("validation.key")).
+          (e as { message?: string } | null)?.message ?? "ไม่ถูกต้อง",
   }));
 }

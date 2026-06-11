@@ -1,1 +1,10 @@
-{}
+{
+  "invalid": "Invalid",
+  "required": {
+    "name": "Name is required",
+    "field": "This field is required"
+  },
+  "name": {
+    "tooLong": "Name is too long (max 40 characters)"
+  }
+}

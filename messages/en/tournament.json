@@ -634,6 +634,27 @@
   "classKnockoutStage": {
     "emptyNoKoClasses": "No classes with a knockout stage yet — add a class in the Settings tab"
   },
+  "matchStatus": {
+    "pending": "Waiting",
+    "in_progress": "In progress",
+    "completed": "Finished"
+  },
+  "result": {
+    "W": "Win",
+    "L": "Loss",
+    "D": "Draw"
+  },
+  "tournamentStatus": {
+    "draft": "Draft",
+    "registering": "Registering",
+    "ongoing": "Ongoing",
+    "completed": "Completed"
+  },
+  "matchFormat": {
+    "fixed_2": "2 straight games",
+    "best_of_3": "Best of 3 (win 2)",
+    "best_of_5": "Best of 5 (win 3)"
+  },
   "page": {
     "back": "Back",
     "bracketTitle": "Bracket",
