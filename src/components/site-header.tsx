@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { LocaleSwitcher } from "@/components/locale-switcher";
+import { UserMenu } from "@/components/user-menu";
 import { MobileNav } from "@/components/mobile-nav";
 
 export async function SiteHeader() {
@@ -20,14 +21,14 @@ export async function SiteHeader() {
             v{process.env.NEXT_PUBLIC_APP_VERSION} ({process.env.NEXT_PUBLIC_GIT_COMMIT})
           </Badge>
         </Link>
-        <nav className="hidden sm:flex items-center gap-3">
+        <nav className="hidden sm:flex items-center gap-2">
           <LocaleSwitcher />
           <ThemeToggle />
-          <Link href="/clubs" className="text-sm hover:underline">
-            {t("clubs")}
+          <Link href="/clubs">
+            <Button variant="ghost" size="sm">{t("clubs")}</Button>
           </Link>
-          <Link href="/tournaments" className="text-sm hover:underline">
-            {t("tournaments")}
+          <Link href="/tournaments">
+            <Button variant="ghost" size="sm">{t("tournaments")}</Button>
           </Link>
           {session ? (
             <>
@@ -36,19 +37,11 @@ export async function SiteHeader() {
                   <Button size="sm">{t("createClub")}</Button>
                 </Link>
               )}
-              <Link href="/settings" className="flex items-center gap-2 rounded-md px-1 py-0.5 hover:bg-accent transition-colors" title={t("accountSettings")}>
-                <Avatar className="h-8 w-8">
-                  {session.pictureUrl && <AvatarImage src={session.pictureUrl} />}
-                  <AvatarFallback>{session.displayName.slice(0, 1)}</AvatarFallback>
-                </Avatar>
-                <span className="text-sm hidden sm:inline">{session.displayName}</span>
-                {session.isGuest && <Badge variant="secondary">{t("guest")}</Badge>}
-              </Link>
-              <form action="/api/auth/logout" method="post">
-                <Button variant="ghost" size="sm" type="submit">
-                  {t("logout")}
-                </Button>
-              </form>
+              <UserMenu
+                displayName={session.displayName}
+                pictureUrl={session.pictureUrl}
+                isGuest={session.isGuest}
+              />
             </>
           ) : (
             <Link href="/">

@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EditProfileForm } from "@/components/profile/edit-profile-form";
+import { PresetManager } from "@/components/club/preset-manager";
+import { listClubPresetsAction } from "@/lib/actions/club-presets";
+import type { ClubPreset } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +36,14 @@ export default async function SettingsPage() {
       .lt("play_date", today)
       .order("play_date", { ascending: false });
     pastClubs = data ?? [];
+  }
+
+  // Club presets (reusable templates) — LINE users only; the action redirects
+  // anonymous and returns { error } for guests, so gate on !isGuest.
+  let presets: ClubPreset[] = [];
+  if (!session.isGuest) {
+    const presetsResult = await listClubPresetsAction();
+    if ("presets" in presetsResult) presets = presetsResult.presets;
   }
 
   return (
@@ -91,6 +102,8 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {!session.isGuest && <PresetManager presets={presets} />}
 
       <Card>
         <CardHeader className="pb-3">
