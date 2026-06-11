@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
   Plus,
@@ -43,14 +44,6 @@ type Props = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function presetSummary(preset: ClubPreset) {
-  const c = preset.config;
-  const parts: string[] = [];
-  if (c.max_players) parts.push(`${c.max_players} คน`);
-  if (c.court_count) parts.push(`${c.court_count} สนาม`);
-  return parts.join(" · ");
-}
-
 function timeRange(preset: ClubPreset) {
   const { start_time, end_time } = preset.config;
   if (!start_time && !end_time) return null;
@@ -63,6 +56,7 @@ function timeRange(preset: ClubPreset) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function PresetManager({ presets }: Props) {
+  const t = useTranslations("club.presetManager");
   const router = useRouter();
 
   // Form dialog state
@@ -77,6 +71,16 @@ export function PresetManager({ presets }: Props) {
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
+
+  // ── Helpers (need t()) ──────────────────────────────────────────────────────
+
+  function presetSummary(preset: ClubPreset) {
+    const c = preset.config;
+    const parts: string[] = [];
+    if (c.max_players) parts.push(t("playerSuffix", { count: c.max_players }));
+    if (c.court_count) parts.push(t("courtSuffix", { count: c.court_count }));
+    return parts.join(" · ");
+  }
 
   // ── Handlers ────────────────────────────────────────────────────────────────
 
@@ -103,7 +107,7 @@ export function PresetManager({ presets }: Props) {
       toast.error(res.error);
       return;
     }
-    toast.success(`เปิดก๊วนจากพรีเซ็ต "${preset.name}" แล้ว`);
+    toast.success(t("toastApplied", { name: preset.name }));
     router.push(`/clubs/${res.clubId}`);
   }
 
@@ -117,7 +121,7 @@ export function PresetManager({ presets }: Props) {
       toast.error(res.error);
       return;
     }
-    toast.success(`ลบพรีเซ็ต "${deleteTarget.name}" แล้ว`);
+    toast.success(t("toastDeleted", { name: deleteTarget.name }));
     startTransition(() => router.refresh());
     setDeleteTarget(null);
   }
@@ -130,25 +134,25 @@ export function PresetManager({ presets }: Props) {
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-base font-semibold flex items-center gap-1.5">
           <LayoutGrid className="h-4 w-4 text-muted-foreground" />
-          พรีเซ็ตก๊วน
+          {t("heading")}
         </h2>
         <Tooltip>
           <TooltipTrigger
             render={
               <Button variant="outline" size="sm" onClick={openCreate}>
                 <Plus className="h-3.5 w-3.5 mr-1" />
-                สร้างพรีเซ็ต
+                {t("createButton")}
               </Button>
             }
           />
-          <TooltipContent>บันทึกตั้งค่าก๊วนประจำไว้ใช้ซ้ำ</TooltipContent>
+          <TooltipContent>{t("createTooltip")}</TooltipContent>
         </Tooltip>
       </div>
 
       {/* Empty state */}
       {presets.length === 0 ? (
         <p className="text-sm text-muted-foreground py-2">
-          ยังไม่มีพรีเซ็ต — สร้างพรีเซ็ตเพื่อเปิดก๊วนซ้ำได้เร็วขึ้น
+          {t("empty")}
         </p>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -192,7 +196,7 @@ export function PresetManager({ presets }: Props) {
                       </div>
                     )}
                     {regularCount > 0 && (
-                      <p className="pl-0.5">{regularCount} ผู้เล่นประจำ</p>
+                      <p className="pl-0.5">{t("regularCount", { count: regularCount })}</p>
                     )}
                   </div>
 
@@ -211,19 +215,19 @@ export function PresetManager({ presets }: Props) {
                             {isApplying ? (
                               <>
                                 <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
-                                กำลังเปิด...
+                                {t("applying")}
                               </>
                             ) : (
                               <>
                                 <Play className="h-3.5 w-3.5 mr-1" />
-                                เปิดก๊วน
+                                {t("applyButton")}
                               </>
                             )}
                           </Button>
                         }
                       />
                       <TooltipContent>
-                        สร้างก๊วนรอบใหม่จากพรีเซ็ตนี้
+                        {t("applyTooltip")}
                       </TooltipContent>
                     </Tooltip>
 
@@ -236,13 +240,13 @@ export function PresetManager({ presets }: Props) {
                             size="icon-sm"
                             disabled={isApplying || isDeleting}
                             onClick={() => openEdit(preset)}
-                            aria-label="แก้ไขพรีเซ็ต"
+                            aria-label={t("editAriaLabel")}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                         }
                       />
-                      <TooltipContent>แก้ไขพรีเซ็ต</TooltipContent>
+                      <TooltipContent>{t("editTooltip")}</TooltipContent>
                     </Tooltip>
 
                     {/* ลบ */}
@@ -254,7 +258,7 @@ export function PresetManager({ presets }: Props) {
                             size="icon-sm"
                             disabled={isApplying || isDeleting}
                             onClick={() => openDeleteConfirm(preset)}
-                            aria-label="ลบพรีเซ็ต"
+                            aria-label={t("deleteAriaLabel")}
                             className="text-destructive hover:text-destructive hover:bg-destructive/10"
                           >
                             {isDeleting ? (
@@ -265,7 +269,7 @@ export function PresetManager({ presets }: Props) {
                           </Button>
                         }
                       />
-                      <TooltipContent>ลบพรีเซ็ตถาวร</TooltipContent>
+                      <TooltipContent>{t("deleteTooltip")}</TooltipContent>
                     </Tooltip>
                   </div>
                 </CardContent>
@@ -286,14 +290,10 @@ export function PresetManager({ presets }: Props) {
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>ลบพรีเซ็ต</DialogTitle>
+            <DialogTitle>{t("deleteDialogTitle")}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            ลบ{" "}
-            <span className="font-medium text-foreground">
-              &ldquo;{deleteTarget?.name}&rdquo;
-            </span>{" "}
-            ถาวร ก๊วนที่เปิดไปแล้วจากพรีเซ็ตนี้จะไม่ได้รับผลกระทบ
+            {t("deleteDialogBody", { name: deleteTarget?.name ?? "" })}
           </p>
           <DialogFooter>
             <Button
@@ -301,7 +301,7 @@ export function PresetManager({ presets }: Props) {
               onClick={() => setDeleteOpen(false)}
               disabled={!!deletingId}
             >
-              ยกเลิก
+              {t("deleteDialogCancel")}
             </Button>
             <Button
               variant="destructive"
@@ -311,10 +311,10 @@ export function PresetManager({ presets }: Props) {
               {deletingId ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  กำลังลบ...
+                  {t("deleting")}
                 </>
               ) : (
-                "ลบพรีเซ็ต"
+                t("deleteDialogConfirm")
               )}
             </Button>
           </DialogFooter>

@@ -6,6 +6,7 @@ import { ScheduleMatchCard } from "@/components/tournament/schedule-match-card";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseSettings } from "@/lib/tournament/settings";
 import { Badge } from "@/components/ui/badge";
+import { getTranslations } from "next-intl/server";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -65,6 +66,7 @@ export default async function CourtRefereePage({
   const unit = t.match_unit;
   const competitorMap = buildCompetitorMap(unit, teams, pairs);
   const settings = parseSettings(t.settings);
+  const tl = await getTranslations("tournament");
 
   // In-progress: sorted by match_number ascending.
   const inProgressMatches = courtMatches
@@ -94,7 +96,7 @@ export default async function CourtRefereePage({
           {/* Header */}
           <header className="space-y-1">
             <div className="flex items-center justify-between gap-3">
-              <h1 className="text-2xl font-bold truncate">สนาม {courtName}</h1>
+              <h1 className="text-2xl font-bold truncate">{tl("page.courtPageTitle", { name: courtName })}</h1>
               {isLive && (
                 <Badge className="shrink-0 bg-green-600 hover:bg-green-600 text-white gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
@@ -109,10 +111,10 @@ export default async function CourtRefereePage({
           {!hasAny && (
             <div className="rounded-xl border bg-muted/30 py-16 flex flex-col items-center justify-center gap-2 text-center">
               <p className="text-xl font-semibold text-muted-foreground">
-                ไม่มีแมตช์ที่สนาม {courtName}
+                {tl("page.courtEmpty", { name: courtName })}
               </p>
               <p className="text-sm text-muted-foreground">
-                รอการแข่งขันถูกกำหนดให้สนามนี้
+                {tl("page.courtEmptyDesc")}
               </p>
             </div>
           )}
@@ -121,7 +123,7 @@ export default async function CourtRefereePage({
           {inProgressMatches.length > 0 && (
             <section className="space-y-2">
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                กำลังแข่ง
+                {tl("page.courtSectionInProgress")}
               </h2>
               {inProgressMatches.map((m) => (
                 <ScheduleMatchCard
@@ -139,7 +141,7 @@ export default async function CourtRefereePage({
           {pendingMatches.length > 0 && (
             <section className="space-y-2">
               <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                ถัดไป
+                {tl("page.courtSectionNext")}
               </h2>
               {pendingMatches.map((m) => (
                 <ScheduleMatchCard

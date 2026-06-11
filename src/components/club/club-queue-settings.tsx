@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Loader2, Settings2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -106,6 +107,7 @@ export function ClubQueueSettings({
   clubId: string;
   initial: ClubQueueSettings;
 }) {
+  const t = useTranslations("club.queueSettings");
   const [settings, setSettings] = useState<ClubQueueSettings>(initial);
   const [, startTransition] = useTransition();
   const [saving, setSaving] = useState(false);
@@ -167,10 +169,10 @@ export function ClubQueueSettings({
         <div>
           <CardTitle className="text-sm flex items-center gap-1.5">
             <Settings2 className="h-4 w-4" />
-            ตั้งค่าระบบหมุนคิว
+            {t("title")}
           </CardTitle>
           <p className="text-xs text-muted-foreground mt-0.5">
-            ใช้สำหรับระบบหมุนคิวอัตโนมัติ
+            {t("description")}
           </p>
         </div>
         {saving && (
@@ -185,9 +187,9 @@ export function ClubQueueSettings({
         <div className="flex items-center justify-between gap-3 py-1.5">
           <div className="space-y-0.5 leading-tight min-w-0">
             <Label htmlFor="qs-players-per-team" className="text-sm font-medium">
-              ผู้เล่นต่อทีม
+              {t("playersPerTeamLabel")}
             </Label>
-            <p className="text-xs text-muted-foreground">เดี่ยว (1) หรือ คู่ (2)</p>
+            <p className="text-xs text-muted-foreground">{t("playersPerTeamDesc")}</p>
           </div>
           <Select
             value={String(settings.players_per_team)}
@@ -197,12 +199,12 @@ export function ClubQueueSettings({
           >
             <SelectTrigger id="qs-players-per-team" className="w-28 h-8 text-sm">
               <SelectValue>
-                {(v: string) => (v === "1" ? "เดี่ยว" : "คู่")}
+                {(v: string) => (v === "1" ? t("playersPerTeamSingle") : t("playersPerTeamDouble"))}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="1">เดี่ยว</SelectItem>
-              <SelectItem value="2">คู่</SelectItem>
+              <SelectItem value="1">{t("playersPerTeamSingle")}</SelectItem>
+              <SelectItem value="2">{t("playersPerTeamDouble")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -211,10 +213,10 @@ export function ClubQueueSettings({
         <div className="flex items-center justify-between gap-3 py-1.5">
           <div className="space-y-0.5 leading-tight min-w-0">
             <Label htmlFor="qs-rotation-mode" className="text-sm font-medium">
-              รูปแบบการหมุน
+              {t("rotationModeLabel")}
             </Label>
             <p className="text-xs text-muted-foreground">
-              Fair Queue = หมุนทุกคน, Winner Stays = ผู้ชนะอยู่ต่อ
+              {t("rotationModeDesc")}
             </p>
           </div>
           <Select
@@ -230,17 +232,17 @@ export function ClubQueueSettings({
               <SelectValue>
                 {(v: string) =>
                   v === "fair_queue"
-                    ? "Fair Queue"
-                    : "Winner Stays"
+                    ? t("rotationFairQueue")
+                    : t("rotationWinnerStays")
                 }
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="fair_queue">
-                Fair Queue (หมุนทุกคน)
+                {t("rotationFairQueueFull")}
               </SelectItem>
               <SelectItem value="winner_stays">
-                Winner Stays (ผู้ชนะอยู่ต่อ)
+                {t("rotationWinnerStaysFull")}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -250,8 +252,8 @@ export function ClubQueueSettings({
         {settings.rotation_mode === "winner_stays" && (
           <NumberRow
             id="qs-winner-stays-max"
-            label="ชนะติดสูงสุด"
-            description="ชนะติดกันได้กี่เกมก่อนบังคับพัก (0 = ไม่จำกัด)"
+            label={t("winnerStaysMaxLabel")}
+            description={t("winnerStaysMaxDesc")}
             value={settings.winner_stays_max}
             min={0}
             max={20}
@@ -263,10 +265,10 @@ export function ClubQueueSettings({
         <div className="flex items-center justify-between gap-3 py-1.5">
           <div className="space-y-0.5 leading-tight min-w-0">
             <Label htmlFor="qs-queue-mode" className="text-sm font-medium">
-              โหมดคิว
+              {t("queueModeLabel")}
             </Label>
             <p className="text-xs text-muted-foreground">
-              อัลกอริทึมในการเลือกผู้เล่นถัดไป
+              {t("queueModeDesc")}
             </p>
           </div>
           <Select
@@ -278,21 +280,21 @@ export function ClubQueueSettings({
             <SelectTrigger id="qs-queue-mode" className="w-44 h-8 text-sm">
               <SelectValue>
                 {(v: string) => {
-                  if (v === "rest_longest") return "พักนานก่อน";
-                  if (v === "fifo") return "เข้าก่อนได้ก่อน";
-                  if (v === "level_match") return "จับคู่ตามระดับ";
-                  if (v === "smart") return "อัจฉริยะ";
+                  if (v === "rest_longest") return t("queueRestLongest");
+                  if (v === "fifo") return t("queueFifo");
+                  if (v === "level_match") return t("queueLevelMatch");
+                  if (v === "smart") return t("queueSmart");
                   return v;
                 }}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="rest_longest">
-                พักนานก่อน (แนะนำ)
+                {t("queueRestLongestFull")}
               </SelectItem>
-              <SelectItem value="fifo">เข้าก่อนได้ก่อน</SelectItem>
-              <SelectItem value="level_match">จับคู่ตามระดับ</SelectItem>
-              <SelectItem value="smart">อัจฉริยะ</SelectItem>
+              <SelectItem value="fifo">{t("queueFifo")}</SelectItem>
+              <SelectItem value="level_match">{t("queueLevelMatch")}</SelectItem>
+              <SelectItem value="smart">{t("queueSmart")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -300,8 +302,8 @@ export function ClubQueueSettings({
         {/* Skill level enabled */}
         <ToggleRow
           id="qs-skill-level"
-          label="ใช้ระดับฝีมือ"
-          description="เปิดเพื่อให้ระบบพิจารณาระดับผู้เล่นในการจับคู่"
+          label={t("skillLevelLabel")}
+          description={t("skillLevelDesc")}
           checked={settings.skill_level_enabled}
           onChange={(v) => update("skill_level_enabled", v)}
         />
@@ -309,8 +311,8 @@ export function ClubQueueSettings({
         {/* Game time limit */}
         <NumberRow
           id="qs-time-limit"
-          label="จำกัดเวลา/เกม (นาที)"
-          description="แสดงเป็น hint สำหรับ referee (0 = ไม่จำกัด)"
+          label={t("timeLimitLabel")}
+          description={t("timeLimitDesc")}
           value={settings.game_time_limit_min}
           min={0}
           max={120}
@@ -321,10 +323,10 @@ export function ClubQueueSettings({
         <div className="flex items-center justify-between gap-3 py-1.5">
           <div className="space-y-0.5 leading-tight min-w-0">
             <Label htmlFor="qs-not-ready" className="text-sm font-medium">
-              เมื่อไม่พร้อม
+              {t("notReadyLabel")}
             </Label>
             <p className="text-xs text-muted-foreground">
-              ทำอะไรเมื่อผู้เล่นไม่พร้อมเล่น
+              {t("notReadyDesc")}
             </p>
           </div>
           <Select
@@ -339,13 +341,13 @@ export function ClubQueueSettings({
             <SelectTrigger id="qs-not-ready" className="w-36 h-8 text-sm">
               <SelectValue>
                 {(v: string) =>
-                  v === "requeue" ? "ต่อท้ายคิว" : "ข้าม"
+                  v === "requeue" ? t("notReadyRequeue") : t("notReadySkip")
                 }
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="requeue">ต่อท้ายคิว</SelectItem>
-              <SelectItem value="skip">ข้าม</SelectItem>
+              <SelectItem value="requeue">{t("notReadyRequeue")}</SelectItem>
+              <SelectItem value="skip">{t("notReadySkip")}</SelectItem>
             </SelectContent>
           </Select>
         </div>

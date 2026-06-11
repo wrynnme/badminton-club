@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTabSync } from "@/lib/hooks/use-tab-sync";
 
@@ -43,6 +44,7 @@ export function TournamentTabs({
   showQueue: boolean;
   showSettings: boolean;
 }) {
+  const t = useTranslations("tournament");
   const validTabs = useMemo<readonly TabId[]>(() => {
     const list: TabId[] = ["dashboard", "teams"];
     if (showGroups) list.push("groups");
@@ -65,13 +67,13 @@ export function TournamentTabs({
   return (
     <Tabs value={active} onValueChange={onChange}>
       <TabsList className="w-full flex-wrap h-auto">
-        <TabsTrigger value="dashboard">แดชบอร์ด</TabsTrigger>
-        <TabsTrigger value="teams">ทีม</TabsTrigger>
-        {showGroups && <TabsTrigger value="groups">กลุ่ม</TabsTrigger>}
-        {showPairs && <TabsTrigger value="pairs">คู่</TabsTrigger>}
-        {showKnockout && <TabsTrigger value="knockout">น็อคเอ้า</TabsTrigger>}
-        {showQueue && <TabsTrigger value="queue">ตารางคิว</TabsTrigger>}
-        {showSettings && <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>}
+        <TabsTrigger value="dashboard">{t("tournamentTabs.dashboard")}</TabsTrigger>
+        <TabsTrigger value="teams">{t("tournamentTabs.teams")}</TabsTrigger>
+        {showGroups && <TabsTrigger value="groups">{t("tournamentTabs.groups")}</TabsTrigger>}
+        {showPairs && <TabsTrigger value="pairs">{t("tournamentTabs.pairs")}</TabsTrigger>}
+        {showKnockout && <TabsTrigger value="knockout">{t("tournamentTabs.knockout")}</TabsTrigger>}
+        {showQueue && <TabsTrigger value="queue">{t("tournamentTabs.queue")}</TabsTrigger>}
+        {showSettings && <TabsTrigger value="settings">{t("tournamentTabs.settings")}</TabsTrigger>}
       </TabsList>
 
       <TabsContent value="dashboard" className="mt-6">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { AlertTriangle, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ import { deleteClubAction } from "@/lib/actions/clubs";
 
 /**
  * Owner-only destructive "delete club" dialog. Requires the owner to type the
- * club name verbatim before the confirm button enables — guards against an
+ * club name verbatim before the confirm button enables -- guards against an
  * accidental irreversible delete (every child row cascades away). On success the
  * server action redirects to /clubs, so there's no success branch to handle here.
  */
@@ -31,6 +32,7 @@ export function DeleteClubButton({
   clubId: string;
   clubName: string;
 }) {
+  const t = useTranslations("club.deleteClub");
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [pending, start] = useTransition();
@@ -41,7 +43,7 @@ export function DeleteClubButton({
     if (!confirmed) return;
     start(async () => {
       const res = await deleteClubAction(clubId);
-      // Success redirects (never returns) — only an error path lands here.
+      // Success redirects (never returns) -- only an error path lands here.
       if (res?.error) toast.error(res.error);
     });
   }
@@ -58,7 +60,7 @@ export function DeleteClubButton({
         render={
           <Button variant="destructive">
             <Trash2 className="h-4 w-4" />
-            ลบก๊วน
+            {t("triggerButton")}
           </Button>
         }
       />
@@ -66,26 +68,26 @@ export function DeleteClubButton({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
-            ลบก๊วน “{clubName}”?
+            {t("dialogTitle", { name: clubName })}
           </DialogTitle>
-          <DialogDescription>การลบจะมีผลดังนี้:</DialogDescription>
+          <DialogDescription>{t("dialogDescription")}</DialogDescription>
         </DialogHeader>
 
         <ul className="text-sm text-muted-foreground space-y-1.5 list-disc pl-5">
           <li>
-            ลบ
+            {t("bullet1Pre")}
             <span className="text-foreground font-medium">
-              ผู้เล่น / แมตช์ / ค่าใช้จ่าย ทั้งหมด
+              {t("bullet1")}
             </span>
-            ของก๊วนนี้
+            {t("bullet1Post")}
           </li>
-          <li>ผู้ช่วยดูแล (co-admin) และการตั้งค่าทั้งหมดจะถูกลบไปด้วย</li>
+          <li>{t("bullet2")}</li>
         </ul>
-        <p className="text-sm font-medium text-destructive">ลบถาวร — กู้คืนไม่ได้</p>
+        <p className="text-sm font-medium text-destructive">{t("permanent")}</p>
 
         <div className="space-y-1.5">
           <Label htmlFor="confirm-club-name">
-            พิมพ์ชื่อก๊วน “{clubName}” เพื่อยืนยัน
+            {t("confirmLabel", { name: clubName })}
           </Label>
           <Input
             id="confirm-club-name"
@@ -99,7 +101,7 @@ export function DeleteClubButton({
 
         <DialogFooter>
           <DialogClose
-            render={<Button variant="outline" disabled={pending}>ยกเลิก</Button>}
+            render={<Button variant="outline" disabled={pending}>{t("cancel")}</Button>}
           />
           <Button
             variant="destructive"
@@ -107,7 +109,7 @@ export function DeleteClubButton({
             disabled={!confirmed || pending}
           >
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {pending ? "กำลังลบ…" : "ลบก๊วนถาวร"}
+            {pending ? t("deleting") : t("confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>

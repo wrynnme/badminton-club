@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Plus, X, Loader2, ListChecks } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,7 @@ function CreatePairForm({ teamId, availablePlayers, classes = [], levelById, onD
   levelById: Map<string, string>;
   onDone: () => void;
 }) {
+  const t = useTranslations("tournament");
   const [selected, setSelected] = useState<string[]>([]);
   const [name, setName] = useState("");
   // When the tournament has classes, a class is required for the new pair.
@@ -39,8 +41,8 @@ function CreatePairForm({ teamId, availablePlayers, classes = [], levelById, onD
   };
 
   const submit = async () => {
-    if (selected.length !== 2) { toast.error("เลือก 2 คน"); return; }
-    if (classRequired && !classId) { toast.error("เลือก class ก่อน"); return; }
+    if (selected.length !== 2) { toast.error(t("pairManager.errorSelectTwo")); return; }
+    if (classRequired && !classId) { toast.error(t("pairManager.errorSelectClass")); return; }
     setPending(true);
     const res = await createPairAction({
       teamId,
@@ -50,24 +52,24 @@ function CreatePairForm({ teamId, availablePlayers, classes = [], levelById, onD
     });
     setPending(false);
     if (res?.error) toast.error(res.error);
-    else { toast.success("จับคู่แล้ว"); setSelected([]); setName(""); onDone(); }
+    else { toast.success(t("pairManager.toastPairCreated")); setSelected([]); setName(""); onDone(); }
   };
 
   return (
     <div className="space-y-3 pt-3 border-t">
       <div className="flex gap-2">
         <Input value={name} onChange={(e) => setName(e.target.value)}
-          placeholder="ชื่อคู่ (optional)" className="text-sm flex-1" />
+          placeholder={t("pairManager.placeholderPairName")} className="text-sm flex-1" />
       </div>
       {classRequired && (
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">Class:</p>
           <Select value={classId} onValueChange={(v) => setClassId(v ?? "")}>
             <SelectTrigger className="w-full h-8 text-xs">
-              <SelectValue placeholder="เลือก class">
+              <SelectValue placeholder={t("pairManager.placeholderSelectClass")}>
                 {(value) => {
                   const c = classes.find((x) => x.id === value);
-                  return c ? `${c.code} — ${c.name}` : "เลือก class";
+                  return c ? `${c.code} — ${c.name}` : t("pairManager.placeholderSelectClass");
                 }}
               </SelectValue>
             </SelectTrigger>
@@ -80,9 +82,9 @@ function CreatePairForm({ teamId, availablePlayers, classes = [], levelById, onD
         </div>
       )}
       <div className="space-y-1">
-        <p className="text-xs text-muted-foreground">เลือก 2 คน:</p>
+        <p className="text-xs text-muted-foreground">{t("pairManager.selectTwo")}</p>
         {availablePlayers.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">ทุกคนถูกจับคู่แล้ว</p>
+          <p className="text-xs text-muted-foreground italic">{t("pairManager.allPaired")}</p>
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {availablePlayers.map((p) => (
@@ -100,10 +102,10 @@ function CreatePairForm({ teamId, availablePlayers, classes = [], levelById, onD
         )}
       </div>
       <div className="flex gap-2 justify-end">
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>ยกเลิก</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>{t("pairManager.btnCancel")}</Button>
         <Button type="button" size="sm" onClick={submit} disabled={selected.length !== 2 || pending}>
           {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-          {pending ? "บันทึก..." : "จับคู่"}
+          {pending ? t("pairManager.btnCreating") : t("pairManager.btnCreatePair")}
         </Button>
       </div>
     </div>
@@ -118,6 +120,7 @@ function PairItem({ pair, isOwner, color, classCode, classTone, levelById }: {
   classTone?: ClassTone;
   levelById: Map<string, string>;
 }) {
+  const t = useTranslations("tournament");
   const [delPending, startDel] = useTransition();
   const p1 = pair.player1;
   const p2 = pair.player2;
@@ -162,18 +165,18 @@ function PairItem({ pair, isOwner, color, classCode, classTone, levelById }: {
         )}
       </div>
       {/* my-matches-link: ดูแมตช์ entry point — ลบ block นี้เพื่อถอด entry point */}
-      <PairScheduleLink pairId={pair.id} label="ดูแมตช์" className="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+      <PairScheduleLink pairId={pair.id} label={t("pairManager.labelViewMatches")} className="inline-flex items-center justify-center h-6 w-6 rounded text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
         <ListChecks className="h-3 w-3" />
       </PairScheduleLink>
       {/* end my-matches-link */}
       {isOwner && (
         <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive"
-          aria-label="ลบคู่"
+          aria-label={t("pairManager.ariaDeletePair")}
           disabled={delPending}
           onClick={() => startDel(async () => {
             const res = await deletePairAction(pair.id);
             if (res?.error) toast.error(res.error);
-            else toast.success("ลบคู่แล้ว");
+            else toast.success(t("pairManager.toastPairDeleted"));
           })}>
           {delPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
         </Button>
@@ -189,6 +192,7 @@ export function PairManager({ team, pairs, isOwner, classes = [], levels = [] }:
   classes?: TournamentClass[];
   levels?: Level[];
 }) {
+  const t = useTranslations("tournament");
   const [adding, setAdding] = useState(false);
   const pairedIds = new Set(pairs.flatMap((p) => [p.player_id_1, p.player_id_2].filter(Boolean) as string[]));
   const available = team.players.filter((p) => !pairedIds.has(p.id));
@@ -204,18 +208,18 @@ export function PairManager({ team, pairs, isOwner, classes = [], levels = [] }:
           <div className="flex items-center gap-2">
             {team.color && <span className="w-3 h-3 rounded-full" style={{ backgroundColor: team.color }} />}
             <CardTitle className="text-sm">{team.name}</CardTitle>
-            <Badge variant="outline" className="text-xs">{pairs.length} คู่ · {available.length} ว่าง</Badge>
+            <Badge variant="outline" className="text-xs">{t("pairManager.pairsCount", { pairs: pairs.length, available: available.length })}</Badge>
           </div>
           {isOwner && !adding && available.length >= 2 && (
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setAdding(true)}>
-              <Plus className="h-3 w-3 mr-1" />จับคู่
+              <Plus className="h-3 w-3 mr-1" />{t("pairManager.btnAddPair")}
             </Button>
           )}
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
         {pairs.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic">ยังไม่มีคู่</p>
+          <p className="text-xs text-muted-foreground italic">{t("pairManager.noPairs")}</p>
         ) : (
           <div className="space-y-1">
             {pairs.map((p) => (

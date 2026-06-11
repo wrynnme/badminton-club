@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Plus, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,6 +40,7 @@ export function ManualMatchDialog({
   pairs: PairWithPlayers[];
   pairDivisionThresholds: number[];
 }) {
+  const t = useTranslations("tournament");
   const [open, setOpen] = useState(false);
   const [pairAId, setPairAId] = useState<string>("");
   const [pairBId, setPairBId] = useState<string>("");
@@ -71,7 +73,7 @@ export function ManualMatchDialog({
     startTransition(async () => {
       const res = await createManualMatchAction({ tournamentId, pairAId, pairBId });
       if ("error" in res) { toast.error(res.error); return; }
-      toast.success("สร้างแมตช์แล้ว");
+      toast.success(t("manualMatchDialog.toastCreated"));
       setOpen(false);
       setPairAId("");
       setPairBId("");
@@ -82,22 +84,22 @@ export function ManualMatchDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={<Button size="sm" variant="outline" />}>
         <Plus className="h-3.5 w-3.5" />
-        เพิ่มแมตช์
+        {t("manualMatchDialog.btnTrigger")}
       </DialogTrigger>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>เพิ่มแมตช์</DialogTitle>
+          <DialogTitle>{t("manualMatchDialog.dialogTitle")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 pt-2">
           <div className="space-y-1.5">
-            <Label htmlFor="manual-match-pair-a">คู่ A</Label>
+            <Label htmlFor="manual-match-pair-a">{t("manualMatchDialog.labelPairA")}</Label>
             <Select
               value={pairAId}
               onValueChange={(v) => { setPairAId(v ?? ""); setPairBId(""); }}
             >
               <SelectTrigger id="manual-match-pair-a" className="w-full">
                 <span className={pairAId ? "" : "text-muted-foreground"}>
-                  {pairAId ? pairLabel(pairs.find((p) => p.id === pairAId)!) : "เลือกคู่ A"}
+                  {pairAId ? pairLabel(pairs.find((p) => p.id === pairAId)!) : t("manualMatchDialog.placeholderA")}
                 </span>
               </SelectTrigger>
               <SelectContent>
@@ -116,7 +118,7 @@ export function ManualMatchDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="manual-match-pair-b">คู่ B</Label>
+            <Label htmlFor="manual-match-pair-b">{t("manualMatchDialog.labelPairB")}</Label>
             <Select
               value={pairBId}
               onValueChange={(v) => setPairBId(v ?? "")}
@@ -126,15 +128,15 @@ export function ManualMatchDialog({
                 <span className={pairBId ? "" : "text-muted-foreground"}>
                   {pairBId
                     ? pairLabel(pairBOptions.find((p) => p.id === pairBId)!)
-                    : pairAId ? "เลือกคู่ B" : "เลือกคู่ A ก่อน"}
+                    : pairAId ? t("manualMatchDialog.placeholderB") : t("manualMatchDialog.placeholderSelectAFirst")}
                 </span>
               </SelectTrigger>
               <SelectContent>
                 {pairBOptions.length === 0 ? (
                   <SelectItem value="__none__" disabled>
                     {divA != null
-                      ? `ไม่มีคู่อื่นใน ${divisionLabelTh(divA)}`
-                      : "ไม่มีคู่ใน division เดียวกัน"}
+                      ? t("manualMatchDialog.emptyNoPairsInDiv", { divLabel: divisionLabelTh(divA) })
+                      : t("manualMatchDialog.emptyNoSameDiv")}
                   </SelectItem>
                 ) : (
                   pairBOptions.map((p) => (
@@ -158,7 +160,7 @@ export function ManualMatchDialog({
             onClick={handleSubmit}
           >
             {isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {isPending ? "กำลังสร้าง..." : "สร้างแมตช์"}
+            {isPending ? t("manualMatchDialog.btnCreating") : t("manualMatchDialog.btnCreate")}
           </Button>
         </div>
       </DialogContent>

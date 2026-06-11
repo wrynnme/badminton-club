@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { RefreshCw, Loader2, ChevronDown, ChevronUp, Swords } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,6 +44,7 @@ function PairGroupCard({
   matchFormatById?: Map<string, MatchFormat>;
   matchRowSize?: "compact" | "comfortable";
 }) {
+  const t = useTranslations("tournament");
   const [showMatches, setShowMatches] = useState(true);
   const [view, setView] = useState<"list" | "matrix">("list");
 
@@ -77,7 +79,7 @@ function PairGroupCard({
                 className="h-auto px-1 py-1 text-xs text-muted-foreground hover:text-foreground"
                 onClick={() => setShowMatches(!showMatches)}>
                 {showMatches ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                แมตช์ ({group.matches.length})
+                {t("classGroupStage.matchCount", { count: group.matches.length })}
               </Button>
               {showMatches && (
                 <div className="flex items-center gap-1 ml-auto">
@@ -88,7 +90,7 @@ function PairGroupCard({
                     aria-pressed={view === "list"}
                     className={`h-6 px-2 text-xs ${view === "list" ? "text-foreground font-medium" : "text-muted-foreground"}`}
                     onClick={() => setView("list")}>
-                    ตาราง
+                    {t("classGroupStage.viewTable")}
                   </Button>
                   <Button
                     type="button"
@@ -143,6 +145,7 @@ function ClassGroupPanel({
   matchFormatById?: Map<string, MatchFormat>;
   matchRowSize?: "compact" | "comfortable";
 }) {
+  const t = useTranslations("tournament");
   const [genPending, startGen] = useTransition();
   const [matchPending, startMatch] = useTransition();
 
@@ -161,10 +164,12 @@ function ClassGroupPanel({
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold">รอบแบ่งกลุ่ม</h2>
+          <h2 className="font-semibold">{t("classGroupStage.sectionTitle")}</h2>
           <Badge variant="outline" className="text-xs">{cls.code}</Badge>
           {hasGroups && totalMatches > 0 && (
-            <Badge variant="outline" className="text-xs">{completedMatches}/{totalMatches} แมตช์</Badge>
+            <Badge variant="outline" className="text-xs">
+              {t("classGroupStage.progressBadge", { completed: completedMatches, total: totalMatches })}
+            </Badge>
           )}
         </div>
         {isOwner && (
@@ -176,10 +181,16 @@ function ClassGroupPanel({
               onClick={() => startGen(async () => {
                 const res = await generateGroupsForClassAction(cls.id);
                 if ("error" in res) toast.error(res.error);
-                else toast.success(`แบ่ง ${res.groupCount} กลุ่ม · ${res.matchCount} แมตช์`);
+                else {
+                  if ("knockoutCleared" in res && res.knockoutCleared) {
+                    toast.success(t("classGroupStage.toastGroupsReset", { code: cls.code }));
+                  } else {
+                    toast.success(t("classGroupStage.toastGroups", { code: cls.code }));
+                  }
+                }
               })}>
               {genPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
-              {hasGroups ? "สุ่มกลุ่มใหม่" : "แบ่งกลุ่ม"}
+              {hasGroups ? t("classGroupStage.btnReshuffle") : t("classGroupStage.btnGenGroups")}
             </Button>
             {hasGroups && (
               <Button
@@ -189,10 +200,16 @@ function ClassGroupPanel({
                 onClick={() => startMatch(async () => {
                   const res = await generatePairMatchesForClassAction(cls.id);
                   if ("error" in res) toast.error(res.error);
-                  else toast.success(`สร้าง ${res.matchCount} แมตช์`);
+                  else {
+                    if ("knockoutCleared" in res && res.knockoutCleared) {
+                      toast.success(t("classGroupStage.toastMatchesReset", { count: res.matchCount, code: cls.code }));
+                    } else {
+                      toast.success(t("classGroupStage.toastMatches", { count: res.matchCount, code: cls.code }));
+                    }
+                  }
                 })}>
                 {matchPending ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Swords className="h-3.5 w-3.5 mr-1" />}
-                สร้างตารางใหม่
+                {t("classGroupStage.btnGenMatches")}
               </Button>
             )}
           </div>
@@ -201,7 +218,7 @@ function ClassGroupPanel({
 
       {hasGroups && completedMatches > 0 && (
         <p className="text-xs text-muted-foreground">
-          กด &quot;สุ่มกลุ่มใหม่&quot; จะล้างผลการแข่งขันของ class นี้ทั้งหมด
+          {t("classGroupStage.warnReshuffle")}
         </p>
       )}
 
@@ -224,7 +241,7 @@ function ClassGroupPanel({
         </>
       ) : (
         <p className="text-sm text-muted-foreground">
-          {isOwner ? <>กด &ldquo;แบ่งกลุ่ม&rdquo; เพื่อจัดคู่เข้ากลุ่มอัตโนมัติ (ห้ามคู่จากทีมเดียวกันอยู่กลุ่มเดียวกัน)</> : "ยังไม่มีการแบ่งกลุ่ม"}
+          {isOwner ? t("classGroupStage.emptyOwner") : t("classGroupStage.emptyPublic")}
         </p>
       )}
     </div>
@@ -250,6 +267,7 @@ export function ClassGroupStage({
   matchFormatById?: Map<string, MatchFormat>;
   matchRowSize?: "compact" | "comfortable";
 }) {
+  const t = useTranslations("tournament");
   // Only classes whose format includes a group stage
   const groupClasses = useMemo(
     () => classes.filter((c) => c.format !== "knockout_only"),
@@ -264,7 +282,7 @@ export function ClassGroupStage({
   if (groupClasses.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        ยังไม่มี class ที่มีรอบแบ่งกลุ่ม — เพิ่ม class ในแท็บ "ตั้งค่า"
+        {t("classGroupStage.emptyNoClassGroups")}
       </p>
     );
   }

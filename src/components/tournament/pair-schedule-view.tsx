@@ -1,6 +1,7 @@
 "use client";
 
 import { CalendarClock } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScheduleMatchCard } from "@/components/tournament/schedule-match-card";
@@ -15,7 +16,9 @@ import type { Competitor } from "@/lib/tournament/competitor";
  * กำลังแข่ง (in-progress, court + elapsed) · ถัดไป (pending, court + queue + opponent) ·
  * จบแล้ว (completed score, via the shared MatchHistoryList).
  *
- * Server component; MatchHistoryList is a client child (fine — props are serializable).
+ * Client component; ScheduleMatchCard is now async server component — wrap calls
+ * will resolve at render time in RSC context. Here we keep this as client because
+ * MatchHistoryList is client and props are serializable.
  */
 export function PairScheduleView({
   pair,
@@ -28,12 +31,13 @@ export function PairScheduleView({
   competitorById: Map<string, Competitor>;
   unit: "team" | "pair";
 }) {
+  const t = useTranslations("tournament");
   const { inProgress, pending, completed } = partitionPairMatches(matches, pair.id);
 
   const pairName =
     pair.display_pair_name ||
     [pair.player1?.display_name, pair.player2?.display_name].filter(Boolean).join(" / ") ||
-    "คู่ไม่มีชื่อ";
+    t("pairScheduleView.unnamedPair");
 
   const playerNames = [pair.player1?.display_name, pair.player2?.display_name]
     .filter(Boolean)
@@ -76,7 +80,7 @@ export function PairScheduleView({
           </div>
           <p className="text-xs text-muted-foreground inline-flex items-center gap-1.5">
             <CalendarClock className="size-3.5" />
-            ตารางแข่งของคู่นี้
+            {t("pairScheduleView.scheduleTitle")}
           </p>
         </CardContent>
       </Card>
@@ -84,8 +88,8 @@ export function PairScheduleView({
       {/* Empty state */}
       {!hasAny && (
         <div className="rounded-xl border bg-muted/30 py-16 flex flex-col items-center justify-center gap-2 text-center">
-          <p className="text-lg font-semibold text-muted-foreground">ยังไม่มีแมตช์ของคู่นี้</p>
-          <p className="text-sm text-muted-foreground">รอการจับคู่แข่งขัน</p>
+          <p className="text-lg font-semibold text-muted-foreground">{t("pairScheduleView.emptyPair")}</p>
+          <p className="text-sm text-muted-foreground">{t("pairScheduleView.waitingDraw")}</p>
         </div>
       )}
 
@@ -93,7 +97,7 @@ export function PairScheduleView({
       {inProgress.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            กำลังแข่ง
+            {t("pairScheduleView.sectionInProgress")}
           </h2>
           {inProgress.map((m) => (
             <ScheduleMatchCard
@@ -113,7 +117,7 @@ export function PairScheduleView({
       {pending.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-            ถัดไป
+            {t("pairScheduleView.sectionNext")}
           </h2>
           {pending.map((m) => (
             <ScheduleMatchCard
@@ -135,8 +139,8 @@ export function PairScheduleView({
         matches={completed}
         isSideA={(m) => m.pair_a_id === pair.id}
         competitorById={competitorById}
-        title="จบแล้ว"
-        emptyText="ยังไม่มีแมตช์ที่จบ"
+        title={t("pairScheduleView.sectionCompleted")}
+        emptyText={t("pairScheduleView.emptyCompleted")}
       />
     </div>
   );

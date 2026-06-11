@@ -1,61 +1,61 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { getSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LocaleSwitcher } from "@/components/locale-switcher";
+import { UserMenu } from "@/components/user-menu";
 import { MobileNav } from "@/components/mobile-nav";
 
 export async function SiteHeader() {
   const session = await getSession();
+  const t = await getTranslations("nav");
   return (
     <header className="border-b">
       <div className="mx-auto max-w-5xl px-4 h-14 flex items-center justify-between">
         <Link href="/" className="font-bold text-lg flex items-center gap-2">
-          🏸 ก๊วนแบด
+          🏸 {t("brand")}
           <Badge variant="outline" className="text-xs font-mono font-normal hidden sm:inline-flex">
             v{process.env.NEXT_PUBLIC_APP_VERSION} ({process.env.NEXT_PUBLIC_GIT_COMMIT})
           </Badge>
         </Link>
-        <nav className="hidden sm:flex items-center gap-3">
-          <ThemeToggle />
-          <Link href="/clubs" className="text-sm hover:underline">
-            ก๊วน
+        <nav className="hidden sm:flex items-center gap-2">
+          <Link href="/clubs">
+            <Button variant="ghost" size="sm">{t("clubs")}</Button>
           </Link>
-          <Link href="/tournaments" className="text-sm hover:underline">
-            ทัวร์นาเมนต์
+          <Link href="/tournaments">
+            <Button variant="ghost" size="sm">{t("tournaments")}</Button>
           </Link>
           {session ? (
             <>
               {!session.isGuest && (
                 <Link href="/clubs/new">
-                  <Button size="sm">สร้างก๊วน</Button>
+                  <Button size="sm">{t("createClub")}</Button>
                 </Link>
               )}
-              <Link href="/settings" className="flex items-center gap-2 rounded-md px-1 py-0.5 hover:bg-accent transition-colors" title="ตั้งค่าบัญชี">
-                <Avatar className="h-8 w-8">
-                  {session.pictureUrl && <AvatarImage src={session.pictureUrl} />}
-                  <AvatarFallback>{session.displayName.slice(0, 1)}</AvatarFallback>
-                </Avatar>
-                <span className="text-sm hidden sm:inline">{session.displayName}</span>
-                {session.isGuest && <Badge variant="secondary">guest</Badge>}
-              </Link>
-              <form action="/api/auth/logout" method="post">
-                <Button variant="ghost" size="sm" type="submit">
-                  ออก
-                </Button>
-              </form>
+              <UserMenu
+                displayName={session.displayName}
+                pictureUrl={session.pictureUrl}
+                isGuest={session.isGuest}
+              />
             </>
           ) : (
-            <Link href="/">
-              <Button size="sm">เข้าสู่ระบบ</Button>
-            </Link>
+            <>
+              <LocaleSwitcher />
+              <ThemeToggle />
+              <Link href="/">
+                <Button size="sm">{t("login")}</Button>
+              </Link>
+            </>
           )}
         </nav>
         <div className="flex sm:hidden items-center gap-1">
+          <LocaleSwitcher />
           <ThemeToggle />
           {session && (
-            <Link href="/settings" aria-label="ตั้งค่าบัญชี">
+            <Link href="/settings" aria-label={t("accountSettings")}>
               <Avatar className="h-8 w-8">
                 {session.pictureUrl && <AvatarImage src={session.pictureUrl} />}
                 <AvatarFallback>{session.displayName.slice(0, 1)}</AvatarFallback>

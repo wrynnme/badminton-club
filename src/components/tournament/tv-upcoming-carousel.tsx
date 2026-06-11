@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { TvMatchCard } from "@/components/tournament/tv-match-card";
 import { TvCarouselDots, useCarousel } from "@/components/tournament/tv-carousel-shell";
 import type { Match } from "@/lib/types";
@@ -26,10 +27,12 @@ export function TvUpcomingCarousel({
   unit,
   intervalMs = 8000,
 }: Props) {
+  const t = useTranslations("tournament");
+
   const pages: UpcomingPage[] = (
     [
-      { id: "in_progress", title: "กำลังเล่น", matches: inProgress },
-      { id: "pending", title: "ถัดไป", matches: pending },
+      { id: "in_progress", title: t("tvUpcomingCarousel.titleInProgress"), matches: inProgress },
+      { id: "pending", title: t("tvUpcomingCarousel.titleNext"), matches: pending },
     ] as UpcomingPage[]
   ).filter((p) => p.matches.length > 0);
 
@@ -39,10 +42,10 @@ export function TvUpcomingCarousel({
     return (
       <div className="h-full overflow-hidden flex flex-col">
         <div className="shrink-0 flex items-center justify-between pb-2">
-          <h2 className="text-xl lg:text-2xl 2xl:text-3xl font-bold">กำลังเล่น / ถัดไป</h2>
+          <h2 className="text-xl lg:text-2xl 2xl:text-3xl font-bold">{t("tvUpcomingCarousel.heading")}</h2>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
-          <p className="text-lg lg:text-2xl 2xl:text-3xl text-muted-foreground">ไม่มีคิวค้าง</p>
+          <p className="text-lg lg:text-2xl 2xl:text-3xl text-muted-foreground">{t("tvUpcomingCarousel.emptyQueue")}</p>
         </div>
       </div>
     );
@@ -64,7 +67,7 @@ export function TvUpcomingCarousel({
           count={pages.length}
           active={active}
           onSelect={setActive}
-          labels={(i) => `ไปหน้า ${pages[i]?.title ?? i + 1}`}
+          labels={(i) => t("tvUpcomingCarousel.dotAria", { title: pages[i]?.title ?? String(i + 1) })}
         />
       </div>
       <div className="flex-1 min-h-0 overflow-hidden">

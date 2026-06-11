@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
+import { getTranslations } from "next-intl/server";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/server";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -9,12 +10,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EditProfileForm } from "@/components/profile/edit-profile-form";
+import { PresetManager } from "@/components/club/preset-manager";
+import { listClubPresetsAction } from "@/lib/actions/club-presets";
+import type { ClubPreset } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
   const session = await getSession();
   if (!session) redirect("/?auth_error=login_required&redirectTo=/settings");
+
+  const t = await getTranslations("settings");
 
   // Owner-only past clubs (play_date already passed) — the /clubs list shows only
   // today/upcoming (play_date >= today), so expired clubs we own live here as history.
@@ -32,13 +38,21 @@ export default async function SettingsPage() {
     pastClubs = data ?? [];
   }
 
+  // Club presets (reusable templates) — LINE users only; the action redirects
+  // anonymous and returns { error } for guests, so gate on !isGuest.
+  let presets: ClubPreset[] = [];
+  if (!session.isGuest) {
+    const presetsResult = await listClubPresetsAction();
+    if ("presets" in presetsResult) presets = presetsResult.presets;
+  }
+
   return (
     <div className="mx-auto max-w-lg space-y-6 px-4 py-8">
-      <h1 className="text-2xl font-bold">ตั้งค่าบัญชี</h1>
+      <h1 className="text-2xl font-bold">{t("title")}</h1>
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">โปรไฟล์</CardTitle>
+          <CardTitle className="text-base">{t("profileSection")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="flex items-center gap-3">
@@ -60,11 +74,11 @@ export default async function SettingsPage() {
       {!session.isGuest && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">ก๊วนของเราที่หมดอายุแล้ว</CardTitle>
+            <CardTitle className="text-base">{t("pastClubsSection")}</CardTitle>
           </CardHeader>
           <CardContent>
             {pastClubs.length === 0 ? (
-              <p className="text-sm text-muted-foreground">ยังไม่มีก๊วนที่ผ่านมา</p>
+              <p className="text-sm text-muted-foreground">{t("pastClubsEmpty")}</p>
             ) : (
               <ul className="space-y-2">
                 {pastClubs.map((c) => (
@@ -89,15 +103,17 @@ export default async function SettingsPage() {
         </Card>
       )}
 
+      {!session.isGuest && <PresetManager presets={presets} />}
+
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">บัญชี</CardTitle>
+          <CardTitle className="text-base">{t("accountSection")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
           <form action="/api/auth/logout" method="post">
             <Tooltip>
-              <TooltipTrigger render={<Button variant="outline" type="submit">ออกจากระบบ</Button>} />
-              <TooltipContent>ออกจากระบบเฉพาะอุปกรณ์นี้</TooltipContent>
+              <TooltipTrigger render={<Button variant="outline" type="submit">{t("logout")}</Button>} />
+              <TooltipContent>{t("logoutTooltip")}</TooltipContent>
             </Tooltip>
           </form>
           <form action="/api/auth/logout-all" method="post">
@@ -105,11 +121,11 @@ export default async function SettingsPage() {
               <TooltipTrigger
                 render={
                   <Button variant="outline" type="submit" className="text-destructive hover:text-destructive">
-                    ออกจากทุกอุปกรณ์
+                    {t("logoutAll")}
                   </Button>
                 }
               />
-              <TooltipContent>เพิกถอน session ทั้งหมดทุกอุปกรณ์ — ต้องเข้าสู่ระบบใหม่</TooltipContent>
+              <TooltipContent>{t("logoutAllTooltip")}</TooltipContent>
             </Tooltip>
           </form>
         </CardContent>

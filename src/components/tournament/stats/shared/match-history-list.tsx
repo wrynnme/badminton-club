@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { RESULT_LABEL_TH, RESULT_TEXT_CLASS } from "@/lib/tournament/result-display";
@@ -113,15 +114,15 @@ function MatchHistoryRow({
  *  - player: `playerPairIds.has(m.pair_a_id ?? "")`
  *  - team: `teamPairIds.has(m.pair_a_id ?? "")`
  *
- * Team view supplies `renderMyColumn` (and `myColumnLabel="คู่ (ทีม)"`)
- * to surface the active pair name.
+ * Team view supplies `renderMyColumn` (and `myColumnLabel`) to surface the
+ * active pair name.
  */
 export function MatchHistoryList({
   matches,
   isSideA,
   competitorById,
-  title = "ประวัติแมตช์",
-  emptyText = "ยังไม่มีแมตช์ที่เสร็จสิ้น",
+  title,
+  emptyText,
   myColumnLabel,
   renderMyColumn = null,
   renderOpponentName = defaultOpponentRenderer,
@@ -141,16 +142,20 @@ export function MatchHistoryList({
    */
   renderOpponentName?: OpponentNameRenderer;
 }) {
+  const t = useTranslations("stats.matchHistoryList");
+
+  const resolvedTitle = title ?? t("defaultTitle");
+  const resolvedEmpty = emptyText ?? t("defaultEmpty");
   const hasMyCol = renderMyColumn !== null;
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
+        <CardTitle className="text-base">{resolvedTitle}</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
         {matches.length === 0 ? (
-          <p className="text-sm text-muted-foreground px-6 pb-6">{emptyText}</p>
+          <p className="text-sm text-muted-foreground px-6 pb-6">{resolvedEmpty}</p>
         ) : (
           <Table>
             <TableHeader>
@@ -164,16 +169,16 @@ export function MatchHistoryList({
                   </TableHead>
                 )}
                 <TableHead className="text-muted-foreground font-medium text-xs h-9">
-                  คู่แข่ง
+                  {t("colOpponent")}
                 </TableHead>
                 <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-12">
-                  ผล
+                  {t("colResult")}
                 </TableHead>
                 <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 w-14">
-                  คะแนน
+                  {t("colScore")}
                 </TableHead>
                 <TableHead className="text-right text-muted-foreground font-medium text-xs h-9 hidden sm:table-cell">
-                  เกม
+                  {t("colGames")}
                 </TableHead>
               </TableRow>
             </TableHeader>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { RESULT_LABEL_TH, RESULT_PILL_CLASS } from "@/lib/tournament/result-display";
 
 /**
@@ -11,6 +12,8 @@ export function StreakPill({
 }: {
   streak: { type: "W" | "L" | "D" | null; length: number };
 }) {
+  const t = useTranslations("stats.shared");
+
   if (!streak.type || streak.length === 0) {
     return <span className="text-sm text-muted-foreground">—</span>;
   }
@@ -18,7 +21,7 @@ export function StreakPill({
     <span
       className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-sm font-semibold ${RESULT_PILL_CLASS[streak.type]}`}
     >
-      {RESULT_LABEL_TH[streak.type]} {streak.length} ติด
+      {RESULT_LABEL_TH[streak.type]} {t("streakSuffix", { count: streak.length })}
     </span>
   );
 }

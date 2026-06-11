@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTabSync } from "@/lib/hooks/use-tab-sync";
 
@@ -29,6 +30,7 @@ export function PublicTournamentShell({
   showKnockout: boolean;
   showQueue: boolean;
 }) {
+  const t = useTranslations("tournament");
   const validTabs = useMemo<readonly TabId[]>(() => {
     const list: TabId[] = ["dashboard"];
     if (showGroups) list.push("groups");
@@ -51,26 +53,26 @@ export function PublicTournamentShell({
         className="w-full justify-start gap-0 rounded-none border-b bg-transparent pb-0 h-auto flex-wrap"
       >
         <TabsTrigger value="dashboard" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
-          แดชบอร์ด
+          {t("publicTournamentShell.dashboard")}
         </TabsTrigger>
         {showGroups && (
           <TabsTrigger value="groups" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
-            กลุ่ม
+            {t("publicTournamentShell.groups")}
           </TabsTrigger>
         )}
         {showPairs && (
           <TabsTrigger value="pairs" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
-            คู่
+            {t("publicTournamentShell.pairs")}
           </TabsTrigger>
         )}
         {showKnockout && (
           <TabsTrigger value="knockout" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
-            สาย
+            {t("publicTournamentShell.knockout")}
           </TabsTrigger>
         )}
         {showQueue && (
           <TabsTrigger value="queue" className="px-2 sm:px-4 pb-3 pt-1 rounded-none text-xs sm:text-sm">
-            ตารางคิว
+            {t("publicTournamentShell.queue")}
           </TabsTrigger>
         )}
       </TabsList>

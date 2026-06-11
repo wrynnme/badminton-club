@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { PlayerStats } from "@/lib/tournament/entity-stats";
@@ -24,6 +25,8 @@ export function PlayerStatsView({
   competitorById: Map<string, CompetitorEntry>;
   levels: Level[];
 }) {
+  const t = useTranslations("stats");
+
   // Set of pair IDs this player belongs to — needed for side detection in match rows
   const playerPairIds = new Set<string>();
   for (const [id, p] of pairById) {
@@ -67,7 +70,7 @@ export function PlayerStatsView({
                 const label = levels.find((l) => l.id === player.level_id)?.label;
                 return label ? (
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    ระดับ:{" "}
+                    {t("playerView.levelLabel")}{" "}
                     <span className="font-medium text-foreground">{label}</span>
                   </p>
                 ) : null;
@@ -95,9 +98,9 @@ export function PlayerStatsView({
           </div>
 
           <p className="text-xs text-muted-foreground">
-            บทบาท:{" "}
+            {t("playerView.roleLabel")}{" "}
             <span className="font-medium text-foreground">
-              {player.role === "captain" ? "กัปตัน" : "สมาชิก"}
+              {player.role === "captain" ? t("playerView.roleCaptain") : t("playerView.roleMember")}
             </span>
           </p>
         </CardContent>
@@ -107,7 +110,7 @@ export function PlayerStatsView({
 
       {/* Streak pill */}
       <div className="flex items-center gap-2">
-        <span className="text-sm text-muted-foreground">สถิติต่อเนื่อง:</span>
+        <span className="text-sm text-muted-foreground">{t("shared.streakLabel")}</span>
         <StreakPill streak={stats.streak} />
       </div>
 
@@ -118,14 +121,14 @@ export function PlayerStatsView({
       />
 
       <HeadToHeadTable
-        title="สถิติแยกตามคู่หู"
-        nameLabel="คู่หู"
+        title={t("playerView.partnerBreakdownTitle")}
+        nameLabel={t("playerView.partnerNameLabel")}
         rows={partnerRows}
         entityType="player"
       />
 
       <HeadToHeadTable
-        title="พบกัน (Head-to-Head)"
+        title={t("playerView.h2hTitle")}
         rows={h2hRows}
         entityType="pair"
       />

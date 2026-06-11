@@ -2,34 +2,10 @@ import Link from "next/link";
 import { Trophy, MapPin, CalendarDays, GitBranch, Tv } from "lucide-react";
 import { format } from "date-fns";
 import { th } from "date-fns/locale";
+import { getTranslations } from "next-intl/server";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { Tournament, TeamWithPlayers, Match } from "@/lib/types";
-
-const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
-  draft: {
-    label: "แบบร่าง",
-    cls: "bg-muted text-muted-foreground",
-  },
-  registering: {
-    label: "เปิดรับสมัคร",
-    cls: "bg-warning/15 text-warning",
-  },
-  ongoing: {
-    label: "กำลังแข่ง",
-    cls: "bg-success/15 text-success",
-  },
-  completed: {
-    label: "จบแล้ว",
-    cls: "bg-foreground/10 text-foreground",
-  },
-};
-
-const FORMAT_LABEL: Record<string, string> = {
-  group_only: "แบ่งกลุ่ม",
-  group_knockout: "กลุ่ม + สาย",
-  knockout_only: "สายเดียว",
-};
 
 function StatBlock({
   label,
@@ -51,8 +27,8 @@ function StatBlock({
   );
 }
 
-export function PublicHero({
-  tournament: t,
+export async function PublicHero({
+  tournament: tour,
   token,
   teams,
   allMatches,
@@ -64,7 +40,34 @@ export function PublicHero({
   allMatches: Match[];
   showBracketLink: boolean;
 }) {
-  const status = STATUS_STYLE[t.status] ?? STATUS_STYLE.draft;
+  const t = await getTranslations("tournament");
+
+  const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
+    draft: {
+      label: t("publicHero.statusDraft"),
+      cls: "bg-muted text-muted-foreground",
+    },
+    registering: {
+      label: t("publicHero.statusRegistering"),
+      cls: "bg-warning/15 text-warning",
+    },
+    ongoing: {
+      label: t("publicHero.statusOngoing"),
+      cls: "bg-success/15 text-success",
+    },
+    completed: {
+      label: t("publicHero.statusCompleted"),
+      cls: "bg-foreground/10 text-foreground",
+    },
+  };
+
+  const FORMAT_LABEL: Record<string, string> = {
+    group_only: t("publicHero.formatGroupOnly"),
+    group_knockout: t("publicHero.formatGroupKnockout"),
+    knockout_only: t("publicHero.formatKnockoutOnly"),
+  };
+
+  const status = STATUS_STYLE[tour.status] ?? STATUS_STYLE.draft;
   const totalMatches = allMatches.length;
   const completedMatches = allMatches.filter((m) => m.status === "completed").length;
   const matchesDisplay =
@@ -83,7 +86,7 @@ export function PublicHero({
           <div className="flex items-center gap-3 min-w-0">
             <Trophy className="h-8 w-8 sm:h-10 sm:w-10 shrink-0 text-brand" />
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight leading-tight truncate">
-              {t.name}
+              {tour.name}
             </h1>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -108,38 +111,38 @@ export function PublicHero({
           >
             {status.label}
           </span>
-          {t.venue && (
+          {tour.venue && (
             <span className="flex items-center gap-1">
               <MapPin className="h-3.5 w-3.5 shrink-0" />
-              {t.venue}
+              {tour.venue}
             </span>
           )}
-          {t.start_date && (
+          {tour.start_date && (
             <span className="flex items-center gap-1">
               <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-              {format(new Date(t.start_date), "d MMM yyyy", { locale: th })}
-              {t.end_date &&
-                t.end_date !== t.start_date &&
-                ` – ${format(new Date(t.end_date), "d MMM yyyy", { locale: th })}`}
+              {format(new Date(tour.start_date), "d MMM yyyy", { locale: th })}
+              {tour.end_date &&
+                tour.end_date !== tour.start_date &&
+                ` – ${format(new Date(tour.end_date), "d MMM yyyy", { locale: th })}`}
             </span>
           )}
         </div>
 
         {/* Stat grid */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-          <StatBlock label="รูปแบบ" value={FORMAT_LABEL[t.format] ?? t.format} />
+          <StatBlock label={t("publicHero.labelFormat")} value={FORMAT_LABEL[tour.format] ?? tour.format} />
           <StatBlock
-            label="ทีม"
-            value={String(t.team_count ?? teams.length)}
+            label={t("publicHero.labelTeams")}
+            value={String(tour.team_count ?? teams.length)}
           />
           <StatBlock
-            label="คู่แข่ง"
-            value={t.match_unit === "pair" ? "คู่ vs คู่" : "ทีม vs ทีม"}
+            label={t("publicHero.labelCompetitors")}
+            value={tour.match_unit === "pair" ? t("publicHero.unitPairVsPair") : t("publicHero.unitTeamVsTeam")}
           />
           <StatBlock
-            label="การแข่งขัน"
+            label={t("publicHero.labelMatches")}
             value={matchesDisplay}
-            sub={totalMatches > 0 ? "จบแล้ว / ทั้งหมด" : undefined}
+            sub={totalMatches > 0 ? t("publicHero.matchesSub") : undefined}
           />
         </div>
 
@@ -147,13 +150,13 @@ export function PublicHero({
         <div className="flex items-center gap-2 flex-wrap pt-1">
           {showBracketLink && (
             <Button
-              render={<Link href={`/tournaments/${t.id}/bracket`} />}
+              render={<Link href={`/tournaments/${tour.id}/bracket`} />}
               nativeButton={false}
               size="sm"
               variant="outline"
             >
               <GitBranch className="h-3.5 w-3.5" />
-              ดูสาย
+              {t("publicHero.viewBracket")}
             </Button>
           )}
         </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 // Progress-bar-aware router for user mutations (reorder drag); the plain one
 // stays for the realtime subscription refreshes so the bar doesn't fire on every event.
 import { useRouter as useProgressRouter } from "@bprogress/next/app";
+import { useTranslations } from "next-intl";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { GripVertical, Loader2, Play, ClipboardEdit, RotateCcw, Shuffle, CheckCircle2, Undo2 } from "lucide-react";
@@ -101,6 +102,7 @@ export function MatchQueue({
    *  waiting for the page-level debounced router.refresh. Additive + opt-in. */
   realtimeSync?: boolean;
 }) {
+  const t = useTranslations("tournament");
   const router = useRouter();
   const progressRouter = useProgressRouter();
   const [items, setItems] = useState<Match[]>([]);
@@ -199,7 +201,7 @@ export function MatchQueue({
           toast.error(res.error);
           setItems(sortMatches(matches));
         } else {
-          toast.success("จัดลำดับใหม่แล้ว");
+          toast.success(t("matchQueue.toastReordered"));
           progressRouter.refresh();
         }
       } finally {
@@ -214,7 +216,7 @@ export function MatchQueue({
     return (
       <Card>
         <CardContent className="py-10 text-center text-sm text-muted-foreground">
-          ยังไม่มีแมตช์
+          {t("matchQueue.emptyMatches")}
         </CardContent>
       </Card>
     );
@@ -234,7 +236,7 @@ export function MatchQueue({
         // negligible perf benefit, so it's intentionally not applied.
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">สถานะสนาม</CardTitle>
+            <CardTitle className="text-sm">{t("matchQueue.courtStatus")}</CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
@@ -264,7 +266,7 @@ export function MatchQueue({
                       )}
                     </div>
                     <div className="mt-0.5 truncate text-muted-foreground">
-                      {occ ? `${aName} vs ${bName}` : "ว่าง"}
+                      {occ ? `${aName} vs ${bName}` : t("matchQueue.courtFree")}
                     </div>
                   </div>
                 );
@@ -277,13 +279,13 @@ export function MatchQueue({
       <Tabs defaultValue="pending" className="space-y-3">
         <TabsList className="w-full flex-wrap h-auto">
           <TabsTrigger value="pending" className="gap-1.5">
-            รอแข่ง <Badge variant="outline" className="text-[10px] px-1 py-0">{pending.length}</Badge>
+            {t("matchQueue.tabPending")} <Badge variant="outline" className="text-[10px] px-1 py-0">{pending.length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="in_progress" className="gap-1.5">
-            กำลังแข่ง <Badge variant="outline" className="text-[10px] px-1 py-0">{inProgress.length}</Badge>
+            {t("matchQueue.tabInProgress")} <Badge variant="outline" className="text-[10px] px-1 py-0">{inProgress.length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="completed" className="gap-1.5">
-            จบแล้ว <Badge variant="outline" className="text-[10px] px-1 py-0">{completed.length}</Badge>
+            {t("matchQueue.tabCompleted")} <Badge variant="outline" className="text-[10px] px-1 py-0">{completed.length}</Badge>
           </TabsTrigger>
         </TabsList>
 
@@ -292,7 +294,7 @@ export function MatchQueue({
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground flex items-center gap-1.5">
                 {reorderPending && <Loader2 className="h-3 w-3 animate-spin" />}
-                ลากเพื่อจัดลำดับ
+                {t("matchQueue.dragToReorder")}
               </span>
               <Tooltip>
                 <TooltipTrigger
@@ -305,20 +307,20 @@ export function MatchQueue({
                       onClick={() => startAuto(async () => {
                         const res = await autoRotateQueueAction(tournamentId);
                         if (res && "error" in res) toast.error(res.error);
-                        else toast.success("จัดคิวใหม่ — หลีกเลี่ยงแข่งซ้อน");
+                        else toast.success(t("matchQueue.toastAutoQueue"));
                       })}
                     >
                       {autoPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Shuffle className="h-3 w-3" />}
-                      จัดคิวอัตโนมัติ
+                      {t("matchQueue.btnAutoQueue")}
                     </Button>
                   }
                 />
-                <TooltipContent>สลับลำดับเพื่อไม่ให้ผู้เล่นแข่งติดต่อกัน</TooltipContent>
+                <TooltipContent>{t("matchQueue.tooltipAutoQueue")}</TooltipContent>
               </Tooltip>
             </div>
           )}
           {pending.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">ไม่มีแมตช์รอแข่ง</p>
+            <p className="text-sm text-muted-foreground py-6 text-center">{t("matchQueue.emptyPending")}</p>
           ) : canEdit ? (
             <DndContext id="match-queue-dnd" sensors={sensors} collisionDetection={closestCenter} onDragStart={onDragStart} onDragEnd={onDragEnd} onDragCancel={onDragCancel}>
               <SortableContext items={pending.map((m) => m.id)} strategy={verticalListSortingStrategy}>
@@ -361,7 +363,7 @@ export function MatchQueue({
 
         <TabsContent value="in_progress" className="space-y-2">
           {inProgress.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">ไม่มีแมตช์ที่กำลังแข่ง</p>
+            <p className="text-sm text-muted-foreground py-6 text-center">{t("matchQueue.emptyInProgress")}</p>
           ) : (
             <ul className="space-y-2">
               {inProgress.map((m) => (
@@ -386,7 +388,7 @@ export function MatchQueue({
 
         <TabsContent value="completed" className="space-y-2">
           {completed.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">ยังไม่มีแมตช์ที่จบ</p>
+            <p className="text-sm text-muted-foreground py-6 text-center">{t("matchQueue.emptyCompleted")}</p>
           ) : (
             <ul className="space-y-2">
               {completed.map((m) => (
@@ -438,6 +440,7 @@ function DivisionBadge({
   classById?: Map<string, TournamentClass>;
   classToneMap?: Map<string, ClassTone>;
 }) {
+  const t = useTranslations("tournament");
   const div = parseDivision(match.division);
   const isKO = match.round_type === "knockout";
   const cls = match.class_id ? classById?.get(match.class_id) : undefined;
@@ -452,11 +455,11 @@ function DivisionBadge({
   const bracketTooltip = !isKO
     ? null
     : match.bracket === "upper"
-      ? "Winner bracket (สายชนะ)"
+      ? t("matchQueue.tooltipWinner")
       : match.bracket === "lower"
-      ? "Loser bracket (สายแพ้)"
+      ? t("matchQueue.tooltipLoser")
       : match.bracket === "grand_final"
-      ? "Grand Final (ชิงชนะเลิศ)"
+      ? t("matchQueue.tooltipGrandFinal")
       : null;
 
   return (
@@ -484,7 +487,7 @@ function DivisionBadge({
                 </span>
               }
             />
-            <TooltipContent>Division {div}</TooltipContent>
+            <TooltipContent>{t("matchQueue.tooltipDivision", { div })}</TooltipContent>
           </Tooltip>
         );
       })()}
@@ -497,7 +500,7 @@ function DivisionBadge({
               </span>
             }
           />
-          <TooltipContent>น็อคเอ้า</TooltipContent>
+          <TooltipContent>{t("matchQueue.tooltipKO")}</TooltipContent>
         </Tooltip>
       )}
       {bracketLabel != null && bracketTooltip != null && (
@@ -680,6 +683,7 @@ function QueueRowBody({
   classById?: Map<string, TournamentClass>;
   classToneMap?: Map<string, ClassTone>;
 }) {
+  const t = useTranslations("tournament");
   const { a, b, unknownLabel } = getCompetitorNames(match, unit, competitorById);
   const isCourtOccupied = useMemo(
     () => occupiedCourts.has(match.court ?? ""),
@@ -712,7 +716,7 @@ function QueueRowBody({
         toast.error(res.error);
         setCourt(match.court ?? "");
       } else {
-        toast.success("บันทึกสนามแล้ว");
+        toast.success(t("matchQueue.toastCourtSaved"));
       }
     });
   };
@@ -728,14 +732,14 @@ function QueueRowBody({
                   <button
                     type="button"
                     {...dragHandleProps}
-                    aria-label="ลากเพื่อจัดลำดับ"
+                    aria-label={t("matchQueue.dragToReorder")}
                     className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
                   >
                     <GripVertical className="h-4 w-4" />
                   </button>
                 }
               />
-              <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
+              <TooltipContent>{t("matchQueue.dragToReorder")}</TooltipContent>
             </Tooltip>
           )}
 
@@ -755,7 +759,7 @@ function QueueRowBody({
         <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-start justify-end">
           {canEdit ? (
             <div className="flex items-center gap-1">
-              <span className="text-[10px] text-muted-foreground">สนาม</span>
+              <span className="text-[10px] text-muted-foreground">{t("matchQueue.labelCourt")}</span>
               {courts.length > 0 ? (
                 <Select
                   value={court || "__none"}
@@ -772,7 +776,7 @@ function QueueRowBody({
                         toast.error(res.error);
                         setCourt(match.court ?? "");
                       } else {
-                        toast.success("บันทึกสนามแล้ว");
+                        toast.success(t("matchQueue.toastCourtSaved"));
                       }
                     });
                   }}
@@ -805,7 +809,7 @@ function QueueRowBody({
               {courtPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
             </div>
           ) : (
-            match.court && <Badge variant="outline" className="text-[10px]">สนาม {match.court}</Badge>
+            match.court && <Badge variant="outline" className="text-[10px]">{t("matchQueue.badgeCourt", { court: match.court })}</Badge>
           )}
 
           <StatusBadge status={match.status} />
@@ -826,20 +830,20 @@ function QueueRowBody({
                     onClick={() => startStart(async () => {
                       const res = await startMatchAction(match.id, tournamentId);
                       if (res && "error" in res) toast.error(res.error);
-                      else toast.success(`เริ่มแมตช์ #${match.match_number}`);
+                      else toast.success(t("matchQueue.toastStarted", { n: match.match_number }));
                     })}
                   >
                     {startPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
-                    เริ่ม
+                    {t("matchQueue.btnStart")}
                   </Button>
                 }
               />
               <TooltipContent>
                 {requireCourtToStart && !match.court
-                  ? "ต้องเลือกสนามก่อน"
+                  ? t("matchQueue.tooltipNeedCourt")
                   : !courtStrict && !!match.court && isCourtOccupied
-                    ? `สนาม ${match.court} ถูกใช้อยู่`
-                    : `เริ่มแมตช์ #${match.match_number} + แจ้งเตือน LINE`}
+                    ? t("matchQueue.tooltipCourtOccupied", { court: match.court })
+                    : t("matchQueue.tooltipStart", { n: match.match_number })}
               </TooltipContent>
             </Tooltip>
           )}
@@ -857,15 +861,15 @@ function QueueRowBody({
                       onClick={() => startCancel(async () => {
                         const res = await cancelMatchAction(match.id, tournamentId);
                         if (res && "error" in res) toast.error(res.error);
-                        else toast.success(`ยกเลิกการแข่งแมตช์ #${match.match_number}`);
+                        else toast.success(t("matchQueue.toastCancelled", { n: match.match_number }));
                       })}
                     >
                       {cancelPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Undo2 className="h-3 w-3" />}
-                      ยกเลิก
+                      {t("matchQueue.btnCancel")}
                     </Button>
                   }
                 />
-                <TooltipContent>ยกเลิกการแข่งแมตช์ #{match.match_number} → กลับเป็นรอแข่ง</TooltipContent>
+                <TooltipContent>{t("matchQueue.tooltipCancel", { n: match.match_number })}</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger
@@ -876,11 +880,11 @@ function QueueRowBody({
                       className="min-h-11 sm:min-h-8 text-xs px-2 gap-1"
                       onClick={() => setEditing(true)}
                     >
-                      <ClipboardEdit className="h-3 w-3" />จบแข่ง
+                      <ClipboardEdit className="h-3 w-3" />{t("matchQueue.btnFinish")}
                     </Button>
                   }
                 />
-                <TooltipContent>กรอกผลแมตช์ #{match.match_number}</TooltipContent>
+                <TooltipContent>{t("matchQueue.tooltipFinish", { n: match.match_number })}</TooltipContent>
               </Tooltip>
             </>
           )}
@@ -893,19 +897,19 @@ function QueueRowBody({
                     size="sm"
                     variant="ghost"
                     className="min-h-11 sm:min-h-8 text-xs px-2 gap-1"
-                    aria-label="รีเซ็ตผล"
+                    aria-label={t("matchQueue.ariaReset")}
                     disabled={resetPending}
                     onClick={() => startReset(async () => {
                       const res = await resetMatchScoreAction(match.id, tournamentId);
                       if (res && "error" in res) toast.error(res.error);
-                      else toast.success("รีเซ็ตผลแมตช์แล้ว");
+                      else toast.success(t("matchQueue.toastReset"));
                     })}
                   >
                     {resetPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
                   </Button>
                 }
               />
-              <TooltipContent>รีเซ็ตผลแมตช์ #{match.match_number}</TooltipContent>
+              <TooltipContent>{t("matchQueue.tooltipReset", { n: match.match_number })}</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -913,10 +917,10 @@ function QueueRowBody({
 
       {match.status === "completed" && totals && (
         <div className="px-3 pb-2 text-xs text-muted-foreground">
-          ผล: {match.team_a_score ?? 0}:{match.team_b_score ?? 0} ({match.games.length > 0 ? `${match.games.map((g) => `${g.a}-${g.b}`).join(", ")} · ` : ""}รวม {totals.a}-{totals.b}) ·
-          {" "}ผู้ชนะ:{" "}
+          {t("matchQueue.resultLabel")} {match.team_a_score ?? 0}:{match.team_b_score ?? 0} ({match.games.length > 0 ? `${match.games.map((g) => `${g.a}-${g.b}`).join(", ")} · ` : ""}{t("matchQueue.resultTotal")} {totals.a}-{totals.b}) ·
+          {" "}{t("matchQueue.resultWinner")}{" "}
           {completedWinner === "draw"
-            ? "เสมอ"
+            ? t("matchQueue.resultDraw")
             : completedWinner === "a"
               ? a?.name ?? unknownLabel
               : b?.name ?? unknownLabel}

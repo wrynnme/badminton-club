@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
@@ -67,6 +68,8 @@ export function DivisionStatsView({
   competitorById: Map<string, CompetitorEntry>;
   teamById?: Map<string, Team>;
 }) {
+  const t = useTranslations("stats.divisionView");
+
   const tone = divisionTone(division);
   const label = divisionLabelTh(division);
 
@@ -104,11 +107,11 @@ export function DivisionStatsView({
   const ensureTeamRow = (tId: string): TeamRow => {
     const cached = teamMap.get(tId);
     if (cached) return cached;
-    const t = teamById?.get(tId);
+    const t2 = teamById?.get(tId);
     const row: TeamRow = {
       teamId: tId,
-      name: t?.name ?? tId,
-      color: t?.color ?? null,
+      name: t2?.name ?? tId,
+      color: t2?.color ?? null,
       pairs: 0,
       played: 0,
       wins: 0,
@@ -184,7 +187,7 @@ export function DivisionStatsView({
             <div>
               <h1 className="text-xl font-bold">{label}</h1>
               <p className="text-sm text-muted-foreground mt-0.5">
-                {divisionPairs.length} คู่ · {stats.played} แมตช์ที่เสร็จสิ้น
+                {t("headerSubtitle", { pairCount: divisionPairs.length, matchCount: stats.played })}
               </p>
             </div>
             <Badge
@@ -202,7 +205,7 @@ export function DivisionStatsView({
         <Card>
           <CardHeader className="pb-1 pt-4 px-4">
             <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-              แมตช์ทั้งหมด
+              {t("statTotalMatches")}
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
@@ -213,7 +216,7 @@ export function DivisionStatsView({
         <Card>
           <CardHeader className="pb-1 pt-4 px-4">
             <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-              คู่ที่ลงเล่น
+              {t("statActivePairs")}
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
@@ -224,7 +227,7 @@ export function DivisionStatsView({
         <Card>
           <CardHeader className="pb-1 pt-4 px-4">
             <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-              คู่ทั้งหมด
+              {t("statTotalPairs")}
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
@@ -235,7 +238,7 @@ export function DivisionStatsView({
         <Card>
           <CardHeader className="pb-1 pt-4 px-4">
             <CardTitle className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-              เฉลี่ยคะแนน/แมตช์
+              {t("statAvgPoints")}
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4">
@@ -248,17 +251,17 @@ export function DivisionStatsView({
       {teamRows.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">ผลงานแยกทีมใน {label}</CardTitle>
+            <CardTitle className="text-base">{t("teamBreakdownTitle", { label })}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="grid grid-cols-[1.5rem_1fr_2.5rem_2.5rem_2.5rem_2.5rem_2.5rem_3rem] gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium">
               <span>#</span>
-              <span>ทีม</span>
-              <span className="text-right">คู่</span>
-              <span className="text-right">แมตช์</span>
-              <span className="text-right">ชนะ</span>
-              <span className="text-right">แพ้</span>
-              <span className="text-right">เสมอ</span>
+              <span>{t("colTeam")}</span>
+              <span className="text-right">{t("colPairs")}</span>
+              <span className="text-right">{t("colMatches")}</span>
+              <span className="text-right">{t("colWins")}</span>
+              <span className="text-right">{t("colLosses")}</span>
+              <span className="text-right">{t("colDraws")}</span>
               <span className="text-right">Pts</span>
             </div>
             {teamRows.map((row, idx) => (
@@ -292,12 +295,12 @@ export function DivisionStatsView({
       {standings.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">ตารางคะแนนภายใน {label}</CardTitle>
+            <CardTitle className="text-base">{t("pairStandingsTitle", { label })}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="grid grid-cols-[1.5rem_1fr_3rem_3rem_3rem_3rem_3rem] gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium">
               <span>#</span>
-              <span>คู่</span>
+              <span>{t("colPair")}</span>
               <span className="text-right">P</span>
               <span className="text-right">W</span>
               <span className="text-right">L</span>
@@ -342,14 +345,14 @@ export function DivisionStatsView({
       {recentMatches.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">แมตช์ล่าสุด</CardTitle>
+            <CardTitle className="text-base">{t("recentMatchesTitle")}</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="grid grid-cols-[2rem_1fr_auto_1fr] gap-x-2 px-4 py-2 border-b bg-muted/40 text-xs text-muted-foreground font-medium">
               <span>#</span>
-              <span>คู่ A</span>
-              <span className="text-center px-1">เกม</span>
-              <span className="text-right">คู่ B</span>
+              <span>{t("colSideA")}</span>
+              <span className="text-center px-1">{t("colGames")}</span>
+              <span className="text-right">{t("colSideB")}</span>
             </div>
             {recentMatches.map((m) => (
               <RecentMatchRow key={m.id} match={m} competitorById={competitorById} />
@@ -363,7 +366,7 @@ export function DivisionStatsView({
         <Card>
           <CardContent className="pt-6 pb-6">
             <p className="text-sm text-muted-foreground text-center">
-              ยังไม่มีแมตช์ที่เสร็จสิ้นใน {label}
+              {t("emptyState", { label })}
             </p>
           </CardContent>
         </Card>

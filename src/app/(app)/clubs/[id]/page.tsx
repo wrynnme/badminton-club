@@ -26,6 +26,7 @@ import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
 import { resolveClubCourts } from "@/lib/club/courts";
 import { ClubInfoRow } from "@/components/club/club-info-row";
+import { getTranslations } from "next-intl/server";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
 import type { ClubMatch, ClubLockedPair, Level } from "@/lib/types";
@@ -138,6 +139,8 @@ export default async function ClubDetailPage({
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
+  const t = await getTranslations("club");
+
   return (
     <div className="space-y-6 max-w-3xl mx-auto">
       <div>
@@ -145,19 +148,19 @@ export default async function ClubDetailPage({
           <h1 className="text-2xl font-bold">{club.name}</h1>
           <div className="flex items-center gap-1.5">
             {full ? (
-              <Badge variant="destructive">เต็ม</Badge>
+              <Badge variant="destructive">{t("page.full")}</Badge>
             ) : (
               <Badge variant="secondary">{activeCount}/{club.max_players}</Badge>
             )}
             {reserveCount > 0 && (
               <Badge variant="outline" className="text-muted-foreground">
-                +{reserveCount} สำรอง
+                {t("page.reserveBadge", { count: reserveCount })}
               </Badge>
             )}
           </div>
         </div>
         {owner && (
-          <p className="text-sm text-muted-foreground mt-1">โดย {owner.display_name}</p>
+          <p className="text-sm text-muted-foreground mt-1">{t("page.by", { name: owner.display_name })}</p>
         )}
       </div>
 
@@ -174,12 +177,12 @@ export default async function ClubDetailPage({
           />
           <ClubInfoRow
             label={<Users className="h-4 w-4" />}
-            text={`${activeCount}${reserveCount > 0 ? ` (+${reserveCount} สำรอง)` : ""} / ${club.max_players} คน`}
+            text={`${activeCount}${reserveCount > 0 ? ` ${t("page.reserveSuffix", { count: reserveCount })}` : ""} ${t("page.playerCountSuffix", { max: club.max_players })}`}
           />
           {clubCostTotal > 0 && (
             <ClubInfoRow
               label={<Wallet className="h-4 w-4" />}
-              text={`รวมค่าใช้จ่าย ${clubCostTotal.toLocaleString()} บาท`}
+              text={t("page.totalCostInfo", { total: clubCostTotal.toLocaleString() })}
             />
           )}
           {club.shuttle_info && <ClubInfoRow label="🏸" text={club.shuttle_info} />}
@@ -188,7 +191,7 @@ export default async function ClubDetailPage({
 
       {club.notes && (
         <Card>
-          <CardHeader><CardTitle className="text-base">หมายเหตุ</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">{t("page.notes")}</CardTitle></CardHeader>
           <CardContent className="whitespace-pre-wrap text-sm">{club.notes}</CardContent>
         </Card>
       )}
@@ -210,7 +213,7 @@ export default async function ClubDetailPage({
           checkin={
             <div className="space-y-6">
               <section className="space-y-2">
-                <h2 className="font-semibold">รายชื่อผู้เล่น ({joined})</h2>
+                <h2 className="font-semibold">{t("page.playerListHeading", { count: joined })}</h2>
                 {canManage && <AddGuestPlayer clubId={club.id} full={full} levels={levels} />}
                 <SortablePlayerList
                   clubId={club.id}
@@ -225,7 +228,7 @@ export default async function ClubDetailPage({
 
               {players.length > 0 && (
                 <section className="space-y-2">
-                  <h2 className="font-semibold">จำนวนคนต่อช่วง</h2>
+                  <h2 className="font-semibold">{t("page.headcountHeading")}</h2>
                   <HourlyHeadcount club={club} players={players} />
                 </section>
               )}
@@ -258,7 +261,7 @@ export default async function ClubDetailPage({
                   <CardHeader>
                     <CardTitle className="text-base flex items-center gap-2">
                       <Wallet className="h-4 w-4" />
-                      ค่าใช้จ่ายส่วนบุคคล
+                      {t("page.expensePersonalTitle")}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
@@ -290,7 +293,7 @@ export default async function ClubDetailPage({
                 expenses.length > 0 ||
                 players.some((p) => p.discount > 0)) ? (
                 <section className="space-y-2">
-                  <h2 className="font-semibold">สรุปค่าใช้จ่าย</h2>
+                  <h2 className="font-semibold">{t("page.expenseSummaryHeading")}</h2>
                   <Card>
                     <CardContent className="pt-4">
                       <ClubCostBreakdown
@@ -306,7 +309,7 @@ export default async function ClubDetailPage({
                 </section>
               ) : (
                 !canManage && (
-                  <p className="text-sm text-muted-foreground">ยังไม่มีข้อมูลค่าใช้จ่าย</p>
+                  <p className="text-sm text-muted-foreground">{t("page.expenseEmpty")}</p>
                 )
               )}
             </div>
@@ -322,9 +325,9 @@ export default async function ClubDetailPage({
               {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}
               {isOwner && (
                 <div className="border-t border-destructive/30 pt-4 mt-2 space-y-3">
-                  <h2 className="font-semibold text-destructive">เขตอันตราย</h2>
+                  <h2 className="font-semibold text-destructive">{t("page.dangerZoneHeading")}</h2>
                   <p className="text-sm text-muted-foreground">
-                    ลบก๊วนนี้ถาวร พร้อมผู้เล่น แมตช์ และค่าใช้จ่ายทั้งหมด — กู้คืนไม่ได้
+                    {t("page.dangerZoneDesc")}
                   </p>
                   <DeleteClubButton clubId={club.id} clubName={club.name} />
                 </div>

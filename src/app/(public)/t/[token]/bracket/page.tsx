@@ -9,6 +9,7 @@ import { buildVisualBracket } from "@/lib/tournament/bracket-visual";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseSettings } from "@/lib/tournament/settings";
 import { divisionLabelTh, parseDivision } from "@/lib/tournament/divisions";
+import { getTranslations } from "next-intl/server";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -98,6 +99,8 @@ export default async function PublicBracketPage({
   const hasBracket = divisionBracketSets.some((s) => s.upperRounds.length > 0);
   const isMultiDivision = divisionBracketSets.length > 1;
 
+  const tl = await getTranslations("tournament");
+
   return (
     <TournamentLiveWrapper
       tournamentId={t.id}
@@ -110,13 +113,13 @@ export default async function PublicBracketPage({
           name={t.name}
           venue={t.venue}
           status={t.status}
-          backLink={{ href: `/t/${token}/tv`, label: "ออก" }}
+          backLink={{ href: `/t/${token}/tv`, label: tl("page.tvPublicBracketExitLabel") }}
         />
 
         {!hasBracket ? (
           <div className="flex-1 min-h-0 flex items-center justify-center">
             <p className="text-2xl lg:text-4xl 2xl:text-5xl text-muted-foreground">
-              ยังไม่มีสายน็อคเอ้า
+              {tl("page.tvPublicBracketEmpty")}
             </p>
           </div>
         ) : (
@@ -138,7 +141,7 @@ export default async function PublicBracketPage({
 
                   <section className="space-y-1">
                     {isMultiSection && (
-                      <h3 className="text-sm font-semibold text-muted-foreground mb-4">สายบน</h3>
+                      <h3 className="text-sm font-semibold text-muted-foreground mb-4">{tl("page.bracketUpper")}</h3>
                     )}
                     <BracketView rounds={upperRounds} competitorById={competitorMap} unit={unit} />
                   </section>
@@ -147,7 +150,7 @@ export default async function PublicBracketPage({
                     <>
                       <Separator className="my-8" />
                       <section className="space-y-1">
-                        <h3 className="text-sm font-semibold text-muted-foreground mb-4">สายล่าง</h3>
+                        <h3 className="text-sm font-semibold text-muted-foreground mb-4">{tl("page.bracketLower")}</h3>
                         <BracketView rounds={lowerRounds} competitorById={competitorMap} unit={unit} />
                       </section>
                     </>

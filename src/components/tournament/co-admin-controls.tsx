@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect } from "react";
 import { toast } from "sonner";
 import { Check, ChevronsUpDown, UserPlus, Trash2, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -28,6 +29,7 @@ export function CoAdminControls({
   tournamentId: string;
   initialAdmins: TournamentAdmin[];
 }) {
+  const t = useTranslations("tournament");
   const [admins, setAdmins] = useState<TournamentAdmin[]>(initialAdmins);
   const [isPending, startTransition] = useTransition();
 
@@ -46,7 +48,7 @@ export function CoAdminControls({
       return;
     }
     setSearching(true);
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const res = await searchProfilesAction(tournamentId, q);
       if ("ok" in res) setResults(res.results);
       else {
@@ -55,7 +57,7 @@ export function CoAdminControls({
       }
       setSearching(false);
     }, 250);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [query, tournamentId]);
 
   async function handleAdd() {
@@ -67,7 +69,7 @@ export function CoAdminControls({
       toast.error(res.error);
       return;
     }
-    toast.success("เพิ่ม co-admin แล้ว");
+    toast.success(t("coAdminControls.toastAdded"));
     setAdmins((prev) => [
       ...prev,
       {
@@ -92,7 +94,7 @@ export function CoAdminControls({
         toast.error(res.error);
         return;
       }
-      toast.success("ลบ co-admin แล้ว");
+      toast.success(t("coAdminControls.toastRemoved"));
       setAdmins((prev) => prev.filter((a) => a.user_id !== userId));
     });
   }
@@ -100,10 +102,10 @@ export function CoAdminControls({
   return (
     <Card>
       <CardContent className="pt-4 space-y-3">
-        <p className="text-sm font-semibold">ผู้ช่วยดูแล (Co-admin)</p>
+        <p className="text-sm font-semibold">{t("coAdminControls.title")}</p>
 
         {admins.filter((a) => a.user_id).length === 0 ? (
-          <p className="text-sm text-muted-foreground">ยังไม่มีผู้ช่วยดูแล</p>
+          <p className="text-sm text-muted-foreground">{t("coAdminControls.emptyAdmins")}</p>
         ) : (
           <ul className="space-y-1">
             {admins
@@ -115,7 +117,7 @@ export function CoAdminControls({
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium truncate">
-                      {admin.display_name ?? "(ไม่มีชื่อ)"}
+                      {admin.display_name ?? t("coAdminControls.noName")}
                     </p>
                     <p className="text-xs font-mono text-muted-foreground truncate">
                       {admin.line_user_id ?? admin.user_id}
@@ -125,7 +127,7 @@ export function CoAdminControls({
                     type="button"
                     variant="ghost"
                     size="sm"
-                    aria-label="ลบผู้ช่วยดูแล"
+                    aria-label={t("coAdminControls.ariaRemove")}
                     className="text-destructive hover:text-destructive shrink-0"
                     disabled={isPending}
                     onClick={() => handleRemove(admin.user_id)}
@@ -150,8 +152,8 @@ export function CoAdminControls({
                 >
                   <span className="truncate">
                     {selected
-                      ? (selected.display_name ?? "(ไม่มีชื่อ)")
-                      : "ค้นหาผู้ใช้..."}
+                      ? (selected.display_name ?? t("coAdminControls.noName"))
+                      : t("coAdminControls.comboboxPlaceholder")}
                   </span>
                   <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
                 </Button>
@@ -163,17 +165,17 @@ export function CoAdminControls({
             >
               <Command shouldFilter={false}>
                 <CommandInput
-                  placeholder="พิมพ์ชื่อ..."
+                  placeholder={t("coAdminControls.inputPlaceholder")}
                   value={query}
                   onValueChange={setQuery}
                 />
                 <CommandList>
                   <CommandEmpty>
                     {searching
-                      ? "กำลังค้นหา..."
+                      ? t("coAdminControls.searching")
                       : query.trim().length === 0
-                      ? "พิมพ์ชื่อเพื่อค้นหา"
-                      : "ไม่พบผู้ใช้"}
+                      ? t("coAdminControls.typeToSearch")
+                      : t("coAdminControls.notFound")}
                   </CommandEmpty>
                   <CommandGroup>
                     {results.map((r) => (
@@ -187,7 +189,7 @@ export function CoAdminControls({
                       >
                         <div className="flex flex-col flex-1 min-w-0">
                           <span className="truncate">
-                            {r.display_name ?? "(ไม่มีชื่อ)"}
+                            {r.display_name ?? t("coAdminControls.noName")}
                           </span>
                         </div>
                         {selected?.id === r.id && (
@@ -213,7 +215,7 @@ export function CoAdminControls({
             ) : (
               <UserPlus className="h-3.5 w-3.5" />
             )}
-            เพิ่ม
+            {t("coAdminControls.btnAdd")}
           </Button>
         </div>
       </CardContent>

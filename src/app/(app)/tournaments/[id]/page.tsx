@@ -26,6 +26,7 @@ import { ClassManager } from "@/components/tournament/class-manager";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { EditTournamentForm } from "@/components/tournament/edit-tournament-form";
 import { SettingsManager } from "@/components/tournament/settings-manager";
+import { getTranslations } from "next-intl/server";
 import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match, TournamentClass, MatchFormat, Level } from "@/lib/types";
 import type { TournamentAdmin } from "@/lib/actions/admins";
 import { getLevelsAction } from "@/lib/actions/levels";
@@ -34,12 +35,6 @@ import { parseTournamentThresholds } from "@/lib/tournament/divisions";
 import { TOURNAMENT_STATUS_BADGE, TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";
 
 export const dynamic = "force-dynamic";
-
-const formatLabel: Record<string, string> = {
-  group_only: "แบ่งกลุ่ม",
-  group_knockout: "แบ่งกลุ่ม + น็อคเอ้า",
-  knockout_only: "น็อคเอ้า",
-};
 
 export default async function TournamentDetailPage({
   params,
@@ -146,6 +141,14 @@ export default async function TournamentDetailPage({
   const groupMatchCompleted = groupMatches.filter((m) => m.status === "completed").length;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
+  const tl = await getTranslations("tournament");
+
+  const formatLabel: Record<string, string> = {
+    group_only: tl("page.formatGroupOnly"),
+    group_knockout: tl("page.formatGroupKnockout"),
+    knockout_only: tl("page.formatKnockoutOnly"),
+  };
+
   return (
     <TournamentLiveWrapper tournamentId={t.id} realtimeEnabled={settings.realtime_enabled}>
       <div className="space-y-6 max-w-3xl mx-auto">
@@ -179,21 +182,21 @@ export default async function TournamentDetailPage({
             )}
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-muted-foreground" />
-              <span>{t.team_count} ทีม</span>
+              <span>{tl("page.listTeamCount", { count: t.team_count })}</span>
             </div>
             <div className="flex items-center gap-2">
               <Trophy className="h-4 w-4 text-muted-foreground" />
               <span>{formatLabel[t.format]}</span>
-              {t.has_lower_bracket && <Badge variant="outline" className="text-xs">+ สายล่าง</Badge>}
+              {t.has_lower_bracket && <Badge variant="outline" className="text-xs">{tl("page.lowerBracketBadge")}</Badge>}
             </div>
             <div className="flex items-center gap-2">
               <Swords className="h-4 w-4 text-muted-foreground" />
-              <span>{t.match_unit === "pair" ? "คู่ vs คู่" : "ทีม vs ทีม"}</span>
+              <span>{t.match_unit === "pair" ? tl("page.unitPairVsPair") : tl("page.unitTeamVsTeam")}</span>
             </div>
             {t.format === "group_knockout" && (
               <div className="flex items-center gap-2">
                 <GitBranch className="h-4 w-4 text-muted-foreground" />
-                <span>ผ่านรอบ {t.advance_count ?? 2} ทีม/กลุ่ม</span>
+                <span>{tl("page.advanceCount", { count: t.advance_count ?? 2 })}</span>
               </div>
             )}
           </CardContent>

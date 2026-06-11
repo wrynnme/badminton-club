@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Loader2, Globe } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -23,6 +24,7 @@ export function ClubVisibilityControls({
   isPublic: boolean;
   appUrl: string;
 }) {
+  const t = useTranslations("club.visibility");
   const [isPublic, setIsPublic] = useState(initial);
   const [isPending, start] = useTransition();
 
@@ -34,7 +36,7 @@ export function ClubVisibilityControls({
         return;
       }
       setIsPublic(next);
-      toast.success(next ? "เปิดเป็นสาธารณะแล้ว" : "เปลี่ยนเป็นส่วนตัวแล้ว");
+      toast.success(next ? t("toastPublic") : t("toastPrivate"));
     });
 
   return (
@@ -42,7 +44,7 @@ export function ClubVisibilityControls({
       <CardHeader>
         <CardTitle className="text-base flex items-center gap-2">
           <Globe className="h-4 w-4" />
-          การเข้าถึง
+          {t("title")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -52,19 +54,19 @@ export function ClubVisibilityControls({
             onCheckedChange={(v) => toggle(v === true)}
             disabled={isPending}
             className="mt-0.5"
-            aria-label="เปิดให้คนทั่วไปดู"
+            aria-label={t("checkboxAriaLabel")}
           />
           <span className="space-y-0.5">
-            <span className="block text-sm font-medium">เปิดให้คนทั่วไปดู (read-only)</span>
+            <span className="block text-sm font-medium">{t("checkboxLabel")}</span>
             <span className="block text-xs text-muted-foreground">
-              ใครมีลิงก์ก็ดูรายชื่อ / คิว / แดชบอร์ดได้โดยไม่ต้อง login — ไม่เห็นข้อมูลค่าใช้จ่าย
+              {t("checkboxDescription")}
             </span>
           </span>
           {isPending && <Loader2 className="mt-0.5 h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         </label>
 
         {isPublic && (
-          <ShareLinkRow appUrl={appUrl} path={`/c/${clubId}`} qrTitle="QR Code ลิงก์ก๊วน" />
+          <ShareLinkRow appUrl={appUrl} path={`/c/${clubId}`} qrTitle={t("qrTitle")} />
         )}
       </CardContent>
     </Card>

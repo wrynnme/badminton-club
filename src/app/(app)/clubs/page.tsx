@@ -6,9 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, MapPin, Users } from "lucide-react";
-import { listClubPresetsAction } from "@/lib/actions/club-presets";
-import { PresetManager } from "@/components/club/preset-manager";
-import type { ClubPreset } from "@/lib/types";
+import { getTranslations } from "next-intl/server";
 
 export const dynamic = "force-dynamic";
 
@@ -46,15 +44,6 @@ export default async function ClubsPage() {
     clubs = (data ?? []) as ClubRow[];
   }
 
-  // Fetch presets only for LINE users. The action redirects null (anonymous)
-  // sessions and returns { error } for guests, so calling it unconditionally
-  // would bounce anonymous visitors off this (otherwise viewable) page.
-  let presets: ClubPreset[] = [];
-  if (canCreate) {
-    const presetsResult = await listClubPresetsAction();
-    if ("presets" in presetsResult) presets = presetsResult.presets;
-  }
-
   const { data: counts } = await sb
     .from("club_players")
     .select("club_id");
@@ -64,29 +53,28 @@ export default async function ClubsPage() {
     countMap.set(r.club_id, (countMap.get(r.club_id) ?? 0) + 1);
   }
 
+  const t = await getTranslations("club");
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">ก๊วนทั้งหมด</h1>
+        <h1 className="text-2xl font-bold">{t("page.listHeading")}</h1>
         {canCreate && (
           <Link href="/clubs/new">
-            <Button>+ สร้างก๊วน</Button>
+            <Button>{t("page.createButton")}</Button>
           </Link>
         )}
       </div>
 
       {session?.isGuest && (
         <p className="text-xs text-muted-foreground">
-          เข้าสู่ระบบด้วย LINE เพื่อสร้างก๊วน (โหมด guest เข้าร่วมก๊วนได้เท่านั้น)
+          {t("page.guestHint")}
         </p>
       )}
 
-      {/* Preset section — visible only for LINE-authenticated users */}
-      {canCreate && <PresetManager presets={presets} />}
-
       {!clubs?.length ? (
         <p className="text-muted-foreground">
-          {canCreate ? "ยังไม่มีก๊วน. ลองสร้างก๊วนแรกเลย." : "ยังไม่มีก๊วน."}
+          {canCreate ? t("page.emptyWithCreate") : t("page.emptyNoCreate")}
         </p>
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -100,7 +88,7 @@ export default async function ClubsPage() {
                     <CardTitle className="flex items-start justify-between gap-2">
                       <span className="line-clamp-1">{c.name}</span>
                       {full ? (
-                        <Badge variant="destructive">เต็ม</Badge>
+                        <Badge variant="destructive">{t("page.full")}</Badge>
                       ) : (
                         <Badge variant="secondary">{joined}/{c.max_players}</Badge>
                       )}
@@ -119,7 +107,7 @@ export default async function ClubsPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Users className="h-4 w-4" />
-                      <span>{joined}/{c.max_players} คน</span>
+                      <span>{t("page.playerCountCard", { joined, max: c.max_players })}</span>
                     </div>
                   </CardContent>
                 </Card>

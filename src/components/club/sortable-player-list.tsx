@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 // Progress-bar-aware router for user mutations; the plain one stays for the
 // 30s auto-refresh interval so the top bar doesn't flash on every tick.
 import { useRouter as useProgressRouter } from "@bprogress/next/app";
+import { useTranslations } from "next-intl";
 import { RefreshCw, GripVertical, CheckCircle2, Circle, Loader2, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -59,6 +60,7 @@ function CheckInButton({
   clubId: string;
   canToggle: boolean;
 }) {
+  const t = useTranslations("club.playerList");
   const router = useProgressRouter();
   const [pending, start] = useTransition();
   const isCheckedIn = !!player.checked_in_at;
@@ -67,7 +69,7 @@ function CheckInButton({
     return isCheckedIn ? (
       <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
         <CheckCircle2 className="h-3.5 w-3.5" />
-        พร้อม
+        {t("checkInReady")}
       </span>
     ) : null;
   }
@@ -91,12 +93,12 @@ function CheckInButton({
       ) : isCheckedIn ? (
         <>
           <CheckCircle2 className="h-3 w-3" />
-          พร้อม
+          {t("checkInReady")}
         </>
       ) : (
         <>
           <Circle className="h-3 w-3" />
-          เช็คอิน
+          {t("checkInButton")}
         </>
       )}
     </Button>
@@ -116,6 +118,7 @@ function SessionEditor({
   sessionStart?: string;
   sessionEnd?: string;
 }) {
+  const t = useTranslations("club.playerList");
   const router = useProgressRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
@@ -149,7 +152,7 @@ function SessionEditor({
       if (res && "error" in res) {
         toast.error(res.error);
       } else {
-        toast.success("บันทึกข้อมูลแล้ว");
+        toast.success(t("sessionEditorSaved"));
         router.refresh();
         setOpen(false);
       }
@@ -165,7 +168,7 @@ function SessionEditor({
         variant="ghost"
         className="text-muted-foreground h-6 px-1.5 text-xs"
         onClick={() => setOpen(true)}
-        title="แก้ไขเวลา/เกม"
+        title={t("sessionEditorTitle")}
       >
         <Clock className="h-3 w-3" />
         {hasOverride ? (
@@ -181,7 +184,7 @@ function SessionEditor({
   return (
     <div className="mt-1.5 flex flex-wrap items-end gap-2 rounded-md border bg-muted/30 p-2 text-xs">
       <div className="flex flex-col gap-0.5">
-        <Label className="text-[10px] text-muted-foreground">เริ่ม</Label>
+        <Label className="text-[10px] text-muted-foreground">{t("sessionEditorStart")}</Label>
         <Input
           type="time"
           value={startVal}
@@ -191,7 +194,7 @@ function SessionEditor({
         />
       </div>
       <div className="flex flex-col gap-0.5">
-        <Label className="text-[10px] text-muted-foreground">เลิก</Label>
+        <Label className="text-[10px] text-muted-foreground">{t("sessionEditorEnd")}</Label>
         <Input
           type="time"
           value={endVal}
@@ -201,7 +204,7 @@ function SessionEditor({
         />
       </div>
       <div className="flex flex-col gap-0.5">
-        <Label className="text-[10px] text-muted-foreground">เกมที่เล่น</Label>
+        <Label className="text-[10px] text-muted-foreground">{t("sessionEditorGames")}</Label>
         <Input
           type="number"
           min={0}
@@ -219,7 +222,7 @@ function SessionEditor({
           onClick={handleSave}
           className="h-7 text-xs"
         >
-          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : "บันทึก"}
+          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : t("sessionEditorSave")}
         </Button>
         <Button
           type="button"
@@ -228,12 +231,12 @@ function SessionEditor({
           className="h-7 text-xs"
           onClick={() => setOpen(false)}
         >
-          ยกเลิก
+          {t("sessionEditorCancel")}
         </Button>
       </div>
       {(clubStartPlaceholder || clubEndPlaceholder) && (
         <p className="w-full text-[10px] text-muted-foreground">
-          ว่างไว้ = ใช้เวลาก๊วน ({clubStartPlaceholder}–{clubEndPlaceholder})
+          {t("sessionEditorClubWindow", { start: clubStartPlaceholder, end: clubEndPlaceholder })}
         </p>
       )}
     </div>
@@ -245,13 +248,14 @@ function SessionEditor({
 // sub-row below it (same pattern as SessionEditor).
 
 function RenameButton({ onOpen }: { onOpen: () => void }) {
+  const t = useTranslations("club.playerList");
   return (
     <Button
       size="xs"
       variant="ghost"
       className="text-muted-foreground h-6 w-6 p-0"
       onClick={onOpen}
-      title="แก้ไขชื่อ"
+      title={t("renameTitle")}
       type="button"
     >
       <Pencil className="h-3 w-3" />
@@ -268,6 +272,7 @@ function RenameForm({
   clubId: string;
   onClose: () => void;
 }) {
+  const t = useTranslations("club.playerList");
   const router = useProgressRouter();
   const [value, setValue] = useState(player.display_name);
   const [pending, start] = useTransition();
@@ -289,7 +294,7 @@ function RenameForm({
   return (
     <div className="mt-1.5 flex flex-wrap items-end gap-2 rounded-md border bg-muted/30 p-2 text-xs">
       <div className="flex flex-col gap-0.5 flex-1 min-w-[140px]">
-        <Label className="text-[10px] text-muted-foreground">ชื่อ</Label>
+        <Label className="text-[10px] text-muted-foreground">{t("renameLabel")}</Label>
         <Input
           autoFocus
           value={value}
@@ -310,7 +315,7 @@ function RenameForm({
           onClick={handleSave}
           className="h-7 text-xs"
         >
-          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : "บันทึก"}
+          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : t("renameSave")}
         </Button>
         <Button
           type="button"
@@ -319,7 +324,7 @@ function RenameForm({
           className="h-7 text-xs"
           onClick={onClose}
         >
-          ยกเลิก
+          {t("renameCancel")}
         </Button>
       </div>
     </div>
@@ -354,6 +359,7 @@ function PlayerRowBody({
   dragHandle,
   positionLabel,
 }: RowBodyProps) {
+  const t = useTranslations("club.playerList");
   const isCheckedIn = !!player.checked_in_at;
   const isGuest = player.profile_id == null;
   // Require a non-null session: a public/anon viewer has sessionProfileId=null and
@@ -415,7 +421,7 @@ function PlayerRowBody({
       {isPartial && (
         <div className="flex items-center gap-1 pl-8 mt-0.5 text-[11px] text-muted-foreground tabular-nums">
           <Clock className="h-3 w-3 shrink-0" />
-          เล่น {effStart}–{effEnd}
+          {t("partialPlay", { start: effStart ?? "", end: effEnd ?? "" })}
         </div>
       )}
     </>
@@ -443,6 +449,7 @@ function SortableItem({
   sessionEnd?: string;
   levelById?: Map<string, { label: string }>;
 }) {
+  const t = useTranslations("club.playerList");
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: player.id,
     disabled: !canManage,
@@ -461,7 +468,7 @@ function SortableItem({
       {...attributes}
       {...listeners}
       className="flex h-9 w-9 -ml-1.5 items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
-      aria-label="ลาก"
+      aria-label={t("dragAriaLabel")}
       type="button"
     >
       <GripVertical className="h-4 w-4" />
@@ -512,6 +519,7 @@ function ReserveItem({
   sessionEnd?: string;
   levelById?: Map<string, { label: string }>;
 }) {
+  const t = useTranslations("club.playerList");
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: player.id,
     disabled: !canManage,
@@ -528,7 +536,7 @@ function ReserveItem({
       {...attributes}
       {...listeners}
       className="flex h-9 w-9 -ml-1.5 items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground touch-none"
-      aria-label="ลากขึ้นเพื่อเป็นตัวจริง"
+      aria-label={t("dragReserveAriaLabel")}
       type="button"
     >
       <GripVertical className="h-4 w-4" />
@@ -577,6 +585,7 @@ function ActiveDropZone({
   dropDisabled: boolean;
   children: ReactNode;
 }) {
+  const t = useTranslations("club.playerList");
   const { setNodeRef, isOver } = useDroppable({ id: ACTIVE_ZONE_ID, disabled: dropDisabled });
   // Affordance must match where a drop actually lands:
   //  - active empty (zone IS the droppable) → dashed "drop here" target + banner.
@@ -599,7 +608,7 @@ function ActiveDropZone({
     >
       {showTarget && (
         <p className="px-2 py-1 text-center text-[11px] font-medium text-primary">
-          วางที่นี่เพื่อเลื่อนเป็นตัวจริง
+          {t("dropToPromote")}
         </p>
       )}
       {children}
@@ -618,6 +627,7 @@ export function SortablePlayerList({
   sessionStart,
   sessionEnd,
 }: Props) {
+  const t = useTranslations("club.playerList");
   const levelById = levels
     ? new Map(levels.map((l) => [l.id, l]))
     : undefined;
@@ -722,7 +732,7 @@ export function SortablePlayerList({
       className="h-7 w-7"
       onClick={refresh}
       disabled={refreshing}
-      aria-label="รีเฟรชรายชื่อ"
+      aria-label={t("refreshAriaLabel")}
     >
       <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
     </Button>
@@ -731,7 +741,7 @@ export function SortablePlayerList({
   if (!items.length) {
     return (
       <div className="flex items-center gap-2">
-        <p className="text-sm text-muted-foreground">ยังไม่มีคนลงชื่อ</p>
+        <p className="text-sm text-muted-foreground">{t("noPlayers")}</p>
         {refreshBtn}
       </div>
     );
@@ -743,14 +753,14 @@ export function SortablePlayerList({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">อัพเดทอัตโนมัติทุก 30 วินาที</span>
+          <span className="text-xs text-muted-foreground">{t("autoRefresh")}</span>
           {checkedInCount > 0 && (
             <Badge
               variant="outline"
               className="text-xs text-green-600 dark:text-green-400 border-green-500/40 bg-green-500/10"
             >
               <CheckCircle2 className="h-3 w-3 mr-1" />
-              {checkedInCount}/{items.length} พร้อม
+              {t("readyBadge", { checked: checkedInCount, total: items.length })}
             </Badge>
           )}
         </div>
@@ -773,7 +783,7 @@ export function SortablePlayerList({
             <ol className="space-y-1">
               {active.length === 0 ? (
                 <li className="rounded border border-dashed px-3 py-3 text-center text-xs text-muted-foreground">
-                  ยังไม่มีตัวจริง
+                  {t("noActive")}
                 </li>
               ) : (
                 active.map((p, i) => (
@@ -798,10 +808,10 @@ export function SortablePlayerList({
         {reserve.length > 0 && (
           <div className="mt-3 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground">สำรอง ({reserve.length})</span>
-              <Badge variant="secondary" className="text-xs">รอคิว</Badge>
+              <span className="text-sm font-medium text-muted-foreground">{t("reserveLabel", { count: reserve.length })}</span>
+              <Badge variant="secondary" className="text-xs">{t("reserveQueueBadge")}</Badge>
               {canManage && (
-                <span className="text-[11px] text-muted-foreground">ลากขึ้นเพื่อเลื่อนเป็นตัวจริง</span>
+                <span className="text-[11px] text-muted-foreground">{t("dragUpHint")}</span>
               )}
             </div>
             <SortableContext items={reserve.map((p) => p.id)} strategy={verticalListSortingStrategy}>

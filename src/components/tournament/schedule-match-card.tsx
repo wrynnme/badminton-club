@@ -1,4 +1,5 @@
 import { Clock, MapPin, ListOrdered } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
@@ -42,11 +43,13 @@ function CompetitorBlock({
   isWinner,
   isLoser,
   align = "left",
+  waitingLabel,
 }: {
   competitor: Competitor | undefined;
   isWinner: boolean;
   isLoser: boolean;
   align?: "left" | "right";
+  waitingLabel: string;
 }) {
   const nameColor = isWinner
     ? "text-winner"
@@ -67,7 +70,7 @@ function CompetitorBlock({
       <span
         className={`text-xl font-bold leading-tight truncate ${nameColor} ${isWinner ? "font-extrabold" : ""}`}
       >
-        {competitor?.name ?? "รอคู่แข่ง"}
+        {competitor?.name ?? waitingLabel}
       </span>
       {competitor?.subtitle && (
         <span className="text-xs text-muted-foreground truncate">{competitor.subtitle}</span>
@@ -91,7 +94,7 @@ function CompetitorBlock({
  * defaults false → division badge stays a plain outline like the court page;
  * the schedule view opts into tone colors.
  */
-export function ScheduleMatchCard({
+export async function ScheduleMatchCard({
   match,
   competitorById,
   unit,
@@ -110,6 +113,8 @@ export function ScheduleMatchCard({
   scheduledAt?: string | null;
   coloredDivision?: boolean;
 }) {
+  const t = await getTranslations("tournament");
+
   const aId = unit === "team" ? match.team_a_id : match.pair_a_id;
   const bId = unit === "team" ? match.team_b_id : match.pair_b_id;
   const a = aId ? competitorById.get(aId) : undefined;
@@ -160,13 +165,13 @@ export function ScheduleMatchCard({
             {court && (
               <span className="inline-flex items-center gap-1">
                 <MapPin className="size-3" />
-                สนาม {court}
+                {t("scheduleMatchCard.court", { court })}
               </span>
             )}
             {queuePosition != null && (
               <span className="inline-flex items-center gap-1">
                 <ListOrdered className="size-3" />
-                คิว #{queuePosition}
+                {t("scheduleMatchCard.queueN", { n: queuePosition })}
               </span>
             )}
             {scheduled && (
@@ -185,6 +190,7 @@ export function ScheduleMatchCard({
             isWinner={winner === "a"}
             isLoser={winner === "b"}
             align="left"
+            waitingLabel={t("scheduleMatchCard.waitingOpponent")}
           />
 
           {/* Score / VS */}
@@ -212,6 +218,7 @@ export function ScheduleMatchCard({
             isWinner={winner === "b"}
             isLoser={winner === "a"}
             align="right"
+            waitingLabel={t("scheduleMatchCard.waitingOpponent")}
           />
         </div>
 

@@ -6,6 +6,7 @@ import { useForm } from "@tanstack/react-form";
 import { useTransition } from "react";
 import { toast } from "sonner";
 import { Loader2, ArrowUpCircle } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,26 +19,28 @@ import { upgradeToCompetitionAction } from "@/lib/actions/classes";
 import type { Tournament, TournamentFormat, SeedingMethod, MatchUnit } from "@/lib/types";
 import { ThresholdChipList } from "./threshold-chip-list";
 
-const formSchema = z.object({
-  name: z.string().min(2, "ชื่อสั้นไป"),
-  venue: z.string(),
-  start_date: z.string(),
-  end_date: z.string(),
-  format: z.enum(["group_only", "group_knockout", "knockout_only"]),
-  match_unit: z.enum(["team", "pair"]),
-  has_lower_bracket: z.boolean(),
-  allow_drop_to_lower: z.boolean(),
-  seeding_method: z.enum(["random", "by_group_score"]),
-  advance_count: z.number().int().min(1).max(8),
-  team_count: z.number().int().min(2, "อย่างน้อย 2 ทีม").max(64),
-  pair_division_thresholds: z.array(z.number()),
-  notes: z.string(),
-});
-
 const TEAM_COUNT_PRESETS = [4, 6, 8, 12, 16];
 
 export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner = false }: { tournament: Tournament; existingTeamCount?: number; isOwner?: boolean }) {
+  const t = useTranslations("tournament");
   const [upgrading, startUpgrade] = useTransition();
+
+  const formSchema = z.object({
+    name: z.string().min(2, t("createTournamentForm.errorNameTooShort")),
+    venue: z.string(),
+    start_date: z.string(),
+    end_date: z.string(),
+    format: z.enum(["group_only", "group_knockout", "knockout_only"]),
+    match_unit: z.enum(["team", "pair"]),
+    has_lower_bracket: z.boolean(),
+    allow_drop_to_lower: z.boolean(),
+    seeding_method: z.enum(["random", "by_group_score"]),
+    advance_count: z.number().int().min(1).max(8),
+    team_count: z.number().int().min(2, t("createTournamentForm.errorMinTeams")).max(64),
+    pair_division_thresholds: z.array(z.number()),
+    notes: z.string(),
+  });
+
   const form = useForm({
     defaultValues: {
       name: tournament.name,
@@ -58,40 +61,39 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
     onSubmit: async ({ value }) => {
       const res = await updateTournamentAction({ ...value, id: tournament.id });
       if (res?.error) toast.error(res.error);
-      else toast.success("บันทึกแล้ว");
+      else toast.success(t("editTournamentForm.toastSaved"));
     },
   });
 
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm">ข้อมูลทัวร์นาเมนต์</CardTitle>
+        <CardTitle className="text-sm">{t("editTournamentForm.cardTitle")}</CardTitle>
       </CardHeader>
       <CardContent>
         {/* Mode — competition is a one-way upgrade (no downgrade) */}
         {tournament.mode === "competition" ? (
           <div className="mb-4 flex items-center gap-2 text-sm">
             <Badge variant="outline" className="border-primary/40 bg-primary/10 text-primary">Competition mode</Badge>
-            <span className="text-xs text-muted-foreground">หลายรุ่น (class) — กำหนด class ในแท็บตั้งค่า</span>
+            <span className="text-xs text-muted-foreground">{t("editTournamentForm.competitionBadge")}</span>
           </div>
         ) : isOwner && tournament.match_unit === "pair" ? (
           <div className="mb-4 rounded-md border border-dashed p-3 space-y-2">
-            <p className="text-sm font-medium">โหมด: กีฬาสี / ทั่วไป</p>
+            <p className="text-sm font-medium">{t("editTournamentForm.upgradeTitle")}</p>
             <p className="text-xs text-muted-foreground">
-              อัปเกรดเป็น Competition (หลายรุ่น/class) — ย้ายทีม/คู่/กลุ่ม/แมตช์เดิมเข้า class &ldquo;MAIN&rdquo; อัตโนมัติ.{" "}
-              <span className="text-warning font-medium">เปลี่ยนกลับไม่ได้</span>
+              {t("editTournamentForm.upgradeDesc")}
             </p>
             <Button type="button" size="sm" variant="outline" disabled={upgrading}
               onClick={() => {
-                if (!confirm("อัปเกรดเป็น Competition mode? การกระทำนี้เปลี่ยนกลับไม่ได้")) return;
+                if (!confirm(t("editTournamentForm.upgradeConfirm"))) return;
                 startUpgrade(async () => {
                   const res = await upgradeToCompetitionAction(tournament.id);
                   if ("error" in res) toast.error(res.error);
-                  else toast.success("อัปเกรดเป็น competition mode แล้ว");
+                  else toast.success(t("editTournamentForm.toastUpgraded"));
                 });
               }}>
               {upgrading ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <ArrowUpCircle className="h-3.5 w-3.5 mr-1" />}
-              อัปเกรดเป็น Competition
+              {t("editTournamentForm.btnUpgrade")}
             </Button>
           </div>
         ) : null}
@@ -104,7 +106,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
                 const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
                 return (
                   <Field data-invalid={isInvalid}>
-                    <FieldLabel htmlFor={field.name}>ชื่อทัวร์นาเมนต์ *</FieldLabel>
+                    <FieldLabel htmlFor={field.name}>{t("createTournamentForm.fieldName")}</FieldLabel>
                     <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)} aria-invalid={isInvalid} />
                     {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
@@ -116,9 +118,9 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
             <form.Field name="venue">
               {(field) => (
                 <Field>
-                  <FieldLabel htmlFor={field.name}>สถานที่</FieldLabel>
+                  <FieldLabel htmlFor={field.name}>{t("createTournamentForm.fieldVenue")}</FieldLabel>
                   <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(e.target.value)} placeholder="ชื่อสนาม / สถานที่" />
+                    onChange={(e) => field.handleChange(e.target.value)} placeholder={t("createTournamentForm.placeholderVenue")} />
                 </Field>
               )}
             </form.Field>
@@ -127,7 +129,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
               <form.Field name="start_date">
                 {(field) => (
                   <Field>
-                    <FieldLabel htmlFor={field.name}>วันเริ่ม</FieldLabel>
+                    <FieldLabel htmlFor={field.name}>{t("createTournamentForm.fieldStartDate")}</FieldLabel>
                     <Input id={field.name} type="date" value={field.state.value}
                       onBlur={field.handleBlur} onChange={(e) => field.handleChange(e.target.value)} />
                   </Field>
@@ -136,7 +138,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
               <form.Field name="end_date">
                 {(field) => (
                   <Field>
-                    <FieldLabel htmlFor={field.name}>วันจบ</FieldLabel>
+                    <FieldLabel htmlFor={field.name}>{t("createTournamentForm.fieldEndDate")}</FieldLabel>
                     <Input id={field.name} type="date" value={field.state.value}
                       onBlur={field.handleBlur} onChange={(e) => field.handleChange(e.target.value)} />
                   </Field>
@@ -147,12 +149,12 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
             <form.Field name="format">
               {(field) => (
                 <Field>
-                  <FieldLabel>รูปแบบการแข่ง *</FieldLabel>
+                  <FieldLabel>{t("createTournamentForm.fieldFormat")}</FieldLabel>
                   <div className="flex flex-wrap gap-2">
                     {([
-                      { value: "group_only", label: "แบ่งกลุ่ม" },
-                      { value: "group_knockout", label: "แบ่งกลุ่ม + น็อคเอ้า" },
-                      { value: "knockout_only", label: "น็อคเอ้า" },
+                      { value: "group_only", label: t("createTournamentForm.formatGroupOnly") },
+                      { value: "group_knockout", label: t("createTournamentForm.formatGroupKnockout") },
+                      { value: "knockout_only", label: t("createTournamentForm.formatKnockoutOnly") },
                     ] as const).map((opt) => (
                       <Button key={opt.value} type="button" size="sm"
                         variant={field.state.value === opt.value ? "default" : "outline"}
@@ -169,18 +171,18 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
                 the คู่/class tabs and corrupt the pair-keyed competitor map. */}
             {tournament.mode === "competition" ? (
               <Field>
-                <FieldLabel>หน่วยการแข่ง</FieldLabel>
-                <FieldDescription>คู่ vs คู่ (ล็อคสำหรับ Competition)</FieldDescription>
+                <FieldLabel>{t("createTournamentForm.fieldMatchUnit")}</FieldLabel>
+                <FieldDescription>{t("editTournamentForm.unitLockedPair")}</FieldDescription>
               </Field>
             ) : (
               <form.Field name="match_unit">
                 {(field) => (
                   <Field>
-                    <FieldLabel>หน่วยการแข่ง *</FieldLabel>
+                    <FieldLabel>{t("createTournamentForm.fieldMatchUnit")}</FieldLabel>
                     <div className="flex flex-wrap gap-2">
                       {([
-                        { value: "team", label: "ทีม vs ทีม" },
-                        { value: "pair", label: "คู่ vs คู่" },
+                        { value: "team", label: t("createTournamentForm.unitTeamVsTeam") },
+                        { value: "pair", label: t("createTournamentForm.unitPairVsPair") },
                       ] as const).map((opt) => (
                         <Button key={opt.value} type="button" size="sm"
                           variant={field.state.value === opt.value ? "default" : "outline"}
@@ -213,7 +215,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
                 <form.Field name="advance_count">
                   {(field) => (
                     <Field>
-                      <FieldLabel>ทีมผ่านรอบต่อกลุ่ม</FieldLabel>
+                      <FieldLabel>{t("createTournamentForm.fieldAdvanceCount")}</FieldLabel>
                       <div className="flex gap-2">
                         {[1, 2, 3, 4].map((n) => (
                           <Button key={n} type="button" size="sm"
@@ -239,7 +241,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
                         <Checkbox id="edit_has_lower_bracket" checked={field.state.value}
                           onCheckedChange={(v) => field.handleChange(Boolean(v))} />
                         <div>
-                          <FieldLabel htmlFor="edit_has_lower_bracket">มีสายล่าง</FieldLabel>
+                          <FieldLabel htmlFor="edit_has_lower_bracket">{t("createTournamentForm.hasLowerBracket")}</FieldLabel>
                         </div>
                       </Field>
                     )}
@@ -252,7 +254,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
                             <Checkbox id="edit_allow_drop_to_lower" checked={field.state.value}
                               onCheckedChange={(v) => field.handleChange(Boolean(v))} />
                             <div>
-                              <FieldLabel htmlFor="edit_allow_drop_to_lower">แพ้สายบนลงมาแก้ตัวสายล่างได้</FieldLabel>
+                              <FieldLabel htmlFor="edit_allow_drop_to_lower">{t("createTournamentForm.allowDropToLower")}</FieldLabel>
                             </div>
                           </Field>
                         )}
@@ -266,11 +268,11 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
             <form.Field name="seeding_method">
               {(field) => (
                 <Field>
-                  <FieldLabel>วิธีแบ่งสาย</FieldLabel>
+                  <FieldLabel>{t("createTournamentForm.fieldSeedingMethod")}</FieldLabel>
                   <div className="flex gap-2">
                     {([
-                      { value: "random", label: "จับฉลาก" },
-                      { value: "by_group_score", label: "ตามคะแนนรอบกลุ่ม" },
+                      { value: "random", label: t("createTournamentForm.seedingRandom") },
+                      { value: "by_group_score", label: t("createTournamentForm.seedingByGroup") },
                     ] as const).map((opt) => (
                       <Button key={opt.value} type="button" size="sm"
                         variant={field.state.value === opt.value ? "default" : "outline"}
@@ -289,13 +291,13 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
                 const belowExisting = existingTeamCount > 0 && field.state.value < existingTeamCount;
                 return (
                   <Field data-invalid={isInvalid}>
-                    <FieldLabel htmlFor={field.name}>จำนวนทีม *</FieldLabel>
+                    <FieldLabel htmlFor={field.name}>{t("createTournamentForm.fieldTeamCount")}</FieldLabel>
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {TEAM_COUNT_PRESETS.map((n) => (
                         <Button key={n} type="button" size="sm" className="h-7 text-xs px-2"
                           variant={field.state.value === n ? "default" : "outline"}
                           onClick={() => field.handleChange(n)}>
-                          {n} ทีม
+                          {t("createTournamentForm.presetN", { n })}
                         </Button>
                       ))}
                     </div>
@@ -304,12 +306,12 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
                         onBlur={field.handleBlur} onChange={(e) => field.handleChange(Number(e.target.value))}
                         aria-invalid={isInvalid}
                         className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none" />
-                      <InputGroupAddon align="inline-end"><InputGroupText>ทีม</InputGroupText></InputGroupAddon>
+                      <InputGroupAddon align="inline-end"><InputGroupText>{t("createTournamentForm.addonTeams")}</InputGroupText></InputGroupAddon>
                     </InputGroup>
                     {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
                     {belowExisting && (
                       <p className="text-xs text-amber-600 dark:text-amber-400">
-                        มีทีมในระบบ {existingTeamCount} ทีม — ลดจำนวนต่ำกว่านี้ทีมเดิมจะไม่ถูกลบอัตโนมัติ
+                        {t("editTournamentForm.teamCountWarning", { count: existingTeamCount })}
                       </p>
                     )}
                   </Field>
@@ -320,11 +322,11 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
             <form.Field name="notes">
               {(field) => (
                 <Field>
-                  <FieldLabel htmlFor={field.name}>หมายเหตุ</FieldLabel>
+                  <FieldLabel htmlFor={field.name}>{t("createTournamentForm.fieldNotes")}</FieldLabel>
                   <InputGroup>
                     <InputGroupTextarea id={field.name} value={field.state.value} onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
-                      rows={3} className="min-h-20 resize-none" placeholder="กติกา, วิธีตัดสิน ฯลฯ" />
+                      rows={3} className="min-h-20 resize-none" placeholder={t("createTournamentForm.placeholderNotes")} />
                   </InputGroup>
                 </Field>
               )}
@@ -335,7 +337,7 @@ export function EditTournamentForm({ tournament, existingTeamCount = 0, isOwner 
             {([canSubmit, isSubmitting]) => (
               <Button type="submit" className="w-full mt-6" disabled={!canSubmit || isSubmitting}>
                 {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                {isSubmitting ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}
+                {isSubmitting ? t("editTournamentForm.btnSaving") : t("editTournamentForm.btnSave")}
               </Button>
             )}
           </form.Subscribe>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 
 /**
  * Shared rotation state for TV carousels. Returns `safeActive` index (clamped
@@ -53,9 +54,10 @@ export function TvCarouselDots({
   count: number;
   active: number;
   onSelect: (n: number) => void;
-  /** Optional per-dot accessibility label (defaults to "ไปหน้า {i+1}"). */
+  /** Optional per-dot accessibility label (defaults to t("tvCarouselShell.dotAria")). */
   labels?: (i: number) => string;
 }) {
+  const t = useTranslations("tournament");
   if (count <= 1) return null;
   return (
     <div className="flex items-center gap-2">
@@ -64,7 +66,7 @@ export function TvCarouselDots({
           key={i}
           type="button"
           onClick={() => onSelect(i)}
-          aria-label={labels ? labels(i) : `ไปหน้า ${i + 1}`}
+          aria-label={labels ? labels(i) : t("tvCarouselShell.dotAria", { n: i + 1 })}
           aria-current={i === active}
           className={`w-3 h-3 lg:w-3.5 lg:h-3.5 rounded-full transition-colors cursor-pointer hover:bg-foreground/70 ${
             i === active ? "bg-foreground" : "bg-muted"

@@ -1,0 +1,17 @@
+{
+  "brand": "ก๊วนแบด",
+  "clubs": "ก๊วน",
+  "tournaments": "ทัวร์นาเมนต์",
+  "createClub": "สร้างก๊วน",
+  "accountSettings": "ตั้งค่าบัญชี",
+  "settings": "ตั้งค่า",
+  "profile": "โปรไฟล์",
+  "myClub": "ก๊วนของฉัน",
+  "myTournament": "ทัวร์นาเมนต์ของฉัน",
+  "theme": "ธีม",
+  "language": "ภาษา",
+  "guest": "guest",
+  "logout": "ออก",
+  "login": "เข้าสู่ระบบ",
+  "menu": "เมนู"
+}

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle } from "lucide-react";
 import {
@@ -137,6 +138,7 @@ function ShuttleCounter({
   canManage: boolean;
   onRefresh: () => void;
 }) {
+  const t = useTranslations("club.queuePanel");
   const [busy, startTransition] = useTransition();
 
   function adjust(delta: number) {
@@ -171,11 +173,11 @@ function ShuttleCounter({
                   disabled={busy || match.shuttles_used === 0}
                   onClick={() => adjust(-1)}
                 >
-                  <Minus className="h-3.5 w-3.5" /> ลูก
+                  <Minus className="h-3.5 w-3.5" /> {t("shuttleMinus")}
                 </Button>
               }
             />
-            <TooltipContent>ลดลูกที่ใช้ในแมตช์นี้</TooltipContent>
+            <TooltipContent>{t("shuttleDecrTooltip")}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -187,11 +189,11 @@ function ShuttleCounter({
                   disabled={busy}
                   onClick={() => adjust(1)}
                 >
-                  <Plus className="h-3.5 w-3.5" /> ลูก
+                  <Plus className="h-3.5 w-3.5" /> {t("shuttlePlus")}
                 </Button>
               }
             />
-            <TooltipContent>เพิ่มลูกที่ใช้ในแมตช์นี้</TooltipContent>
+            <TooltipContent>{t("shuttleIncrTooltip")}</TooltipContent>
           </Tooltip>
         </div>
       )}
@@ -210,6 +212,7 @@ function DeleteMatchButton({
   status: "in_progress" | "completed";
   onRefresh: () => void;
 }) {
+  const t = useTranslations("club.queuePanel");
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
@@ -222,7 +225,7 @@ function DeleteMatchButton({
       } else {
         setOpen(false);
         router.refresh();
-        toast.success("ลบแมตช์แล้ว");
+        toast.success(t("toastDeleted"));
       }
     });
   }
@@ -235,7 +238,7 @@ function DeleteMatchButton({
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-destructive hover:text-destructive shrink-0"
-            aria-label="ลบแมตช์นี้"
+            aria-label={t("deleteMatchAriaLabel")}
           >
             <Trash2 className="h-3.5 w-3.5" />
           </Button>
@@ -245,26 +248,26 @@ function DeleteMatchButton({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
-            ลบแมตช์นี้?
+            {t("deleteDialogTitle")}
           </DialogTitle>
         </DialogHeader>
 
         <ul className="text-sm text-muted-foreground space-y-1.5 list-disc pl-5">
-          <li>แมตช์นี้จะถูกลบถาวร</li>
+          <li>{t("deleteDialogBullet1")}</li>
           {status === "completed" && (
-            <li>จำนวนเกม (games) ของผู้เล่นจะถูกนับคืน −1</li>
+            <li>{t("deleteDialogBullet2Completed")}</li>
           )}
-          <li>ค่าลูกของแมตช์นี้จะหายจากการหาร</li>
+          <li>{t("deleteDialogBullet3")}</li>
           {status === "in_progress" && (
-            <li>สนามจะว่างลง</li>
+            <li>{t("deleteDialogBullet4InProgress")}</li>
           )}
-          <li>เวลาเล่นล่าสุด + การนับเกมล็อคคู่ จะไม่ถูกคืน</li>
+          <li>{t("deleteDialogBullet5")}</li>
         </ul>
 
         <DialogFooter>
-          <DialogClose render={<Button variant="outline" disabled={pending}>ยกเลิก</Button>} />
+          <DialogClose render={<Button variant="outline" disabled={pending}>{t("deleteDialogCancel")}</Button>} />
           <Button variant="destructive" onClick={handleConfirm} disabled={pending}>
-            {pending ? "กำลังลบ…" : "ลบแมตช์"}
+            {pending ? t("deleteDialogDeleting") : t("deleteDialogConfirm")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -289,12 +292,13 @@ function CourtSelect({
   onRefresh: () => void;
   badgeClassName?: string;
 }) {
+  const t = useTranslations("club.queuePanel");
   const [busy, startTransition] = useTransition();
 
   if (!canManage || courts.length <= 1) {
     return (
       <Badge variant="outline" className={badgeClassName ?? "shrink-0 text-xs"}>
-        สนาม {match.court}
+        {t("courtBadge", { court: match.court })}
       </Badge>
     );
   }
@@ -311,17 +315,17 @@ function CourtSelect({
   return (
     <Select value={match.court} onValueChange={(v) => { if (v) handleChange(v); }}>
       <SelectTrigger
-        aria-label="เปลี่ยนสนาม"
-        title="เปลี่ยนสนาม"
+        aria-label={t("courtSelectAriaLabel")}
+        title={t("courtSelectTitle")}
         disabled={busy}
         className="h-7 w-auto gap-1 text-xs shrink-0"
       >
-        <SelectValue>{(v: string) => `สนาม ${v}`}</SelectValue>
+        <SelectValue>{(v: string) => t("courtSelectValue", { court: v })}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         {courts.map((c) => (
           <SelectItem key={c} value={c}>
-            สนาม {c}
+            {t("courtSelectItem", { court: c })}
           </SelectItem>
         ))}
       </SelectContent>
@@ -348,6 +352,7 @@ function PendingRow({
   dragHandleProps?: Record<string, unknown> | null;
   rowNumber?: number;
 }) {
+  const t = useTranslations("club.queuePanel");
   const [startBusy, startTransition] = useTransition();
   const [cancelBusy, cancelTransition] = useTransition();
 
@@ -385,14 +390,14 @@ function PendingRow({
               <button
                 type="button"
                 {...dragHandleProps}
-                aria-label="ลากเพื่อจัดลำดับ"
+                aria-label={t("dragRowAriaLabel")}
                 className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none shrink-0"
               >
                 <GripVertical className="h-4 w-4" />
               </button>
             }
           />
-          <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
+          <TooltipContent>{t("dragRowTooltip")}</TooltipContent>
         </Tooltip>
       )}
       {rowNumber != null && (
@@ -426,7 +431,7 @@ function PendingRow({
                 </Button>
               }
             />
-            <TooltipContent>เริ่มแมตช์ที่สนาม {match.court}</TooltipContent>
+            <TooltipContent>{t("startTooltip", { court: match.court })}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -442,7 +447,7 @@ function PendingRow({
                 </Button>
               }
             />
-            <TooltipContent>ยกเลิกแมตช์</TooltipContent>
+            <TooltipContent>{t("cancelTooltip")}</TooltipContent>
           </Tooltip>
         </div>
       )}
@@ -504,6 +509,7 @@ function InProgressRow({
   canManage: boolean;
   onRefresh: () => void;
 }) {
+  const t = useTranslations("club.queuePanel");
   const [finishOpen, setFinishOpen] = useState(false);
   const [finishBusy, finishTransition] = useTransition();
   const [scoreA, setScoreA] = useState("");
@@ -534,15 +540,15 @@ function InProgressRow({
     const a = parseInt(scoreA, 10);
     const b = parseInt(scoreB, 10);
     if (Number.isNaN(a) || Number.isNaN(b)) {
-      toast.error("กรอกคะแนนทั้งสองฝั่ง");
+      toast.error(t("toastScoreInvalidError"));
       return;
     }
     if (a < 0 || b < 0 || a > 99 || b > 99) {
-      toast.error("คะแนน 0–99");
+      toast.error(t("toastScoreRangeError"));
       return;
     }
     if (a === b) {
-      toast.error("คะแนนเท่ากัน ต้องมีผู้ชนะ");
+      toast.error(t("toastScoreEqualError"));
       return;
     }
     handleFinish({ scoreA: a, scoreB: b });
@@ -582,11 +588,11 @@ function InProgressRow({
                     ) : (
                       <ChevronDown className="h-3.5 w-3.5" />
                     )}
-                    <span className="text-xs ml-1">จบแข่ง</span>
+                    <span className="text-xs ml-1">{t("finishButton")}</span>
                   </Button>
                 }
               />
-              <TooltipContent>บันทึกผลแมตช์สนาม {match.court}</TooltipContent>
+              <TooltipContent>{t("finishTooltip", { court: match.court })}</TooltipContent>
             </Tooltip>
             <DeleteMatchButton matchId={match.id} status="in_progress" onRefresh={onRefresh} />
           </>
@@ -597,7 +603,7 @@ function InProgressRow({
         <div className="mt-2 ml-2 flex flex-col gap-2">
           {/* โหมด 1 — กรอกคะแนนเต็ม (ผู้ชนะคำนวณจากคะแนน) */}
           <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground shrink-0">กรอกคะแนน</span>
+            <span className="text-xs text-muted-foreground shrink-0">{t("scoreLabel")}</span>
             <Input
               type="number"
               inputMode="numeric"
@@ -606,7 +612,7 @@ function InProgressRow({
               value={scoreA}
               onChange={(e) => setScoreA(e.target.value)}
               disabled={finishBusy}
-              aria-label={`คะแนน ${sideA}`}
+              aria-label={t("scoreAriaLabel", { side: sideA })}
               className="h-7 w-14 text-center text-xs"
             />
             <span className="text-xs text-muted-foreground">:</span>
@@ -618,7 +624,7 @@ function InProgressRow({
               value={scoreB}
               onChange={(e) => setScoreB(e.target.value)}
               disabled={finishBusy}
-              aria-label={`คะแนน ${sideB}`}
+              aria-label={t("scoreAriaLabel", { side: sideB })}
               className="h-7 w-14 text-center text-xs"
             />
             <Tooltip>
@@ -631,11 +637,11 @@ function InProgressRow({
                     disabled={finishBusy}
                     onClick={handleScoreFinish}
                   >
-                    บันทึกผล
+                    {t("saveScoreButton")}
                   </Button>
                 }
               />
-              <TooltipContent>บันทึกคะแนน — ผู้ชนะคำนวณจากคะแนนที่สูงกว่า</TooltipContent>
+              <TooltipContent>{t("saveScoreTooltip")}</TooltipContent>
             </Tooltip>
           </div>
           {/* โหมด 2/3 — กดฝั่งผู้ชนะ หรือจบแบบไม่ระบุผล */}
@@ -651,11 +657,11 @@ function InProgressRow({
                     onClick={() => handleFinish({ winnerSide: "a" })}
                   >
                     <Trophy className="h-3 w-3 mr-1" />
-                    ฝั่ง A ชนะ
+                    {t("sideAWins")}
                   </Button>
                 }
               />
-              <TooltipContent>{sideA} ชนะ (ไม่บันทึกคะแนน)</TooltipContent>
+              <TooltipContent>{t("sideAWinsTooltip", { name: sideA })}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -668,11 +674,11 @@ function InProgressRow({
                     onClick={() => handleFinish({ winnerSide: "b" })}
                   >
                     <Trophy className="h-3 w-3 mr-1" />
-                    ฝั่ง B ชนะ
+                    {t("sideBWins")}
                   </Button>
                 }
               />
-              <TooltipContent>{sideB} ชนะ (ไม่บันทึกคะแนน)</TooltipContent>
+              <TooltipContent>{t("sideBWinsTooltip", { name: sideB })}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -684,11 +690,11 @@ function InProgressRow({
                     disabled={finishBusy}
                     onClick={() => handleFinish({})}
                   >
-                    จบแบบไม่ระบุผล
+                    {t("noResult")}
                   </Button>
                 }
               />
-              <TooltipContent>บันทึกว่าจบโดยไม่มีผู้ชนะ</TooltipContent>
+              <TooltipContent>{t("noResultTooltip")}</TooltipContent>
             </Tooltip>
           </div>
         </div>
@@ -710,6 +716,7 @@ function CompletedRow({
   canManage: boolean;
   onRefresh: () => void;
 }) {
+  const t = useTranslations("club.queuePanel");
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
   const sideB = resolveSide(match.side_b_player1, match.side_b_player2, nameMap);
 
@@ -719,7 +726,7 @@ function CompletedRow({
   return (
     <div className="flex items-center gap-2 py-2 border-b last:border-0 text-sm text-muted-foreground">
       <Badge variant="outline" className="shrink-0 text-xs opacity-60">
-        สนาม {match.court}
+        {t("courtBadge", { court: match.court })}
       </Badge>
       <span className={winnerA ? "text-winner font-medium" : ""}>{sideA}</span>
       <span className="text-xs">vs</span>
@@ -753,6 +760,7 @@ function BuildButton({
   court: string;
   onRefresh: () => void;
 }) {
+  const t = useTranslations("club.queuePanel");
   const [busy, transition] = useTransition();
 
   function handleBuild() {
@@ -761,7 +769,7 @@ function BuildButton({
       if ("error" in res) {
         toast.error(res.error);
       } else {
-        toast.success(`สร้างแมตช์สนาม ${court} แล้ว`);
+        toast.success(t("toastBuilt", { court }));
         onRefresh();
       }
     });
@@ -779,11 +787,11 @@ function BuildButton({
             onClick={handleBuild}
           >
             <Plus className="h-3.5 w-3.5" />
-            สนาม {court}
+            {t("buildCourtButton", { court })}
           </Button>
         }
       />
-      <TooltipContent>สร้างแมตช์ถัดไปสำหรับสนาม {court}</TooltipContent>
+      <TooltipContent>{t("buildCourtTooltip", { court })}</TooltipContent>
     </Tooltip>
   );
 }
@@ -805,6 +813,7 @@ function PlayerSelect({
   players: { id: string; display_name: string }[];
   nameMap: Map<string, string>;
 }) {
+  const t = useTranslations("club.queuePanel");
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -831,7 +840,7 @@ function PlayerSelect({
               className="w-full h-8 justify-between font-normal text-sm"
             >
               <span className={`truncate ${selectedName ? "" : "text-muted-foreground"}`}>
-                {selectedName || "เลือกผู้เล่น"}
+                {selectedName || t("manualSelectPlayer")}
               </span>
               <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
             </Button>
@@ -839,9 +848,9 @@ function PlayerSelect({
         />
         <PopoverContent className="w-(--anchor-width) p-0 gap-0" align="start">
           <Command shouldFilter={false}>
-            <CommandInput placeholder="พิมพ์ชื่อ..." value={query} onValueChange={setQuery} />
+            <CommandInput placeholder={t("manualSearchPlaceholder")} value={query} onValueChange={setQuery} />
             <CommandList>
-              <CommandEmpty>ไม่พบผู้เล่น</CommandEmpty>
+              <CommandEmpty>{t("manualNoPlayer")}</CommandEmpty>
               <CommandGroup>
                 {filtered.map((p) => (
                   <CommandItem
@@ -886,6 +895,7 @@ function ManualMatchDialog({
   matches: ClubMatch[];
   onRefresh: () => void;
 }) {
+  const t = useTranslations("club.queuePanel");
   const ppt = settings.players_per_team;
   const [open, setOpen] = useState(false);
   const [busy, startTransition] = useTransition();
@@ -945,8 +955,8 @@ function ManualMatchDialog({
   const lastMeetingLabel = useMemo(() => {
     const last = priorMeetings[0];
     if (!last) return "";
-    if (last.status === "in_progress") return "กำลังแข่งอยู่";
-    if (last.status === "pending") return "อยู่ในคิว";
+    if (last.status === "in_progress") return t("priorInProgress");
+    if (last.status === "pending") return t("priorPending");
     // completed
     const hasScore = last.score_a != null && last.score_b != null;
     const winnerIds =
@@ -959,11 +969,11 @@ function ManualMatchDialog({
       .filter(Boolean)
       .map((id) => nameMap.get(id!) ?? "?")
       .join(" & ");
-    if (hasScore && winnerName) return `${winnerName} ชนะ ${last.score_a}–${last.score_b}`;
-    if (hasScore) return `ผล ${last.score_a}–${last.score_b}`;
-    if (winnerName) return `${winnerName} ชนะ`;
-    return "จบแล้ว (ไม่บันทึกผล)";
-  }, [priorMeetings, nameMap]);
+    if (hasScore && winnerName) return t("priorWinnerScore", { name: winnerName, a: last.score_a ?? 0, b: last.score_b ?? 0 });
+    if (hasScore) return t("priorScore", { a: last.score_a ?? 0, b: last.score_b ?? 0 });
+    if (winnerName) return t("priorWinner", { name: winnerName });
+    return t("priorNoResult");
+  }, [priorMeetings, nameMap, t]);
 
   function reset() {
     setCourt(firstFreeCourt(courts, matches));
@@ -979,11 +989,11 @@ function ManualMatchDialog({
     const all = [...sideA, ...sideB];
 
     if (all.some((id) => !id)) {
-      toast.error("กรุณาเลือกผู้เล่นให้ครบ");
+      toast.error(t("toastManualSelectAll"));
       return;
     }
     if (new Set(all).size !== all.length) {
-      toast.error("ผู้เล่นซ้ำกัน กรุณาเลือกใหม่");
+      toast.error(t("toastManualDuplicate"));
       return;
     }
 
@@ -997,7 +1007,7 @@ function ManualMatchDialog({
       if ("error" in res) {
         toast.error(res.error);
       } else {
-        toast.success("เพิ่มแมตช์แล้ว");
+        toast.success(t("toastManualAdded"));
         reset();
         setOpen(false);
         onRefresh();
@@ -1011,22 +1021,22 @@ function ManualMatchDialog({
         render={
           <Button size="sm" variant="outline" className="h-8 text-xs gap-1">
             <PenLine className="h-3.5 w-3.5" />
-            เพิ่มแมตช์เอง
+            {t("addManualMatch")}
           </Button>
         }
       />
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>เพิ่มแมตช์เอง</DialogTitle>
+          <DialogTitle>{t("manualDialogTitle")}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
           {/* Court — toggle grid showing live occupancy (occupied courts stay selectable) */}
           <div className="space-y-1.5">
-            <Label id="mm-court-label" className="text-sm font-medium">สนาม</Label>
+            <Label id="mm-court-label" className="text-sm font-medium">{t("manualCourtLabel")}</Label>
             {courts.length === 0 ? (
               <p className="text-xs text-muted-foreground">
-                ยังไม่ได้ตั้งค่าสนาม — เพิ่มในแท็บตั้งค่า
+                {t("manualNoCourts")}
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby="mm-court-label">
@@ -1047,18 +1057,16 @@ function ManualMatchDialog({
                       )}
                     >
                       <span className="flex w-full items-center gap-1.5 text-sm font-medium">
-                        สนาม {c}
+                        {t("courtSelectItem", { court: c })}
                         {selected && <Check className="h-3.5 w-3.5 text-primary" />}
                       </span>
                       {occ ? (
                         <span className="line-clamp-2 text-[11px] leading-tight text-warning-foreground">
-                          กำลังเล่น: {resolveSide(occ.side_a_player1, occ.side_a_player2, nameMap)}
-                          {" vs "}
-                          {resolveSide(occ.side_b_player1, occ.side_b_player2, nameMap)}
+                          {t("manualCourtOccupied", { players: `${resolveSide(occ.side_a_player1, occ.side_a_player2, nameMap)} vs ${resolveSide(occ.side_b_player1, occ.side_b_player2, nameMap)}` })}
                         </span>
                       ) : (
                         <span className="text-[11px] leading-tight text-muted-foreground">
-                          ว่าง
+                          {t("manualCourtFree")}
                         </span>
                       )}
                     </button>
@@ -1070,10 +1078,10 @@ function ManualMatchDialog({
 
           {/* Side A */}
           <div className="space-y-2">
-            <p className="text-sm font-medium">ฝั่ง A</p>
+            <p className="text-sm font-medium">{t("manualSideA")}</p>
             <PlayerSelect
               id="mm-sideA1"
-              label={ppt === 2 ? "ผู้เล่น 1" : "ผู้เล่น"}
+              label={ppt === 2 ? t("manualPlayer1") : t("manualPlayer")}
               value={sideA1}
               onChange={setSideA1}
               players={players}
@@ -1082,7 +1090,7 @@ function ManualMatchDialog({
             {ppt === 2 && (
               <PlayerSelect
                 id="mm-sideA2"
-                label="ผู้เล่น 2"
+                label={t("manualPlayer2")}
                 value={sideA2}
                 onChange={setSideA2}
                 players={players}
@@ -1093,10 +1101,10 @@ function ManualMatchDialog({
 
           {/* Side B */}
           <div className="space-y-2">
-            <p className="text-sm font-medium">ฝั่ง B</p>
+            <p className="text-sm font-medium">{t("manualSideB")}</p>
             <PlayerSelect
               id="mm-sideB1"
-              label={ppt === 2 ? "ผู้เล่น 1" : "ผู้เล่น"}
+              label={ppt === 2 ? t("manualPlayer1") : t("manualPlayer")}
               value={sideB1}
               onChange={setSideB1}
               players={players}
@@ -1105,7 +1113,7 @@ function ManualMatchDialog({
             {ppt === 2 && (
               <PlayerSelect
                 id="mm-sideB2"
-                label="ผู้เล่น 2"
+                label={t("manualPlayer2")}
                 value={sideB2}
                 onChange={setSideB2}
                 players={players}
@@ -1119,10 +1127,10 @@ function ManualMatchDialog({
               <AlertTriangle className="h-4 w-4 shrink-0 text-warning mt-0.5" />
               <div className="space-y-0.5">
                 <p className="font-medium text-warning-foreground">
-                  คู่นี้เคยพบกันแล้ว {priorMeetings.length} ครั้ง
+                  {t("priorMeetingsWarning", { count: priorMeetings.length })}
                 </p>
                 {lastMeetingLabel && (
-                  <p className="text-muted-foreground">ครั้งล่าสุด: {lastMeetingLabel}</p>
+                  <p className="text-muted-foreground">{t("priorMeetingsLast", { label: lastMeetingLabel })}</p>
                 )}
               </div>
             </div>
@@ -1130,17 +1138,17 @@ function ManualMatchDialog({
         </div>
 
         <DialogFooter>
-          <DialogClose render={<Button variant="outline" disabled={busy}>ยกเลิก</Button>} />
+          <DialogClose render={<Button variant="outline" disabled={busy}>{t("manualDialogCancel")}</Button>} />
           <Button
             onClick={handleSubmit}
             disabled={busy}
             variant={priorMeetings.length > 0 ? "destructive" : "default"}
           >
             {busy
-              ? "กำลังสร้าง…"
+              ? t("manualDialogCreating")
               : priorMeetings.length > 0
-                ? "ยืนยันสร้าง (เคยเจอกัน)"
-                : "เพิ่มแมตช์"}
+                ? t("manualDialogSubmitConfirm")
+                : t("manualDialogSubmit")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1165,6 +1173,7 @@ export function ClubQueuePanel({
   courts: string[];
   canManage: boolean;
 }) {
+  const t = useTranslations("club.queuePanel");
   const router = useRouter();
   const [reorderPending, startReorder] = useTransition();
 
@@ -1241,19 +1250,19 @@ export function ClubQueuePanel({
     <Tabs defaultValue="pending" className="space-y-3">
       <TabsList className="w-full flex-wrap h-auto">
         <TabsTrigger value="pending" className="gap-1.5">
-          รอแข่ง{" "}
+          {t("tabPending")}{" "}
           <Badge variant="outline" className="text-[10px] px-1 py-0">
             {pendingOrder.length}
           </Badge>
         </TabsTrigger>
         <TabsTrigger value="in_progress" className="gap-1.5">
-          กำลังแข่ง{" "}
+          {t("tabInProgress")}{" "}
           <Badge variant="outline" className="text-[10px] px-1 py-0">
             {inProgress.length}
           </Badge>
         </TabsTrigger>
         <TabsTrigger value="completed" className="gap-1.5">
-          จบแล้ว{" "}
+          {t("tabCompleted")}{" "}
           <Badge variant="outline" className="text-[10px] px-1 py-0">
             {completed.length}
           </Badge>
@@ -1266,7 +1275,7 @@ export function ClubQueuePanel({
           <div className="space-y-2">
             {courts.length === 0 && (
               <p className="text-xs text-muted-foreground">
-                ยังไม่ได้ตั้งค่าสนาม — เพิ่มในแท็บตั้งค่าก่อนสร้างแมตช์ตามสนาม
+                {t("noCourts")}
               </p>
             )}
             <div className="flex flex-wrap gap-2">
@@ -1295,7 +1304,7 @@ export function ClubQueuePanel({
             {reorderPending && (
               <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
             )}
-            ลากเพื่อจัดลำดับ
+            {t("dragHint")}
           </p>
         )}
 
@@ -1303,7 +1312,7 @@ export function ClubQueuePanel({
           <CardContent className="py-3 px-4">
             {pendingOrder.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
-                ยังไม่มีแมตช์ในคิว
+                {t("pendingEmpty")}
               </p>
             ) : canManage ? (
               <DndContext
@@ -1353,7 +1362,7 @@ export function ClubQueuePanel({
           <CardContent className="py-3 px-4">
             {inProgress.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
-                ไม่มีแมตช์กำลังแข่งขัน
+                {t("inProgressEmpty")}
               </p>
             ) : (
               inProgress.map((m) => (
@@ -1377,7 +1386,7 @@ export function ClubQueuePanel({
           <CardContent className="py-3 px-4">
             {completed.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
-                ยังไม่มีแมตช์ที่จบแล้ว
+                {t("completedEmpty")}
               </p>
             ) : (
               completed.map((m) => (

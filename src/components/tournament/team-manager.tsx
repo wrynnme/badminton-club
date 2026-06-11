@@ -21,32 +21,28 @@ import { useForm } from "@tanstack/react-form";
 import { Check, CheckCheck, ChevronDown, ChevronUp, Loader2, Pencil, Plus, RotateCcw, Trash2, UserCheck, UserMinus, X } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import * as z from "zod";
 
 const NONE_SENTINEL = "__none__";
 
-const teamSchema = z.object({
-  name: z.string().min(1, "ระบุชื่อทีม"),
-  color: z.string(),
-});
-
-
-const memberSchema = z.object({
-  display_name: z.string().min(1, "ระบุชื่อสมาชิก"),
-  role: z.enum(["captain", "member"]),
-  level_id: z.string(),
-});
-
 const COLORS = ["#ef4444", "#3b82f6", "#22c55e", "#f59e0b", "#a855f7", "#ec4899", "#14b8a6", "#f97316"];
 
 function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: () => void }) {
+  const t = useTranslations("tournament");
+
+  const teamSchema = z.object({
+    name: z.string().min(1, t("teamManager.teamNameRequired")),
+    color: z.string(),
+  });
+
   const form = useForm({
     defaultValues: { name: "", color: COLORS[0] },
     validators: { onSubmit: teamSchema },
     onSubmit: async ({ value }) => {
       const res = await createTeamAction({ tournament_id: tournamentId, ...value });
       if (res?.error) toast.error(res.error);
-      else { toast.success("เพิ่มทีมแล้ว"); onDone(); }
+      else { toast.success(t("teamManager.toastTeamAdded")); onDone(); }
     },
   });
 
@@ -57,20 +53,20 @@ function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: (
           const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
           return (
             <Field data-invalid={isInvalid}>
-              <FieldLabel htmlFor={field.name}>ชื่อทีม *</FieldLabel>
+              <FieldLabel htmlFor={field.name}>{t("teamManager.fieldTeamName")}</FieldLabel>
               <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)} placeholder="เช่น ทีมแดง" />
+                onChange={(e) => field.handleChange(e.target.value)} placeholder={t("teamManager.placeholderTeamName")} />
               {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
             </Field>
           );
         }} />
         <form.Field name="color" children={(field) => (
           <Field>
-            <FieldLabel>สีทีม</FieldLabel>
+            <FieldLabel>{t("teamManager.fieldTeamColor")}</FieldLabel>
             <div className="flex gap-2 flex-wrap">
               {COLORS.map((c) => (
                 <button key={c} type="button"
-                  aria-label={`สี ${c}`}
+                  aria-label={t("teamManager.ariaColor", { color: c })}
                   aria-pressed={field.state.value === c}
                   className={`w-7 h-7 cursor-pointer rounded-full border-2 transition-all ${field.state.value === c ? "border-foreground scale-110" : "border-transparent"}`}
                   style={{ backgroundColor: c }}
@@ -83,16 +79,24 @@ function AddTeamForm({ tournamentId, onDone }: { tournamentId: string; onDone: (
       <div className="flex gap-2">
         <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
           {([can, sub]) => (
-            <Button type="submit" size="sm" disabled={!can || sub}>{sub && <Loader2 className="h-4 w-4 animate-spin" />}{sub ? "กำลังเพิ่ม..." : "เพิ่มทีม"}</Button>
+            <Button type="submit" size="sm" disabled={!can || sub}>{sub && <Loader2 className="h-4 w-4 animate-spin" />}{sub ? t("teamManager.btnAdding") : t("teamManager.btnAddTeam")}</Button>
           )}
         </form.Subscribe>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>ยกเลิก</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>{t("teamManager.btnCancel")}</Button>
       </div>
     </form>
   );
 }
 
 function AddMemberForm({ teamId, tournamentId, levels, onDone }: { teamId: string; tournamentId: string; levels: Level[]; onDone: () => void }) {
+  const t = useTranslations("tournament");
+
+  const memberSchema = z.object({
+    display_name: z.string().min(1, t("teamManager.memberNameRequired")),
+    role: z.enum(["captain", "member"]),
+    level_id: z.string(),
+  });
+
   const form = useForm({
     defaultValues: { display_name: "", role: "member" as "captain" | "member", level_id: NONE_SENTINEL },
     validators: { onSubmit: memberSchema },
@@ -100,7 +104,7 @@ function AddMemberForm({ teamId, tournamentId, levels, onDone }: { teamId: strin
       const level_id = value.level_id && value.level_id !== NONE_SENTINEL ? value.level_id : null;
       const res = await addTeamPlayerAction(teamId, { display_name: value.display_name, role: value.role, level_id }, tournamentId);
       if (res?.error) toast.error(res.error);
-      else { toast.success("เพิ่มสมาชิกแล้ว"); form.reset(); onDone(); }
+      else { toast.success(t("teamManager.toastMemberAdded")); form.reset(); onDone(); }
     },
   });
 
@@ -111,20 +115,20 @@ function AddMemberForm({ teamId, tournamentId, levels, onDone }: { teamId: strin
           const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
           return (
             <Field data-invalid={isInvalid}>
-              <FieldLabel htmlFor={field.name}>ชื่อสมาชิก *</FieldLabel>
+              <FieldLabel htmlFor={field.name}>{t("teamManager.fieldMemberName")}</FieldLabel>
               <Input id={field.name} value={field.state.value} onBlur={field.handleBlur}
-                onChange={(e) => field.handleChange(e.target.value)} placeholder="ชื่อ-นามสกุล" autoFocus />
+                onChange={(e) => field.handleChange(e.target.value)} placeholder={t("teamManager.placeholderMemberName")} autoFocus />
               {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
             </Field>
           );
         }} />
         <form.Field name="role" children={(field) => (
           <Field>
-            <FieldLabel>ตำแหน่ง</FieldLabel>
+            <FieldLabel>{t("teamManager.fieldRole")}</FieldLabel>
             <div className="flex gap-2">
               {([
-                { value: "member", label: "สมาชิก" },
-                { value: "captain", label: "หัวหน้าทีม" },
+                { value: "member", label: t("teamManager.roleMember") },
+                { value: "captain", label: t("teamManager.roleCaptain") },
               ] as const).map((opt) => (
                 <Button key={opt.value} type="button" size="sm"
                   variant={field.state.value === opt.value ? "default" : "outline"}
@@ -137,7 +141,7 @@ function AddMemberForm({ teamId, tournamentId, levels, onDone }: { teamId: strin
         )} />
         <form.Field name="level_id" children={(field) => (
           <Field>
-            <FieldLabel htmlFor={field.name}>ระดับฝีมือ</FieldLabel>
+            <FieldLabel htmlFor={field.name}>{t("teamManager.fieldLevel")}</FieldLabel>
             <Select
               value={field.state.value}
               onValueChange={(v) => field.handleChange(v ?? NONE_SENTINEL)}
@@ -145,13 +149,13 @@ function AddMemberForm({ teamId, tournamentId, levels, onDone }: { teamId: strin
               <SelectTrigger id={field.name} className="w-full">
                 <SelectValue>
                   {(v: string) => {
-                    if (!v || v === NONE_SENTINEL) return "— ไม่ระบุ —";
-                    return levels.find((l) => l.id === v)?.label ?? "— ไม่ระบุ —";
+                    if (!v || v === NONE_SENTINEL) return t("teamManager.levelNone");
+                    return levels.find((l) => l.id === v)?.label ?? t("teamManager.levelNone");
                   }}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NONE_SENTINEL}>— ไม่ระบุ —</SelectItem>
+                <SelectItem value={NONE_SENTINEL}>{t("teamManager.levelNone")}</SelectItem>
                 {levels.map((l) => (
                   <SelectItem key={l.id} value={l.id}>
                     {l.label} ({l.real})
@@ -165,10 +169,10 @@ function AddMemberForm({ teamId, tournamentId, levels, onDone }: { teamId: strin
       <div className="flex gap-2">
         <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
           {([can, sub]) => (
-            <Button type="submit" size="sm" disabled={!can || sub}>{sub && <Loader2 className="h-4 w-4 animate-spin" />}{sub ? "กำลังเพิ่ม..." : "เพิ่ม"}</Button>
+            <Button type="submit" size="sm" disabled={!can || sub}>{sub && <Loader2 className="h-4 w-4 animate-spin" />}{sub ? t("teamManager.btnAdding") : t("teamManager.btnAdd")}</Button>
           )}
         </form.Subscribe>
-        <Button type="button" size="sm" variant="ghost" onClick={onDone}>ยกเลิก</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onDone}>{t("teamManager.btnCancel")}</Button>
       </div>
     </form>
   );
@@ -181,6 +185,7 @@ function PlayerRow({ p, tournamentId, isOwner, levels, startRemove }: {
   levels: Level[];
   startRemove: (fn: () => Promise<void>) => void;
 }) {
+  const t = useTranslations("tournament");
   const levelById = new Map(levels.map((l) => [l.id, l.label]));
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(p.display_name);
@@ -198,7 +203,7 @@ function PlayerRow({ p, tournamentId, isOwner, levels, startRemove }: {
     const level_id = levelId && levelId !== NONE_SENTINEL ? levelId : null;
     const res = await updateTeamPlayerAction(p.id, { display_name: name, level_id }, tournamentId);
     if (res?.error) { toast.error(res.error); setName(p.display_name); setLevelId(p.level_id ?? NONE_SENTINEL); }
-    else toast.success("แก้ไขผู้เล่นแล้ว");
+    else toast.success(t("teamManager.toastPlayerEdited"));
     setEditing(false);
   });
 
@@ -208,7 +213,7 @@ function PlayerRow({ p, tournamentId, isOwner, levels, startRemove }: {
 
   return (
     <li className={`flex items-center gap-2 text-sm rounded px-1 py-0.5 ${isCheckedIn ? "bg-green-500/5 border border-green-500/30" : ""}`}>
-      {p.role === "captain" && <Badge className="text-xs px-1 py-0 shrink-0">หัวหน้า</Badge>}
+      {p.role === "captain" && <Badge className="text-xs px-1 py-0 shrink-0">{t("teamManager.badgeCaptain")}</Badge>}
       {editing ? (
         <>
           <Input value={name} onChange={(e) => setName(e.target.value)}
@@ -218,13 +223,13 @@ function PlayerRow({ p, tournamentId, isOwner, levels, startRemove }: {
             <SelectTrigger className="h-6 text-xs w-28 px-1.5">
               <SelectValue>
                 {(v: string) => {
-                  if (!v || v === NONE_SENTINEL) return "— ระดับ —";
-                  return levels.find((l) => l.id === v)?.label ?? "— ระดับ —";
+                  if (!v || v === NONE_SENTINEL) return t("teamManager.levelPlaceholder");
+                  return levels.find((l) => l.id === v)?.label ?? t("teamManager.levelPlaceholder");
                 }}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={NONE_SENTINEL}>— ไม่ระบุ —</SelectItem>
+              <SelectItem value={NONE_SENTINEL}>{t("teamManager.levelNone")}</SelectItem>
               {levels.map((l) => (
                 <SelectItem key={l.id} value={l.id}>
                   {l.label} ({l.real})
@@ -232,10 +237,10 @@ function PlayerRow({ p, tournamentId, isOwner, levels, startRemove }: {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label="บันทึก" disabled={editPending} onClick={save}>
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label={t("teamManager.ariaSave")} disabled={editPending} onClick={save}>
             {editPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
           </Button>
-          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label="ยกเลิก" disabled={editPending} onClick={cancel}><X className="h-3 w-3" /></Button>
+          <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" aria-label={t("teamManager.btnCancel")} disabled={editPending} onClick={cancel}><X className="h-3 w-3" /></Button>
         </>
       ) : (
         <>
@@ -244,22 +249,22 @@ function PlayerRow({ p, tournamentId, isOwner, levels, startRemove }: {
           {isOwner && (
             <Button variant={isCheckedIn ? "default" : "outline"} size="sm"
               className={`h-6 px-2 text-[10px] shrink-0 ${isCheckedIn ? "bg-green-600 hover:bg-green-700 text-white" : ""}`}
-              aria-label={isCheckedIn ? `ยกเลิกเช็คอิน ${name}` : `เช็คอิน ${name}`}
+              aria-label={isCheckedIn ? t("teamManager.ariaCancelCheckIn", { name }) : t("teamManager.ariaCheckIn", { name })}
               disabled={checkPending} onClick={toggleCheckIn}>
-              {checkPending ? <Loader2 className="h-3 w-3 animate-spin" /> : isCheckedIn ? <><UserCheck className="h-3 w-3 mr-1" />พร้อม</> : "เช็คอิน"}
+              {checkPending ? <Loader2 className="h-3 w-3 animate-spin" /> : isCheckedIn ? <><UserCheck className="h-3 w-3 mr-1" />{t("teamManager.btnReady")}</> : t("teamManager.btnCheckIn")}
             </Button>
           )}
           {isOwner && (
             <>
               <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-foreground"
-                aria-label="แก้ไข"
+                aria-label={t("teamManager.ariaEdit")}
                 onClick={() => setEditing(true)}><Pencil className="h-3 w-3" /></Button>
               <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-destructive hover:text-destructive"
-                aria-label="ลบผู้เล่น"
+                aria-label={t("teamManager.ariaRemovePlayer")}
                 onClick={() => startRemove(async () => {
                   const res = await removeTeamPlayerAction(p.id, tournamentId);
                   if (res?.error) toast.error(res.error);
-                  else toast.success("ลบผู้เล่นแล้ว");
+                  else toast.success(t("teamManager.toastPlayerRemoved"));
                 })}><UserMinus className="h-3 w-3" /></Button>
             </>
           )}
@@ -270,6 +275,7 @@ function PlayerRow({ p, tournamentId, isOwner, levels, startRemove }: {
 }
 
 function TeamCard({ team, tournamentId, isOwner, levels }: { team: TeamWithPlayers; tournamentId: string; isOwner: boolean; levels: Level[] }) {
+  const t = useTranslations("tournament");
   const [open, setOpen] = useState(false);
   const [addingMember, setAddingMember] = useState(false);
   const [delPending, startDel] = useTransition();
@@ -279,14 +285,14 @@ function TeamCard({ team, tournamentId, isOwner, levels }: { team: TeamWithPlaye
   const allCheckedIn = team.players.length > 0 && checkedInCount === team.players.length;
 
   const toggleBulk = () => {
-    // Capture intent at click time — `allCheckedIn` may shift between the
-    // async dispatch and resolution under realtime / cross-device updates.
     const intendCheckIn = !allCheckedIn;
     startBulk(async () => {
       const res = await bulkCheckInTeamAction({ teamId: team.id, tournamentId, checkIn: intendCheckIn });
       if (res?.error) { toast.error(res.error); return; }
-      if (res.noop) { toast.info(intendCheckIn ? "ทุกคนพร้อมอยู่แล้ว" : "ยังไม่มีคนพร้อม"); return; }
-      toast.success(intendCheckIn ? `เช็คอินทีม ${team.name} +${res.count} คน` : `ยกเลิกเช็คอินทีม ${team.name} -${res.count} คน`);
+      if (res.noop) { toast.info(intendCheckIn ? t("teamManager.toastBulkAllReady") : t("teamManager.toastBulkNoneReady")); return; }
+      toast.success(intendCheckIn
+        ? t("teamManager.toastBulkCheckIn", { name: team.name, count: res.count ?? 0 })
+        : t("teamManager.toastBulkCheckOut", { name: team.name, count: res.count ?? 0 }));
     });
   };
 
@@ -299,34 +305,34 @@ function TeamCard({ team, tournamentId, isOwner, levels }: { team: TeamWithPlaye
             <CardTitle className="text-sm truncate">
               <EntityLink entityType="team" entityId={team.id}>{team.name}</EntityLink>
             </CardTitle>
-            <Badge variant="outline" className="text-xs shrink-0">{team.players.length} คน</Badge>
+            <Badge variant="outline" className="text-xs shrink-0">{team.players.length}</Badge>
             {checkedInCount > 0 && (
               <Badge className={`text-xs shrink-0 ${allCheckedIn ? "bg-green-600 text-white" : "bg-green-500/15 text-green-700 dark:text-green-400"}`}>
-                {checkedInCount}/{team.players.length} พร้อม
+                {t("teamManager.badgeCheckedIn", { checked: checkedInCount, total: team.players.length })}
               </Badge>
             )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {isOwner && team.players.length > 0 && (
               <Button variant="ghost" size="icon" className="h-7 w-7"
-                aria-label={allCheckedIn ? `ยกเลิกเช็คอินทีม ${team.name}` : `เช็คอินทุกคนในทีม ${team.name}`}
+                aria-label={allCheckedIn ? t("teamManager.ariaBulkCheckOut", { name: team.name }) : t("teamManager.ariaBulkCheckIn", { name: team.name })}
                 disabled={bulkPending} onClick={toggleBulk}>
                 {bulkPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCheck className={`h-3.5 w-3.5 ${allCheckedIn ? "text-green-600" : "text-muted-foreground"}`} />}
               </Button>
             )}
             <Button variant="ghost" size="icon" className="h-7 w-7"
-              aria-label={open ? "เลื่อนขึ้น" : "เลื่อนลง"}
+              aria-label={open ? t("teamManager.ariaCollapse") : t("teamManager.ariaExpand")}
               onClick={() => { setOpen(!open); setAddingMember(false); }}>
               {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </Button>
             {isOwner && (
               <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive"
-                aria-label="ลบทีม"
+                aria-label={t("teamManager.ariaDeleteTeam")}
                 disabled={delPending}
                 onClick={() => startDel(async () => {
                   const res = await deleteTeamAction(team.id, tournamentId);
                   if (res?.error) toast.error(res.error);
-                  else toast.success("ลบทีมแล้ว");
+                  else toast.success(t("teamManager.toastTeamDeleted"));
                 })}>
                 {delPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
               </Button>
@@ -337,7 +343,7 @@ function TeamCard({ team, tournamentId, isOwner, levels }: { team: TeamWithPlaye
       {open && (
         <CardContent className="space-y-2">
           {team.players.length === 0 ? (
-            <p className="text-xs text-muted-foreground">ยังไม่มีสมาชิก</p>
+            <p className="text-xs text-muted-foreground">{t("teamManager.emptyMembers")}</p>
           ) : (
             <ul className="space-y-1">
               {[...team.players].sort((a, b) => (a.role === "captain" ? -1 : b.role === "captain" ? 1 : 0)).map((p) => (
@@ -348,9 +354,9 @@ function TeamCard({ team, tournamentId, isOwner, levels }: { team: TeamWithPlaye
 
           {isOwner && !addingMember && (
             <Button size="sm" variant="outline" className="w-full h-7 text-xs"
-              aria-label={`เพิ่มสมาชิกในทีม ${team.name}`}
+              aria-label={t("teamManager.ariaAddMember", { name: team.name })}
               onClick={() => setAddingMember(true)}>
-              <Plus className="h-3 w-3 mr-1" />เพิ่มสมาชิก
+              <Plus className="h-3 w-3 mr-1" />{t("teamManager.btnAddMember")}
             </Button>
           )}
 
@@ -375,18 +381,19 @@ export function TeamManager({ tournamentId, teams, isOwner, teamCount, levels }:
   teamCount: number;
   levels: Level[];
 }) {
+  const t = useTranslations("tournament");
   const [adding, setAdding] = useState(false);
   const [resetPending, startReset] = useTransition();
   const remaining = teamCount - teams.length;
-  const totalCheckedIn = teams.reduce((n, t) => n + t.players.filter((p) => p.checked_in_at).length, 0);
+  const totalCheckedIn = teams.reduce((n, tm) => n + tm.players.filter((p) => p.checked_in_at).length, 0);
 
   const resetAll = () => {
-    if (!confirm(`รีเซ็ตเช็คอินทุกทีมในทัวร์นี้? (${totalCheckedIn} คนปัจจุบัน)`)) return;
+    if (!confirm(t("teamManager.confirmReset", { count: totalCheckedIn }))) return;
     startReset(async () => {
       const res = await resetAllCheckInsAction(tournamentId);
       if (res?.error) toast.error(res.error);
-      else if (res.noop) toast.info("ไม่มีใครพร้อมอยู่ตอนนี้");
-      else toast.success(`รีเซ็ตเช็คอิน ${res.count} คน`);
+      else if (res.noop) toast.info(t("teamManager.toastResetNoOne"));
+      else toast.success(t("teamManager.toastResetDone", { count: res.count ?? 0 }));
     });
   };
 
@@ -394,10 +401,10 @@ export function TeamManager({ tournamentId, teams, isOwner, teamCount, levels }:
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="font-semibold">ทีม</h2>
+          <h2 className="font-semibold">{t("teamManager.sectionTeams")}</h2>
           <Badge variant="outline">{teams.length}/{teamCount}</Badge>
           {totalCheckedIn > 0 && (
-            <Badge className="bg-green-500/15 text-green-700 dark:text-green-400">{totalCheckedIn} พร้อม</Badge>
+            <Badge className="bg-green-500/15 text-green-700 dark:text-green-400">{t("teamManager.badgeTotalReady", { count: totalCheckedIn })}</Badge>
           )}
         </div>
         {isOwner && (
@@ -405,13 +412,13 @@ export function TeamManager({ tournamentId, teams, isOwner, teamCount, levels }:
             {totalCheckedIn > 0 && (
               <Button size="sm" variant="outline" disabled={resetPending} onClick={resetAll}>
                 {resetPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <RotateCcw className="h-4 w-4 mr-1" />}
-                รีเซ็ตเช็คอิน
+                {t("teamManager.btnResetCheckIn")}
               </Button>
             )}
             <CsvImportDialog tournamentId={tournamentId} onlyMode="players" />
             {remaining > 0 && !adding && (
               <Button size="sm" variant="outline" onClick={() => setAdding(true)}>
-                <Plus className="h-4 w-4 mr-1" />เพิ่มทีม
+                <Plus className="h-4 w-4 mr-1" />{t("teamManager.btnAddTeam")}
               </Button>
             )}
           </div>
@@ -419,12 +426,12 @@ export function TeamManager({ tournamentId, teams, isOwner, teamCount, levels }:
       </div>
 
       {teams.length === 0 && !adding && (
-        <p className="text-sm text-muted-foreground">ยังไม่มีทีม — กด "เพิ่มทีม" เพื่อเริ่ม</p>
+        <p className="text-sm text-muted-foreground">{t("teamManager.emptyTeams")}</p>
       )}
 
       <div className="grid gap-2 sm:grid-cols-2">
-        {teams.map((t) => (
-          <TeamCard key={t.id} team={t} tournamentId={tournamentId} isOwner={isOwner} levels={levels} />
+        {teams.map((tm) => (
+          <TeamCard key={tm.id} team={tm} tournamentId={tournamentId} isOwner={isOwner} levels={levels} />
         ))}
       </div>
 
@@ -437,7 +444,7 @@ export function TeamManager({ tournamentId, teams, isOwner, teamCount, levels }:
       )}
 
       {remaining <= 0 && isOwner && (
-        <p className="text-xs text-muted-foreground">ครบ {teamCount} ทีมแล้ว</p>
+        <p className="text-xs text-muted-foreground">{t("teamManager.badgeTeamsFull", { count: teamCount })}</p>
       )}
     </div>
   );

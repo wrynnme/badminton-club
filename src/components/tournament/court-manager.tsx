@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { toast } from "sonner";
 import { Plus, GripVertical, Trash2, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 import {
   DndContext,
   closestCenter,
@@ -37,6 +38,7 @@ type Props = {
 };
 
 export function CourtManager({ tournamentId, initialCourts }: Props) {
+  const t = useTranslations("tournament");
   const router = useRouter();
   const [courts, setCourts] = useState<string[]>(initialCourts);
   const [newName, setNewName] = useState("");
@@ -74,7 +76,7 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
           toast.error(res.error);
           setCourts(lastSavedRef.current);
         } else {
-          toast.success("บันทึกรายการสนามแล้ว");
+          toast.success(t("courtManager.toastSaved"));
           setCourts(res.courts);
           lastSavedRef.current = res.courts;
           router.refresh();
@@ -87,7 +89,7 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
     const name = newName.trim();
     if (!name) return;
     if (courts.includes(name)) {
-      toast.error("ชื่อสนามซ้ำ");
+      toast.error(t("courtManager.toastDuplicate"));
       return;
     }
     const next = [...courts, name];
@@ -117,13 +119,13 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          จัดการสนาม
+          {t("courtManager.title")}
           {savePending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
         {courts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">ยังไม่มีสนาม — เพิ่มได้ด้านล่าง</p>
+          <p className="text-sm text-muted-foreground">{t("courtManager.emptyCourts")}</p>
         ) : (
           <DndContext id="court-manager-dnd" sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={courts} strategy={verticalListSortingStrategy}>
@@ -141,7 +143,7 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-            placeholder="ชื่อสนาม เช่น สนาม 1"
+            placeholder={t("courtManager.placeholder")}
             maxLength={40}
             className="h-8 text-sm"
             disabled={savePending}
@@ -150,11 +152,11 @@ export function CourtManager({ tournamentId, initialCourts }: Props) {
             <TooltipTrigger
               render={
                 <Button size="sm" onClick={add} disabled={savePending || !newName.trim()}>
-                  <Plus className="h-3.5 w-3.5 mr-1" />เพิ่ม
+                  <Plus className="h-3.5 w-3.5 mr-1" />{t("courtManager.btnAdd")}
                 </Button>
               }
             />
-            <TooltipContent>เพิ่มสนามใหม่ในรายการ</TooltipContent>
+            <TooltipContent>{t("courtManager.tooltipAdd")}</TooltipContent>
           </Tooltip>
         </div>
       </CardContent>
@@ -171,6 +173,7 @@ function SortableCourtRow({
   onRemove: () => void;
   disabled: boolean;
 }) {
+  const t = useTranslations("tournament");
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: name });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -191,14 +194,14 @@ function SortableCourtRow({
               type="button"
               {...attributes}
               {...listeners}
-              aria-label="ลากเพื่อจัดลำดับ"
+              aria-label={t("courtManager.ariaGrip")}
               className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
             >
               <GripVertical className="h-4 w-4" />
             </button>
           }
         />
-        <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
+        <TooltipContent>{t("courtManager.tooltipGrip")}</TooltipContent>
       </Tooltip>
       <span className="flex-1 text-sm">{name}</span>
       <Tooltip>
@@ -207,7 +210,7 @@ function SortableCourtRow({
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label={`ลบ ${name}`}
+              aria-label={t("courtManager.ariaDelete", { name })}
               className="text-destructive hover:text-destructive"
               onClick={onRemove}
               disabled={disabled}
@@ -216,7 +219,7 @@ function SortableCourtRow({
             </Button>
           }
         />
-        <TooltipContent>ลบสนาม &quot;{name}&quot;</TooltipContent>
+        <TooltipContent>{t("courtManager.tooltipDelete", { name })}</TooltipContent>
       </Tooltip>
     </li>
   );

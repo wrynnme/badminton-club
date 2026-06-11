@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { UserMinus, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export function KickButton({
   playerId: string;
   playerName?: string;
 }) {
+  const t = useTranslations("club.kick");
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
 
@@ -37,13 +39,13 @@ export function KickButton({
       if (res && "error" in res) {
         toast.error(res.error);
       } else {
-        toast.success("ลบผู้เล่นออกจากก๊วนแล้ว");
+        toast.success(t("toastSuccess"));
         setOpen(false);
       }
     });
   }
 
-  const who = playerName ? `“${playerName}”` : "ผู้เล่นคนนี้";
+  const who = playerName ? `"${playerName}"` : t("defaultWho");
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -53,7 +55,7 @@ export function KickButton({
             variant="ghost"
             size="icon"
             className="h-7 w-7 text-destructive hover:text-destructive"
-            aria-label="ลบผู้เล่นออกจากก๊วน"
+            aria-label={t("ariaLabel")}
           >
             <UserMinus className="h-3.5 w-3.5" />
           </Button>
@@ -63,25 +65,25 @@ export function KickButton({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
-            ลบ {who} ออกจากก๊วน?
+            {t("dialogTitle", { who })}
           </DialogTitle>
-          <DialogDescription>การลบจะมีผลดังนี้:</DialogDescription>
+          <DialogDescription>{t("dialogDescription")}</DialogDescription>
         </DialogHeader>
 
         <ul className="text-sm text-muted-foreground space-y-1.5 list-disc pl-5">
-          <li>แมตช์ทั้งหมดที่ผู้เล่นนี้อยู่ (รอแข่ง / กำลังแข่ง / จบแล้ว) จะถูก<span className="text-foreground font-medium">ลบไปด้วย</span></li>
-          <li>ถ้าถูกล็อคคู่ไว้ คู่นั้นจะถูกปล่อยอัตโนมัติ</li>
-          <li>จะถูกถอดออกจากการหารค่าใช้จ่าย (ค่าสนาม / ค่าลูก / รายการที่ระบุชื่อ)</li>
-          <li>จำนวนเกมที่นับให้ผู้เล่นคนอื่นไปแล้วจะไม่เปลี่ยน</li>
+          <li>{t("bullet1")}<span className="text-foreground font-medium">{t("bullet1Emph")}</span></li>
+          <li>{t("bullet2")}</li>
+          <li>{t("bullet3")}</li>
+          <li>{t("bullet4")}</li>
         </ul>
-        <p className="text-sm font-medium text-destructive">ลบถาวร — ย้อนกลับไม่ได้</p>
+        <p className="text-sm font-medium text-destructive">{t("permanent")}</p>
 
         <DialogFooter>
           <DialogClose
-            render={<Button variant="outline" disabled={pending}>ยกเลิก</Button>}
+            render={<Button variant="outline" disabled={pending}>{t("cancel")}</Button>}
           />
           <Button variant="destructive" onClick={handleConfirm} disabled={pending}>
-            {pending ? "กำลังลบ…" : "ลบผู้เล่น"}
+            {pending ? t("deleting") : t("confirm")}
           </Button>
         </DialogFooter>
       </DialogContent>
