@@ -57,7 +57,7 @@ export function UserMenu({
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-56 p-1">
+      <PopoverContent align="end" className="w-56 gap-0.5 p-1">
         {items.map(({ href, label, icon: Icon }, i) => (
           <Link
             key={i}
@@ -73,7 +73,7 @@ export function UserMenu({
 
         <div className="flex items-center justify-between gap-2 rounded-md px-2 py-0.5">
           <span className="text-sm text-muted-foreground">{t("theme")}</span>
-          <ThemeToggle />
+          <ThemeToggle className="size-7" iconClassName="h-3.5 w-3.5" />
         </div>
         <div className="flex items-center justify-between gap-2 rounded-md px-2 py-0.5">
           <span className="text-sm text-muted-foreground">{t("language")}</span>
