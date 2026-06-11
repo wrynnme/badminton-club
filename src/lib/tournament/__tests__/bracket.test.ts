@@ -6,6 +6,7 @@ import {
   roundLabel,
   lowerRoundLabel,
   selectBracketFillers,
+  standingsToFillers,
 } from "../bracket";
 import type { BracketEntry, BracketMatchDef, BracketFiller } from "../bracket";
 
@@ -366,5 +367,88 @@ describe("selectBracketFillers (T2 — best Nth place)", () => {
     const copy = [...rest];
     selectBracketFillers(rest, 2);
     expect(rest).toEqual(copy);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// standingsToFillers
+// ---------------------------------------------------------------------------
+describe("standingsToFillers", () => {
+  // Helper: build a minimal standings row accepted by standingsToFillers.
+  function row(
+    competitorId: string,
+    leaguePoints: number,
+    pointDiff: number,
+    pointsFor: number,
+  ) {
+    return { competitorId, leaguePoints, pointDiff, pointsFor };
+  }
+
+  const nameOf = (id: string) => `Name:${id}`;
+
+  it("(a) maps all fields correctly for a single row", () => {
+    const result = standingsToFillers([row("pair-1", 6, 12, 48)], 3, nameOf);
+    expect(result).toHaveLength(1);
+    const filler = result[0];
+    expect(filler.teamId).toBe("pair-1");
+    expect(filler.name).toBe("Name:pair-1");
+    expect(filler.groupRank).toBe(3);        // startRank + 0
+    expect(filler.pts).toBe(6);              // leaguePoints
+    expect(filler.diff).toBe(12);            // pointDiff
+    expect(filler.pf).toBe(48);              // pointsFor
+  });
+
+  it("(a) groupRank increments by index across multiple rows", () => {
+    const rows = [
+      row("p1", 6, 5, 40),
+      row("p2", 3, 0, 30),
+      row("p3", 0, -5, 20),
+    ];
+    const result = standingsToFillers(rows, 3, nameOf);
+    expect(result.map((r) => r.groupRank)).toEqual([3, 4, 5]);
+  });
+
+  it("(b) empty input → empty output", () => {
+    expect(standingsToFillers([], 3, nameOf)).toEqual([]);
+  });
+
+  it("(b) does not mutate the input array", () => {
+    const rows = [row("p1", 6, 5, 40), row("p2", 3, 0, 30)];
+    const copy = rows.map((r) => ({ ...r }));
+    standingsToFillers(rows, 3, nameOf);
+    expect(rows).toEqual(copy);
+  });
+
+  it("(c) integration: cross-group best-3rd pick — groupRank dominates pts", () => {
+    // Group A: 3rd-placer (rank 3, low pts)
+    // Group B: 3rd-placer (rank 3, high pts)
+    // Group A: 4th-placer (rank 4, very high pts) — must NOT beat any 3rd-placer
+    // advance_count = 2, so startRank = 3
+    const groupA_rest = standingsToFillers(
+      [row("A3", 1, -2, 20), row("A4", 9, 8, 60)],
+      3,
+      nameOf,
+    );
+    const groupB_rest = standingsToFillers(
+      [row("B3", 6, 5, 50), row("B4", 4, 2, 35)],
+      3,
+      nameOf,
+    );
+
+    const allRest = [...groupA_rest, ...groupB_rest];
+    // need = nextPowerOf2(4) - 4 = 0 if we had 4 seeds, but suppose we need 1 filler:
+    // pick the best single filler — B3 (rank 3, pts 6) beats A3 (rank 3, pts 1);
+    // A4 and B4 (rank 4) both lose to any rank-3 entry.
+    const picked1 = selectBracketFillers(allRest, 1);
+    expect(picked1[0].teamId).toBe("B3");
+
+    // pick 2: B3 then A3 (both rank-3), A4/B4 rank-4 still excluded
+    const picked2 = selectBracketFillers(allRest, 2);
+    expect(picked2.map((x) => x.teamId)).toEqual(["B3", "A3"]);
+
+    // pick 3: adds best rank-4 (B4, pts 4 > A4 pts… wait A4 has pts 9 > B4 pts 4)
+    // groupRank 4 tie broken by pts: A4 (pts 9) > B4 (pts 4)
+    const picked3 = selectBracketFillers(allRest, 3);
+    expect(picked3.map((x) => x.teamId)).toEqual(["B3", "A3", "A4"]);
   });
 });

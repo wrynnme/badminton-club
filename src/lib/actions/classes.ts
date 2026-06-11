@@ -9,10 +9,11 @@ import { assertIsOwner, assertCanEdit } from "@/lib/tournament/permissions";
 import { writeAuditLog } from "@/lib/tournament/audit";
 import { generateAllPairMatches } from "@/lib/tournament/scheduling";
 import { computeStandings } from "@/lib/tournament/scoring";
-import { buildBracket, buildDoubleBracket, nextPowerOf2 } from "@/lib/tournament/bracket";
-import type { BracketEntry, BracketMatchDef } from "@/lib/tournament/bracket";
+import { buildBracket, buildDoubleBracket, nextPowerOf2, selectBracketFillers, standingsToFillers } from "@/lib/tournament/bracket";
+import type { BracketEntry, BracketMatchDef, BracketFiller } from "@/lib/tournament/bracket";
 import type { Match, TournamentFormat } from "@/lib/types";
 import { balancedTeamGroupAssignment } from "@/lib/tournament/class-grouping";
+import { getTournamentSettings } from "@/lib/tournament/settings.server";
 
 // ============ ASSUMPTIONS ============
 // 1. Group membership (which pairs are in which group) is NOT stored in a junction
@@ -844,6 +845,17 @@ export async function generateKnockoutForClassAction(
     }
 
     const seeds: Seed[] = [];
+    // T2 (class mode): collect non-advancing pairs cross-group for best-Nth-place fill.
+    // No independent-lower path exists for class group_knockout — has_lower_bracket
+    // always uses buildDoubleBracket (not buildIndependentDoubleBracket, which is
+    // team-mode-only and private to matches.ts). So no independentLower guard is needed.
+    const restFillers: BracketFiller[] = [];
+
+    function nameOf(id: string): string {
+      const p = pairById.get(id);
+      return p ? pairSeed(p).name : id.slice(0, 6);
+    }
+
     for (const [groupId, pairIdSet] of groupPairMap) {
       const gMatches = groupMatches.filter((m) => m.group_id === groupId);
       const standings = computeStandings(gMatches, "pair", [...pairIdSet]);
@@ -852,9 +864,22 @@ export async function generateKnockoutForClassAction(
         const p = pairById.get(row.competitorId);
         if (p) seeds.push(pairSeed(p));
       }
+      // Collect rest rows for potential bye-fill.
+      const restRows = standings.slice(advanceCount);
+      restFillers.push(...standingsToFillers(restRows, advanceCount + 1, nameOf));
     }
 
     if (seeds.length < 2) return { error: "คู่ที่ผ่านรอบมีไม่ถึง 2 คู่" };
+
+    // T2 — knockout_fill_byes (class mode): same flag, same helper as team mode.
+    // When flag is OFF or need is 0 this block is a no-op → byte-identical to before.
+    const classSettings = await getTournamentSettings(tournamentId);
+    if (classSettings.knockout_fill_byes) {
+      const need = nextPowerOf2(seeds.length) - seeds.length;
+      for (const f of selectBracketFillers(restFillers, need)) {
+        seeds.push({ teamId: f.teamId, name: f.name });
+      }
+    }
 
     const bracketSize = nextPowerOf2(seeds.length);
     allMatches = classRow.has_lower_bracket

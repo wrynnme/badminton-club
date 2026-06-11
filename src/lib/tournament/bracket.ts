@@ -30,6 +30,37 @@ export function selectBracketFillers(rest: BracketFiller[], need: number): Brack
     .slice(0, need);
 }
 
+/**
+ * Map a group's non-advancing standings rows into `BracketFiller[]` for use
+ * with `selectBracketFillers`. Accepts a structural row type (not a hard-imported
+ * `StandingRow`) to keep this file free of a scoring.ts dependency.
+ *
+ * @param restRows    Standings rows for the pairs that did NOT advance (in order).
+ * @param startRank   1-based finishing rank of the first rest row (= advanceCount + 1).
+ * @param nameOf      Resolver: competitorId → display name.
+ *
+ * Pure — no DB, no mutation of inputs.
+ */
+export function standingsToFillers(
+  restRows: {
+    competitorId: string;
+    leaguePoints: number;
+    pointDiff: number;
+    pointsFor: number;
+  }[],
+  startRank: number,
+  nameOf: (competitorId: string) => string,
+): BracketFiller[] {
+  return restRows.map((row, i) => ({
+    teamId: row.competitorId,
+    name: nameOf(row.competitorId),
+    groupRank: startRank + i,
+    pts: row.leaguePoints,
+    diff: row.pointDiff,
+    pf: row.pointsFor,
+  }));
+}
+
 export type BracketEntry = {
   teamId: string | null;
   label: string;
