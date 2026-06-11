@@ -11,12 +11,15 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { LocaleSwitcher } from "@/components/locale-switcher";
 
 /**
  * Desktop account dropdown anchored to the avatar + name in SiteHeader.
  * Built on the same Popover primitive the mobile nav uses (no extra dep).
- * Session data is passed as plain props so SiteHeader stays a server component.
- * Logout is a native <form> POST so it works without client JS.
+ * Also hosts the theme + language toggles (kept inline in the nav only for
+ * anonymous visitors, who have no dropdown). Session data is passed as plain
+ * props so SiteHeader stays a server component. Logout is a native <form> POST.
  */
 export function UserMenu({
   displayName,
@@ -40,7 +43,10 @@ export function UserMenu({
     <Popover>
       <PopoverTrigger
         render={
-          <Button variant="ghost" size="sm" className="flex items-center gap-2 px-1.5">
+          <Button
+            variant="ghost"
+            className="flex h-auto items-center gap-2 rounded-full py-1 pl-1 pr-2.5"
+          >
             <Avatar className="h-7 w-7">
               {pictureUrl && <AvatarImage src={pictureUrl} />}
               <AvatarFallback>{displayName.slice(0, 1)}</AvatarFallback>
@@ -51,22 +57,35 @@ export function UserMenu({
           </Button>
         }
       />
-      <PopoverContent align="end" className="w-52 p-1">
+      <PopoverContent align="end" className="w-56 p-1">
         {items.map(({ href, label, icon: Icon }, i) => (
           <Link
             key={i}
             href={href}
-            className="flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-accent"
+            className="flex items-center gap-2 rounded-md px-2 py-1 text-sm transition-colors hover:bg-accent"
           >
             <Icon className="h-4 w-4 text-muted-foreground" />
             {label}
           </Link>
         ))}
-        <div className="my-1 h-px bg-border" />
+
+        <div className="my-0.5 h-px bg-border" />
+
+        <div className="flex items-center justify-between gap-2 rounded-md px-2 py-0.5">
+          <span className="text-sm text-muted-foreground">{t("theme")}</span>
+          <ThemeToggle />
+        </div>
+        <div className="flex items-center justify-between gap-2 rounded-md px-2 py-0.5">
+          <span className="text-sm text-muted-foreground">{t("language")}</span>
+          <LocaleSwitcher />
+        </div>
+
+        <div className="my-0.5 h-px bg-border" />
+
         <form action="/api/auth/logout" method="post">
           <button
             type="submit"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-destructive transition-colors hover:bg-accent"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-sm text-destructive transition-colors hover:bg-accent"
           >
             <LogOut className="h-4 w-4" />
             {t("logout")}

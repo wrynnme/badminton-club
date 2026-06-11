@@ -22,8 +22,6 @@ export async function SiteHeader() {
           </Badge>
         </Link>
         <nav className="hidden sm:flex items-center gap-2">
-          <LocaleSwitcher />
-          <ThemeToggle />
           <Link href="/clubs">
             <Button variant="ghost" size="sm">{t("clubs")}</Button>
           </Link>
@@ -44,9 +42,13 @@ export async function SiteHeader() {
               />
             </>
           ) : (
-            <Link href="/">
-              <Button size="sm">{t("login")}</Button>
-            </Link>
+            <>
+              <LocaleSwitcher />
+              <ThemeToggle />
+              <Link href="/">
+                <Button size="sm">{t("login")}</Button>
+              </Link>
+            </>
           )}
         </nav>
         <div className="flex sm:hidden items-center gap-1">
