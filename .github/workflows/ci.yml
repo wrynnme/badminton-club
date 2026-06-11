@@ -1,0 +1,47 @@
+name: CI
+
+# รัน typecheck + unit tests + production build ต่อทุก PR และทุก push เข้า master/develop
+# แทนการรันมือทุกครั้ง (tsc --noEmit · vitest run · next build)
+on:
+  pull_request:
+    branches: [master, develop]
+  push:
+    branches: [master, develop]
+
+# PR ที่ push ซ้ำ → ยกเลิก run เก่าของ ref เดียวกัน (ประหยัด CI minutes)
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # next build อ่าน env เฉพาะตอน request (ทุกหน้าเป็น dynamic) ไม่ใช่ตอน build
+      # → ใส่ placeholder ที่ format ถูกต้องพอให้ build ผ่าน โดยไม่ต้องใช้ secret จริง
+      # (verify แล้วว่า build เขียวด้วยค่าเหล่านี้ — ไม่มีการอ่าน env ระดับ module top-level)
+      - name: Production build
+        run: npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+          SUPABASE_SERVICE_ROLE_KEY: ci_placeholder_service_role_key
+          SESSION_SECRET: ci-placeholder-session-secret-not-used-at-runtime
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
