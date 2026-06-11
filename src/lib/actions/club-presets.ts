@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import {
@@ -50,7 +51,8 @@ export async function listClubPresetsAction(): Promise<
 > {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE เพื่อใช้งานพรีเซ็ต" };
+  const t = await getTranslations("actions");
+  if (session.isGuest) return { error: t("club.requireLineForPreset") };
 
   const sb = await createAdminClient();
   const { data, error } = await sb
@@ -80,18 +82,19 @@ export async function createClubPresetAction(input: {
 }): Promise<{ id: string } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้างพรีเซ็ต" };
+  const t = await getTranslations("actions");
+  if (session.isGuest) return { error: t("club.requireLineForPresetCreate") };
 
-  const nameResult = z.string().min(2, "ชื่อพรีเซ็ตสั้นไป").safeParse(input.name);
+  const nameResult = z.string().min(2, t("club.presetNameTooShort")).safeParse(input.name);
   if (!nameResult.success) {
-    return { error: nameResult.error.issues[0]?.message ?? "ชื่อไม่ถูกต้อง" };
+    return { error: nameResult.error.issues[0]?.message ?? t("club.invalidName") };
   }
 
   let parsedConfig: ClubPresetConfig;
   try {
     parsedConfig = ClubPresetConfigSchema.parse(input.config);
   } catch {
-    return { error: "ข้อมูลการตั้งค่าไม่ถูกต้อง" };
+    return { error: t("club.invalidConfigData") };
   }
 
   const sb = await createAdminClient();
@@ -101,7 +104,7 @@ export async function createClubPresetAction(input: {
     .select("id")
     .single();
 
-  if (error || !data) return { error: error?.message ?? "สร้างพรีเซ็ตไม่สำเร็จ" };
+  if (error || !data) return { error: error?.message ?? t("club.createPresetFailed") };
 
   revalidatePath("/clubs");
   return { id: data.id as string };
@@ -115,19 +118,20 @@ export async function updateClubPresetAction(
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE เพื่อแก้ไขพรีเซ็ต" };
+  const t = await getTranslations("actions");
+  if (session.isGuest) return { error: t("club.requireLineForPresetEdit") };
 
   const sb = await createAdminClient();
   if (!(await assertPresetOwner(sb, presetId, session.profileId))) {
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
   }
 
   const patch: Record<string, unknown> = {};
 
   if (input.name !== undefined) {
-    const nameResult = z.string().min(2, "ชื่อพรีเซ็ตสั้นไป").safeParse(input.name);
+    const nameResult = z.string().min(2, t("club.presetNameTooShort")).safeParse(input.name);
     if (!nameResult.success) {
-      return { error: nameResult.error.issues[0]?.message ?? "ชื่อไม่ถูกต้อง" };
+      return { error: nameResult.error.issues[0]?.message ?? t("club.invalidName") };
     }
     patch.name = nameResult.data;
   }
@@ -136,7 +140,7 @@ export async function updateClubPresetAction(
     try {
       patch.config = ClubPresetConfigSchema.parse(input.config);
     } catch {
-      return { error: "ข้อมูลการตั้งค่าไม่ถูกต้อง" };
+      return { error: t("club.invalidConfigData") };
     }
   }
 
@@ -156,11 +160,12 @@ export async function deleteClubPresetAction(
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE เพื่อลบพรีเซ็ต" };
+  const t = await getTranslations("actions");
+  if (session.isGuest) return { error: t("club.requireLineForPresetDelete") };
 
   const sb = await createAdminClient();
   if (!(await assertPresetOwner(sb, presetId, session.profileId))) {
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
   }
 
   const { error } = await sb.from("club_presets").delete().eq("id", presetId);
@@ -189,11 +194,12 @@ export async function applyClubPresetAction(
 ): Promise<{ clubId: string } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE เพื่อใช้งานพรีเซ็ต" };
+  const t = await getTranslations("actions");
+  if (session.isGuest) return { error: t("club.requireLineForPreset") };
 
   const sb = await createAdminClient();
   if (!(await assertPresetOwner(sb, presetId, session.profileId))) {
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
   }
 
   // Load + parse preset
@@ -202,7 +208,7 @@ export async function applyClubPresetAction(
     .select("name, config")
     .eq("id", presetId)
     .single();
-  if (presetErr || !presetRow) return { error: "ไม่พบพรีเซ็ต" };
+  if (presetErr || !presetRow) return { error: t("club.presetNotFound") };
 
   const config = parsePresetConfig(presetRow.config);
 
@@ -239,7 +245,7 @@ export async function applyClubPresetAction(
     .select("id")
     .single();
 
-  if (clubErr || !clubData) return { error: clubErr?.message ?? "สร้างก๊วนไม่สำเร็จ" };
+  if (clubErr || !clubData) return { error: clubErr?.message ?? t("club.createClubFailed") };
 
   const clubId = clubData.id as string;
 

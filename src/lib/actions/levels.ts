@@ -2,15 +2,20 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import type { Level } from "@/lib/types";
 
-const LevelSchema = z.object({
-  real: z.coerce.number().min(0).max(100),
-  label: z.string().trim().min(1, "ระบุชื่อระดับ").max(20),
-  sort_order: z.coerce.number().int().min(0).max(10_000).optional(),
-});
+function levelSchema(labelRequiredMsg: string) {
+  return z.object({
+    real: z.coerce.number().min(0).max(100),
+    label: z.string().trim().min(1, labelRequiredMsg).max(20),
+    sort_order: z.coerce.number().int().min(0).max(10_000).optional(),
+  });
+}
+// Static fallback for type inference only; call sites pass translated messages.
+const LevelSchema = levelSchema("label_required");
 
 /** Public read — levels list ordered for display. */
 export async function getLevelsAction(): Promise<Level[]> {
@@ -30,10 +35,11 @@ export async function createLevelAction(input: {
   sort_order?: number;
 }): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
-  if (!session || session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE" };
+  const t = await getTranslations("actions");
+  if (!session || session.isGuest) return { error: t("club.requireLine") };
 
-  const parsed = LevelSchema.safeParse(input);
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  const parsed = levelSchema(t("club.levelNameRequired")).safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
 
   const sb = await createAdminClient();
   const { error } = await sb.from("levels").insert({
@@ -42,7 +48,7 @@ export async function createLevelAction(input: {
     sort_order: parsed.data.sort_order ?? Math.round(parsed.data.real * 10),
   });
   if (error) {
-    if (error.code === "23505") return { error: "ระดับนี้ (real หรือ label) มีอยู่แล้ว" };
+    if (error.code === "23505") return { error: t("club.levelAlreadyExists") };
     return { error: error.message };
   }
   revalidatePath("/clubs", "layout");
@@ -57,10 +63,11 @@ export async function updateLevelAction(input: {
   sort_order?: number;
 }): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
-  if (!session || session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE" };
+  const t = await getTranslations("actions");
+  if (!session || session.isGuest) return { error: t("club.requireLine") };
 
-  const parsed = LevelSchema.safeParse(input);
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  const parsed = levelSchema(t("club.levelNameRequired")).safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
 
   const sb = await createAdminClient();
   const { error } = await sb
@@ -72,7 +79,7 @@ export async function updateLevelAction(input: {
     })
     .eq("id", input.id);
   if (error) {
-    if (error.code === "23505") return { error: "ระดับนี้ (real หรือ label) มีอยู่แล้ว" };
+    if (error.code === "23505") return { error: t("club.levelAlreadyExists") };
     return { error: error.message };
   }
   revalidatePath("/clubs", "layout");
@@ -84,7 +91,8 @@ export async function deleteLevelAction(
   id: string,
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
-  if (!session || session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE" };
+  const t = await getTranslations("actions");
+  if (!session || session.isGuest) return { error: t("club.requireLine") };
 
   const sb = await createAdminClient();
   const { error } = await sb.from("levels").delete().eq("id", id);

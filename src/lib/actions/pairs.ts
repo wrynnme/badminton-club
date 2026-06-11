@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { assertCanEdit } from "@/lib/tournament/permissions";
@@ -30,10 +31,11 @@ export async function createPairAction(input: {
 }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
   const tournamentId = await tournamentIdOfTeam(input.teamId);
-  if (!tournamentId) return { error: "ไม่พบทีม" };
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!tournamentId) return { error: t("tournament.teamNotFound") };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
 
@@ -45,14 +47,14 @@ export async function createPairAction(input: {
       .eq("id", input.classId)
       .eq("tournament_id", tournamentId)
       .maybeSingle();
-    if (!cls) return { error: "ไม่พบ class นี้ในรายการแข่ง" };
+    if (!cls) return { error: t("tournament.classNotFound") };
   }
 
   // Verify both players belong to this team + get level embeds for auto-compute
   const { data: players } = await sb
     .from("team_players").select("id, team_id, level_id, levels:level_id(real)").in("id", input.playerIds);
   if (!players || players.length !== 2 || players.some((p) => p.team_id !== input.teamId)) {
-    return { error: "ผู้เล่นไม่ได้อยู่ในทีมนี้" };
+    return { error: t("tournament.playersNotInTeam") };
   }
 
   // Check neither player is already in a pair in this team
@@ -61,7 +63,7 @@ export async function createPairAction(input: {
     .select("id")
     .eq("team_id", input.teamId)
     .or(`player_id_1.eq.${input.playerIds[0]},player_id_2.eq.${input.playerIds[0]},player_id_1.eq.${input.playerIds[1]},player_id_2.eq.${input.playerIds[1]}`);
-  if (existing?.length) return { error: "ผู้เล่นบางคนถูกจับคู่ไว้แล้ว" };
+  if (existing?.length) return { error: t("tournament.playerAlreadyPaired") };
 
   const p1data = players.find((p) => p.id === input.playerIds[0]);
   const p2data = players.find((p) => p.id === input.playerIds[1]);
@@ -77,7 +79,7 @@ export async function createPairAction(input: {
     ),
     class_id: input.classId || null,
   });
-  if (error) return { error: "สร้างคู่ไม่สำเร็จ" };
+  if (error) return { error: t("tournament.createPairFailed") };
 
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
@@ -94,6 +96,7 @@ export async function createPairAction(input: {
 export async function deletePairAction(pairId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
   const sb = await createAdminClient();
   const { data: pair } = await sb
@@ -102,12 +105,12 @@ export async function deletePairAction(pairId: string) {
     .eq("id", pairId)
     .single();
 
-  if (!pair) return { error: "ไม่พบคู่" };
+  if (!pair) return { error: t("tournament.pairNotFound") };
   const tournamentId = (pair.teams as unknown as { tournament_id: string }).tournament_id;
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const { error: deleteError } = await sb.from("pairs").delete().eq("id", pairId);
-  if (deleteError) return { error: "ลบคู่ไม่สำเร็จ" };
+  if (deleteError) return { error: t("tournament.deletePairFailed") };
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
     tournament_id: tournamentId,

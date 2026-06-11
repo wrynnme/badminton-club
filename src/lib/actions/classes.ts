@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { assertIsOwner, assertCanEdit } from "@/lib/tournament/permissions";
@@ -132,7 +133,8 @@ export async function createClassAction(
 ): Promise<{ ok: true; classId: string } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: t("class.noPermission") };
 
   const sb = await createAdminClient();
 
@@ -165,9 +167,9 @@ export async function createClassAction(
     .single();
 
   if (error) {
-    if (error.code === "23505") return { error: `รหัส class "${input.code}" ซ้ำใน tournament นี้` };
+    if (error.code === "23505") return { error: t("class.codeDuplicate", { code: input.code }) };
     console.error("[createClassAction]", error);
-    return { error: "สร้าง class ไม่สำเร็จ" };
+    return { error: t("class.createFailed") };
   }
 
   await writeAuditLog({
@@ -190,13 +192,14 @@ export async function updateClassAction(
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
   const sb = await createAdminClient();
 
   const tournamentId = await getClassTournamentId(sb, classId);
-  if (!tournamentId) return { error: "ไม่พบ class" };
+  if (!tournamentId) return { error: t("class.notFound") };
 
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: t("class.noPermission") };
 
   // Only include fields present in the patch to avoid overwriting with undefined.
   const update: Record<string, unknown> = {};
@@ -218,9 +221,9 @@ export async function updateClassAction(
     .eq("id", classId);
 
   if (error) {
-    if (error.code === "23505") return { error: "รหัส class ซ้ำ — ใช้รหัสอื่น" };
+    if (error.code === "23505") return { error: t("class.codeDuplicateGeneric") };
     console.error("[updateClassAction]", error);
-    return { error: "อัปเดต class ไม่สำเร็จ" };
+    return { error: t("class.updateFailed") };
   }
 
   const changedKeys = Object.keys(update).join(", ");
@@ -243,6 +246,7 @@ export async function deleteClassAction(
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
   const sb = await createAdminClient();
 
@@ -251,10 +255,10 @@ export async function deleteClassAction(
     .select("id, tournament_id, code, name")
     .eq("id", classId)
     .maybeSingle();
-  if (!classRow) return { error: "ไม่พบ class" };
+  if (!classRow) return { error: t("class.notFound") };
 
   const { tournament_id: tournamentId } = classRow;
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: t("class.noPermission") };
 
   // Guard: refuse if any completed OR in-progress match exists for this class.
   // matches.class_id is ON DELETE CASCADE, so deleting a class with a live game on
@@ -268,11 +272,11 @@ export async function deleteClassAction(
 
   if (countErr) {
     console.error("[deleteClassAction] count check:", countErr);
-    return { error: "ตรวจสอบแมตช์ไม่สำเร็จ" };
+    return { error: t("class.matchCheckFailed") };
   }
 
   if ((liveCount ?? 0) > 0) {
-    return { error: "ลบไม่ได้ — มีแมตช์ที่จบแล้วหรือกำลังแข่งใน class นี้" };
+    return { error: t("class.deleteBlockedLiveMatches") };
   }
 
   // FK CASCADE on groups + matches; SET NULL on pairs — all handled by DB.
@@ -283,7 +287,7 @@ export async function deleteClassAction(
 
   if (deleteErr) {
     console.error("[deleteClassAction]", deleteErr);
-    return { error: "ลบ class ไม่สำเร็จ" };
+    return { error: t("class.deleteFailed") };
   }
 
   await writeAuditLog({
@@ -306,7 +310,8 @@ export async function reorderClassesAction(
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: t("class.noPermission") };
   if (orderedIds.length === 0) return { ok: true };
 
   const sb = await createAdminClient();
@@ -325,7 +330,7 @@ export async function reorderClassesAction(
   for (const { error } of results) {
     if (error) {
       console.error("[reorderClassesAction]", error);
-      return { error: "บันทึกลำดับ class ไม่สำเร็จ" };
+      return { error: t("class.reorderFailed") };
     }
   }
 
@@ -355,26 +360,27 @@ export async function upgradeToCompetitionAction(
 ): Promise<{ ok: true; classId: string } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: t("class.noPermission") };
 
   const sb = await createAdminClient();
 
-  const { data: t } = await sb
+  const { data: tournament } = await sb
     .from("tournaments")
     .select("mode, match_unit, format, advance_count, has_lower_bracket, allow_drop_to_lower, settings")
     .eq("id", tournamentId)
     .maybeSingle();
-  if (!t) return { error: "ไม่พบรายการแข่ง" };
-  if (t.mode === "competition") return { error: "อยู่ในโหมด competition อยู่แล้ว" };
+  if (!tournament) return { error: t("class.tournamentNotFound") };
+  if (tournament.mode === "competition") return { error: t("class.alreadyCompetition") };
   // Competition mode is pair-based — class generation seeds from `pairs`. A
   // team-mode tournament has no pairs, so upgrading would create an empty MAIN
   // class + orphan its team matches with no downgrade path. Block it.
-  if (t.match_unit !== "pair") {
-    return { error: "อัปเกรดเป็น competition ได้เฉพาะรายการแบบคู่ (pair) เท่านั้น" };
+  if (tournament.match_unit !== "pair") {
+    return { error: t("class.upgradePairOnly") };
   }
 
   const VALID_MF = ["fixed_2", "best_of_3", "best_of_5"];
-  const dmf = (t.settings as { default_match_format?: string } | null)?.default_match_format;
+  const dmf = (tournament.settings as { default_match_format?: string } | null)?.default_match_format;
   const matchFormat = dmf && VALID_MF.includes(dmf) ? dmf : "best_of_3";
 
   // Find-or-create the default class. A prior partial upgrade may have already
@@ -394,10 +400,10 @@ export async function upgradeToCompetitionAction(
         code: "MAIN",
         name: "ทั่วไป",
         pairs_per_group: 4,
-        format: t.format,
-        advance_count: t.advance_count ?? 2,
-        has_lower_bracket: t.has_lower_bracket ?? false,
-        allow_drop_to_lower: t.allow_drop_to_lower ?? false,
+        format: tournament.format,
+        advance_count: tournament.advance_count ?? 2,
+        has_lower_bracket: tournament.has_lower_bracket ?? false,
+        allow_drop_to_lower: tournament.allow_drop_to_lower ?? false,
         match_format: matchFormat,
         position: 0,
       })
@@ -405,7 +411,7 @@ export async function upgradeToCompetitionAction(
       .single();
     if (clsErr || !cls) {
       console.error("[upgradeToCompetitionAction] class", clsErr);
-      return { error: "สร้าง class เริ่มต้นไม่สำเร็จ" };
+      return { error: t("class.createDefaultFailed") };
     }
     classId = cls.id;
   }
@@ -427,14 +433,14 @@ export async function upgradeToCompetitionAction(
   // orphan the unassigned children out of every class with no way back.
   if (gErr || mErr || pErr) {
     console.error("[upgradeToCompetitionAction] migrate", gErr ?? mErr ?? pErr);
-    return { error: "ย้ายข้อมูลเข้า class ไม่สำเร็จ — ลองใหม่อีกครั้ง" };
+    return { error: t("class.migrateFailed") };
   }
 
   // Flip mode last — only switch the UI once the data migration succeeded.
   const { error: modeErr } = await sb.from("tournaments").update({ mode: "competition" }).eq("id", tournamentId);
   if (modeErr) {
     console.error("[upgradeToCompetitionAction] mode", modeErr);
-    return { error: "เปลี่ยนโหมดไม่สำเร็จ" };
+    return { error: t("class.modeChangeFailed") };
   }
 
   await writeAuditLog({
@@ -475,18 +481,19 @@ export async function generateGroupsForClassAction(
 
   const sb = await createAdminClient();
 
+  const t = await getTranslations("actions");
   const { data: classRow } = await sb
     .from("tournament_classes")
     .select("id, tournament_id, code, name, pairs_per_group, format")
     .eq("id", classId)
     .maybeSingle();
-  if (!classRow) return { error: "ไม่พบ class" };
+  if (!classRow) return { error: t("class.notFound") };
 
   const { tournament_id: tournamentId } = classRow;
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("class.noPermission") };
 
   if (classRow.format === "knockout_only") {
-    return { error: "class นี้ใช้รูปแบบ knockout_only — ไม่มีรอบกลุ่ม" };
+    return { error: t("class.knockoutOnlyNoGroup") };
   }
 
   // Load pairs assigned to this class.
@@ -497,7 +504,7 @@ export async function generateGroupsForClassAction(
     .eq("class_id", classId);
 
   const pairs = (pairsRaw ?? []) as RawPair[];
-  if (pairs.length < 2) return { error: "ต้องมีคู่อย่างน้อย 2 คู่ใน class นี้" };
+  if (pairs.length < 2) return { error: t("class.minTwoPairs") };
 
   // Run the balanced grouping algorithm.
   const groupingResult = balancedTeamGroupAssignment(
@@ -507,7 +514,7 @@ export async function generateGroupsForClassAction(
   if (!groupingResult.ok) return { error: groupingResult.error };
 
   const { groups: groupPairArrays } = groupingResult;
-  if (groupPairArrays.length === 0) return { error: "ไม่สามารถจัดกลุ่มได้ — ตรวจสอบจำนวนคู่" };
+  if (groupPairArrays.length === 0) return { error: t("class.groupingFailed") };
 
   // Scoped delete: remove existing groups + their matches for this class only.
   // matches.class_id CASCADE handles match deletion when the group is deleted,
@@ -540,7 +547,7 @@ export async function generateGroupsForClassAction(
 
   if (groupInsertErr || !insertedGroups) {
     console.error("[generateGroupsForClassAction] group insert:", groupInsertErr);
-    return { error: "สร้างกลุ่มไม่สำเร็จ" };
+    return { error: t("class.groupInsertFailed") };
   }
 
   // insertedGroups order matches groupInserts order (same-batch insert preserves order).
@@ -582,7 +589,7 @@ export async function generateGroupsForClassAction(
   if (matchInserts.length === 0) {
     // Clean up the groups we just created — no matches to play.
     await sb.from("groups").delete().eq("class_id", classId).eq("tournament_id", tournamentId);
-    return { error: "ไม่สามารถสร้างแมตช์ได้ — ตรวจสอบจำนวนคู่ในกลุ่ม" };
+    return { error: t("class.matchGenerateFailed") };
   }
 
   // Reserve a contiguous match_number block atomically (per-tournament counter).
@@ -594,7 +601,7 @@ export async function generateGroupsForClassAction(
     console.error("[generateGroupsForClassAction] match insert:", matchInsertErr);
     // Rollback groups
     await sb.from("groups").delete().eq("class_id", classId).eq("tournament_id", tournamentId);
-    return { error: "สร้างแมตช์กลุ่มไม่สำเร็จ" };
+    return { error: t("class.groupMatchInsertFailed") };
   }
 
   await writeAuditLog({
@@ -626,18 +633,19 @@ export async function generatePairMatchesForClassAction(
 
   const sb = await createAdminClient();
 
+  const t = await getTranslations("actions");
   const { data: classRow } = await sb
     .from("tournament_classes")
     .select("id, tournament_id, code, pairs_per_group, format")
     .eq("id", classId)
     .maybeSingle();
-  if (!classRow) return { error: "ไม่พบ class" };
+  if (!classRow) return { error: t("class.notFound") };
 
   const { tournament_id: tournamentId } = classRow;
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("class.noPermission") };
 
   if (classRow.format === "knockout_only") {
-    return { error: "class นี้ใช้รูปแบบ knockout_only — ไม่มีรอบกลุ่ม" };
+    return { error: t("class.knockoutOnlyNoGroup") };
   }
 
   // Check existing groups for this class.
@@ -660,7 +668,7 @@ export async function generatePairMatchesForClassAction(
     .select("id, team_id")
     .eq("class_id", classId);
   const pairs = (pairsRaw ?? []) as RawPair[];
-  if (pairs.length < 2) return { error: "ต้องมีคู่อย่างน้อย 2 คู่ใน class นี้" };
+  if (pairs.length < 2) return { error: t("class.minTwoPairs") };
 
   // Re-derive group assignment deterministically (same input → same groups).
   const groupingResult = balancedTeamGroupAssignment(
@@ -715,7 +723,7 @@ export async function generatePairMatchesForClassAction(
   }
 
   if (matchInserts.length === 0) {
-    return { error: "ไม่สามารถสร้างแมตช์ได้ — ตรวจสอบจำนวนคู่ในกลุ่ม" };
+    return { error: t("class.matchGenerateFailed") };
   }
 
   // Reserve a contiguous match_number block atomically (per-tournament counter).
@@ -725,7 +733,7 @@ export async function generatePairMatchesForClassAction(
   const { error: matchInsertErr } = await sb.from("matches").insert(matchInserts);
   if (matchInsertErr) {
     console.error("[generatePairMatchesForClassAction] match insert:", matchInsertErr);
-    return { error: "สร้างแมตช์คู่ไม่สำเร็จ" };
+    return { error: t("class.pairMatchInsertFailed") };
   }
 
   await writeAuditLog({
@@ -779,15 +787,16 @@ export async function generateKnockoutForClassAction(
 
   const sb = await createAdminClient();
 
+  const t = await getTranslations("actions");
   const { data: classRow } = await sb
     .from("tournament_classes")
     .select("id, tournament_id, code, name, format, advance_count, has_lower_bracket, allow_drop_to_lower")
     .eq("id", classId)
     .maybeSingle();
-  if (!classRow) return { error: "ไม่พบ class" };
+  if (!classRow) return { error: t("class.notFound") };
 
   const { tournament_id: tournamentId } = classRow;
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("class.noPermission") };
 
   const format = classRow.format as TournamentFormat;
 
@@ -802,7 +811,7 @@ export async function generateKnockoutForClassAction(
     .select("id, player1:team_players!player_id_1(display_name), player2:team_players!player_id_2(display_name)")
     .eq("class_id", classId);
   const pairs = (pairsRaw as unknown as RawPair[]) ?? [];
-  if (pairs.length < 2) return { error: "ต้องมีคู่อย่างน้อย 2 คู่ใน class นี้" };
+  if (pairs.length < 2) return { error: t("class.minTwoPairs") };
 
   function pairSeed(p: RawPair): Seed {
     const label =
@@ -841,7 +850,7 @@ export async function generateKnockoutForClassAction(
     }
 
     if (groupPairMap.size === 0) {
-      return { error: "ยังไม่มีแมตช์รอบกลุ่ม — สร้างกลุ่มก่อน" };
+      return { error: t("class.noGroupMatches") };
     }
 
     const seeds: Seed[] = [];
@@ -869,7 +878,7 @@ export async function generateKnockoutForClassAction(
       restFillers.push(...standingsToFillers(restRows, advanceCount + 1, nameOf));
     }
 
-    if (seeds.length < 2) return { error: "คู่ที่ผ่านรอบมีไม่ถึง 2 คู่" };
+    if (seeds.length < 2) return { error: t("class.insufficientAdvancingPairs") };
 
     // T2 — knockout_fill_byes (class mode): same flag, same helper as team mode.
     // When flag is OFF or need is 0 this block is a no-op → byte-identical to before.
@@ -930,7 +939,7 @@ export async function generateKnockoutForClassAction(
   const { error: insertErr } = await sb.from("matches").insert(inserts);
   if (insertErr) {
     console.error("[generateKnockoutForClassAction] insert:", insertErr);
-    return { error: "สร้างสายน็อกเอาต์ไม่สำเร็จ" };
+    return { error: t("class.knockoutInsertFailed") };
   }
 
   // BYE cascade loop — verbatim from generateKnockoutAction (pair branch).

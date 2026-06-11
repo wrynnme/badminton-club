@@ -2,16 +2,21 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 
-const GuestSchema = z.object({
-  club_id: z.string().uuid(),
-  display_name: z.string().min(1, "ระบุชื่อ").max(60, "ชื่อยาวเกินไป"),
-  level_id: z.string().uuid().optional().nullable(),
-  note: z.string().optional().nullable(),
-});
+function guestSchema(nameRequiredMsg: string, nameTooLongMsg: string) {
+  return z.object({
+    club_id: z.string().uuid(),
+    display_name: z.string().min(1, nameRequiredMsg).max(60, nameTooLongMsg),
+    level_id: z.string().uuid().optional().nullable(),
+    note: z.string().optional().nullable(),
+  });
+}
+// Static fallback for type inference only; call sites pass translated messages.
+const GuestSchema = guestSchema("name_required", "name_too_long");
 
 export type AddGuestInput = z.infer<typeof GuestSchema>;
 
@@ -32,14 +37,15 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
-  const parsed = GuestSchema.safeParse(input);
+  const t = await getTranslations("actions");
+  const parsed = guestSchema(t("club.guestNameRequired"), t("club.guestNameTooLong")).safeParse(input);
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
   }
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, parsed.data.club_id, session.profileId))) {
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
   }
 
   // Atomic capacity check + insert under a club-row lock (add_club_player RPC):
@@ -54,7 +60,7 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
     p_note: parsed.data.note || null,
   });
   if (error) {
-    return { error: error.message.includes("club not found") ? "ไม่พบก๊วนนี้" : error.message };
+    return { error: error.message.includes("club not found") ? t("club.clubNotFound") : error.message };
   }
 
   revalidatePath(`/clubs/${parsed.data.club_id}`);
@@ -70,14 +76,15 @@ export async function updateClubPlayerSessionAction(
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const parsed = PlayerSessionSchema.safeParse(input);
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
   }
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
   }
 
   const { error } = await sb
@@ -99,8 +106,9 @@ export async function reorderPlayersAction(clubId: string, orderedIds: string[])
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
 
   const results = await Promise.all(
     orderedIds.map((id, i) =>
@@ -109,7 +117,7 @@ export async function reorderPlayersAction(clubId: string, orderedIds: string[])
   );
   // Don't silently swallow a partial failure — mirror reorderClubQueueAction.
   for (const { error } of results) {
-    if (error) return { error: "จัดลำดับไม่สำเร็จ" };
+    if (error) return { error: t("club.reorderFailed") };
   }
 
   revalidatePath(`/clubs/${clubId}`);
@@ -120,12 +128,13 @@ export async function kickPlayerAction(formData: FormData) {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const clubId = formData.get("club_id") as string;
   const playerId = formData.get("player_id") as string;
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId)))
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
 
   // Delete + auto-promote the earliest reserve into the freed slot (atomic RPC).
   await sb.rpc("remove_club_player_and_promote", {
@@ -146,9 +155,10 @@ export async function promoteClubReserveAction(input: { clubId: string; playerId
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, input.clubId, session.profileId)))
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
 
   const { data: updated, error } = await sb
     .from("club_players")
@@ -170,7 +180,7 @@ export async function promoteClubReserveAction(input: { clubId: string; playerId
       .eq("id", input.playerId)
       .eq("club_id", input.clubId)
       .maybeSingle();
-    if (current?.status !== "active") return { error: "ผู้เล่นนี้เลื่อนเป็นตัวจริงไม่ได้" };
+    if (current?.status !== "active") return { error: t("club.cannotPromotePlayer") };
   }
 
   revalidatePath(`/clubs/${input.clubId}`);
@@ -181,10 +191,11 @@ export async function toggleCheckInAction(input: { club_id: string; player_id: s
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const sb = await createAdminClient();
 
   if (!(await assertCanManageClub(sb, input.club_id, session.profileId)))
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
 
   const { data: player } = await sb
     .from("club_players")
@@ -193,7 +204,7 @@ export async function toggleCheckInAction(input: { club_id: string; player_id: s
     .eq("club_id", input.club_id)
     .single();
 
-  if (!player) return { error: "ไม่พบผู้เล่น" };
+  if (!player) return { error: t("club.playerNotFound") };
 
   const next = player.checked_in_at ? null : new Date().toISOString();
   const { error } = await sb
@@ -243,11 +254,12 @@ export async function updateClubPlayerDiscountAction(
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const d = Number(discount);
-  if (!Number.isFinite(d) || d < 0 || d > 1_000_000) return { error: "ส่วนลดไม่ถูกต้อง" };
+  if (!Number.isFinite(d) || d < 0 || d > 1_000_000) return { error: t("club.invalidDiscount") };
 
   const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
 
   const { error } = await sb
     .from("club_players")
@@ -269,11 +281,12 @@ export async function renameClubGuestAction(
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const name = displayName.trim();
-  if (name.length < 1 || name.length > 60) return { error: "ชื่อยาว 1–60 ตัวอักษร" };
+  if (name.length < 1 || name.length > 60) return { error: t("club.nameLength") };
 
   const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
 
   const { data: player, error: fetchError } = await sb
     .from("club_players")
@@ -281,8 +294,8 @@ export async function renameClubGuestAction(
     .eq("id", playerId)
     .eq("club_id", clubId)
     .single();
-  if (fetchError || !player) return { error: "ไม่พบผู้เล่น" };
-  if (player.profile_id) return { error: "แก้ชื่อได้เฉพาะผู้เล่น guest" };
+  if (fetchError || !player) return { error: t("club.playerNotFound") };
+  if (player.profile_id) return { error: t("club.renameGuestOnly") };
 
   const { error } = await sb
     .from("club_players")

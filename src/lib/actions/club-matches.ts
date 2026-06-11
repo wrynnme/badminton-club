@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
@@ -25,14 +26,15 @@ async function loadClubMatchForManage(
   matchId: string,
   profileId: string,
 ): Promise<{ match: { id: string; club_id: string } } | { error: string }> {
+  const t = await getTranslations("actions");
   const { data: match, error } = await sb
     .from("club_matches")
     .select("id, club_id")
     .eq("id", matchId)
     .single();
-  if (error || !match) return { error: "ไม่พบแมตช์" };
+  if (error || !match) return { error: t("club.matchNotFound") };
   if (!(await assertCanManageClub(sb, match.club_id, profileId))) {
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
   }
   return { match };
 }
@@ -59,11 +61,12 @@ export async function buildNextClubMatchAction(
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const courtName = court.trim();
-  if (!courtName) return { error: "ระบุสนาม" };
+  if (!courtName) return { error: t("club.specifyCourtName") };
 
   const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
 
   // Load settings.
   const { data: clubRow, error: clubFetchError } = await sb
@@ -71,7 +74,7 @@ export async function buildNextClubMatchAction(
     .select("queue_settings")
     .eq("id", clubId)
     .single();
-  if (clubFetchError || !clubRow) return { error: "ไม่พบก๊วนนี้" };
+  if (clubFetchError || !clubRow) return { error: t("club.clubNotFound") };
   const settings = parseQueueSettings(clubRow.queue_settings);
 
   // Load active players for this club (level resolved via the levels FK).
@@ -82,7 +85,7 @@ export async function buildNextClubMatchAction(
     .select("id, position, joined_at, level_id, games_played, last_finished_at, checked_in_at, levels:level_id(real)")
     .eq("club_id", clubId)
     .eq("status", "active");
-  if (playersFetchError || !allPlayers) return { error: "โหลดผู้เล่นไม่สำเร็จ" };
+  if (playersFetchError || !allPlayers) return { error: t("club.loadPlayersFailed") };
 
   // Collect ids of players already in an active (pending or in_progress) match.
   const { data: activeMatches } = await sb
@@ -208,7 +211,7 @@ export async function buildNextClubMatchAction(
 
   // Build the proposed match.
   const proposed = buildNextMatch(pool, settings, stayingSide, lockedPairs);
-  if (!proposed) return { error: "ผู้เล่นว่างไม่พอสำหรับสร้างแมตช์" };
+  if (!proposed) return { error: t("club.notEnoughPlayersForMatch") };
 
   // Compute next queue_position for this club's pending matches.
   const { data: maxRow } = await sb
@@ -237,7 +240,7 @@ export async function buildNextClubMatchAction(
     .select()
     .single();
 
-  if (insertError || !newMatch) return { error: insertError?.message ?? "สร้างแมตช์ไม่สำเร็จ" };
+  if (insertError || !newMatch) return { error: insertError?.message ?? t("club.createMatchFailed") };
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true, match: newMatch as ClubMatch };
@@ -267,11 +270,12 @@ export async function startClubMatchAction(
     .eq("status", "pending");
 
   if (updateError) {
-    if (updateError.code === "23505") return { error: "สนามนี้มีแมตช์กำลังเล่นอยู่" };
+    const t = await getTranslations("actions");
+    if (updateError.code === "23505") return { error: t("club.courtHasActiveMatch") };
     // trg_club_match_player_guard: a player on this match is already in another
     // in_progress match of the club (closes the concurrent double-start race).
     if (updateError.message.includes("club_player_busy")) {
-      return { error: "ผู้เล่นในแมตช์นี้กำลังแข่งอยู่ในอีกสนาม" };
+      return { error: t("club.playerBusyInAnotherCourt") };
     }
     return { error: updateError.message };
   }
@@ -299,8 +303,9 @@ export async function setClubMatchCourtAction(input: {
   if ("error" in guard) return { error: guard.error };
   const { match } = guard;
 
+  const t = await getTranslations("actions");
   const court = input.court.trim();
-  if (!court) return { error: "เลือกสนาม" };
+  if (!court) return { error: t("club.selectCourt") };
 
   // Court must be one of the club's named courts (when the club has any configured).
   const { data: club } = await sb
@@ -310,7 +315,7 @@ export async function setClubMatchCourtAction(input: {
     .single();
   const courts = (club?.courts ?? []) as string[];
   if (courts.length > 0 && !courts.includes(court)) {
-    return { error: "ไม่พบสนามนี้ในก๊วน" };
+    return { error: t("club.courtNotInClub") };
   }
 
   // Only movable while pending / in_progress. The status filter no-ops (0 rows)
@@ -324,10 +329,10 @@ export async function setClubMatchCourtAction(input: {
     .maybeSingle();
 
   if (error) {
-    if (error.code === "23505") return { error: "สนามนี้มีแมตช์กำลังเล่นอยู่" };
+    if (error.code === "23505") return { error: t("club.courtHasActiveMatch") };
     return { error: error.message };
   }
-  if (!updated) return { error: "แมตช์นี้เปลี่ยนสนามไม่ได้" };
+  if (!updated) return { error: t("club.matchCannotChangeCourt") };
 
   revalidatePath(`/clubs/${match.club_id}`);
   return { ok: true };
@@ -353,15 +358,16 @@ export async function finishClubMatchAction(input: {
   if ("error" in guard) return { error: guard.error };
   const { match } = guard;
 
+  const t = await getTranslations("actions");
   // Validate caller-supplied score/winner — a server action is a directly-invokable
   // POST endpoint and TS types are erased at runtime. Scores must be integers in
   // [0, 99]; winnerSide ∈ {a,b}. Otherwise garbage flows straight into the RPC.
   if (input.winnerSide != null && input.winnerSide !== "a" && input.winnerSide !== "b") {
-    return { error: "ผู้ชนะไม่ถูกต้อง" };
+    return { error: t("club.invalidWinner") };
   }
   for (const s of [input.scoreA, input.scoreB]) {
     if (s != null && (!Number.isInteger(s) || s < 0 || s > 99)) {
-      return { error: "คะแนนไม่ถูกต้อง (0–99)" };
+      return { error: t("club.invalidScore") };
     }
   }
 
@@ -429,18 +435,19 @@ export async function createClubLockedPairAction(input: {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const { clubId, player1Id, player2Id } = input;
-  if (player1Id === player2Id) return { error: "ต้องเลือกผู้เล่น 2 คนที่ต่างกัน" };
+  if (player1Id === player2Id) return { error: t("club.selectTwoDifferentPlayers") };
 
   let games: number | null = null;
   if (input.games != null) {
     const g = Math.trunc(input.games);
-    if (!Number.isFinite(g) || g < 1) return { error: "จำนวนเกมไม่ถูกต้อง" };
+    if (!Number.isFinite(g) || g < 1) return { error: t("club.invalidGameCount") };
     games = g;
   }
 
   const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
 
   // Both players must belong to this club.
   const { data: members } = await sb
@@ -448,7 +455,7 @@ export async function createClubLockedPairAction(input: {
     .select("id")
     .eq("club_id", clubId)
     .in("id", [player1Id, player2Id]);
-  if (!members || members.length !== 2) return { error: "ไม่พบผู้เล่นในก๊วนนี้" };
+  if (!members || members.length !== 2) return { error: t("club.playerNotInClub") };
 
   // Create atomically via RPC — it takes a club-row lock + re-checks the
   // 1-active-lock-per-player invariant under the lock (closes the read-then-insert
@@ -461,7 +468,7 @@ export async function createClubLockedPairAction(input: {
   });
   if (rpcError) {
     if (rpcError.message.includes("player_already_locked")) {
-      return { error: "ผู้เล่นถูกล็อคคู่อยู่แล้ว — ปล่อยคู่เดิมก่อน" };
+      return { error: t("club.playerAlreadyLocked") };
     }
     return { error: rpcError.message };
   }
@@ -481,14 +488,15 @@ export async function releaseClubLockedPairAction(
 
   const sb = await createAdminClient();
 
+  const t = await getTranslations("actions");
   const { data: lock, error: fetchError } = await sb
     .from("club_locked_pairs")
     .select("id, club_id")
     .eq("id", lockId)
     .single();
-  if (fetchError || !lock) return { error: "ไม่พบคู่ที่ล็อค" };
+  if (fetchError || !lock) return { error: t("club.lockedPairNotFound") };
 
-  if (!(await assertCanManageClub(sb, lock.club_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanManageClub(sb, lock.club_id, session.profileId))) return { error: t("club.noPermission") };
 
   const { error: deleteError } = await sb
     .from("club_locked_pairs")
@@ -511,8 +519,9 @@ export async function setClubMatchShuttlesAction(
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const n = Math.trunc(shuttles);
-  if (!Number.isFinite(n) || n < 0 || n > 99) return { error: "จำนวนลูกไม่ถูกต้อง" };
+  if (!Number.isFinite(n) || n < 0 || n > 99) return { error: t("club.invalidShuttleCount") };
 
   const sb = await createAdminClient();
   const guard = await loadClubMatchForManage(sb, matchId, session.profileId);
@@ -545,12 +554,13 @@ export async function createClubManualMatchAction(input: {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const { clubId, sideA, sideB } = input;
   const courtName = input.court.trim();
-  if (!courtName) return { error: "ระบุสนาม" };
+  if (!courtName) return { error: t("club.specifyCourtName") };
 
   const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
 
   // Load players_per_team from settings to validate side sizes.
   const { data: clubRow, error: clubErr } = await sb
@@ -558,17 +568,17 @@ export async function createClubManualMatchAction(input: {
     .select("queue_settings")
     .eq("id", clubId)
     .single();
-  if (clubErr || !clubRow) return { error: "ไม่พบก๊วนนี้" };
+  if (clubErr || !clubRow) return { error: t("club.clubNotFound") };
   const ppt = parseQueueSettings(clubRow.queue_settings).players_per_team;
 
   const cleanA = sideA.filter(Boolean);
   const cleanB = sideB.filter(Boolean);
   if (cleanA.length !== ppt || cleanB.length !== ppt) {
-    return { error: ppt === 2 ? "ต้องเลือกฝั่งละ 2 คน" : "ต้องเลือกฝั่งละ 1 คน" };
+    return { error: ppt === 2 ? t("club.mustSelectTwoPerSide") : t("club.mustSelectOnePerSide") };
   }
 
   const all = [...cleanA, ...cleanB];
-  if (new Set(all).size !== all.length) return { error: "ผู้เล่นซ้ำกัน" };
+  if (new Set(all).size !== all.length) return { error: t("club.duplicatePlayer") };
 
   // All chosen players must belong to this club.
   const { data: members } = await sb
@@ -576,7 +586,7 @@ export async function createClubManualMatchAction(input: {
     .select("id")
     .eq("club_id", clubId)
     .in("id", all);
-  if (!members || members.length !== all.length) return { error: "ไม่พบผู้เล่นในก๊วนนี้" };
+  if (!members || members.length !== all.length) return { error: t("club.playerNotInClub") };
 
   // queue_position = tail of pending.
   const { data: maxRow } = await sb
@@ -603,7 +613,7 @@ export async function createClubManualMatchAction(input: {
     })
     .select()
     .single();
-  if (insertError || !newMatch) return { error: insertError?.message ?? "สร้างแมตช์ไม่สำเร็จ" };
+  if (insertError || !newMatch) return { error: insertError?.message ?? t("club.createMatchFailed") };
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true, match: newMatch as ClubMatch };
@@ -623,12 +633,13 @@ export async function reorderClubQueueAction(
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   if (!Array.isArray(orderedIds) || orderedIds.length === 0) {
-    return { error: "ลำดับคิวไม่ถูกต้อง" };
+    return { error: t("club.invalidQueueOrder") };
   }
 
   const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
 
   // Renumber pending matches in parallel (independent updates) — mirrors
   // reorderPlayersAction; avoids N sequential round-trips on every drag.
