@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
+import { useTranslations } from "next-intl";
 import { useForm } from "@tanstack/react-form";
 import * as z from "zod";
 import { toast } from "sonner";
@@ -12,12 +13,6 @@ import { NumberInput } from "@/components/ui/number-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { addExpenseAction, updateExpenseAction, deleteExpenseAction } from "@/lib/actions/club-cost";
 import type { ClubExpense } from "@/lib/actions/club-cost";
-
-const expenseSchema = z.object({
-  label: z.string().min(1, "ระบุชื่อรายการ"),
-  amount: z.number().min(0, "จำนวนเงินไม่ถูกต้อง"),
-  payer_player_ids: z.array(z.string()),
-});
 
 type ExpensePlayer = { id: string; display_name: string };
 
@@ -34,6 +29,14 @@ function ExpenseForm({
   onSubmit: (value: { label: string; amount: number; payer_player_ids: string[] }) => Promise<void>;
   onCancel: () => void;
 }) {
+  const t = useTranslations("club.expense");
+
+  const expenseSchema = z.object({
+    label: z.string().min(1, t("validationLabel")),
+    amount: z.number().min(0, t("validationAmount")),
+    payer_player_ids: z.array(z.string()),
+  });
+
   const form = useForm({
     defaultValues,
     validators: { onSubmit: expenseSchema },
@@ -50,7 +53,7 @@ function ExpenseForm({
         <form.Field name="label">
           {(field) => (
             <Input
-              placeholder="ชื่อรายการ เช่น ค่าสนาม"
+              placeholder={t("labelPlaceholder")}
               value={field.state.value}
               onChange={(e) => field.handleChange(e.target.value)}
               onBlur={field.handleBlur}
@@ -102,7 +105,7 @@ function ExpenseForm({
             return (
               <div className="rounded-md border border-input bg-muted/40 p-2 space-y-1.5">
                 <p className="text-xs text-muted-foreground font-medium">
-                  ใครจ่าย <span className="font-normal">(ไม่เลือก = ทุกคนหาร)</span>
+                  {t("payerSectionTitle")} <span className="font-normal">{t("payerEveryoneNote")}</span>
                 </p>
                 <div className="flex flex-wrap gap-x-4 gap-y-1.5">
                   {players.map((p) => (
@@ -144,6 +147,7 @@ function PayerSubLine({
   players: ExpensePlayer[];
   playerCount: number;
 }) {
+  const t = useTranslations("club.expense");
   const ids: string[] = expense.payer_player_ids ?? [];
   const amount = Number(expense.amount);
   const nameMap = new Map(players.map((p) => [p.id, p.display_name]));
@@ -154,8 +158,10 @@ function PayerSubLine({
     const perPerson = headcount > 0 ? Math.ceil(amount / headcount) : null;
     return (
       <span className="text-xs text-muted-foreground tabular-nums">
-        ทุกคนหาร
-        {perPerson !== null ? ` · ${amount.toLocaleString()}/${headcount} = ${perPerson.toLocaleString()} ฿/คน` : ""}
+        {t("payerEveryoneSplit")}
+        {perPerson !== null
+          ? ` · ${t("payerPerPerson", { amount: amount.toLocaleString(), count: headcount, per: perPerson.toLocaleString() })}`
+          : ""}
       </span>
     );
   }
@@ -171,8 +177,8 @@ function PayerSubLine({
 
   return (
     <span className="text-xs text-muted-foreground tabular-nums">
-      {headcount} คน: {displayNames}
-      {perPerson !== null ? ` · ${perPerson.toLocaleString()} ฿/คน` : ""}
+      {t("payerNPeople", { count: headcount, names: displayNames })}
+      {perPerson !== null ? ` · ${t("payerNPerPerson", { per: perPerson.toLocaleString() })}` : ""}
     </span>
   );
 }
@@ -188,6 +194,7 @@ function PlayerRollup({
   players: ExpensePlayer[];
   playerCount: number;
 }) {
+  const t = useTranslations("club.expense");
   if (expenses.length === 0 || players.length === 0) return null;
 
   // For each player, sum ceil(amount / effective_headcount) for expenses they're
@@ -211,13 +218,13 @@ function PlayerRollup({
   });
 
   // Only show players who owe something
-  const relevant = totals.filter((t) => t.total > 0);
+  const relevant = totals.filter((item) => item.total > 0);
   if (relevant.length === 0) return null;
 
   return (
     <div className="rounded-md border border-input bg-muted/30 p-3 space-y-1.5">
       <p className="text-xs font-medium text-muted-foreground">
-        ยอดต่อคน (จาก expense) <span className="font-normal">· ปัดขึ้น (ceil)</span>
+        {t("rollupTitle")} <span className="font-normal">{t("rollupNote")}</span>
       </p>
       <div className="space-y-1">
         {relevant.map(({ player, total }) => (
@@ -244,6 +251,7 @@ export function ExpenseManager({
   playerCount: number;
   players: ExpensePlayer[];
 }) {
+  const t = useTranslations("club.expense");
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -257,7 +265,7 @@ export function ExpenseManager({
     startDelete(async () => {
       const res = await deleteExpenseAction({ id: expense.id, club_id: expense.club_id });
       if (res && "error" in res) toast.error(res.error);
-      else { toast.success("ลบรายการแล้ว"); router.refresh(); }
+      else { toast.success(t("toastDeleted")); router.refresh(); }
       setDeletingId(null);
     });
   };
@@ -265,7 +273,7 @@ export function ExpenseManager({
   return (
     <div className="space-y-2">
       {expenses.length === 0 && !showAdd && (
-        <p className="text-sm text-muted-foreground">ยังไม่มีรายการค่าใช้จ่าย</p>
+        <p className="text-sm text-muted-foreground">{t("empty")}</p>
       )}
 
       {expenses.map((expense) =>
@@ -287,7 +295,7 @@ export function ExpenseManager({
                 payer_player_ids: value.payer_player_ids,
               });
               if (res && "error" in res) toast.error(res.error);
-              else { toast.success("บันทึกรายการแล้ว"); router.refresh(); setEditingId(null); }
+              else { toast.success(t("toastSaved")); router.refresh(); setEditingId(null); }
             }}
             onCancel={() => setEditingId(null)}
           />
@@ -296,12 +304,12 @@ export function ExpenseManager({
             <div className="flex items-center gap-2">
               <span className="flex-1 text-sm">{expense.label}</span>
               <span className="text-sm font-medium tabular-nums w-28 text-right">
-                {Number(expense.amount).toLocaleString()} บาท
+                {Number(expense.amount).toLocaleString()} {t("unit")}
               </span>
               <Button
                 size="icon-sm"
                 variant="ghost"
-                aria-label={`แก้ไข ${expense.label}`}
+                aria-label={t("editAriaLabel", { label: expense.label })}
                 className="opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={() => { setEditingId(expense.id); setShowAdd(false); }}
               >
@@ -310,7 +318,7 @@ export function ExpenseManager({
               <Button
                 size="icon-sm"
                 variant="ghost"
-                aria-label={`ลบ ${expense.label}`}
+                aria-label={t("deleteAriaLabel", { label: expense.label })}
                 className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
                 disabled={deletingId === expense.id}
                 onClick={() => handleDelete(expense)}
@@ -335,7 +343,7 @@ export function ExpenseManager({
               payer_player_ids: value.payer_player_ids,
             });
             if (res && "error" in res) toast.error(res.error);
-            else { toast.success("เพิ่มรายการแล้ว"); router.refresh(); setShowAdd(false); }
+            else { toast.success(t("toastAdded")); router.refresh(); setShowAdd(false); }
           }}
           onCancel={() => setShowAdd(false)}
         />
@@ -349,14 +357,14 @@ export function ExpenseManager({
             onClick={() => { setShowAdd(true); setEditingId(null); }}
           >
             <Plus />
-            เพิ่มรายการ
+            {t("addButton")}
           </Button>
         )}
 
         {total > 0 && (
           <div className="ml-auto text-sm text-right">
             <div className="font-semibold tabular-nums">
-              รวม {total.toLocaleString()} บาท
+              {t("total", { total: total.toLocaleString() })}
             </div>
           </div>
         )}

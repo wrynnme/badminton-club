@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
+import { useTranslations } from "next-intl";
 import { Loader2, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,24 +21,6 @@ type Props = {
   expenses: ClubExpense[];
   canManage: boolean;
   clubId: string;
-};
-
-const SPLIT_LABEL: Record<string, string> = {
-  even: "หารเท่า",
-  by_time: "ตามเวลา",
-};
-
-// Shuttle split mode labels — match the manager UI (commit 8d9e96c relabel).
-const SHUTTLE_SPLIT_LABEL: Record<string, string> = {
-  even: "หารเท่า",
-  per_match: "ต่อลูก",
-  per_player: "ต่อแมตช์",
-};
-
-const GAP_LABEL: Record<string, string> = {
-  spread: "เฉลี่ยทุกคน",
-  owner: "เจ้าของจ่าย",
-  ignore: "ไม่คิด",
 };
 
 // ─── Editable discount cell (one per player row) ──────────────────────────────
@@ -115,6 +98,8 @@ export function ClubCostBreakdown({
   canManage,
   clubId,
 }: Props) {
+  const t = useTranslations("club.costBreakdown");
+
   // All three shuttle modes (even/per_match/per_player) are price-driven via
   // computeShuttle (shuttle_price × per-match shuttles_used); shuttle_fee is dead.
   const hasShuttle = club.shuttle_price > 0;
@@ -126,13 +111,13 @@ export function ClubCostBreakdown({
 
   if (!hasCourt && !hasShuttle && !hasExpense) {
     return (
-      <p className="text-sm text-muted-foreground">ยังไม่ได้ตั้งค่าใช้จ่าย</p>
+      <p className="text-sm text-muted-foreground">{t("notConfigured")}</p>
     );
   }
 
   if (players.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground">ยังไม่มีผู้เล่น</p>
+      <p className="text-sm text-muted-foreground">{t("noPlayers")}</p>
     );
   }
 
@@ -153,15 +138,32 @@ export function ClubCostBreakdown({
     downloadCsv(csv, `ค่าใช้จ่าย-${club.name}${datePart}.csv`);
   }
 
+  const SPLIT_LABEL: Record<string, string> = {
+    even: t("splitEven"),
+    by_time: t("splitByTime"),
+  };
+
+  const SHUTTLE_SPLIT_LABEL: Record<string, string> = {
+    even: t("splitEven"),
+    per_match: t("splitPerShuttle"),
+    per_player: t("splitPerMatch"),
+  };
+
+  const GAP_LABEL: Record<string, string> = {
+    spread: t("gapSpread"),
+    owner: t("gapOwner"),
+    ignore: t("gapIgnore"),
+  };
+
   const splitDesc = [
     hasCourt
-      ? `ค่าสนาม ${club.court_fee.toLocaleString()} ฿ · ${SPLIT_LABEL[club.court_split] ?? club.court_split}`
+      ? t("descCourtFee", { fee: club.court_fee.toLocaleString(), split: SPLIT_LABEL[club.court_split] ?? club.court_split })
       : null,
     club.court_split === "by_time"
-      ? `ช่วงว่าง: ${GAP_LABEL[club.court_gap_policy] ?? club.court_gap_policy}`
+      ? t("descGap", { gap: GAP_LABEL[club.court_gap_policy] ?? club.court_gap_policy })
       : null,
     hasShuttle
-      ? `ค่าลูก ${club.shuttle_price.toLocaleString()} ฿/ลูก · ${SHUTTLE_SPLIT_LABEL[club.shuttle_split] ?? club.shuttle_split}`
+      ? t("descShuttle", { price: club.shuttle_price.toLocaleString(), split: SHUTTLE_SPLIT_LABEL[club.shuttle_split] ?? club.shuttle_split })
       : null,
   ]
     .filter(Boolean)
@@ -182,35 +184,35 @@ export function ClubCostBreakdown({
           onClick={handleExport}
         >
           <Download className="h-3.5 w-3.5" />
-          Export CSV
+          {t("exportCsv")}
         </Button>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-muted-foreground text-xs">
-              <th className="text-left py-1.5 pr-3 font-medium">ผู้เล่น</th>
-              <th className="text-right py-1.5 px-2 font-medium tabular-nums">ชม.</th>
-              <th className="text-right py-1.5 px-2 font-medium tabular-nums">เกม</th>
-              <th className="text-right py-1.5 px-2 font-medium tabular-nums">ลูกที่ใช้</th>
+              <th className="text-left py-1.5 pr-3 font-medium">{t("colPlayer")}</th>
+              <th className="text-right py-1.5 px-2 font-medium tabular-nums">{t("colHours")}</th>
+              <th className="text-right py-1.5 px-2 font-medium tabular-nums">{t("colGames")}</th>
+              <th className="text-right py-1.5 px-2 font-medium tabular-nums">{t("colShuttlesUsed")}</th>
               {hasCourt && (
                 <th className="text-right py-1.5 px-2 font-medium tabular-nums">
-                  ค่าสนาม
+                  {t("colCourtFee")}
                 </th>
               )}
               {hasShuttle && (
                 <th className="text-right py-1.5 px-2 font-medium tabular-nums">
-                  ค่าลูก
+                  {t("colShuttleFee")}
                 </th>
               )}
               <th className="text-right py-1.5 px-2 font-medium tabular-nums">
-                ค่าใช้จ่ายส่วนบุคคล
+                {t("colExpense")}
               </th>
               <th className="text-right py-1.5 px-2 font-medium tabular-nums">
-                ส่วนลด
+                {t("colDiscount")}
               </th>
               <th className="text-right py-1.5 pl-2 font-medium tabular-nums">
-                รวม
+                {t("colTotal")}
               </th>
             </tr>
           </thead>
@@ -258,7 +260,7 @@ export function ClubCostBreakdown({
           </tbody>
           <tfoot>
             <tr className="border-t-2 font-semibold">
-              <td className="py-1.5 pr-3 text-sm">รวมทั้งหมด</td>
+              <td className="py-1.5 pr-3 text-sm">{t("footerLabel")}</td>
               <td className="py-1.5 px-2" aria-hidden />
               <td className="py-1.5 px-2" aria-hidden />
               <td className="py-1.5 px-2 text-right tabular-nums text-sm">

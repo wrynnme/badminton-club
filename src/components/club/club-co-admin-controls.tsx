@@ -2,6 +2,7 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { Check, ChevronsUpDown, UserPlus, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +29,7 @@ export function ClubCoAdminControls({
   clubId: string;
   initialAdmins: ClubAdmin[];
 }) {
+  const t = useTranslations("club.coAdmin");
   const [admins, setAdmins] = useState<ClubAdmin[]>(initialAdmins);
   const [isPending, startTransition] = useTransition();
 
@@ -46,7 +48,7 @@ export function ClubCoAdminControls({
       return;
     }
     setSearching(true);
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const res = await searchClubProfilesAction(clubId, q);
       if ("ok" in res) setResults(res.results);
       else {
@@ -55,7 +57,7 @@ export function ClubCoAdminControls({
       }
       setSearching(false);
     }, 250);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [query, clubId]);
 
   async function handleAdd() {
@@ -64,7 +66,7 @@ export function ClubCoAdminControls({
     const res = await addClubCoAdminAction(clubId, selected.id);
     setAdding(false);
     if ("error" in res) { toast.error(res.error); return; }
-    toast.success("เพิ่ม co-admin แล้ว");
+    toast.success(t("toastAdded"));
     setAdmins((prev) => [
       ...prev,
       {
@@ -86,7 +88,7 @@ export function ClubCoAdminControls({
     startTransition(async () => {
       const res = await removeClubCoAdminAction(clubId, userId);
       if ("error" in res) { toast.error(res.error); return; }
-      toast.success("ลบ co-admin แล้ว");
+      toast.success(t("toastRemoved"));
       setAdmins((prev) => prev.filter((a) => a.user_id !== userId));
     });
   }
@@ -94,18 +96,18 @@ export function ClubCoAdminControls({
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">ผู้ช่วยดูแล (Co-admin)</CardTitle>
+        <CardTitle className="text-base">{t("title")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
         {admins.length === 0 ? (
-          <p className="text-sm text-muted-foreground">ยังไม่มีผู้ช่วยดูแล</p>
+          <p className="text-sm text-muted-foreground">{t("empty")}</p>
         ) : (
           <ul className="space-y-1">
             {admins.map((admin) => (
               <li key={admin.user_id} className="flex items-center justify-between gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">
-                    {admin.display_name ?? "(ไม่มีชื่อ)"}
+                    {admin.display_name ?? t("noName")}
                   </p>
                   <p className="text-xs font-mono text-muted-foreground truncate">
                     {admin.line_user_id ?? admin.user_id}
@@ -115,7 +117,7 @@ export function ClubCoAdminControls({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  aria-label={`ลบ ${admin.display_name ?? "co-admin"}`}
+                  aria-label={t("removeAriaLabel", { name: admin.display_name ?? "co-admin" })}
                   className="text-destructive hover:text-destructive shrink-0"
                   disabled={isPending}
                   onClick={() => handleRemove(admin.user_id)}
@@ -140,8 +142,8 @@ export function ClubCoAdminControls({
                 >
                   <span className="truncate">
                     {selected
-                      ? (selected.display_name ?? "(ไม่มีชื่อ)")
-                      : "ค้นหาผู้ใช้..."}
+                      ? (selected.display_name ?? t("noName"))
+                      : t("comboboxPlaceholder")}
                   </span>
                   <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
                 </Button>
@@ -150,17 +152,17 @@ export function ClubCoAdminControls({
             <PopoverContent className="w-(--anchor-width) p-0 gap-0" align="start">
               <Command shouldFilter={false}>
                 <CommandInput
-                  placeholder="พิมพ์ชื่อ..."
+                  placeholder={t("searchPlaceholder")}
                   value={query}
                   onValueChange={setQuery}
                 />
                 <CommandList>
                   <CommandEmpty>
                     {searching
-                      ? "กำลังค้นหา..."
+                      ? t("searching")
                       : query.trim().length === 0
-                      ? "พิมพ์ชื่อเพื่อค้นหา"
-                      : "ไม่พบผู้ใช้"}
+                      ? t("typeToSearch")
+                      : t("notFound")}
                   </CommandEmpty>
                   <CommandGroup>
                     {results.map((r) => (
@@ -170,7 +172,7 @@ export function ClubCoAdminControls({
                         onSelect={() => { setSelected(r); setOpen(false); }}
                       >
                         <div className="flex flex-col flex-1 min-w-0">
-                          <span className="truncate">{r.display_name ?? "(ไม่มีชื่อ)"}</span>
+                          <span className="truncate">{r.display_name ?? t("noName")}</span>
                         </div>
                         {selected?.id === r.id && <Check className="h-4 w-4 shrink-0" />}
                       </CommandItem>
@@ -189,7 +191,7 @@ export function ClubCoAdminControls({
             onClick={handleAdd}
           >
             {adding ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-3.5 w-3.5" />}
-            เพิ่ม
+            {t("addButton")}
           </Button>
         </div>
       </CardContent>

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useState, useTransition } from "react";
 import * as z from "zod";
+import { useTranslations } from "next-intl";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { Plus, Trash2, Loader2 } from "lucide-react";
@@ -60,31 +61,6 @@ type FormValues = {
   queue_mode: "rest_longest" | "fifo" | "level_match" | "smart";
 };
 
-const DAYS = [
-  "วันจันทร์",
-  "วันอังคาร",
-  "วันพุธ",
-  "วันพฤหัสบดี",
-  "วันศุกร์",
-  "วันเสาร์",
-  "วันอาทิตย์",
-];
-
-const formSchema = z.object({
-  name: z.string().min(2, "ชื่อพรีเซ็ตสั้นไป (อย่างน้อย 2 ตัว)"),
-  venue: z.string(),
-  schedule_day: z.string(),
-  start_time: z.string(),
-  end_time: z.string(),
-  max_players: z.number().int().min(2, "อย่างน้อย 2 คน").max(40, "สูงสุด 40 คน"),
-  court_fee: z.number().min(0, "ต้องไม่ติดลบ"),
-  shuttle_price: z.number().min(0, "ต้องไม่ติดลบ"),
-  court_count: z.number().int().min(1, "อย่างน้อย 1 สนาม").max(20, "สูงสุด 20 สนาม"),
-  players_per_team: z.enum(["1", "2"]),
-  rotation_mode: z.enum(["fair_queue", "winner_stays"]),
-  queue_mode: z.enum(["rest_longest", "fifo", "level_match", "smart"]),
-});
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 type Props = {
@@ -141,8 +117,34 @@ function toRegulars(preset?: ClubPreset): Regular[] {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
+  const t = useTranslations("club.presetForm");
   const router = useRouter();
   const isEdit = !!preset;
+
+  const DAYS = [
+    t("monday"),
+    t("tuesday"),
+    t("wednesday"),
+    t("thursday"),
+    t("friday"),
+    t("saturday"),
+    t("sunday"),
+  ];
+
+  const formSchema = z.object({
+    name: z.string().min(2, t("validationName")),
+    venue: z.string(),
+    schedule_day: z.string(),
+    start_time: z.string(),
+    end_time: z.string(),
+    max_players: z.number().int().min(2, t("validationMaxMin")).max(40, t("validationMaxMax")),
+    court_fee: z.number().min(0, t("validationFeeMin")),
+    shuttle_price: z.number().min(0, t("validationFeeMin")),
+    court_count: z.number().int().min(1, t("validationCourtMin")).max(20, t("validationCourtMax")),
+    players_per_team: z.enum(["1", "2"]),
+    rotation_mode: z.enum(["fair_queue", "winner_stays"]),
+    queue_mode: z.enum(["rest_longest", "fifo", "level_match", "smart"]),
+  });
 
   // Regulars are managed outside TanStack Form (dynamic array UI),
   // then merged into the config at submit time.
@@ -193,7 +195,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
         return;
       }
 
-      toast.success(isEdit ? "บันทึกพรีเซ็ตแล้ว" : "สร้างพรีเซ็ตแล้ว");
+      toast.success(isEdit ? t("toastSaved") : t("toastCreated"));
       onOpenChange(false);
       startTransition(() => router.refresh());
     },
@@ -275,7 +277,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
       <DialogContent className="max-w-lg max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {isEdit ? "แก้ไขพรีเซ็ต" : "สร้างพรีเซ็ตใหม่"}
+            {isEdit ? t("titleEdit") : t("titleCreate")}
           </DialogTitle>
         </DialogHeader>
 
@@ -294,14 +296,14 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                   field.state.meta.isTouched && !field.state.meta.isValid;
                 return (
                   <Field data-invalid={isInvalid}>
-                    <FieldLabel htmlFor={field.name}>ชื่อพรีเซ็ต *</FieldLabel>
+                    <FieldLabel htmlFor={field.name}>{t("nameLabel")}</FieldLabel>
                     <Input
                       id={field.name}
                       value={field.state.value}
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
                       aria-invalid={isInvalid}
-                      placeholder="เช่น ก๊วนพุธเย็น"
+                      placeholder={t("namePlaceholder")}
                     />
                     {isInvalid && (
                       <FieldError errors={fieldErrors(field.state.meta.errors)} />
@@ -316,13 +318,13 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
               name="venue"
               children={(field) => (
                 <Field>
-                  <FieldLabel htmlFor={field.name}>สนาม</FieldLabel>
+                  <FieldLabel htmlFor={field.name}>{t("venueLabel")}</FieldLabel>
                   <Input
                     id={field.name}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="ชื่อสนาม / ที่อยู่"
+                    placeholder={t("venuePlaceholder")}
                   />
                 </Field>
               )}
@@ -333,7 +335,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
               name="schedule_day"
               children={(field) => (
                 <Field>
-                  <FieldLabel htmlFor={`${field.name}-trigger`}>วันที่เล่นประจำ</FieldLabel>
+                  <FieldLabel htmlFor={`${field.name}-trigger`}>{t("scheduleDayLabel")}</FieldLabel>
                   <Select
                     value={field.state.value}
                     onValueChange={(v) => {
@@ -342,7 +344,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                   >
                     <SelectTrigger id={`${field.name}-trigger`} className="w-full">
                       <SelectValue>
-                        {(v: string) => v || <span className="text-muted-foreground">เลือกวัน (ไม่บังคับ)</span>}
+                        {(v: string) => v || <span className="text-muted-foreground">{t("scheduleDayPlaceholder")}</span>}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
@@ -359,7 +361,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                       className="text-xs text-muted-foreground underline underline-offset-2 text-left mt-0.5"
                       onClick={() => field.handleChange("")}
                     >
-                      ล้าง
+                      {t("scheduleDayClear")}
                     </button>
                   )}
                 </Field>
@@ -368,14 +370,14 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
 
             {/* ── Time ─────────────────────────────────────────────────── */}
             <Field>
-              <FieldLabel>เวลา</FieldLabel>
+              <FieldLabel>{t("timeLabel")}</FieldLabel>
               <div className="grid grid-cols-2 gap-2">
                 <form.Field
                   name="start_time"
                   children={(field) => (
                     <Field>
                       <FieldLabel htmlFor={field.name} className="text-xs text-muted-foreground">
-                        เริ่ม
+                        {t("timeStart")}
                       </FieldLabel>
                       <Input
                         id={field.name}
@@ -392,7 +394,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                   children={(field) => (
                     <Field>
                       <FieldLabel htmlFor={field.name} className="text-xs text-muted-foreground">
-                        เลิก
+                        {t("timeEnd")}
                       </FieldLabel>
                       <Input
                         id={field.name}
@@ -408,23 +410,23 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
             </Field>
 
             {/* ── Max players ──────────────────────────────────────────── */}
-            {numberField("max_players", "รับสูงสุด (คน)", 2, 40)}
+            {numberField("max_players", t("maxPlayersLabel"), 2, 40)}
 
             {/* ── Court count ──────────────────────────────────────────── */}
-            {numberField("court_count", "จำนวนสนาม", 1, 20)}
+            {numberField("court_count", t("courtCountLabel"), 1, 20)}
 
             {/* ── Court fee ────────────────────────────────────────────── */}
-            {numberField("court_fee", "ค่าสนาม (บาท)", 0)}
+            {numberField("court_fee", t("courtFeeLabel"), 0)}
 
             {/* ── Shuttle price ─────────────────────────────────────────── */}
-            {numberField("shuttle_price", "ค่าลูก (บาท/ลูก)", 0)}
+            {numberField("shuttle_price", t("shuttlePriceLabel"), 0)}
 
             {/* ── Players per team ──────────────────────────────────────── */}
             <form.Field
               name="players_per_team"
               children={(field) => (
                 <Field>
-                  <FieldLabel htmlFor={`${field.name}-trigger`}>ผู้เล่นต่อทีม</FieldLabel>
+                  <FieldLabel htmlFor={`${field.name}-trigger`}>{t("playersPerTeamLabel")}</FieldLabel>
                   <Select
                     value={field.state.value}
                     onValueChange={(v) => {
@@ -433,12 +435,12 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                   >
                     <SelectTrigger id={`${field.name}-trigger`} className="w-full">
                       <SelectValue>
-                        {(v: string) => (v === "1" ? "เดี่ยว (1 คน)" : "คู่ (2 คน)")}
+                        {(v: string) => (v === "1" ? t("playersPerTeamSingle") : t("playersPerTeamDouble"))}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">เดี่ยว (1 คน)</SelectItem>
-                      <SelectItem value="2">คู่ (2 คน)</SelectItem>
+                      <SelectItem value="1">{t("playersPerTeamSingle")}</SelectItem>
+                      <SelectItem value="2">{t("playersPerTeamDouble")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </Field>
@@ -450,7 +452,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
               name="rotation_mode"
               children={(field) => (
                 <Field>
-                  <FieldLabel htmlFor={`${field.name}-trigger`}>รูปแบบการหมุน</FieldLabel>
+                  <FieldLabel htmlFor={`${field.name}-trigger`}>{t("rotationModeLabel")}</FieldLabel>
                   <Select
                     value={field.state.value}
                     onValueChange={(v) => {
@@ -462,17 +464,17 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                       <SelectValue>
                         {(v: string) =>
                           v === "fair_queue"
-                            ? "Fair Queue (หมุนทุกคน)"
-                            : "Winner Stays (ผู้ชนะอยู่ต่อ)"
+                            ? t("rotationFairQueue")
+                            : t("rotationWinnerStays")
                         }
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="fair_queue">
-                        Fair Queue (หมุนทุกคน)
+                        {t("rotationFairQueue")}
                       </SelectItem>
                       <SelectItem value="winner_stays">
-                        Winner Stays (ผู้ชนะอยู่ต่อ)
+                        {t("rotationWinnerStays")}
                       </SelectItem>
                     </SelectContent>
                   </Select>
@@ -485,7 +487,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
               name="queue_mode"
               children={(field) => (
                 <Field>
-                  <FieldLabel htmlFor={`${field.name}-trigger`}>โหมดคิว</FieldLabel>
+                  <FieldLabel htmlFor={`${field.name}-trigger`}>{t("queueModeLabel")}</FieldLabel>
                   <Select
                     value={field.state.value}
                     onValueChange={(v) => {
@@ -502,21 +504,21 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                     <SelectTrigger id={`${field.name}-trigger`} className="w-full">
                       <SelectValue>
                         {(v: string) => {
-                          if (v === "rest_longest") return "พักนานก่อน (แนะนำ)";
-                          if (v === "fifo") return "เข้าก่อนได้ก่อน";
-                          if (v === "level_match") return "จับคู่ตามระดับ";
-                          if (v === "smart") return "อัจฉริยะ";
+                          if (v === "rest_longest") return t("queueRestLongest");
+                          if (v === "fifo") return t("queueFifo");
+                          if (v === "level_match") return t("queueLevelMatch");
+                          if (v === "smart") return t("queueSmart");
                           return v;
                         }}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="rest_longest">
-                        พักนานก่อน (แนะนำ)
+                        {t("queueRestLongest")}
                       </SelectItem>
-                      <SelectItem value="fifo">เข้าก่อนได้ก่อน</SelectItem>
-                      <SelectItem value="level_match">จับคู่ตามระดับ</SelectItem>
-                      <SelectItem value="smart">อัจฉริยะ</SelectItem>
+                      <SelectItem value="fifo">{t("queueFifo")}</SelectItem>
+                      <SelectItem value="level_match">{t("queueLevelMatch")}</SelectItem>
+                      <SelectItem value="smart">{t("queueSmart")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </Field>
@@ -525,7 +527,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
 
             {/* ── Regulars ──────────────────────────────────────────────── */}
             <Field>
-              <FieldLabel>ผู้เล่นประจำ</FieldLabel>
+              <FieldLabel>{t("regularsLabel")}</FieldLabel>
               <div className="space-y-2">
                 {regulars.map((reg, idx) => (
                   <div key={idx} className="flex items-center gap-1.5">
@@ -534,7 +536,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                       onChange={(e) =>
                         updateRegular(idx, { name: e.target.value })
                       }
-                      placeholder={`ชื่อผู้เล่น ${idx + 1}`}
+                      placeholder={t("regularPlayerPlaceholder", { number: idx + 1 })}
                       className="flex-1 min-w-0"
                     />
                     <Input
@@ -544,7 +546,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                         updateRegular(idx, { start_time: e.target.value })
                       }
                       className="w-24 shrink-0"
-                      title="เวลาเริ่ม (ไม่บังคับ)"
+                      title={t("regularStartTimeTitle")}
                     />
                     <Input
                       type="time"
@@ -553,14 +555,14 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                         updateRegular(idx, { end_time: e.target.value })
                       }
                       className="w-24 shrink-0"
-                      title="เวลาเลิก (ไม่บังคับ)"
+                      title={t("regularEndTimeTitle")}
                     />
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon-sm"
                       onClick={() => removeRegular(idx)}
-                      aria-label="ลบผู้เล่น"
+                      aria-label={t("regularRemoveAriaLabel")}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -574,11 +576,11 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                   onClick={addRegular}
                 >
                   <Plus className="h-3.5 w-3.5 mr-1" />
-                  เพิ่มผู้เล่นประจำ
+                  {t("addRegularButton")}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                เวลาเริ่ม/เลิกต่อคน — ไม่กรอกก็ใช้เวลาของก๊วน · co-admin ตั้งค่าได้หลังเปิดก๊วน
+                {t("regularsNote")}
               </p>
             </Field>
           </FieldGroup>
@@ -594,12 +596,12 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                   {isSubmitting ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                      {isEdit ? "กำลังบันทึก..." : "กำลังสร้าง..."}
+                      {isEdit ? t("submitting") : t("creating")}
                     </>
                   ) : isEdit ? (
-                    "บันทึกพรีเซ็ต"
+                    t("savePreset")
                   ) : (
-                    "สร้างพรีเซ็ต"
+                    t("createPreset")
                   )}
                 </Button>
               )}

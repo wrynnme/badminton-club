@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { Bar, BarChart, CartesianGrid, LabelList, XAxis, YAxis } from "recharts";
 import { Users, Swords, Coins, Wallet, CircleDot } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -25,11 +26,6 @@ import { truncate } from "@/lib/utils";
 import type { Club, ClubPlayer, ClubMatch, Level } from "@/lib/types";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 
-const chartConfig = {
-  games: { label: "เกม", color: "var(--chart-1)" },
-  matches: { label: "แมตช์", color: "var(--chart-2)" },
-} satisfies ChartConfig;
-
 type Props = {
   club: Club;
   players: ClubPlayer[];
@@ -44,6 +40,13 @@ type Props = {
 };
 
 export function ClubDashboard({ club, players, matches, levels, expenses, costTotal, maxPlayers, hideCost = false }: Props) {
+  const t = useTranslations("club.dashboard");
+
+  const chartConfig = {
+    games: { label: t("colGames"), color: "var(--chart-1)" },
+    matches: { label: t("statMatches"), color: "var(--chart-2)" },
+  } satisfies ChartConfig;
+
   const d = useMemo(() => computeClubDashboard(players, matches), [players, matches]);
 
   // Per-player cost + usage rows via the SAME shared builder the cost-breakdown
@@ -67,9 +70,7 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
   // because reserve players also carry court/shuttle/expense shares.
   const perPlayer = d.totalPlayers > 0 ? Math.round(costTotal / d.totalPlayers) : 0;
 
-  // Top 10 players by completed-match appearances (desc). Key each bar by player
-  // id (unique) so two players with the same — or same 14-char prefix — name don't
-  // collapse into one category; the y-axis tick formatter truncates for display.
+  // Top 10 players by completed-match appearances (desc).
   const gamesChartData = useMemo(() => {
     return [...d.gamesByPlayer.entries()]
       .map(([id, games]) => ({ id, games }))
@@ -78,12 +79,11 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
   }, [d.gamesByPlayer]);
 
   const courtChartData = useMemo(
-    () => d.courtUsage.map((c) => ({ court: `สนาม ${c.court}`, matches: c.matches })),
-    [d.courtUsage],
+    () => d.courtUsage.map((c) => ({ court: t("chartCourtPrefix", { name: c.court }), matches: c.matches })),
+    [d.courtUsage, t],
   );
 
-  // Player table — sorted by games desc then name. Cost columns come from the
-  // shared cost summary (court/shuttle per player + expense − discount → total).
+  // Player table — sorted by games desc then name.
   const tableRows = useMemo(() => {
     const costById = new Map(cost.rows.map((r) => [r.playerId, r]));
     return players
@@ -110,7 +110,7 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
     return (
       <Card>
         <CardContent className="py-10 text-center text-sm text-muted-foreground">
-          ยังไม่มีข้อมูล — เพิ่มผู้เล่นและเริ่มแมตช์เพื่อดูสถิติ
+          {t("empty")}
         </CardContent>
       </Card>
     );
@@ -122,36 +122,36 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
       <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${hideCost ? "lg:grid-cols-3" : "lg:grid-cols-5"}`}>
         <StatCard
           icon={<Users className="h-4 w-4" />}
-          label="ผู้เล่น"
+          label={t("statPlayers")}
           value={`${d.activePlayers}/${maxPlayers}`}
-          sub={d.reservePlayers > 0 ? `+${d.reservePlayers} สำรอง` : "ตัวจริง"}
+          sub={d.reservePlayers > 0 ? t("statPlayersReserve", { count: d.reservePlayers }) : t("statPlayersActive")}
         />
         <StatCard
           icon={<Swords className="h-4 w-4" />}
-          label="แมตช์จบแล้ว"
+          label={t("statMatches")}
           value={d.completedMatches}
-          sub={`กำลังแข่ง ${d.inProgressMatches} · รอ ${d.pendingMatches}`}
+          sub={t("statMatchesSub", { inProgress: d.inProgressMatches, pending: d.pendingMatches })}
         />
         <StatCard
           icon={<CircleDot className="h-4 w-4" />}
-          label="ลูกขนไก่"
+          label={t("statShuttles")}
           value={d.totalShuttles}
-          sub="ใช้ไปทั้งหมด"
+          sub={t("statShuttlesSub")}
         />
         {!hideCost && (
           <StatCard
             icon={<Wallet className="h-4 w-4" />}
-            label="ค่าใช้จ่ายรวม"
+            label={t("statCostTotal")}
             value={`${costTotal.toLocaleString()} ฿`}
-            sub="สนาม + ลูก + อื่นๆ"
+            sub={t("statCostTotalSub")}
           />
         )}
         {!hideCost && (
           <StatCard
             icon={<Coins className="h-4 w-4" />}
-            label="เฉลี่ย/คน"
+            label={t("statPerPerson")}
             value={`${perPlayer.toLocaleString()} ฿`}
-            sub={`หาร ${d.totalPlayers} คน`}
+            sub={t("statPerPersonSub", { count: d.totalPlayers })}
           />
         )}
       </div>
@@ -160,7 +160,7 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
       <div className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">เกมต่อผู้เล่น (สูงสุด 10)</CardTitle>
+            <CardTitle className="text-sm">{t("chartGamesTitle")}</CardTitle>
           </CardHeader>
           <CardContent className="px-2 pb-3">
             {gamesChartData.length > 0 ? (
@@ -200,14 +200,14 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
                 </BarChart>
               </ChartContainer>
             ) : (
-              <EmptyBlock />
+              <EmptyBlock label={t("noMatches")} />
             )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">การใช้สนาม</CardTitle>
+            <CardTitle className="text-sm">{t("chartCourtTitle")}</CardTitle>
           </CardHeader>
           <CardContent className="px-2 pb-3">
             {courtChartData.length > 0 ? (
@@ -234,7 +234,7 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
                 </BarChart>
               </ChartContainer>
             ) : (
-              <EmptyBlock />
+              <EmptyBlock label={t("noMatches")} />
             )}
           </CardContent>
         </Card>
@@ -243,28 +243,28 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
       {/* ── Player table ── */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">ผู้เล่นทั้งหมด</CardTitle>
+          <CardTitle className="text-sm">{t("tableTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="px-2 pb-2">
           {tableRows.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-8 text-center">#</TableHead>
-                  <TableHead>ชื่อ</TableHead>
-                  <TableHead className="w-16 text-center">ระดับ</TableHead>
-                  <TableHead className="w-24 text-center whitespace-nowrap">เวลา</TableHead>
-                  <TableHead className="w-12 text-center">ชม.</TableHead>
-                  <TableHead className="w-12 text-center">เกม</TableHead>
-                  <TableHead className="w-16 text-center whitespace-nowrap">ลูกที่ใช้</TableHead>
+                  <TableHead className="w-8 text-center">{t("colNumber")}</TableHead>
+                  <TableHead>{t("colName")}</TableHead>
+                  <TableHead className="w-16 text-center">{t("colLevel")}</TableHead>
+                  <TableHead className="w-24 text-center whitespace-nowrap">{t("colTime")}</TableHead>
+                  <TableHead className="w-12 text-center">{t("colHours")}</TableHead>
+                  <TableHead className="w-12 text-center">{t("colGames")}</TableHead>
+                  <TableHead className="w-16 text-center whitespace-nowrap">{t("colShuttles")}</TableHead>
                   {!hideCost && (
                     <>
-                      <TableHead className="w-16 text-right whitespace-nowrap">ค่าสนาม</TableHead>
-                      <TableHead className="w-16 text-right">ค่าลูก</TableHead>
-                      <TableHead className="w-16 text-right">รวม</TableHead>
+                      <TableHead className="w-16 text-right whitespace-nowrap">{t("colCourtFee")}</TableHead>
+                      <TableHead className="w-16 text-right">{t("colShuttleFee")}</TableHead>
+                      <TableHead className="w-16 text-right">{t("colTotal")}</TableHead>
                     </>
                   )}
-                  <TableHead className="w-20 text-center">สถานะ</TableHead>
+                  <TableHead className="w-20 text-center">{t("colStatus")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -286,7 +286,7 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
                     )}
                     <TableCell className="text-center">
                       <Badge variant={r.status === "active" ? "secondary" : "outline"} className="text-[10px]">
-                        {r.status === "active" ? "ตัวจริง" : "สำรอง"}
+                        {r.status === "active" ? t("statusActive") : t("statusReserve")}
                       </Badge>
                     </TableCell>
                   </TableRow>
@@ -294,7 +294,7 @@ export function ClubDashboard({ club, players, matches, levels, expenses, costTo
               </TableBody>
             </Table>
           ) : (
-            <p className="py-6 text-center text-sm text-muted-foreground">ยังไม่มีผู้เล่น</p>
+            <p className="py-6 text-center text-sm text-muted-foreground">{t("noPlayers")}</p>
           )}
         </CardContent>
       </Card>
@@ -327,10 +327,10 @@ function StatCard({
   );
 }
 
-function EmptyBlock() {
+function EmptyBlock({ label }: { label: string }) {
   return (
     <div className="flex h-[160px] items-center justify-center text-sm text-muted-foreground">
-      ยังไม่มีแมตช์ที่จบ
+      {label}
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import { Users } from "lucide-react";
 import type { Club, ClubPlayer } from "@/lib/types";
 
@@ -17,20 +18,21 @@ function fmt(min: number): string {
  * session, using each player's effective window (override or full club window).
  * Pure / server-renderable.
  */
-export function HourlyHeadcount({ club, players }: { club: Club; players: ClubPlayer[] }) {
+export async function HourlyHeadcount({ club, players }: { club: Club; players: ClubPlayer[] }) {
+  const t = await getTranslations("club.hourly");
   const s0 = toMin(club.start_time);
   const s1 = toMin(club.end_time);
   if (s1 <= s0 || players.length === 0) return null;
 
   const slots: { start: number; end: number; count: number }[] = [];
-  for (let t = s0; t < s1; t += 60) {
-    const end = Math.min(t + 60, s1);
+  for (let slotStart = s0; slotStart < s1; slotStart += 60) {
+    const end = Math.min(slotStart + 60, s1);
     const count = players.filter((p) => {
       const ps = p.start_time ? toMin(p.start_time) : s0;
       const pe = p.end_time ? toMin(p.end_time) : s1;
-      return ps <= t && pe >= end;
+      return ps <= slotStart && pe >= end;
     }).length;
-    slots.push({ start: t, end, count });
+    slots.push({ start: slotStart, end, count });
   }
 
   return (
@@ -45,7 +47,7 @@ export function HourlyHeadcount({ club, players }: { club: Club; players: ClubPl
           </span>
           <span className="flex items-center gap-1.5 text-lg font-semibold tabular-nums">
             <Users className="h-4 w-4 text-muted-foreground shrink-0" />
-            {s.count} คน
+            {t("people", { count: s.count })}
           </span>
         </div>
       ))}

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Link2, Unlink, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +43,7 @@ export function ClubLockedPairs({
   locks: ClubLockedPair[];
   canManage: boolean;
 }) {
+  const t = useTranslations("club.lockedPairs");
   const router = useRouter();
 
   // Build a stable name-resolution map (keyed on club_players.id = p.id)
@@ -54,10 +56,10 @@ export function ClubLockedPairs({
       <CardHeader className="pb-3">
         <CardTitle className="text-sm flex items-center gap-1.5">
           <Users className="h-4 w-4" />
-          ล็อคคู่
+          {t("title")}
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          บังคับให้ 2 คนเป็นคู่เดียวกันตอนจัดคิว
+          {t("description")}
         </p>
       </CardHeader>
 
@@ -97,6 +99,7 @@ function CreateLockForm({
   nameMap: Map<string, string>;
   onSuccess: () => void;
 }) {
+  const t = useTranslations("club.lockedPairs");
   const [player1Id, setPlayer1Id] = useState<string>("");
   const [player2Id, setPlayer2Id] = useState<string>("");
   const [mode, setMode] = useState<"forever" | "n_games">("forever");
@@ -122,7 +125,7 @@ function CreateLockForm({
       if ("error" in res) {
         toast.error(res.error);
       } else {
-        toast.success("ล็อคคู่แล้ว");
+        toast.success(t("toastLocked"));
         setPlayer1Id("");
         setPlayer2Id("");
         setMode("forever");
@@ -137,12 +140,12 @@ function CreateLockForm({
       {/* Player selects */}
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <Label className="text-xs">ผู้เล่น 1</Label>
+          <Label className="text-xs">{t("player1Label")}</Label>
           <Select value={player1Id} onValueChange={(v) => setPlayer1Id(v ?? "")}>
             <SelectTrigger className="h-8 text-sm">
               <SelectValue>
                 {(v: string) =>
-                  v ? (nameMap.get(v) ?? "—") : "เลือกผู้เล่น"
+                  v ? (nameMap.get(v) ?? "—") : t("selectPlayer")
                 }
               </SelectValue>
             </SelectTrigger>
@@ -161,13 +164,13 @@ function CreateLockForm({
         </div>
 
         <div className="space-y-1">
-          <Label className="text-xs">ผู้เล่น 2</Label>
+          <Label className="text-xs">{t("player2Label")}</Label>
           <Select value={player2Id} onValueChange={(v) => setPlayer2Id(v ?? "")}>
 
             <SelectTrigger className="h-8 text-sm">
               <SelectValue>
                 {(v: string) =>
-                  v ? (nameMap.get(v) ?? "—") : "เลือกผู้เล่น"
+                  v ? (nameMap.get(v) ?? "—") : t("selectPlayer")
                 }
               </SelectValue>
             </SelectTrigger>
@@ -188,7 +191,7 @@ function CreateLockForm({
 
       {/* Duration mode */}
       <div className="flex items-center gap-2">
-        <Label className="text-xs shrink-0">ระยะเวลา</Label>
+        <Label className="text-xs shrink-0">{t("durationLabel")}</Label>
         <div className="flex gap-1">
           <Button
             type="button"
@@ -197,7 +200,7 @@ function CreateLockForm({
             className="h-7 text-xs px-3"
             onClick={() => setMode("forever")}
           >
-            ตลอด
+            {t("durationForever")}
           </Button>
           <Button
             type="button"
@@ -206,7 +209,7 @@ function CreateLockForm({
             className="h-7 text-xs px-3"
             onClick={() => setMode("n_games")}
           >
-            จำนวนเกม
+            {t("durationNGames")}
           </Button>
         </div>
 
@@ -235,12 +238,12 @@ function CreateLockForm({
               onClick={handleSubmit}
             >
               <Link2 className="h-3.5 w-3.5" />
-              ล็อคคู่
+              {t("lockButton")}
             </Button>
           }
         />
         <TooltipContent>
-          บังคับให้ 2 คนนี้เป็นคู่เดียวกันทุกครั้งที่ระบบจัดคิว
+          {t("lockTooltip")}
         </TooltipContent>
       </Tooltip>
     </div>
@@ -260,10 +263,11 @@ function LockList({
   canManage: boolean;
   onSuccess: () => void;
 }) {
+  const t = useTranslations("club.lockedPairs");
   if (locks.length === 0) {
     return (
       <p className="text-sm text-muted-foreground text-center py-3">
-        ยังไม่มีคู่ที่ล็อค
+        {t("empty")}
       </p>
     );
   }
@@ -296,6 +300,7 @@ function LockRow({
   canManage: boolean;
   onSuccess: () => void;
 }) {
+  const t = useTranslations("club.lockedPairs");
   const [busy, startTransition] = useTransition();
 
   const name1 = nameMap.get(lock.player1_id) ?? "—";
@@ -307,7 +312,7 @@ function LockRow({
       if ("error" in res) {
         toast.error(res.error);
       } else {
-        toast.success("ปล่อยคู่แล้ว");
+        toast.success(t("toastReleased"));
         onSuccess();
       }
     });
@@ -326,8 +331,8 @@ function LockRow({
         className="text-xs shrink-0"
       >
         {lock.games_remaining == null
-          ? "ตลอด"
-          : `เหลือ ${lock.games_remaining} เกม`}
+          ? t("badgeForever")
+          : t("badgeRemaining", { count: lock.games_remaining })}
       </Badge>
 
       {canManage && (
@@ -345,7 +350,7 @@ function LockRow({
               </Button>
             }
           />
-          <TooltipContent>ปล่อยคู่</TooltipContent>
+          <TooltipContent>{t("releaseTooltip")}</TooltipContent>
         </Tooltip>
       )}
     </div>

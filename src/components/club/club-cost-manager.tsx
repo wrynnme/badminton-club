@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Save, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ type Props = {
 };
 
 export function ClubCostManager({ clubId, initial }: Props) {
+  const t = useTranslations("club.costManager");
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -44,7 +46,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
       if (res && "error" in res) {
         toast.error(res.error);
       } else {
-        toast.success("บันทึกการตั้งค่าค่าใช้จ่ายแล้ว");
+        toast.success(t("toastSaved"));
         router.refresh();
       }
     });
@@ -53,12 +55,12 @@ export function ClubCostManager({ clubId, initial }: Props) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">ตั้งค่าแบ่งค่าใช้จ่าย</CardTitle>
+        <CardTitle className="text-base">{t("title")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
         {/* Court fee */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium">ค่าสนาม (บาท)</Label>
+          <Label className="text-sm font-medium">{t("courtFeeLabel")}</Label>
           <div className="relative max-w-[140px]">
             <NumberInput
               min={0}
@@ -79,7 +81,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
               onClick={() => setCourtSplit("even")}
               className="h-7 text-xs"
             >
-              หารเท่า
+              {t("splitEven")}
             </Button>
             <Button
               type="button"
@@ -88,7 +90,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
               onClick={() => setCourtSplit("by_time")}
               className="h-7 text-xs"
             >
-              ตามเวลา
+              {t("splitByTime")}
             </Button>
           </div>
         </div>
@@ -96,7 +98,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
         {/* Gap policy — only visible when court_split === "by_time" */}
         {courtSplit === "by_time" && (
           <div className="space-y-2 pl-3 border-l-2 border-muted">
-            <Label className="text-sm font-medium">ช่วงไม่มีคนอยู่ในสนาม</Label>
+            <Label className="text-sm font-medium">{t("gapSectionLabel")}</Label>
             <div className="flex flex-wrap gap-1.5">
               <Button
                 type="button"
@@ -105,7 +107,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
                 onClick={() => setGapPolicy("spread")}
                 className="h-7 text-xs"
               >
-                เฉลี่ยทุกคน
+                {t("gapSpread")}
               </Button>
               <Button
                 type="button"
@@ -114,7 +116,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
                 onClick={() => setGapPolicy("owner")}
                 className="h-7 text-xs"
               >
-                เจ้าของจ่าย
+                {t("gapOwner")}
               </Button>
               <Button
                 type="button"
@@ -123,22 +125,22 @@ export function ClubCostManager({ clubId, initial }: Props) {
                 onClick={() => setGapPolicy("ignore")}
                 className="h-7 text-xs"
               >
-                ไม่คิด
+                {t("gapIgnore")}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
               {gapPolicy === "spread"
-                ? "เฉลี่ยทุกคน = แบ่งให้ทุกคน"
+                ? t("gapDescSpread")
                 : gapPolicy === "owner"
-                  ? "เจ้าของจ่าย = เจ้าของรับภาระ"
-                  : "ไม่คิด = ตัดช่วงนั้นทิ้ง"}
+                  ? t("gapDescOwner")
+                  : t("gapDescIgnore")}
             </p>
           </div>
         )}
 
         {/* Shuttle fee */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium">ค่าลูก (บาท)</Label>
+          <Label className="text-sm font-medium">{t("shuttleFeeLabel")}</Label>
           <div className="relative max-w-[140px]">
             <NumberInput
               min={0}
@@ -159,7 +161,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
               onClick={() => setShuttleSplit("even")}
               className="h-7 text-xs"
             >
-              หารเท่า
+              {t("splitEven")}
             </Button>
             <Button
               type="button"
@@ -168,7 +170,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
               onClick={() => setShuttleSplit("per_match")}
               className="h-7 text-xs"
             >
-              ต่อลูก
+              {t("splitPerShuttle")}
             </Button>
             <Button
               type="button"
@@ -177,16 +179,16 @@ export function ClubCostManager({ clubId, initial }: Props) {
               onClick={() => setShuttleSplit("per_player")}
               className="h-7 text-xs"
             >
-              ต่อแมตช์
+              {t("splitPerMatch")}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            ค่าลูกคิดจากลูกที่ใช้ในแต่ละแมตช์ (ปุ่ม +ลูก ในตารางคิว) — ต้องใช้ระบบหมุนคิว.{" "}
+            {t("shuttleNote")}{" "}
             {shuttleSplit === "even"
-              ? "หารเท่า = รวมทุกลูก ÷ ทุกคน"
+              ? t("shuttleDescEven")
               : shuttleSplit === "per_match"
-                ? "ต่อลูก = ลูกในแมตช์ ÷ คนในแมตช์"
-                : "ต่อแมตช์ = แต่ละคนจ่ายเต็มตามลูกที่ใช้ (ไม่หาร)"}
+                ? t("shuttleDescPerShuttle")
+                : t("shuttleDescPerMatch")}
           </p>
         </div>
 
@@ -201,7 +203,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
           ) : (
             <Save className="h-3.5 w-3.5" />
           )}
-          บันทึก
+          {t("save")}
         </Button>
       </CardContent>
     </Card>

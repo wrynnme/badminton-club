@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Pencil, Trash2, Check, X, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ function EditRow({
   level: Level;
   onDone: () => void;
 }) {
+  const t = useTranslations("club.levelsManager");
   const router = useRouter();
   const [pending, start] = useTransition();
   const [real, setReal] = useState(String(level.real));
@@ -40,11 +42,11 @@ function EditRow({
   function handleSave() {
     const realNum = parseFloat(real);
     if (!Number.isFinite(realNum)) {
-      toast.error("real ต้องเป็นตัวเลข");
+      toast.error(t("validationReal"));
       return;
     }
     if (!label.trim()) {
-      toast.error("ระบุชื่อระดับ");
+      toast.error(t("validationLabel"));
       return;
     }
     start(async () => {
@@ -86,7 +88,7 @@ function EditRow({
             <Check className="h-3.5 w-3.5" />
           </Button>
         } />
-        <TooltipContent>บันทึก</TooltipContent>
+        <TooltipContent>{t("saveTooltip")}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger render={
@@ -94,7 +96,7 @@ function EditRow({
             <X className="h-3.5 w-3.5" />
           </Button>
         } />
-        <TooltipContent>ยกเลิก</TooltipContent>
+        <TooltipContent>{t("cancelTooltip")}</TooltipContent>
       </Tooltip>
     </div>
   );
@@ -103,6 +105,7 @@ function EditRow({
 // ─── Level row (read mode) ────────────────────────────────────────────────────
 
 function LevelRow({ level }: { level: Level }) {
+  const t = useTranslations("club.levelsManager");
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -131,14 +134,14 @@ function LevelRow({ level }: { level: Level }) {
 
       {confirmDelete ? (
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-destructive">ลบ?</span>
+          <span className="text-xs text-destructive">{t("confirmDelete")}</span>
           <Button
             size="xs"
             variant="destructive"
             disabled={pending}
             onClick={handleDelete}
           >
-            ยืนยัน
+            {t("confirmButton")}
           </Button>
           <Button
             size="xs"
@@ -146,7 +149,7 @@ function LevelRow({ level }: { level: Level }) {
             disabled={pending}
             onClick={() => setConfirmDelete(false)}
           >
-            ยกเลิก
+            {t("cancelButton")}
           </Button>
         </div>
       ) : (
@@ -162,7 +165,7 @@ function LevelRow({ level }: { level: Level }) {
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
             } />
-            <TooltipContent>แก้ไขระดับ</TooltipContent>
+            <TooltipContent>{t("editTooltip")}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger render={
@@ -175,7 +178,7 @@ function LevelRow({ level }: { level: Level }) {
                 <Trash2 className="h-3.5 w-3.5" />
               </Button>
             } />
-            <TooltipContent>ลบระดับ — ผู้เล่นที่ใช้ระดับนี้จะกลายเป็นไม่ระบุ</TooltipContent>
+            <TooltipContent>{t("deleteTooltip")}</TooltipContent>
           </Tooltip>
         </>
       )}
@@ -186,6 +189,7 @@ function LevelRow({ level }: { level: Level }) {
 // ─── Add row ──────────────────────────────────────────────────────────────────
 
 function AddRow() {
+  const t = useTranslations("club.levelsManager");
   const router = useRouter();
   const [pending, start] = useTransition();
   const [real, setReal] = useState("");
@@ -194,11 +198,11 @@ function AddRow() {
   function handleAdd() {
     const realNum = parseFloat(real);
     if (!Number.isFinite(realNum)) {
-      toast.error("real ต้องเป็นตัวเลข");
+      toast.error(t("validationReal"));
       return;
     }
     if (!label.trim()) {
-      toast.error("ระบุชื่อระดับ");
+      toast.error(t("validationLabel"));
       return;
     }
     start(async () => {
@@ -224,24 +228,24 @@ function AddRow() {
         onChange={(e) => setReal(e.target.value)}
         placeholder="real"
         className="h-7 w-20 text-sm"
-        aria-label="real value สำหรับระดับใหม่"
+        aria-label={t("realAddAriaLabel")}
       />
       <Input
         value={label}
         onChange={(e) => setLabel(e.target.value)}
-        placeholder="ชื่อระดับ เช่น N"
+        placeholder={t("addPlaceholder")}
         className="h-7 flex-1 text-sm"
-        aria-label="ชื่อระดับใหม่"
+        aria-label={t("labelAddAriaLabel")}
         onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }}
       />
       <Tooltip>
         <TooltipTrigger render={
           <Button size="xs" disabled={pending} onClick={handleAdd}>
             <Plus className="h-3.5 w-3.5 mr-1" />
-            เพิ่ม
+            {t("addButton")}
           </Button>
         } />
-        <TooltipContent>เพิ่มระดับใหม่</TooltipContent>
+        <TooltipContent>{t("addTooltip")}</TooltipContent>
       </Tooltip>
     </div>
   );
@@ -250,24 +254,25 @@ function AddRow() {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ClubLevelsManager({ levels }: Props) {
+  const t = useTranslations("club.levelsManager");
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">ระดับฝีมือ (Levels)</CardTitle>
+        <CardTitle className="text-sm">{t("title")}</CardTitle>
         <p className="text-xs text-muted-foreground">
-          ใช้ร่วมกันทุกก๊วน — real = ค่าตัวเลขสำหรับคำนวณ, label = ชื่อที่แสดง
+          {t("description")}
         </p>
       </CardHeader>
       <CardContent className="space-y-0.5">
         {levels.length === 0 && (
-          <p className="text-sm text-muted-foreground py-1">ยังไม่มีระดับ — เพิ่มด้านล่าง</p>
+          <p className="text-sm text-muted-foreground py-1">{t("empty")}</p>
         )}
         {levels.map((l) => (
           <LevelRow key={l.id} level={l} />
         ))}
         <AddRow />
         <p className="text-[11px] text-muted-foreground pt-1">
-          ลบแล้วผู้เล่นที่ใช้ระดับนี้จะกลายเป็นไม่ระบุ
+          {t("deleteWarning")}
         </p>
       </CardContent>
     </Card>

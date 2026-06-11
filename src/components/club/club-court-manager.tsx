@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Plus, GripVertical, Trash2, Loader2 } from "lucide-react";
 import {
@@ -37,6 +38,7 @@ type Props = {
 };
 
 export function ClubCourtManager({ clubId, initialCourts }: Props) {
+  const t = useTranslations("club.courtManager");
   const router = useRouter();
   const [courts, setCourts] = useState<string[]>(initialCourts);
   const [newName, setNewName] = useState("");
@@ -59,8 +61,7 @@ export function ClubCourtManager({ clubId, initialCourts }: Props) {
   );
 
   // Serialize behind any in-flight write, apply optimistic result on success or
-  // roll back to the last persisted state on error. successMsg can be a plain
-  // string (array save) or derive the toast from the result (rename → moved count).
+  // roll back to the last persisted state on error.
   type SaveOk = { courts: string[]; movedMatches?: number };
   const runSave = (
     action: () => Promise<SaveOk | { error: string }>,
@@ -86,12 +87,10 @@ export function ClubCourtManager({ clubId, initialCourts }: Props) {
     });
   };
 
-  // Debounce + serialize: rapid edits collapse into one save, and a new save
-  // waits for the previous to finish so writes can't overtake each other.
   const save = (next: string[]) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      runSave(() => updateClubCourtsAction(clubId, next), "บันทึกรายการสนามแล้ว");
+      runSave(() => updateClubCourtsAction(clubId, next), t("toastSaved"));
     }, 250);
   };
 
@@ -99,7 +98,7 @@ export function ClubCourtManager({ clubId, initialCourts }: Props) {
     const name = newName.trim();
     if (!name) return;
     if (courts.includes(name)) {
-      toast.error("ชื่อสนามซ้ำ");
+      toast.error(t("duplicateName"));
       return;
     }
     const next = [...courts, name];
@@ -114,27 +113,21 @@ export function ClubCourtManager({ clubId, initialCourts }: Props) {
     save(next);
   };
 
-  // Rename goes through a dedicated action (not the whole-array save) so the
-  // server can cascade the new name onto club_matches.court. Optimistic + rollback,
-  // serialized behind any in-flight save like the array path.
   const rename = (oldName: string, rawNew: string) => {
-    const newName = rawNew.trim();
-    if (!newName || newName === oldName) return;
-    if (courts.includes(newName)) {
-      toast.error("ชื่อสนามซ้ำ");
+    const newCourtName = rawNew.trim();
+    if (!newCourtName || newCourtName === oldName) return;
+    if (courts.includes(newCourtName)) {
+      toast.error(t("duplicateName"));
       return;
     }
-    // Cancel any pending debounced array-save: it holds a PRE-rename snapshot and
-    // would otherwise land after this rename and revert clubs.courts to the old
-    // name while club_matches.court keeps the new one (orphaning matches).
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    setCourts((prev) => prev.map((c) => (c === oldName ? newName : c)));
+    setCourts((prev) => prev.map((c) => (c === oldName ? newCourtName : c)));
     runSave(
-      () => renameClubCourtAction(clubId, oldName, newName),
+      () => renameClubCourtAction(clubId, oldName, newCourtName),
       (res) =>
         res.movedMatches && res.movedMatches > 0
-          ? `เปลี่ยนชื่อสนามแล้ว (ย้าย ${res.movedMatches} แมตช์)`
-          : "เปลี่ยนชื่อสนามแล้ว",
+          ? t("toastRenamedWithMatches", { count: res.movedMatches })
+          : t("toastRenamed"),
     );
   };
 
@@ -154,13 +147,13 @@ export function ClubCourtManager({ clubId, initialCourts }: Props) {
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          จัดการสนาม
+          {t("title")}
           {savePending && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
         {courts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">ยังไม่มีสนาม — เพิ่มได้ด้านล่าง</p>
+          <p className="text-sm text-muted-foreground">{t("empty")}</p>
         ) : (
           <DndContext id="club-court-manager-dnd" sensors={sensors} collisionDetection={closestCenter} onDragStart={() => setDragging(true)} onDragEnd={onDragEnd}>
             <SortableContext items={courts} strategy={verticalListSortingStrategy}>
@@ -184,7 +177,7 @@ export function ClubCourtManager({ clubId, initialCourts }: Props) {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); add(); } }}
-            placeholder="ชื่อสนาม เช่น 1 หรือ A"
+            placeholder={t("addPlaceholder")}
             maxLength={40}
             className="h-8 text-sm"
             disabled={savePending}
@@ -193,11 +186,11 @@ export function ClubCourtManager({ clubId, initialCourts }: Props) {
             <TooltipTrigger
               render={
                 <Button size="sm" onClick={add} disabled={savePending || !newName.trim()}>
-                  <Plus className="h-3.5 w-3.5 mr-1" />เพิ่ม
+                  <Plus className="h-3.5 w-3.5 mr-1" />{t("addButton")}
                 </Button>
               }
             />
-            <TooltipContent>เพิ่มสนามใหม่ในรายการ</TooltipContent>
+            <TooltipContent>{t("addTooltip")}</TooltipContent>
           </Tooltip>
         </div>
       </CardContent>
@@ -216,6 +209,7 @@ function SortableCourtRow({
   onRemove: () => void;
   disabled: boolean;
 }) {
+  const t = useTranslations("club.courtManager");
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: name });
   const [value, setValue] = useState(name);
   const style = {
@@ -224,7 +218,6 @@ function SortableCourtRow({
     opacity: isDragging ? 0.6 : 1,
   };
 
-  // Commit on Enter/blur; revert to the current name on empty/unchanged.
   const commit = () => {
     const v = value.trim();
     if (!v || v === name) {
@@ -247,16 +240,16 @@ function SortableCourtRow({
               type="button"
               {...attributes}
               {...listeners}
-              aria-label="ลากเพื่อจัดลำดับ"
+              aria-label={t("dragAriaLabel")}
               className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
             >
               <GripVertical className="h-4 w-4" />
             </button>
           }
         />
-        <TooltipContent>ลากเพื่อจัดลำดับ</TooltipContent>
+        <TooltipContent>{t("dragTooltip")}</TooltipContent>
       </Tooltip>
-      <span className="text-sm text-muted-foreground shrink-0">สนาม</span>
+      <span className="text-sm text-muted-foreground shrink-0">{t("court")}</span>
       <Tooltip>
         <TooltipTrigger
           render={
@@ -275,12 +268,12 @@ function SortableCourtRow({
               }}
               maxLength={40}
               disabled={disabled}
-              aria-label={`ชื่อสนาม ${name}`}
+              aria-label={t("courtAriaLabel", { name })}
               className="h-7 text-sm flex-1 min-w-0"
             />
           }
         />
-        <TooltipContent>แก้ชื่อแล้วกด Enter เพื่อเปลี่ยนชื่อสนาม</TooltipContent>
+        <TooltipContent>{t("renameTooltip")}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger
@@ -288,7 +281,7 @@ function SortableCourtRow({
             <Button
               size="icon-sm"
               variant="ghost"
-              aria-label={`ลบ ${name}`}
+              aria-label={t("removeAriaLabel", { name })}
               className="text-destructive hover:text-destructive"
               onClick={onRemove}
               disabled={disabled}
@@ -297,7 +290,7 @@ function SortableCourtRow({
             </Button>
           }
         />
-        <TooltipContent>ลบสนาม &quot;{name}&quot;</TooltipContent>
+        <TooltipContent>{t("removeTooltip", { name })}</TooltipContent>
       </Tooltip>
     </li>
   );

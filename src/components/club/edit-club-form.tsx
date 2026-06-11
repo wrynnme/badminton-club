@@ -3,6 +3,7 @@
 import { fieldErrors } from "@/lib/form-errors";
 import * as React from "react";
 import * as z from "zod";
+import { useTranslations } from "next-intl";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,17 +24,6 @@ import {
 import { updateClubAction } from "@/lib/actions/clubs";
 import type { Club } from "@/lib/types";
 
-const formSchema = z.object({
-  name: z.string().min(2, "ชื่อก๊วนสั้นไป"),
-  venue: z.string().min(2, "ระบุสนาม"),
-  play_date: z.string().min(1, "ระบุวันที่"),
-  start_time: z.string().min(1, "ระบุเวลาเริ่ม"),
-  end_time: z.string().min(1, "ระบุเวลาเลิก"),
-  max_players: z.number().int().min(2, "อย่างน้อย 2 คน").max(40, "สูงสุด 40 คน"),
-  shuttle_info: z.string(),
-  notes: z.string(),
-});
-
 const TIME_PRESETS = [
   { label: "06–08", start: "06:00", end: "08:00" },
   { label: "07–09", start: "07:00", end: "09:00" },
@@ -46,6 +36,19 @@ const TIME_PRESETS = [
 const MAX_PRESETS = [8, 10, 12, 16, 20];
 
 export function EditClubForm({ club }: { club: Club }) {
+  const t = useTranslations("club.editForm");
+
+  const formSchema = z.object({
+    name: z.string().min(2, t("validationName")),
+    venue: z.string().min(2, t("validationVenue")),
+    play_date: z.string().min(1, t("validationDate")),
+    start_time: z.string().min(1, t("validationStart")),
+    end_time: z.string().min(1, t("validationEnd")),
+    max_players: z.number().int().min(2, t("validationMaxMin")).max(40, t("validationMaxMax")),
+    shuttle_info: z.string(),
+    notes: z.string(),
+  });
+
   const form = useForm({
     defaultValues: {
       name: club.name,
@@ -62,7 +65,7 @@ export function EditClubForm({ club }: { club: Club }) {
       const res = await updateClubAction({ id: club.id, ...value });
       if (res?.error) toast.error(res.error);
       else {
-        toast.success("บันทึกแล้ว");
+        toast.success(t("toastSaved"));
       }
     },
   });
@@ -70,7 +73,7 @@ export function EditClubForm({ club }: { club: Club }) {
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">แก้ไขข้อมูลก๊วน</CardTitle>
+        <CardTitle className="text-base">{t("title")}</CardTitle>
       </CardHeader>
       <CardContent>
         <form
@@ -87,7 +90,7 @@ export function EditClubForm({ club }: { club: Club }) {
                 const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
                 return (
                   <Field data-invalid={isInvalid}>
-                    <FieldLabel htmlFor={field.name}>ชื่อก๊วน *</FieldLabel>
+                    <FieldLabel htmlFor={field.name}>{t("nameLabel")}</FieldLabel>
                     <Input
                       id={field.name}
                       value={field.state.value}
@@ -107,7 +110,7 @@ export function EditClubForm({ club }: { club: Club }) {
                 const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
                 return (
                   <Field data-invalid={isInvalid}>
-                    <FieldLabel htmlFor={field.name}>สนาม *</FieldLabel>
+                    <FieldLabel htmlFor={field.name}>{t("venueLabel")}</FieldLabel>
                     <Input
                       id={field.name}
                       value={field.state.value}
@@ -127,7 +130,7 @@ export function EditClubForm({ club }: { club: Club }) {
                 const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
                 return (
                   <Field data-invalid={isInvalid}>
-                    <FieldLabel htmlFor={field.name}>วันที่ *</FieldLabel>
+                    <FieldLabel htmlFor={field.name}>{t("dateLabel")}</FieldLabel>
                     <Input
                       id={field.name}
                       type="date"
@@ -145,7 +148,7 @@ export function EditClubForm({ club }: { club: Club }) {
             <form.Subscribe selector={(s) => ({ start: s.values.start_time, end: s.values.end_time })}>
               {({ start, end }) => (
                 <Field>
-                  <FieldLabel>เวลา *</FieldLabel>
+                  <FieldLabel>{t("timeLabel")}</FieldLabel>
                   <div className="flex flex-wrap gap-1.5 mb-2">
                     {TIME_PRESETS.map((p) => (
                       <Button
@@ -168,7 +171,7 @@ export function EditClubForm({ club }: { club: Club }) {
                       name="start_time"
                       children={(field) => (
                         <Field>
-                          <FieldLabel htmlFor={field.name} className="text-xs text-muted-foreground">เริ่ม</FieldLabel>
+                          <FieldLabel htmlFor={field.name} className="text-xs text-muted-foreground">{t("timeStart")}</FieldLabel>
                           <Input id={field.name} type="time" value={field.state.value} onBlur={field.handleBlur} onChange={(e) => field.handleChange(e.target.value)} />
                         </Field>
                       )}
@@ -177,7 +180,7 @@ export function EditClubForm({ club }: { club: Club }) {
                       name="end_time"
                       children={(field) => (
                         <Field>
-                          <FieldLabel htmlFor={field.name} className="text-xs text-muted-foreground">เลิก</FieldLabel>
+                          <FieldLabel htmlFor={field.name} className="text-xs text-muted-foreground">{t("timeEnd")}</FieldLabel>
                           <Input id={field.name} type="time" value={field.state.value} onBlur={field.handleBlur} onChange={(e) => field.handleChange(e.target.value)} />
                         </Field>
                       )}
@@ -193,7 +196,7 @@ export function EditClubForm({ club }: { club: Club }) {
                 const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
                 return (
                   <Field data-invalid={isInvalid}>
-                    <FieldLabel htmlFor={field.name}>รับสูงสุด *</FieldLabel>
+                    <FieldLabel htmlFor={field.name}>{t("maxPlayersLabel")}</FieldLabel>
                     <div className="flex flex-wrap gap-1.5 mb-2">
                       {MAX_PRESETS.map((n) => (
                         <Button
@@ -204,7 +207,7 @@ export function EditClubForm({ club }: { club: Club }) {
                           className="h-7 text-xs px-2"
                           onClick={() => field.handleChange(n)}
                         >
-                          {n} คน
+                          {n} {t("maxPlayersSuffix")}
                         </Button>
                       ))}
                     </div>
@@ -221,7 +224,7 @@ export function EditClubForm({ club }: { club: Club }) {
                         className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                       />
                       <InputGroupAddon align="inline-end">
-                        <InputGroupText>คน</InputGroupText>
+                        <InputGroupText>{t("maxPlayersSuffix")}</InputGroupText>
                       </InputGroupAddon>
                     </InputGroup>
                     {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
@@ -234,13 +237,13 @@ export function EditClubForm({ club }: { club: Club }) {
               name="shuttle_info"
               children={(field) => (
                 <Field>
-                  <FieldLabel htmlFor={field.name}>ลูกขนไก่</FieldLabel>
+                  <FieldLabel htmlFor={field.name}>{t("shuttleLabel")}</FieldLabel>
                   <Input
                     id={field.name}
                     value={field.state.value}
                     onBlur={field.handleBlur}
                     onChange={(e) => field.handleChange(e.target.value)}
-                    placeholder="เช่น Yonex AS-30"
+                    placeholder={t("shuttlePlaceholder")}
                   />
                 </Field>
               )}
@@ -250,7 +253,7 @@ export function EditClubForm({ club }: { club: Club }) {
               name="notes"
               children={(field) => (
                 <Field>
-                  <FieldLabel htmlFor={field.name}>หมายเหตุ</FieldLabel>
+                  <FieldLabel htmlFor={field.name}>{t("notesLabel")}</FieldLabel>
                   <InputGroup>
                     <InputGroupTextarea
                       id={field.name}
@@ -261,7 +264,9 @@ export function EditClubForm({ club }: { club: Club }) {
                       className="min-h-20 resize-none"
                     />
                     <InputGroupAddon align="block-end">
-                      <InputGroupText className="tabular-nums">{field.state.value.length} ตัวอักษร</InputGroupText>
+                      <InputGroupText className="tabular-nums">
+                        {t("charCount", { count: field.state.value.length })}
+                      </InputGroupText>
                     </InputGroupAddon>
                   </InputGroup>
                 </Field>
@@ -273,7 +278,7 @@ export function EditClubForm({ club }: { club: Club }) {
             <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
               {([canSubmit, isSubmitting]) => (
                 <Button type="submit" disabled={!canSubmit || isSubmitting}>
-                  {isSubmitting ? "กำลังบันทึก..." : "บันทึก"}
+                  {isSubmitting ? t("saving") : t("save")}
                 </Button>
               )}
             </form.Subscribe>

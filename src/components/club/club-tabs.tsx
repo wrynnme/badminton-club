@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, type ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTabSync } from "@/lib/hooks/use-tab-sync";
 
@@ -35,8 +36,10 @@ export function ClubTabs({
   // below gate off membership here (not off hideCost/showSettings directly) so the
   // tab set can't drift. Memoized so useTabSync's deps stay reference-stable across
   // the page's realtime/30s auto-refresh re-renders.
+  const t = useTranslations("club.tabs");
+
   const validTabs = useMemo<readonly ClubTabId[]>(
-    () => ALL_TABS.filter((t) => (t !== "cost" || !hideCost) && (t !== "settings" || showSettings)),
+    () => ALL_TABS.filter((tabId) => (tabId !== "cost" || !hideCost) && (tabId !== "settings" || showSettings)),
     [hideCost, showSettings],
   );
 
@@ -49,11 +52,11 @@ export function ClubTabs({
   return (
     <Tabs value={active} onValueChange={(v) => onChange(String(v))} className="space-y-4">
       <TabsList className="w-full flex-wrap h-auto">
-        <TabsTrigger value="dashboard">แดชบอร์ด</TabsTrigger>
-        <TabsTrigger value="checkin">ลงชื่อ / เช็คอิน</TabsTrigger>
-        <TabsTrigger value="queue">ล็อคคู่ + คิว</TabsTrigger>
-        {validTabs.includes("cost") && <TabsTrigger value="cost">ค่าใช้จ่าย</TabsTrigger>}
-        {validTabs.includes("settings") && <TabsTrigger value="settings">ตั้งค่า</TabsTrigger>}
+        <TabsTrigger value="dashboard">{t("dashboard")}</TabsTrigger>
+        <TabsTrigger value="checkin">{t("checkin")}</TabsTrigger>
+        <TabsTrigger value="queue">{t("queue")}</TabsTrigger>
+        {validTabs.includes("cost") && <TabsTrigger value="cost">{t("cost")}</TabsTrigger>}
+        {validTabs.includes("settings") && <TabsTrigger value="settings">{t("settings")}</TabsTrigger>}
       </TabsList>
 
       <TabsContent value="dashboard">{mounted.has("dashboard") && dashboard}</TabsContent>

@@ -3,6 +3,7 @@
 import { fieldErrors } from "@/lib/form-errors";
 import * as React from "react";
 import * as z from "zod";
+import { useTranslations } from "next-intl";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,10 +16,6 @@ import {
 } from "@/components/ui/input-group";
 import { setTotalCostAction } from "@/lib/actions/club-cost";
 
-const formSchema = z.object({
-  total_cost: z.number().min(0, "ค่าก๊วนต้องไม่ติดลบ"),
-});
-
 export function SetTotalCostForm({
   clubId,
   currentTotal,
@@ -26,6 +23,12 @@ export function SetTotalCostForm({
   clubId: string;
   currentTotal: number | null;
 }) {
+  const t = useTranslations("club.setTotalCost");
+
+  const formSchema = z.object({
+    total_cost: z.number().min(0, t("validationMin")),
+  });
+
   const form = useForm({
     defaultValues: {
       total_cost: currentTotal ?? 0,
@@ -34,7 +37,7 @@ export function SetTotalCostForm({
     onSubmit: async ({ value }) => {
       const res = await setTotalCostAction({ club_id: clubId, total_cost: value.total_cost });
       if (res?.error) toast.error(res.error);
-      else toast.success("บันทึกค่าก๊วนแล้ว");
+      else toast.success(t("toastSaved"));
     },
   });
 
@@ -53,7 +56,7 @@ export function SetTotalCostForm({
             const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
             return (
               <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={field.name}>ค่าก๊วนรวม</FieldLabel>
+                <FieldLabel htmlFor={field.name}>{t("label")}</FieldLabel>
                 <InputGroup>
                   <InputGroupInput
                     id={field.name}
@@ -69,7 +72,7 @@ export function SetTotalCostForm({
                     className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                   />
                   <InputGroupAddon align="inline-end">
-                    <InputGroupText>บาท</InputGroupText>
+                    <InputGroupText>{t("unit")}</InputGroupText>
                   </InputGroupAddon>
                 </InputGroup>
                 {isInvalid && (
@@ -85,7 +88,7 @@ export function SetTotalCostForm({
         <form.Subscribe selector={(s) => [s.canSubmit, s.isSubmitting]}>
           {([canSubmit, isSubmitting]) => (
             <Button type="submit" variant="outline" size="sm" disabled={!canSubmit || isSubmitting}>
-              {isSubmitting ? "บันทึก..." : "ตั้งค่าก๊วนรวม"}
+              {isSubmitting ? t("saving") : t("submit")}
             </Button>
           )}
         </form.Subscribe>
