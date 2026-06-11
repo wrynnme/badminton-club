@@ -1,6 +1,7 @@
 "use client";
 
 import { fieldErrors } from "@/lib/form-errors";
+import { useTranslations } from "next-intl";
 import { useForm } from "@tanstack/react-form";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -12,6 +13,7 @@ import { updateProfileDisplayNameAction } from "@/lib/actions/profile";
 import { DisplayNameSchema } from "@/lib/validation/profile";
 
 export function EditProfileForm({ displayName }: { displayName: string }) {
+  const t = useTranslations("settings");
   const router = useRouter();
   const form = useForm({
     defaultValues: { display_name: displayName },
@@ -21,7 +23,7 @@ export function EditProfileForm({ displayName }: { displayName: string }) {
       if (res?.error) {
         toast.error(res.error);
       } else {
-        toast.success("บันทึกชื่อแล้ว");
+        toast.success(t("editName.success"));
         router.refresh();
       }
     },
@@ -41,7 +43,7 @@ export function EditProfileForm({ displayName }: { displayName: string }) {
             const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
             return (
               <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={field.name}>ชื่อที่ใช้แสดง</FieldLabel>
+                <FieldLabel htmlFor={field.name}>{t("editName.label")}</FieldLabel>
                 <Input
                   id={field.name}
                   value={field.state.value}
@@ -64,11 +66,11 @@ export function EditProfileForm({ displayName }: { displayName: string }) {
               <TooltipTrigger
                 render={
                   <Button type="submit" disabled={!canSubmit || isSubmitting}>
-                    {isSubmitting ? "กำลังบันทึก..." : "บันทึกชื่อ"}
+                    {isSubmitting ? t("editName.saving") : t("editName.save")}
                   </Button>
                 }
               />
-              <TooltipContent>บันทึกชื่อที่ใช้แสดงในก๊วน / ทัวร์นาเมนต์ (อัปเดตอุปกรณ์นี้ทันที)</TooltipContent>
+              <TooltipContent>{t("editName.saveTooltip")}</TooltipContent>
             </Tooltip>
           )}
         </form.Subscribe>

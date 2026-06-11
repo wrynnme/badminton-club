@@ -1,1 +1,18 @@
-{}
+{
+  "title": "Account settings",
+  "profileSection": "Profile",
+  "pastClubsSection": "My expired clubs",
+  "pastClubsEmpty": "No past clubs yet",
+  "accountSection": "Account",
+  "logout": "Log out",
+  "logoutTooltip": "Log out on this device only",
+  "logoutAll": "Log out everywhere",
+  "logoutAllTooltip": "Revoke all sessions on every device — you will need to log in again",
+  "editName": {
+    "label": "Display name",
+    "saving": "Saving...",
+    "save": "Save name",
+    "saveTooltip": "Save the display name used in clubs / tournaments (updates this device immediately)",
+    "success": "Name saved"
+  }
+}

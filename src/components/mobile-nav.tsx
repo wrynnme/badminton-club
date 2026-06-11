@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Menu } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -26,27 +27,28 @@ export function MobileNav({
   isGuest: boolean;
   displayName?: string;
 }) {
+  const t = useTranslations("nav");
   const item =
     "flex min-h-11 items-center rounded-md px-3 text-sm hover:bg-accent transition-colors";
   return (
     <Popover>
       <PopoverTrigger
         render={
-          <Button variant="ghost" size="icon" aria-label="เมนู">
+          <Button variant="ghost" size="icon" aria-label={t("menu")}>
             <Menu className="h-5 w-5" />
           </Button>
         }
       />
       <PopoverContent align="end" className="w-52 gap-1 p-2">
         <Link href="/clubs" className={item}>
-          ก๊วน
+          {t("clubs")}
         </Link>
         <Link href="/tournaments" className={item}>
-          ทัวร์นาเมนต์
+          {t("tournaments")}
         </Link>
         {loggedIn && !isGuest && (
           <Link href="/clubs/new" className={item}>
-            สร้างก๊วน
+            {t("createClub")}
           </Link>
         )}
         <div className="my-1 border-t" />
@@ -55,11 +57,11 @@ export function MobileNav({
             {displayName && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted-foreground">
                 <span className="truncate">{displayName}</span>
-                {isGuest && <Badge variant="secondary">guest</Badge>}
+                {isGuest && <Badge variant="secondary">{t("guest")}</Badge>}
               </div>
             )}
             <Link href="/settings" className={item}>
-              ตั้งค่า
+              {t("settings")}
             </Link>
             <form action="/api/auth/logout" method="post">
               <Button
@@ -67,13 +69,13 @@ export function MobileNav({
                 type="submit"
                 className="min-h-11 w-full justify-start text-destructive hover:text-destructive"
               >
-                ออก
+                {t("logout")}
               </Button>
             </form>
           </>
         ) : (
           <Link href="/" className={item}>
-            เข้าสู่ระบบ
+            {t("login")}
           </Link>
         )}
       </PopoverContent>
