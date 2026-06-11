@@ -10,8 +10,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { addExpenseAction, updateExpenseAction, deleteExpenseAction } from "@/lib/actions/clubs";
-import type { ClubExpense } from "@/lib/actions/clubs";
+import { addExpenseAction, updateExpenseAction, deleteExpenseAction } from "@/lib/actions/club-cost";
+import type { ClubExpense } from "@/lib/actions/club-cost";
 
 const expenseSchema = z.object({
   label: z.string().min(1, "ระบุชื่อรายการ"),

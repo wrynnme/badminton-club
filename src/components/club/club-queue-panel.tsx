@@ -69,7 +69,7 @@ import {
   createClubManualMatchAction,
   reorderClubQueueAction,
   deleteClubMatchAction,
-} from "@/lib/actions/clubs";
+} from "@/lib/actions/club-matches";
 import type { ClubMatch } from "@/lib/types";
 import type { ClubQueueSettings } from "@/lib/club/queue-settings";
 import { firstFreeCourt, occupiedCourtMap } from "@/lib/club/courts";

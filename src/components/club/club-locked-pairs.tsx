@@ -24,7 +24,7 @@ import {
 import {
   createClubLockedPairAction,
   releaseClubLockedPairAction,
-} from "@/lib/actions/clubs";
+} from "@/lib/actions/club-matches";
 import type { ClubLockedPair } from "@/lib/types";
 
 // ─── Props ─────────────────────────────────────────────────────────────────────

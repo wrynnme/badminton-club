@@ -23,7 +23,7 @@ import { computeClubDashboard } from "@/lib/club/dashboard";
 import { computeClubCostRows, formatHours } from "@/lib/club/cost-summary";
 import { truncate } from "@/lib/utils";
 import type { Club, ClubPlayer, ClubMatch, Level } from "@/lib/types";
-import type { ClubExpense } from "@/lib/actions/clubs";
+import type { ClubExpense } from "@/lib/actions/club-cost";
 
 const chartConfig = {
   games: { label: "เกม", color: "var(--chart-1)" },

@@ -667,7 +667,7 @@ Consolidated จากการ review spec ทั้งฉบับ + `bug.md` 
 
 - **ไม่มี E2E suite ถาวร** — live-smoke ปัจจุบันเป็น throwaway playwright-cli ทุกครั้ง (ดีที่ net-zero) แต่ flow หลัก (สร้างก๊วน → คิว → จบแมตช์ → cost) ควรมี Playwright spec ที่ rerun ได้
 - **T5 multi-client ยังไม่ verify** — ก่อนแนะนำให้เปิด `queue_payload_sync` ใช้จริงในงานแข่ง ต้องทดสอบ ≥2 client พร้อมกัน (multi-court races, optimistic-vs-payload, dnd-vs-realtime)
-- **`clubs.ts` โตเกินขนาด** — action file เดียวรวม permission helpers + ~30 actions; ควรแตกเป็น `club-players.ts` / `club-matches.ts` / `club-cost.ts` (mirror โครง tournament ที่แยก `matches.ts`/`pairs.ts`/`admins.ts`/`classes.ts`)
+- ~~**`clubs.ts` โตเกินขนาด**~~ → **✅ DONE 2026-06-11 (develop)** — แตก `clubs.ts` (1692→329 บรรทัด, −80%) เป็น: `club-players.ts` (9 actions) · `club-matches.ts` (11) · `club-cost.ts` (5) · `club-admins.ts` (3) · `levels.ts` (4, global level CRUD) — clubs.ts เหลือ 7 club-core actions. Shared helper (`loginRedirect`/`assertCanManageClub`/`assertClubOwner`) ย้ายไป **`src/lib/club/permissions.ts`** (plain module, ไม่ใช่ `"use server"` — mirror `tournament/permissions.ts`); helper เฉพาะกลุ่ม (`loadClubMatchForManage`/`validClubPayerIds`/`promoteReservesToFill`/`countClubPlayers`) คงเป็น internal ในไฟล์ที่ใช้. แต่ละ action file เป็น `"use server"` (export แค่ async fn + type; zod schema คง internal const). อัปเดต 18 import sites (รวม tournament pages ที่ใช้ `getLevelsAction`). Pure move ไม่แตะ logic — 39 actions ครบ (39=39). tsc 0 · vitest 511/511 · build เขียว.
 - **T2 ไม่มี consumer จริง** — team-mode only, prod มีแต่ pair tournament; ต้อง seed throwaway team tournament ถ้าจะ live-smoke
 
 ### Migration batch 2026-06-10 — ✅ #1/#2/#3 shipped (develop; M1–M3 applied to prod)

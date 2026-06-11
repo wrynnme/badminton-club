@@ -18,8 +18,8 @@ import {
   addClubCoAdminAction,
   removeClubCoAdminAction,
   searchClubProfilesAction,
-} from "@/lib/actions/clubs";
-import type { ClubAdmin, ClubProfileSearchResult } from "@/lib/actions/clubs";
+} from "@/lib/actions/club-admins";
+import type { ClubAdmin, ClubProfileSearchResult } from "@/lib/actions/club-admins";
 
 export function ClubCoAdminControls({
   clubId,

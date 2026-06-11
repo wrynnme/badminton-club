@@ -33,7 +33,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Pencil } from "lucide-react";
 import { LeaveButton } from "@/components/club/leave-button";
 import { KickButton } from "@/components/club/kick-button";
-import { reorderPlayersAction, toggleCheckInAction, updateClubPlayerSessionAction, renameClubGuestAction, promoteClubReserveAction } from "@/lib/actions/clubs";
+import { reorderPlayersAction, toggleCheckInAction, updateClubPlayerSessionAction, renameClubGuestAction, promoteClubReserveAction } from "@/lib/actions/club-players";
 import type { ClubPlayer, Level } from "@/lib/types";
 import { cn } from "@/lib/utils";
 

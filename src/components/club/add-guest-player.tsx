@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { addGuestPlayerAction } from "@/lib/actions/clubs";
+import { addGuestPlayerAction } from "@/lib/actions/club-players";
 import type { Level } from "@/lib/types";
 
 const NONE_SENTINEL = "__none__";

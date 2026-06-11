@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { leaveClubAction } from "@/lib/actions/clubs";
+import { leaveClubAction } from "@/lib/actions/club-players";
 
 export function LeaveButton({ clubId }: { clubId: string }) {
   const [pending, start] = useTransition();

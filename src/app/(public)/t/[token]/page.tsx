@@ -14,7 +14,7 @@ import { MatchQueue } from "@/components/tournament/match-queue";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseSettings } from "@/lib/tournament/settings";
 import { parseTournamentThresholds } from "@/lib/tournament/divisions";
-import { getLevelsAction } from "@/lib/actions/clubs";
+import { getLevelsAction } from "@/lib/actions/levels";
 import type {
   Tournament,
   TeamWithPlayers,
