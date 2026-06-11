@@ -11,6 +11,7 @@ import { computeStandings, type StandingRow } from "@/lib/tournament/scoring";
 import { computePairDivision, parsePairLevel, parseTournamentThresholds } from "@/lib/tournament/divisions";
 import { parseSettings } from "@/lib/tournament/settings";
 import { PublicTvHeader } from "@/components/tournament/public/public-tv-header";
+import { getTranslations } from "next-intl/server";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -74,6 +75,8 @@ export default async function TvDisplayPage({
   // carousel pane and ruins the layout.
   const effectiveLimit = STANDINGS_LIMIT === 0 ? 50 : STANDINGS_LIMIT;
 
+  const tl = await getTranslations("tournament");
+
   // --- Build standings pages for the rotating carousel ---
   const standingsPages: StandingsPage[] = [];
 
@@ -106,7 +109,7 @@ export default async function TvDisplayPage({
     standingsPages.push({
       kind: "table",
       id: "team-total",
-      title: "คะแนนรวมทีม",
+      title: tl("page.tvTeamStandingsTitle"),
       rows: teamTotalsRows,
     });
   } else {
@@ -145,7 +148,7 @@ export default async function TvDisplayPage({
       standingsPages.push({
         kind: "table",
         id: "pair-all",
-        title: "อันดับคู่",
+        title: tl("page.tvPairStandingsTitle"),
         rows: rowsFromStandings(pairStandings, pairNameLookup),
       });
     }
@@ -166,15 +169,15 @@ export default async function TvDisplayPage({
           showFullscreenButton={settings.tv_show_fullscreen_button}
           extraLinks={
             settings.tv_show_bracket_link && knockoutCount > 0
-              ? [{ href: `/t/${token}/bracket`, label: "ดูสาย" }]
+              ? [{ href: `/t/${token}/bracket`, label: tl("page.tvViewBracketLabel") }]
               : []
           }
-          backLink={{ href: `/t/${token}`, label: "ออก TV" }}
+          backLink={{ href: `/t/${token}`, label: tl("page.tvExitLabel") }}
         />
 
         {allMatches.length === 0 ? (
           <div className="flex-1 min-h-0 flex items-center justify-center">
-            <p className="text-2xl lg:text-4xl 2xl:text-5xl text-muted-foreground">ยังไม่มีการแข่งขัน</p>
+            <p className="text-2xl lg:text-4xl 2xl:text-5xl text-muted-foreground">{tl("page.tvEmpty")}</p>
           </div>
         ) : (
           // Layout invariant: keep the 3-column grid alive even when sections inside are hidden;

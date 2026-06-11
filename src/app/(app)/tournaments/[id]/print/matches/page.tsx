@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/ui/print-button";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
+import { getTranslations } from "next-intl/server";
 import type { Tournament, Team, Match, PairWithPlayers } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -95,16 +96,18 @@ export default async function PrintMatchesPage({
     return competitorName(match.winner_id, null);
   }
 
+  const tl = await getTranslations("tournament");
+
   const MatchTable = ({ matchList }: { matchList: Match[] }) => (
     <table className="w-full text-sm border-collapse">
       <thead>
         <tr className="border-b">
           <th className="text-left py-1 pr-3 font-semibold w-10">#</th>
-          <th className="text-left py-1 pr-3 font-semibold">ฝ่าย A</th>
-          <th className="text-left py-1 pr-3 font-semibold">ฝ่าย B</th>
-          <th className="text-left py-1 pr-3 font-semibold">คะแนนรวม</th>
-          <th className="text-left py-1 pr-3 font-semibold">แต่ละเกม</th>
-          <th className="text-left py-1 font-semibold">ผู้ชนะ</th>
+          <th className="text-left py-1 pr-3 font-semibold">{tl("page.printMatchesColA")}</th>
+          <th className="text-left py-1 pr-3 font-semibold">{tl("page.printMatchesColB")}</th>
+          <th className="text-left py-1 pr-3 font-semibold">{tl("page.printMatchesColScore")}</th>
+          <th className="text-left py-1 pr-3 font-semibold">{tl("page.printMatchesColGames")}</th>
+          <th className="text-left py-1 font-semibold">{tl("page.printMatchesColWinner")}</th>
         </tr>
       </thead>
       <tbody>
@@ -127,30 +130,30 @@ export default async function PrintMatchesPage({
       {/* Controls — hidden on print */}
       <div className="mb-6 flex items-center justify-between print:hidden">
         <Link href={`/tournaments/${id}`} className="text-sm underline text-blue-600">
-          ← กลับ
+          {tl("page.printBack")}
         </Link>
         <PrintButton />
       </div>
 
       <h1 className="text-2xl font-bold mb-1">{tournament.name}</h1>
-      <p className="text-sm text-gray-500 mb-6">ผลการแข่งขัน</p>
+      <p className="text-sm text-gray-500 mb-6">{tl("page.printMatchesTitle")}</p>
 
       {groupMatches.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-lg font-semibold mb-3">รอบแบ่งกลุ่ม</h2>
+          <h2 className="text-lg font-semibold mb-3">{tl("page.printMatchesGroupSection")}</h2>
           <MatchTable matchList={groupMatches} />
         </section>
       )}
 
       {knockoutMatches.length > 0 && (
         <section className="mb-8">
-          <h2 className="text-lg font-semibold mb-3">รอบน็อคเอ้า</h2>
+          <h2 className="text-lg font-semibold mb-3">{tl("page.printMatchesKnockoutSection")}</h2>
           <MatchTable matchList={knockoutMatches} />
         </section>
       )}
 
       {groupMatches.length === 0 && knockoutMatches.length === 0 && (
-        <p className="text-sm text-gray-500">ยังไม่มีแมตช์</p>
+        <p className="text-sm text-gray-500">{tl("page.printMatchesEmpty")}</p>
       )}
     </div>
   );

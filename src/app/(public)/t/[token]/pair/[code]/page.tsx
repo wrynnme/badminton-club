@@ -5,6 +5,7 @@ import { loadStatsTournamentByToken } from "@/lib/tournament/stats-page-data";
 import { TournamentLiveWrapper } from "@/components/tournament/tournament-live-wrapper";
 import { TvAutoRefresh } from "@/components/tournament/tv-auto-refresh";
 import { PairScheduleView } from "@/components/tournament/pair-schedule-view";
+import { getTranslations } from "next-intl/server";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,8 @@ export default async function PublicPairSchedulePage({
   const pair = data.pairs.find((p) => p.id === pairId);
   if (!pair) notFound();
 
+  const t = await getTranslations("tournament");
+
   return (
     <TournamentLiveWrapper
       tournamentId={data.tournament.id}
@@ -45,7 +48,7 @@ export default async function PublicPairSchedulePage({
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            กลับ
+            {t("page.pairPageBack")}
           </Link>
 
           <PairScheduleView

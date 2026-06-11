@@ -9,6 +9,7 @@ import { buildVisualBracket } from "@/lib/tournament/bracket-visual";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { PrintButton } from "@/components/ui/print-button";
 import { classTone, NEUTRAL_TONE, type ClassTone } from "@/lib/tournament/class-color";
+import { getTranslations } from "next-intl/server";
 import type { Tournament, TeamWithPlayers, PairWithPlayers, Match, Team, TournamentClass } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -63,6 +64,8 @@ export default async function BracketPage({
   const competitorMap = buildCompetitorMap(unit, flatTeams, pairs);
   const isCompetition = classes.length > 0;
 
+  const tl = await getTranslations("tournament");
+
   // ── Page shell ──────────────────────────────────────────────────────────────
   const pageHeader = (
     <>
@@ -70,18 +73,18 @@ export default async function BracketPage({
         <div className="flex items-center gap-3">
           <Button render={<Link href={`/tournaments/${id}`} />} nativeButton={false} variant="ghost" size="sm">
             <ArrowLeft className="h-4 w-4 mr-1" />
-            กลับ
+            {tl("page.back")}
           </Button>
           <div>
             <h1 className="text-lg font-bold leading-tight">{t.name}</h1>
-            <p className="text-xs text-muted-foreground">สายการแข่งขัน</p>
+            <p className="text-xs text-muted-foreground">{tl("page.bracketTitle")}</p>
           </div>
         </div>
         <PrintButton />
       </div>
       <div className="mb-6 hidden print:block">
         <h1 className="text-lg font-bold leading-tight">{t.name}</h1>
-        <p className="text-xs text-muted-foreground">สายการแข่งขัน</p>
+        <p className="text-xs text-muted-foreground">{tl("page.bracketTitle")}</p>
       </div>
     </>
   );
@@ -97,7 +100,7 @@ export default async function BracketPage({
     );
     const orphanMatches = matches.filter((m) => !m.class_id || !classIds.has(m.class_id));
     if (orphanMatches.length > 0) {
-      groups.push({ key: "__unassigned__", code: "ไม่ระบุ Class", name: "", tone: NEUTRAL_TONE, matches: orphanMatches });
+      groups.push({ key: "__unassigned__", code: tl("page.bracketUnassignedClass"), name: "", tone: NEUTRAL_TONE, matches: orphanMatches });
     }
 
     const renderedGroups = groups
@@ -113,7 +116,7 @@ export default async function BracketPage({
       <div className="min-h-screen p-4 md:p-8 max-w-[1400px] mx-auto">
         {pageHeader}
         {renderedGroups.length === 0 && (
-          <p className="text-sm text-muted-foreground">ยังไม่มีสายน็อคเอ้า — กลับไปสร้างตารางก่อน</p>
+          <p className="text-sm text-muted-foreground">{tl("page.bracketEmpty")}</p>
         )}
         {renderedGroups.map(({ key, code, name, tone, upper, lower, grandFinal }, idx) => {
           const hasLower = lower.length > 0;
@@ -129,7 +132,7 @@ export default async function BracketPage({
               </div>
               <section className="space-y-1">
                 {isMultiSection && (
-                  <h3 className="text-xs font-semibold text-muted-foreground mb-3">สายบน</h3>
+                  <h3 className="text-xs font-semibold text-muted-foreground mb-3">{tl("page.bracketUpper")}</h3>
                 )}
                 <BracketView rounds={upper} competitorById={competitorMap} unit={unit} />
               </section>
@@ -137,7 +140,7 @@ export default async function BracketPage({
                 <>
                   <Separator className="my-6" />
                   <section className="space-y-1">
-                    <h3 className="text-xs font-semibold text-muted-foreground mb-3">สายล่าง</h3>
+                    <h3 className="text-xs font-semibold text-muted-foreground mb-3">{tl("page.bracketLower")}</h3>
                     <BracketView rounds={lower} competitorById={competitorMap} unit={unit} />
                   </section>
                 </>
@@ -146,7 +149,7 @@ export default async function BracketPage({
                 <>
                   <Separator className="my-6" />
                   <section className="space-y-1">
-                    <h3 className="text-xs font-semibold text-muted-foreground mb-3">ชิงชนะเลิศ</h3>
+                    <h3 className="text-xs font-semibold text-muted-foreground mb-3">{tl("page.bracketGrandFinal")}</h3>
                     <BracketView rounds={grandFinal} competitorById={competitorMap} unit={unit} />
                   </section>
                 </>
@@ -173,13 +176,13 @@ export default async function BracketPage({
       {pageHeader}
 
       {!hasBracket && (
-        <p className="text-sm text-muted-foreground">ยังไม่มีสายน็อคเอ้า — กลับไปสร้างตารางก่อน</p>
+        <p className="text-sm text-muted-foreground">{tl("page.bracketEmpty")}</p>
       )}
 
       {hasBracket && (
         <section className="space-y-1">
           {isMultiSection && (
-            <h2 className="text-sm font-semibold text-muted-foreground mb-4">สายบน</h2>
+            <h2 className="text-sm font-semibold text-muted-foreground mb-4">{tl("page.bracketUpper")}</h2>
           )}
           <BracketView rounds={upperRounds} competitorById={competitorMap} unit={unit} />
         </section>
@@ -189,7 +192,7 @@ export default async function BracketPage({
         <>
           <Separator className="my-8" />
           <section className="space-y-1">
-            <h2 className="text-sm font-semibold text-muted-foreground mb-4">สายล่าง</h2>
+            <h2 className="text-sm font-semibold text-muted-foreground mb-4">{tl("page.bracketLower")}</h2>
             <BracketView rounds={lowerRounds} competitorById={competitorMap} unit={unit} />
           </section>
         </>

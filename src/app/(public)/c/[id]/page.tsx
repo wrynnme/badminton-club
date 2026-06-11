@@ -15,6 +15,7 @@ import { parseQueueSettings } from "@/lib/club/queue-settings";
 import { resolveClubCourts } from "@/lib/club/courts";
 import { toPublicClub, toPublicPlayer } from "@/lib/club/public-view";
 import { ClubInfoRow } from "@/components/club/club-info-row";
+import { getTranslations } from "next-intl/server";
 import type { Club, ClubMatch, ClubLockedPair, Level } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +60,8 @@ export default async function PublicClubPage({
   const activeCount = players.filter((p) => p.status === "active").length;
   const reserveCount = players.filter((p) => p.status === "reserve").length;
 
+  const t = await getTranslations("club");
+
   const queueSettings = parseQueueSettings(club.queue_settings);
   const clubCourts = resolveClubCourts(club.courts, queueSettings.court_count);
 
@@ -78,10 +81,10 @@ export default async function PublicClubPage({
         <div className="flex items-start justify-between gap-2">
           <h1 className="text-2xl font-bold">{club.name}</h1>
           <Badge variant="outline" className="shrink-0 text-muted-foreground gap-1">
-            <Globe className="h-3 w-3" /> สาธารณะ
+            <Globe className="h-3 w-3" /> {t("page.publicBadge")}
           </Badge>
         </div>
-        {owner && <p className="text-sm text-muted-foreground mt-1">โดย {owner.display_name}</p>}
+        {owner && <p className="text-sm text-muted-foreground mt-1">{t("page.by", { name: owner.display_name })}</p>}
       </div>
 
       <Card>
@@ -91,7 +94,7 @@ export default async function PublicClubPage({
           <ClubInfoRow label={<Clock className="h-4 w-4" />} text={`${club.start_time.slice(0, 5)} – ${club.end_time.slice(0, 5)}`} />
           <ClubInfoRow
             label={<Users className="h-4 w-4" />}
-            text={`${activeCount}${reserveCount > 0 ? ` (+${reserveCount} สำรอง)` : ""} / ${club.max_players} คน`}
+            text={`${activeCount}${reserveCount > 0 ? ` ${t("page.reserveSuffix", { count: reserveCount })}` : ""} ${t("page.playerCountSuffix", { max: club.max_players })}`}
           />
           {/* shuttle_info intentionally omitted on public — it commonly carries pricing */}
         </CardContent>
@@ -118,7 +121,7 @@ export default async function PublicClubPage({
           checkin={
             <div className="space-y-6">
               <section className="space-y-2">
-                <h2 className="font-semibold">รายชื่อผู้เล่น ({players.length})</h2>
+                <h2 className="font-semibold">{t("page.playerListHeading", { count: players.length })}</h2>
                 <SortablePlayerList
                   clubId={club.id}
                   players={publicPlayers}
@@ -131,7 +134,7 @@ export default async function PublicClubPage({
               </section>
               {players.length > 0 && (
                 <section className="space-y-2">
-                  <h2 className="font-semibold">จำนวนคนต่อช่วง</h2>
+                  <h2 className="font-semibold">{t("page.headcountHeading")}</h2>
                   <HourlyHeadcount club={publicClub} players={publicPlayers} />
                 </section>
               )}

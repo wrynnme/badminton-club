@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createAdminClient } from "@/lib/supabase/server";
 import { PrintButton } from "@/components/ui/print-button";
 import { embeddedReal } from "@/lib/tournament/levels";
+import { getTranslations } from "next-intl/server";
 import type { Tournament, TeamPlayer } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -70,18 +71,20 @@ export default async function PrintRosterPage({
 
   const isPairMode = tournament.match_unit === "pair";
 
+  const tl = await getTranslations("tournament");
+
   return (
     <div className="p-8 max-w-4xl mx-auto font-sans">
       {/* Controls — hidden on print */}
       <div className="mb-6 flex items-center justify-between print:hidden">
         <Link href={`/tournaments/${id}`} className="text-sm underline text-blue-600">
-          ← กลับ
+          {tl("page.printBack")}
         </Link>
         <PrintButton />
       </div>
 
       <h1 className="text-2xl font-bold mb-1">{tournament.name}</h1>
-      <p className="text-sm text-gray-500 mb-6">รายชื่อผู้เล่น</p>
+      <p className="text-sm text-gray-500 mb-6">{tl("page.printRosterTitle")}</p>
 
       <div className="space-y-8">
         {teams.map((team) => {
@@ -109,8 +112,8 @@ export default async function PrintRosterPage({
               <table className="w-full text-sm border-collapse mb-3">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left py-1 pr-3 font-semibold">ชื่อ</th>
-                    <th className="text-left py-1 pr-3 font-semibold">ตำแหน่ง</th>
+                    <th className="text-left py-1 pr-3 font-semibold">{tl("page.printRosterColName")}</th>
+                    <th className="text-left py-1 pr-3 font-semibold">{tl("page.printRosterColRole")}</th>
                     <th className="text-left py-1 font-semibold">Level</th>
                   </tr>
                 </thead>
@@ -121,7 +124,7 @@ export default async function PrintRosterPage({
                     <tr key={p.id} className="border-b border-gray-100">
                       <td className="py-1 pr-3">{p.display_name}</td>
                       <td className="py-1 pr-3 text-gray-500">
-                        {p.role === "captain" ? "กัปตัน" : "สมาชิก"}
+                        {p.role === "captain" ? tl("page.printRosterRoleCaptain") : tl("page.printRosterRoleMember")}
                       </td>
                       <td className="py-1">{lvl != null ? String(lvl) : "—"}</td>
                     </tr>
@@ -133,11 +136,11 @@ export default async function PrintRosterPage({
               {/* Pairs (pair mode only) */}
               {isPairMode && teamPairs.length > 0 && (
                 <div className="ml-2">
-                  <p className="text-xs font-semibold text-gray-500 mb-1">คู่:</p>
+                  <p className="text-xs font-semibold text-gray-500 mb-1">{tl("page.printRosterPairsLabel")}</p>
                   <table className="w-full text-sm border-collapse">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-1 pr-3 font-semibold">คู่</th>
+                        <th className="text-left py-1 pr-3 font-semibold">{tl("page.printRosterPairsLabel").replace(":", "")}</th>
                         <th className="text-left py-1 font-semibold">Pair Level</th>
                       </tr>
                     </thead>
@@ -164,7 +167,7 @@ export default async function PrintRosterPage({
         })}
 
         {teams.length === 0 && (
-          <p className="text-sm text-gray-500">ยังไม่มีทีม</p>
+          <p className="text-sm text-gray-500">{tl("page.printRosterEmpty")}</p>
         )}
       </div>
     </div>
