@@ -1,14 +1,22 @@
 "use client";
 
 import * as React from "react";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import * as z from "zod";
 import { useTranslations } from "next-intl";
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
-import { Plus, Trash2, Loader2 } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Loader2,
+  Link2,
+  Unlink,
+  ChevronsUpDown,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +33,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Field,
   FieldError,
   FieldGroup,
@@ -33,7 +59,10 @@ import {
 import {
   createClubPresetAction,
   updateClubPresetAction,
+  searchPresetProfilesAction,
+  getProfileNamesAction,
 } from "@/lib/actions/club-presets";
+import type { PresetProfileResult } from "@/lib/actions/club-presets";
 import { fieldErrors } from "@/lib/form-errors";
 import type { ClubPreset } from "@/lib/types";
 import type { ClubPresetConfig } from "@/lib/club/preset";
@@ -44,6 +73,8 @@ type Regular = {
   name: string;
   start_time: string;
   end_time: string;
+  profile_id: string | null;
+  profile_name: string | null;
 };
 
 type FormValues = {
@@ -111,7 +142,121 @@ function toRegulars(preset?: ClubPreset): Regular[] {
     name: r.name,
     start_time: r.start_time ?? "",
     end_time: r.end_time ?? "",
+    profile_id: r.profile_id ?? null,
+    // profile_name resolved later via getProfileNamesAction
+    profile_name: null,
   }));
+}
+
+// ── ProfileCombobox — shared search combobox ──────────────────────────────────
+
+type ProfileComboboxProps = {
+  placeholder: string;
+  inputPlaceholder: string;
+  searchingText: string;
+  typeToSearchText: string;
+  notFoundText: string;
+  noNameText: string;
+  excludeIds: string[];
+  onSelect: (profile: PresetProfileResult) => void;
+  triggerClassName?: string;
+};
+
+function ProfileCombobox({
+  placeholder,
+  inputPlaceholder,
+  searchingText,
+  typeToSearchText,
+  notFoundText,
+  noNameText,
+  excludeIds,
+  onSelect,
+  triggerClassName,
+}: ProfileComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<PresetProfileResult[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      const res = await searchPresetProfilesAction(q, excludeIds);
+      if ("ok" in res) setResults(res.results);
+      else {
+        setResults([]);
+        toast.error(res.error);
+      }
+      setSearching(false);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query, excludeIds]);
+
+  function handleSelect(profile: PresetProfileResult) {
+    setOpen(false);
+    setQuery("");
+    setResults([]);
+    onSelect(profile);
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            role="combobox"
+            aria-expanded={open}
+            className={
+              triggerClassName ??
+              "flex-1 h-8 justify-between font-normal"
+            }
+          >
+            <span className="truncate">{placeholder}</span>
+            <ChevronsUpDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
+          </Button>
+        }
+      />
+      <PopoverContent className="w-(--anchor-width) p-0 gap-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder={inputPlaceholder}
+            value={query}
+            onValueChange={setQuery}
+          />
+          <CommandList>
+            <CommandEmpty>
+              {searching
+                ? searchingText
+                : query.trim().length === 0
+                ? typeToSearchText
+                : notFoundText}
+            </CommandEmpty>
+            <CommandGroup>
+              {results.map((r) => (
+                <CommandItem
+                  key={r.id}
+                  value={r.id}
+                  onSelect={() => handleSelect(r)}
+                >
+                  <span className="truncate flex-1">
+                    {r.display_name ?? noNameText}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -150,7 +295,56 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
   // then merged into the config at submit time.
   const [regulars, setRegulars] = useState<Regular[]>(() => toRegulars(preset));
 
+  // Co-admins — separate state from regulars
+  const [coAdmins, setCoAdmins] = useState<PresetProfileResult[]>([]);
+
   const [, startTransition] = useTransition();
+
+  // ── Resolve names for stored IDs when opening an edit dialog ──────────────
+  useEffect(() => {
+    if (!open) return;
+
+    const storedCoAdminIds = preset?.config.co_admin_ids ?? [];
+    const storedRegularProfileIds = (preset?.config.regulars ?? [])
+      .map((r) => r.profile_id)
+      .filter((id): id is string => !!id);
+
+    // Seed synchronously so stored ids survive an early submit or a failed
+    // name lookup — names start null (rendered as "unknown") and are patched
+    // by the async resolution below.
+    setCoAdmins(storedCoAdminIds.map((id) => ({ id, display_name: null })));
+    setRegulars(toRegulars(preset));
+
+    const allIds = [...new Set([...storedCoAdminIds, ...storedRegularProfileIds])];
+    if (allIds.length === 0) return;
+
+    let cancelled = false;
+    getProfileNamesAction(allIds)
+      .then((res) => {
+        if (cancelled || !("ok" in res)) return;
+        const nameMap = new Map<string, string | null>();
+        for (const r of res.results) nameMap.set(r.id, r.display_name);
+
+        setCoAdmins(
+          storedCoAdminIds.map((id) => ({
+            id,
+            display_name: nameMap.get(id) ?? null,
+          })),
+        );
+        const baseRegulars = toRegulars(preset);
+        setRegulars(
+          baseRegulars.map((r) => ({
+            ...r,
+            profile_name: r.profile_id ? (nameMap.get(r.profile_id) ?? null) : null,
+          })),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, preset?.id]);
 
   const form = useForm({
     defaultValues: toFormDefaults(preset),
@@ -168,13 +362,12 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
         players_per_team: Number(value.players_per_team) as 1 | 2,
         rotation_mode: value.rotation_mode,
         queue_mode: value.queue_mode,
-        // co_admin_ids: preserved on edit, empty on create (MVP — managed on the club itself)
-        co_admin_ids: preset?.config.co_admin_ids ?? [],
+        co_admin_ids: coAdmins.map((a) => a.id),
         regulars: regulars
           .filter((r) => r.name.trim() !== "")
           .map((r) => ({
             name: r.name.trim(),
-            profile_id: null,
+            profile_id: r.profile_id ?? null,
             start_time: r.start_time || null,
             end_time: r.end_time || null,
           })),
@@ -201,14 +394,10 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
     },
   });
 
-  // Reset both the form values and the regulars state whenever the dialog
-  // opens or the edit target changes.
-  // Pass fresh defaults explicitly — a bare form.reset() re-seeds from the
-  // mount-time defaultValues (the first preset), so switching edit targets
-  // without remount would lag by one preset.
+  // Reset the form values whenever the dialog opens or the edit target changes.
+  // Names are resolved by the useEffect above; here we only reset the scalar fields.
   React.useEffect(() => {
     if (open) {
-      setRegulars(toRegulars(preset));
       form.reset(toFormDefaults(preset));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,7 +406,10 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
   // ── Regular helpers ────────────────────────────────────────────────────────
 
   function addRegular() {
-    setRegulars((prev) => [...prev, { name: "", start_time: "", end_time: "" }]);
+    setRegulars((prev) => [
+      ...prev,
+      { name: "", start_time: "", end_time: "", profile_id: null, profile_name: null },
+    ]);
   }
 
   function removeRegular(idx: number) {
@@ -230,10 +422,26 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
     );
   }
 
+  // ── Co-admin helpers ───────────────────────────────────────────────────────
+
+  function addCoAdmin(profile: PresetProfileResult) {
+    setCoAdmins((prev) => {
+      if (prev.some((a) => a.id === profile.id)) return prev;
+      return [...prev, profile];
+    });
+  }
+
+  function removeCoAdmin(id: string) {
+    setCoAdmins((prev) => prev.filter((a) => a.id !== id));
+  }
+
+  // IDs already used so comboboxes can exclude them
+  const coAdminIds = coAdmins.map((a) => a.id);
+  const linkedRegularProfileIds = regulars
+    .map((r) => r.profile_id)
+    .filter((id): id is string => !!id);
+
   // ── Numeric field ──────────────────────────────────────────────────────────
-  // The four numeric inputs (max_players / court_count / court_fee /
-  // shuttle_price) differ only by name/label/min/max — render them via one
-  // helper. Closes over `form` so the field stays fully typed.
   function numberField(
     name: "max_players" | "court_count" | "court_fee" | "shuttle_price",
     label: string,
@@ -525,47 +733,191 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
               )}
             />
 
+            {/* ── Co-admins ─────────────────────────────────────────────── */}
+            <Field>
+              <FieldLabel>{t("coAdminsLabel")}</FieldLabel>
+              <div className="space-y-2">
+                {/* Selected co-admin list */}
+                {coAdmins.length > 0 && (
+                  <ul className="space-y-1">
+                    {coAdmins.map((admin) => {
+                      const displayName =
+                        admin.display_name ?? t("coAdminUnknownProfile");
+                      return (
+                        <li
+                          key={admin.id}
+                          className="flex items-center justify-between gap-2 rounded-md border px-2 py-1 text-sm"
+                        >
+                          <span className="truncate flex-1">{displayName}</span>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label={t("coAdminRemoveAria", {
+                                    name: displayName,
+                                  })}
+                                  onClick={() => removeCoAdmin(admin.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                </Button>
+                              }
+                            />
+                            <TooltipContent>
+                              {t("coAdminRemoveAria", { name: displayName })}
+                            </TooltipContent>
+                          </Tooltip>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+
+                {/* Selecting a result in the combobox adds the co-admin immediately */}
+                <ProfileCombobox
+                  placeholder={t("coAdminPlaceholder")}
+                  inputPlaceholder={t("coAdminInputPlaceholder")}
+                  searchingText={t("coAdminSearching")}
+                  typeToSearchText={t("coAdminTypeToSearch")}
+                  notFoundText={t("coAdminNotFound")}
+                  noNameText={t("coAdminUnknownProfile")}
+                  excludeIds={coAdminIds}
+                  onSelect={addCoAdmin}
+                  triggerClassName="w-full h-8 justify-between font-normal"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("coAdminsNote")}
+              </p>
+            </Field>
+
             {/* ── Regulars ──────────────────────────────────────────────── */}
             <Field>
               <FieldLabel>{t("regularsLabel")}</FieldLabel>
               <div className="space-y-2">
                 {regulars.map((reg, idx) => (
-                  <div key={idx} className="flex items-center gap-1.5">
-                    <Input
-                      value={reg.name}
-                      onChange={(e) =>
-                        updateRegular(idx, { name: e.target.value })
-                      }
-                      placeholder={t("regularPlayerPlaceholder", { number: idx + 1 })}
-                      className="flex-1 min-w-0"
-                    />
-                    <Input
-                      type="time"
-                      value={reg.start_time}
-                      onChange={(e) =>
-                        updateRegular(idx, { start_time: e.target.value })
-                      }
-                      className="w-24 shrink-0"
-                      title={t("regularStartTimeTitle")}
-                    />
-                    <Input
-                      type="time"
-                      value={reg.end_time}
-                      onChange={(e) =>
-                        updateRegular(idx, { end_time: e.target.value })
-                      }
-                      className="w-24 shrink-0"
-                      title={t("regularEndTimeTitle")}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => removeRegular(idx)}
-                      aria-label={t("regularRemoveAriaLabel")}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
+                  <div key={idx} className="space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <Input
+                        value={reg.name}
+                        onChange={(e) =>
+                          updateRegular(idx, { name: e.target.value })
+                        }
+                        placeholder={t("regularPlayerPlaceholder", {
+                          number: idx + 1,
+                        })}
+                        className="flex-1 min-w-0"
+                      />
+                      <Input
+                        type="time"
+                        value={reg.start_time}
+                        onChange={(e) =>
+                          updateRegular(idx, { start_time: e.target.value })
+                        }
+                        className="w-24 shrink-0"
+                        title={t("regularStartTimeTitle")}
+                      />
+                      <Input
+                        type="time"
+                        value={reg.end_time}
+                        onChange={(e) =>
+                          updateRegular(idx, { end_time: e.target.value })
+                        }
+                        className="w-24 shrink-0"
+                        title={t("regularEndTimeTitle")}
+                      />
+
+                      {/* Link / Unlink profile button */}
+                      {reg.profile_id ? (
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={t("unlinkProfileTooltip")}
+                                onClick={() =>
+                                  updateRegular(idx, {
+                                    profile_id: null,
+                                    profile_name: null,
+                                  })
+                                }
+                              >
+                                <Unlink className="h-3.5 w-3.5 text-muted-foreground" />
+                              </Button>
+                            }
+                          />
+                          <TooltipContent>
+                            {t("unlinkProfileTooltip")}
+                          </TooltipContent>
+                        </Tooltip>
+                      ) : (
+                        <RegularProfilePicker
+                          idx={idx}
+                          excludeIds={[
+                            ...linkedRegularProfileIds.filter(
+                              (id) => id !== reg.profile_id,
+                            ),
+                          ]}
+                          onSelect={(profile) => {
+                            updateRegular(idx, {
+                              profile_id: profile.id,
+                              profile_name: profile.display_name,
+                              // Autofill name if empty
+                              name:
+                                reg.name.trim() === ""
+                                  ? (profile.display_name ?? reg.name)
+                                  : reg.name,
+                            });
+                          }}
+                          linkTooltip={t("linkProfileTooltip")}
+                          inputPlaceholder={t("profileSearchPlaceholder")}
+                          searchingText={t("coAdminSearching")}
+                          typeToSearchText={t("coAdminTypeToSearch")}
+                          notFoundText={t("coAdminNotFound")}
+                          noNameText={t("coAdminUnknownProfile")}
+                        />
+                      )}
+
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => removeRegular(idx)}
+                              aria-label={t("regularRemoveAriaLabel")}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          }
+                        />
+                        <TooltipContent>
+                          {t("regularRemoveAriaLabel")}
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+
+                    {/* Linked profile badge */}
+                    {reg.profile_id && (
+                      <div className="pl-0">
+                        <Badge
+                          variant="secondary"
+                          className="text-xs font-normal"
+                        >
+                          <Link2 className="h-3 w-3 mr-1" />
+                          {t("linkedProfileBadge", {
+                            name:
+                              reg.profile_name ??
+                              t("coAdminUnknownProfile"),
+                          })}
+                        </Badge>
+                      </div>
+                    )}
                   </div>
                 ))}
                 <Button
@@ -610,5 +962,127 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
         </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── RegularProfilePicker — icon button + inline popover for a single regular ──
+
+type RegularProfilePickerProps = {
+  idx: number;
+  excludeIds: string[];
+  onSelect: (profile: PresetProfileResult) => void;
+  linkTooltip: string;
+  inputPlaceholder: string;
+  searchingText: string;
+  typeToSearchText: string;
+  notFoundText: string;
+  noNameText: string;
+};
+
+function RegularProfilePicker({
+  excludeIds,
+  onSelect,
+  linkTooltip,
+  inputPlaceholder,
+  searchingText,
+  typeToSearchText,
+  notFoundText,
+  noNameText,
+}: RegularProfilePickerProps) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<PresetProfileResult[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const q = query.trim();
+    if (q.length < 2) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      const res = await searchPresetProfilesAction(q, excludeIds);
+      if ("ok" in res) setResults(res.results);
+      else {
+        setResults([]);
+        toast.error(res.error);
+      }
+      setSearching(false);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query, excludeIds, open]);
+
+  function handleSelect(profile: PresetProfileResult) {
+    onSelect(profile);
+    setOpen(false);
+    setQuery("");
+    setResults([]);
+  }
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) {
+          setQuery("");
+          setResults([]);
+        }
+      }}
+    >
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={linkTooltip}
+                >
+                  <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
+                </Button>
+              }
+            />
+          }
+        />
+        <TooltipContent>{linkTooltip}</TooltipContent>
+      </Tooltip>
+      <PopoverContent className="w-64 p-0 gap-0" align="end">
+        <Command shouldFilter={false}>
+          <CommandInput
+            placeholder={inputPlaceholder}
+            value={query}
+            onValueChange={setQuery}
+          />
+          <CommandList>
+            <CommandEmpty>
+              {searching
+                ? searchingText
+                : query.trim().length === 0
+                ? typeToSearchText
+                : notFoundText}
+            </CommandEmpty>
+            <CommandGroup>
+              {results.map((r) => (
+                <CommandItem
+                  key={r.id}
+                  value={r.id}
+                  onSelect={() => handleSelect(r)}
+                >
+                  <span className="truncate flex-1">
+                    {r.display_name ?? noNameText}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { format } from "date-fns";
-import { th } from "date-fns/locale";
 import { Trophy, Plus } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
@@ -8,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TOURNAMENT_STATUS_BADGE } from "@/lib/tournament/status";
-import { getTranslations } from "next-intl/server";
+import { getTranslations, getLocale } from "next-intl/server";
+import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import type { Tournament } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +22,7 @@ export default async function TournamentsPage() {
     .select("*")
     .order("created_at", { ascending: false });
 
+  const locale = await getLocale();
   const t = await getTranslations("tournament");
 
   const formatLabel: Record<string, string> = {
@@ -77,7 +78,7 @@ export default async function TournamentsPage() {
                   <CardContent className="text-sm text-muted-foreground space-y-1">
                     {tournament.venue && <p>📍 {tournament.venue}</p>}
                     {tournament.start_date && (
-                      <p>📅 {format(new Date(tournament.start_date), "d MMM yyyy", { locale: th })}</p>
+                      <p>📅 {format(new Date(tournament.start_date), "d MMM yyyy", { locale: dateFnsLocaleOf(locale) })}</p>
                     )}
                     <p>🏆 {formatLabel[tournament.format]} · {t("page.listTeamCount", { count: tournament.team_count })}</p>
                   </CardContent>

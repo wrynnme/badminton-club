@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { format } from "date-fns";
 import { CalendarDays, Clock, MapPin, Users, Wallet } from "lucide-react";
+import { getLocale } from "next-intl/server";
+import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -139,6 +141,7 @@ export default async function ClubDetailPage({
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
+  const locale = await getLocale();
   const t = await getTranslations("club");
 
   return (
@@ -169,7 +172,7 @@ export default async function ClubDetailPage({
           <ClubInfoRow label={<MapPin className="h-4 w-4" />} text={club.venue} />
           <ClubInfoRow
             label={<CalendarDays className="h-4 w-4" />}
-            text={format(new Date(club.play_date), "EEE d MMM yyyy")}
+            text={format(new Date(club.play_date), "EEE d MMM yyyy", { locale: dateFnsLocaleOf(locale) })}
           />
           <ClubInfoRow
             label={<Clock className="h-4 w-4" />}

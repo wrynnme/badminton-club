@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { format } from "date-fns";
-import { getTranslations } from "next-intl/server";
+import { getTranslations, getLocale } from "next-intl/server";
+import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { getSession } from "@/lib/auth/session";
 import { createAdminClient } from "@/lib/supabase/server";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -20,6 +21,7 @@ export default async function SettingsPage() {
   const session = await getSession();
   if (!session) redirect("/?auth_error=login_required&redirectTo=/settings");
 
+  const locale = await getLocale();
   const t = await getTranslations("settings");
 
   // Owner-only past clubs (play_date already passed) — the /clubs list shows only
@@ -92,7 +94,7 @@ export default async function SettingsPage() {
                         <span className="truncate text-xs text-muted-foreground">{c.venue}</span>
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        {format(new Date(c.play_date), "d MMM yyyy")}
+                        {format(new Date(c.play_date), "d MMM yyyy", { locale: dateFnsLocaleOf(locale) })}
                       </span>
                     </Link>
                   </li>

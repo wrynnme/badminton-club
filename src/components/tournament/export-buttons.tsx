@@ -3,7 +3,16 @@
 import { Download, Printer } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
-import { generateMatchesCsv, generateRosterCsv, generatePlayerImportTemplate, generatePairImportTemplate, downloadCsv } from "@/lib/export/csv";
+import {
+  generateMatchesCsv,
+  generateRosterCsv,
+  generatePlayerImportTemplate,
+  generatePairImportTemplate,
+  downloadCsv,
+  type MatchesCsvLabels,
+  type RosterCsvLabels,
+  type PlayerTemplateSampleLabels,
+} from "@/lib/export/csv";
 import type { Match, Team, TeamPlayer, PairWithPlayers, MatchUnit } from "@/lib/types";
 
 export function ExportButtons({
@@ -29,13 +38,62 @@ export function ExportButtons({
   const t = useTranslations("tournament");
   const slug = tournamentName.replace(/\s+/g, "_");
 
+  const matchesLabels: MatchesCsvLabels = {
+    colMatchNo: t("csv.colMatchNo"),
+    colRound: t("csv.colRound"),
+    colBracket: t("csv.colBracket"),
+    colTeamA: t("csv.colTeamA"),
+    colTeamB: t("csv.colTeamB"),
+    colPairA: t("csv.colPairA"),
+    colPairB: t("csv.colPairB"),
+    colGamesA: t("csv.colGamesA"),
+    colGamesB: t("csv.colGamesB"),
+    colPointsA: t("csv.colPointsA"),
+    colPointsB: t("csv.colPointsB"),
+    colGameDetail: t("csv.colGameDetail"),
+    colWinner: t("csv.colWinner"),
+    colStatus: t("csv.colStatus"),
+    roundGroup: t("csv.roundGroup"),
+    bracketUpper: t("csv.bracketUpper"),
+    bracketLower: t("csv.bracketLower"),
+    bracketGrandFinal: t("csv.bracketGrandFinal"),
+    bracketKnockout: t("csv.bracketKnockout"),
+    statusPending: t("csv.statusPending"),
+    statusInProgress: t("csv.statusInProgress"),
+    statusCompleted: t("csv.statusCompleted"),
+    winnerDraw: t("csv.winnerDraw"),
+  };
+
+  const rosterLabels: RosterCsvLabels = {
+    colTeam: t("csv.rosterColTeam"),
+    colColor: t("csv.rosterColColor"),
+    colPlayerName: t("csv.rosterColPlayerName"),
+    colRole: t("csv.rosterColRole"),
+    colPairName: t("csv.rosterColPairName"),
+    roleCaptain: t("csv.rosterRoleCaptain"),
+    roleMember: t("csv.rosterRoleMember"),
+  };
+
+  const playerTemplateLabels: PlayerTemplateSampleLabels = {
+    sampleTeamRed: t("csv.sampleTeamRed"),
+    sampleTeamGreen: t("csv.sampleTeamGreen"),
+    sampleNames: [
+      t("csv.sampleName1"),
+      t("csv.sampleName2"),
+      t("csv.sampleName3"),
+      t("csv.sampleName4"),
+      t("csv.sampleName5"),
+      t("csv.sampleName6"),
+    ],
+  };
+
   const exportMatches = () => {
-    const csv = generateMatchesCsv(matches, teams, pairs, matchUnit);
+    const csv = generateMatchesCsv(matches, teams, pairs, matchUnit, matchesLabels);
     downloadCsv(csv, `${slug}_matches.csv`);
   };
 
   const exportRoster = () => {
-    const csv = generateRosterCsv(teams, pairs);
+    const csv = generateRosterCsv(teams, pairs, rosterLabels);
     downloadCsv(csv, `${slug}_roster.csv`);
   };
 
@@ -45,7 +103,7 @@ export function ExportButtons({
   };
 
   const exportPlayerTemplate = () => {
-    const csv = generatePlayerImportTemplate();
+    const csv = generatePlayerImportTemplate(playerTemplateLabels);
     downloadCsv(csv, "player_import_template.csv");
   };
 

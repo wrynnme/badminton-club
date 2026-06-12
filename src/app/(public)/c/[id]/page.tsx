@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { format } from "date-fns";
 import { CalendarDays, Clock, MapPin, Users, Globe } from "lucide-react";
+import { getLocale } from "next-intl/server";
+import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { createAdminClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +62,7 @@ export default async function PublicClubPage({
   const activeCount = players.filter((p) => p.status === "active").length;
   const reserveCount = players.filter((p) => p.status === "reserve").length;
 
+  const locale = await getLocale();
   const t = await getTranslations("club");
 
   const queueSettings = parseQueueSettings(club.queue_settings);
@@ -90,7 +93,7 @@ export default async function PublicClubPage({
       <Card>
         <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
           <ClubInfoRow label={<MapPin className="h-4 w-4" />} text={club.venue} />
-          <ClubInfoRow label={<CalendarDays className="h-4 w-4" />} text={format(new Date(club.play_date), "EEE d MMM yyyy")} />
+          <ClubInfoRow label={<CalendarDays className="h-4 w-4" />} text={format(new Date(club.play_date), "EEE d MMM yyyy", { locale: dateFnsLocaleOf(locale) })} />
           <ClubInfoRow label={<Clock className="h-4 w-4" />} text={`${club.start_time.slice(0, 5)} – ${club.end_time.slice(0, 5)}`} />
           <ClubInfoRow
             label={<Users className="h-4 w-4" />}

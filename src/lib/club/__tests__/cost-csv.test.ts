@@ -1,6 +1,21 @@
 import { describe, it, expect } from "vitest";
-import { generateClubCostCsv } from "@/lib/club/cost-csv";
+import { generateClubCostCsv, type CostCsvLabels } from "@/lib/club/cost-csv";
 import type { Club, ClubPlayer, ClubMatch } from "@/lib/types";
+
+// Thai labels fixture — byte-identical to the original hardcoded strings so
+// all assertions remain unchanged after the labels-param refactor.
+const thLabels: CostCsvLabels = {
+  colPlayer: "ผู้เล่น",
+  colHours: "ชั่วโมงที่เล่น",
+  colGames: "เกม",
+  colShuttlesUsed: "ลูกที่ใช้",
+  colCourtFee: "ค่าสนาม",
+  colShuttleFee: "ค่าลูก",
+  colExpense: "ค่าใช้จ่ายส่วนบุคคล",
+  colDiscount: "ส่วนลด",
+  colTotal: "รวม",
+  grandTotal: "รวมทั้งหมด",
+};
 
 function club(overrides: Partial<Club> = {}): Club {
   return {
@@ -38,7 +53,7 @@ describe("generateClubCostCsv", () => {
       players: [player("A"), player("B")],
       matches: [],
       expenses: [],
-    });
+    }, thLabels);
     const lines = csv.split("\n");
     expect(lines[0]).toBe(
       "ผู้เล่น,ชั่วโมงที่เล่น,เกม,ลูกที่ใช้,ค่าสนาม,ค่าลูก,ค่าใช้จ่ายส่วนบุคคล,ส่วนลด,รวม",
@@ -57,7 +72,7 @@ describe("generateClubCostCsv", () => {
       players: [player("A"), player("B"), player("C")],
       matches: [],
       expenses: [],
-    });
+    }, thLabels);
     const lines = csv.split("\n");
     expect(lines[1]).toBe("A,3,0,0,34,0,0,0,34");
     expect(lines[4]).toBe("รวมทั้งหมด,,,0,102,0,0,0,102");
@@ -69,7 +84,7 @@ describe("generateClubCostCsv", () => {
       players: [player("a,b")],
       matches: [],
       expenses: [],
-    });
+    }, thLabels);
     expect(csv.split("\n")[1]).toBe('"a,b",3,0,0,0,0,0,0,0');
   });
 
@@ -87,7 +102,7 @@ describe("generateClubCostCsv", () => {
       players: [player("A"), player("B")],
       matches: [m],
       expenses: [],
-    });
+    }, thLabels);
     const lines = csv.split("\n");
     // ลูกที่ใช้ column is now index 3 (after name, hours, games); full-credit = 2 each.
     expect(lines[1].split(",")[3]).toBe("2");

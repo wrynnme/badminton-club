@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { format } from "date-fns";
-import { th } from "date-fns/locale";
+import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { Trophy, MapPin, CalendarDays, Users, Swords, GitBranch } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
@@ -26,7 +26,7 @@ import { ClassManager } from "@/components/tournament/class-manager";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { EditTournamentForm } from "@/components/tournament/edit-tournament-form";
 import { SettingsManager } from "@/components/tournament/settings-manager";
-import { getTranslations } from "next-intl/server";
+import { getTranslations, getLocale } from "next-intl/server";
 import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match, TournamentClass, MatchFormat, Level } from "@/lib/types";
 import type { TournamentAdmin } from "@/lib/actions/admins";
 import { getLevelsAction } from "@/lib/actions/levels";
@@ -142,6 +142,7 @@ export default async function TournamentDetailPage({
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   const tl = await getTranslations("tournament");
+  const locale = await getLocale();
 
   const formatLabel: Record<string, string> = {
     group_only: tl("page.formatGroupOnly"),
@@ -174,9 +175,9 @@ export default async function TournamentDetailPage({
               <div className="flex items-center gap-2">
                 <CalendarDays className="h-4 w-4 text-muted-foreground" />
                 <span>
-                  {format(new Date(t.start_date), "d MMM yyyy", { locale: th })}
+                  {format(new Date(t.start_date), "d MMM yyyy", { locale: dateFnsLocaleOf(locale) })}
                   {t.end_date && t.end_date !== t.start_date &&
-                    ` – ${format(new Date(t.end_date), "d MMM yyyy", { locale: th })}`}
+                    ` – ${format(new Date(t.end_date), "d MMM yyyy", { locale: dateFnsLocaleOf(locale) })}`}
                 </span>
               </div>
             )}

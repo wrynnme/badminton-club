@@ -1,5 +1,5 @@
 import { Clock, MapPin, ListOrdered } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import { getTranslations, getLocale } from "next-intl/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
@@ -24,11 +24,12 @@ export function formatElapsed(startedAt: string | null): string | null {
   return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
 }
 
-/** Format a scheduled_at ISO string as Bangkok HH:mm. */
-function formatScheduled(scheduledAt: string | null | undefined): string | null {
+/** Format a scheduled_at ISO string as Bangkok HH:mm using the active locale. */
+function formatScheduled(scheduledAt: string | null | undefined, locale: string): string | null {
   if (!scheduledAt) return null;
   try {
-    return new Intl.DateTimeFormat("th-TH", {
+    const tag = locale === "en" ? "en-GB" : "th-TH";
+    return new Intl.DateTimeFormat(tag, {
       timeZone: "Asia/Bangkok",
       hour: "2-digit",
       minute: "2-digit",
@@ -114,6 +115,7 @@ export async function ScheduleMatchCard({
   coloredDivision?: boolean;
 }) {
   const t = await getTranslations("tournament");
+  const locale = await getLocale();
 
   const aId = unit === "team" ? match.team_a_id : match.pair_a_id;
   const bId = unit === "team" ? match.team_b_id : match.pair_b_id;
@@ -126,7 +128,7 @@ export async function ScheduleMatchCard({
   const gamesB = match.team_b_score ?? 0;
 
   const elapsed = match.status === "in_progress" ? formatElapsed(match.started_at) : null;
-  const scheduled = formatScheduled(scheduledAt);
+  const scheduled = formatScheduled(scheduledAt, locale);
 
   const isLarge = size === "large";
 

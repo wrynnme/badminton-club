@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, MapPin, Users } from "lucide-react";
-import { getTranslations } from "next-intl/server";
+import { getTranslations, getLocale } from "next-intl/server";
+import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +54,7 @@ export default async function ClubsPage() {
     countMap.set(r.club_id, (countMap.get(r.club_id) ?? 0) + 1);
   }
 
+  const locale = await getLocale();
   const t = await getTranslations("club");
 
   return (
@@ -102,7 +104,7 @@ export default async function ClubsPage() {
                     <div className="flex items-center gap-2">
                       <CalendarDays className="h-4 w-4" />
                       <span>
-                        {format(new Date(c.play_date), "d MMM")} {c.start_time.slice(0,5)}–{c.end_time.slice(0,5)}
+                        {format(new Date(c.play_date), "d MMM", { locale: dateFnsLocaleOf(locale) })} {c.start_time.slice(0,5)}–{c.end_time.slice(0,5)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2">

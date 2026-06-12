@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Trophy, MapPin, CalendarDays, GitBranch, Tv } from "lucide-react";
 import { format } from "date-fns";
-import { th } from "date-fns/locale";
-import { getTranslations } from "next-intl/server";
+import { getTranslations, getLocale } from "next-intl/server";
+import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import type { Tournament, TeamWithPlayers, Match } from "@/lib/types";
@@ -41,6 +41,7 @@ export async function PublicHero({
   showBracketLink: boolean;
 }) {
   const t = await getTranslations("tournament");
+  const locale = await getLocale();
 
   const STATUS_STYLE: Record<string, { label: string; cls: string }> = {
     draft: {
@@ -120,10 +121,10 @@ export async function PublicHero({
           {tour.start_date && (
             <span className="flex items-center gap-1">
               <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-              {format(new Date(tour.start_date), "d MMM yyyy", { locale: th })}
+              {format(new Date(tour.start_date), "d MMM yyyy", { locale: dateFnsLocaleOf(locale) })}
               {tour.end_date &&
                 tour.end_date !== tour.start_date &&
-                ` – ${format(new Date(tour.end_date), "d MMM yyyy", { locale: th })}`}
+                ` – ${format(new Date(tour.end_date), "d MMM yyyy", { locale: dateFnsLocaleOf(locale) })}`}
             </span>
           )}
         </div>
