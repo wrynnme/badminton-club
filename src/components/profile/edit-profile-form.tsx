@@ -10,14 +10,19 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { updateProfileDisplayNameAction } from "@/lib/actions/profile";
-import { DisplayNameSchema } from "@/lib/validation/profile";
+import { makeDisplayNameSchema } from "@/lib/validation/profile";
 
 export function EditProfileForm({ displayName }: { displayName: string }) {
   const t = useTranslations("settings");
+  const tv = useTranslations("validation");
   const router = useRouter();
+  const displayNameSchema = makeDisplayNameSchema({
+    required: tv("required.name"),
+    tooLong: tv("name.tooLong"),
+  });
   const form = useForm({
     defaultValues: { display_name: displayName },
-    validators: { onSubmit: DisplayNameSchema },
+    validators: { onSubmit: displayNameSchema },
     onSubmit: async ({ value }) => {
       const res = await updateProfileDisplayNameAction(value);
       if (res?.error) {

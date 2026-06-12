@@ -1,14 +1,9 @@
 import type { EntityStats } from "@/lib/tournament/entity-stats";
 
 /**
- * Thai labels for match results: ชนะ / แพ้ / เสมอ
- * Shared across all stats view components.
+ * Labels for match results have been moved to the next-intl catalog under
+ * `tournament.result.*`. Use `t(\`result.${r}\`)` in consumers.
  */
-export const RESULT_LABEL_TH: Record<"W" | "L" | "D", string> = {
-  W: "ชนะ",
-  L: "แพ้",
-  D: "เสมอ",
-};
 
 /**
  * Tailwind text-color classes per result (with dark-mode variants).

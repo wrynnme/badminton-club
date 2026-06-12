@@ -55,7 +55,6 @@ import {
   reorderClassesAction,
   type ClassInput,
 } from "@/lib/actions/classes";
-import { MATCH_FORMAT_LABEL_TH } from "@/lib/tournament/match-format";
 import { fieldErrors } from "@/lib/form-errors";
 import type { TournamentClass, TournamentFormat, MatchFormat } from "@/lib/types";
 
@@ -375,17 +374,15 @@ function ClassFormDialog({
                   >
                     <SelectTrigger id={field.name} className="w-full">
                       <SelectValue>
-                        {(v: string) => MATCH_FORMAT_LABEL_TH[v as MatchFormat] ?? v}
+                        {(v: string) => v ? t(`matchFormat.${v as MatchFormat}`) : ""}
                       </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
-                      {(Object.entries(MATCH_FORMAT_LABEL_TH) as [MatchFormat, string][]).map(
-                        ([value, label]) => (
-                          <SelectItem key={value} value={value}>
-                            {label}
-                          </SelectItem>
-                        ),
-                      )}
+                      {(["fixed_2", "best_of_3", "best_of_5"] as MatchFormat[]).map((fmt) => (
+                        <SelectItem key={fmt} value={fmt}>
+                          {t(`matchFormat.${fmt}`)}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </Field>
@@ -480,7 +477,7 @@ function SortableClassRow({
       </td>
       <td className="py-2 px-2 text-sm text-center hidden sm:table-cell">{cls.advance_count}</td>
       <td className="py-2 px-2 text-xs text-muted-foreground hidden md:table-cell">
-        {MATCH_FORMAT_LABEL_TH[cls.match_format]}
+        {t(`matchFormat.${cls.match_format}`)}
       </td>
 
       {/* actions */}
@@ -665,7 +662,7 @@ export function ClassManager({ tournamentId, classes: initialClasses, isOwner }:
                         {FORMAT_LABEL[cls.format]}
                       </td>
                       <td className="py-2 px-2 text-muted-foreground hidden md:table-cell">
-                        {MATCH_FORMAT_LABEL_TH[cls.match_format]}
+                        {t(`matchFormat.${cls.match_format}`)}
                       </td>
                     </tr>
                   ))}

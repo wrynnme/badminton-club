@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertClubOwner } from "@/lib/club/permissions";
@@ -30,11 +31,12 @@ export async function addClubCoAdminAction(
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const sb = await createAdminClient();
-  if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
 
   const trimmed = profileId.trim();
-  if (!UUID_RE.test(trimmed)) return { error: "เลือกผู้ใช้จากผลการค้นหา" };
+  if (!UUID_RE.test(trimmed)) return { error: t("club.selectUserFromSearch") };
 
   // Resolve by opaque profile id (from searchClubProfilesAction) — never by line_user_id.
   const { data: profile } = await sb
@@ -43,8 +45,8 @@ export async function addClubCoAdminAction(
     .eq("id", trimmed)
     .maybeSingle();
 
-  if (!profile) return { error: "ไม่พบผู้ใช้" };
-  if (profile.id === session.profileId) return { error: "ไม่สามารถเพิ่มตัวเองเป็น co-admin" };
+  if (!profile) return { error: t("club.userNotFound") };
+  if (profile.id === session.profileId) return { error: t("club.cannotAddSelfAsCoAdmin") };
 
   const { error } = await sb.from("club_admins").insert({
     club_id: clubId,
@@ -53,8 +55,8 @@ export async function addClubCoAdminAction(
   });
 
   if (error) {
-    if (error.code === "23505") return { error: "ผู้ใช้นี้เป็น co-admin อยู่แล้ว" };
-    return { error: "เพิ่มผู้ช่วยดูแลไม่สำเร็จ" };
+    if (error.code === "23505") return { error: t("club.alreadyCoAdmin") };
+    return { error: t("club.addCoAdminFailed") };
   }
 
   revalidatePath(`/clubs/${clubId}`);
@@ -68,15 +70,16 @@ export async function removeClubCoAdminAction(
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const sb = await createAdminClient();
-  if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
 
   const { error: deleteError } = await sb
     .from("club_admins")
     .delete()
     .eq("club_id", clubId)
     .eq("user_id", userId);
-  if (deleteError) return { error: "ลบผู้ช่วยดูแลไม่สำเร็จ" };
+  if (deleteError) return { error: t("club.removeCoAdminFailed") };
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true };
@@ -89,8 +92,9 @@ export async function searchClubProfilesAction(
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const sb = await createAdminClient();
-  if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertClubOwner(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
 
   const q = query.trim();
   if (q.length < 2) return { ok: true, results: [] };
@@ -114,6 +118,6 @@ export async function searchClubProfilesAction(
     .not("id", "in", `(${excludeIds.join(",")})`)
     .limit(20);
 
-  if (error) return { error: "ค้นหาไม่สำเร็จ" };
+  if (error) return { error: t("club.searchFailed") };
   return { ok: true, results: (data ?? []) as ClubProfileSearchResult[] };
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession, setSession } from "@/lib/auth/session";
 import { DisplayNameSchema, type UpdateProfileInput } from "@/lib/validation/profile";
@@ -13,11 +14,12 @@ import { DisplayNameSchema, type UpdateProfileInput } from "@/lib/validation/pro
  */
 export async function updateProfileDisplayNameAction(input: UpdateProfileInput) {
   const session = await getSession();
-  if (!session) return { error: "ต้องเข้าสู่ระบบก่อน" };
+  const t = await getTranslations("actions");
+  if (!session) return { error: t("tournament.requireLogin") };
 
   const parsed = DisplayNameSchema.safeParse(input);
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: t("tournament.invalidInput") };
   }
   const display_name = parsed.data.display_name;
 
@@ -28,7 +30,7 @@ export async function updateProfileDisplayNameAction(input: UpdateProfileInput) 
     .eq("id", session.profileId);
   if (error) {
     console.error("updateProfileDisplayNameAction failed", error);
-    return { error: "บันทึกไม่สำเร็จ" };
+    return { error: t("tournament.profileSaveFailed") };
   }
 
   await setSession({

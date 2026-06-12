@@ -7,7 +7,7 @@ import { getSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TOURNAMENT_STATUS_BADGE, TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";
+import { TOURNAMENT_STATUS_BADGE } from "@/lib/tournament/status";
 import { getTranslations } from "next-intl/server";
 import type { Tournament } from "@/lib/types";
 
@@ -70,7 +70,7 @@ export default async function TournamentsPage() {
                     <div className="flex items-start justify-between gap-2">
                       <CardTitle className="text-base leading-snug">{tournament.name}</CardTitle>
                       <Badge variant={TOURNAMENT_STATUS_BADGE[tournament.status]} className="shrink-0">
-                        {TOURNAMENT_STATUS_LABEL[tournament.status]}
+                        {t(`tournamentStatus.${tournament.status}`)}
                       </Badge>
                     </div>
                   </CardHeader>

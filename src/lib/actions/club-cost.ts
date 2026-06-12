@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
@@ -26,12 +27,17 @@ export type ClubExpense = {
   created_at: string;
 };
 
-const ExpenseSchema = z.object({
-  club_id: z.string().uuid(),
-  label: z.string().min(1, "ระบุชื่อรายการ"),
-  amount: z.coerce.number().min(0, "จำนวนเงินไม่ถูกต้อง"),
-  payer_player_ids: z.array(z.string().uuid()).default([]),
-});
+function expenseSchema(labelMsg: string, amountMsg: string) {
+  return z.object({
+    club_id: z.string().uuid(),
+    label: z.string().min(1, labelMsg),
+    amount: z.coerce.number().min(0, amountMsg),
+    payer_player_ids: z.array(z.string().uuid()).default([]),
+  });
+}
+// Static fallback used only for type inference; actual error messages are resolved
+// via t() at call site (see addExpenseAction / updateExpenseAction below).
+const ExpenseSchema = expenseSchema("label_required", "amount_invalid");
 
 /** Keep only the payer ids that are real players of this club. */
 async function validClubPayerIds(
@@ -50,14 +56,15 @@ export async function updateClubCostConfigAction(clubId: string, input: CostConf
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const parsed = CostConfigSchema.safeParse(input);
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
   }
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
   }
 
   const { error } = await sb.from("clubs").update(parsed.data).eq("id", clubId);
@@ -71,18 +78,19 @@ export async function addExpenseAction(input: { club_id: string; label: string; 
   const session = await getSession();
   if (!session) return await loginRedirect();
 
-  const parsed = ExpenseSchema.safeParse(input);
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  const t = await getTranslations("actions");
+  const parsed = expenseSchema(t("club.expenseLabelRequired"), t("club.expenseAmountInvalid")).safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, parsed.data.club_id, session.profileId)))
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
 
   const payers = await validClubPayerIds(sb, parsed.data.club_id, parsed.data.payer_player_ids);
   // Guard: if the user designated specific payers but none survive validation
   // (all removed from the club), do NOT fall through to [] = "charge everyone".
   if (parsed.data.payer_player_ids.length > 0 && payers.length === 0) {
-    return { error: "ผู้จ่ายที่เลือกไม่อยู่ในก๊วนนี้แล้ว — เลือกใหม่" };
+    return { error: t("club.payersNoLongerInClub") };
   }
   const { error } = await sb.from("club_expenses").insert({
     club_id: parsed.data.club_id,
@@ -100,16 +108,17 @@ export async function updateExpenseAction(input: { id: string; club_id: string; 
   const session = await getSession();
   if (!session) return await loginRedirect();
 
-  const parsed = ExpenseSchema.safeParse(input);
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  const t = await getTranslations("actions");
+  const parsed = expenseSchema(t("club.expenseLabelRequired"), t("club.expenseAmountInvalid")).safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, parsed.data.club_id, session.profileId)))
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
 
   const payers = await validClubPayerIds(sb, parsed.data.club_id, parsed.data.payer_player_ids);
   if (parsed.data.payer_player_ids.length > 0 && payers.length === 0) {
-    return { error: "ผู้จ่ายที่เลือกไม่อยู่ในก๊วนนี้แล้ว — เลือกใหม่" };
+    return { error: t("club.payersNoLongerInClub") };
   }
   const { error } = await sb
     .from("club_expenses")
@@ -126,9 +135,10 @@ export async function deleteExpenseAction(input: { id: string; club_id: string }
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, input.club_id, session.profileId)))
-    return { error: "ไม่มีสิทธิ์" };
+    return { error: t("club.noPermission") };
 
   const { error } = await sb
     .from("club_expenses")
@@ -147,8 +157,9 @@ export async function setTotalCostAction(input: { club_id: string; total_cost: n
   const session = await getSession();
   if (!session) return await loginRedirect();
 
+  const t = await getTranslations("actions");
   if (isNaN(input.total_cost) || input.total_cost < 0)
-    return { error: "ค่าก๊วนไม่ถูกต้อง" };
+    return { error: t("club.invalidTotalCost") };
 
   const sb = await createAdminClient();
   const { data: club } = await sb
@@ -157,7 +168,7 @@ export async function setTotalCostAction(input: { club_id: string; total_cost: n
     .eq("id", input.club_id)
     .single();
 
-  if (!club || club.owner_id !== session.profileId) return { error: "ไม่มีสิทธิ์" };
+  if (!club || club.owner_id !== session.profileId) return { error: t("club.noPermission") };
 
   const { error } = await sb
     .from("clubs")

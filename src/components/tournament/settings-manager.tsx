@@ -15,7 +15,6 @@ import {
   type TournamentSettings,
   type LineNotifyFlags,
 } from "@/lib/tournament/settings";
-import { MATCH_FORMAT_LABEL_TH } from "@/lib/tournament/match-format";
 import type { MatchFormat } from "@/lib/types";
 import { divisionCount } from "@/lib/tournament/divisions";
 
@@ -414,17 +413,15 @@ export function SettingsManager({
             >
               <SelectTrigger id="default-match-format" className="w-44 h-8 text-xs">
                 <SelectValue>
-                  {(value: string) => MATCH_FORMAT_LABEL_TH[value as MatchFormat] ?? value}
+                  {(value: string) => value ? t(`matchFormat.${value as MatchFormat}`) : ""}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                {(Object.entries(MATCH_FORMAT_LABEL_TH) as [MatchFormat, string][]).map(
-                  ([value, label]) => (
+                {(["fixed_2", "best_of_3", "best_of_5"] as MatchFormat[]).map((value) => (
                     <SelectItem key={value} value={value}>
-                      {label}
+                      {t(`matchFormat.${value}`)}
                     </SelectItem>
-                  ),
-                )}
+                  ))}
               </SelectContent>
             </Select>
           </div>

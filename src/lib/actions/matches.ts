@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { generateAllPairMatches } from "@/lib/tournament/scheduling";
@@ -31,7 +32,8 @@ async function loginRedirect(): Promise<never> {
 export async function generateGroupsAction(tournamentId: string, groupCount: number) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("match.noPermission") };
 
   const sb = await createAdminClient();
 
@@ -40,11 +42,11 @@ export async function generateGroupsAction(tournamentId: string, groupCount: num
     .select("match_unit")
     .eq("id", tournamentId)
     .maybeSingle();
-  if (!tournament) return { error: "ไม่พบทัวร์นาเมนต์" };
-  if (tournament.match_unit !== "team") return { error: "โหมดคู่ไม่ใช้กลุ่ม" };
+  if (!tournament) return { error: t("match.tournamentNotFound") };
+  if (tournament.match_unit !== "team") return { error: t("match.pairModeNoGroups") };
 
   const { data: teams } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
-  if (!teams?.length) return { error: "ยังไม่มีทีม" };
+  if (!teams?.length) return { error: t("match.noTeams") };
 
   const shuffled = [...teams].sort(() => Math.random() - 0.5);
   const names = "ABCDEFGHIJKLMNOP".split("").slice(0, groupCount).map((n) => `กลุ่ม ${n}`);
@@ -55,7 +57,7 @@ export async function generateGroupsAction(tournamentId: string, groupCount: num
     p_group_names: names,
     p_assignments: assignments,
   });
-  if (rpcError) return { error: "สร้างกลุ่มไม่สำเร็จ กรุณาลองใหม่" };
+  if (rpcError) return { error: t("match.generateGroupsFailed") };
 
   // Knockout bracket is seeded from group standings — regenerating groups invalidates it.
   const koCleared = await clearKnockoutMatches(sb, tournamentId);
@@ -196,7 +198,8 @@ async function clearKnockoutMatches(
 export async function generateGroupMatchesAction(tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("match.noPermission") };
 
   const sb = await createAdminClient();
 
@@ -204,7 +207,7 @@ export async function generateGroupMatchesAction(tournamentId: string) {
     .from("groups")
     .select("id, group_teams(team_id)")
     .eq("tournament_id", tournamentId);
-  if (!groups?.length) return { error: "ยังไม่มีกลุ่ม" };
+  if (!groups?.length) return { error: t("match.noGroups") };
 
   type RawGroup = { id: string; group_teams: { team_id: string }[] };
   const inserts: Array<Record<string, unknown>> = [];
@@ -229,7 +232,7 @@ export async function generateGroupMatchesAction(tournamentId: string) {
     p_round_type: "group",
     p_matches: inserts,
   });
-  if (rpcError) return { error: "สร้างแมตช์กลุ่มไม่สำเร็จ" };
+  if (rpcError) return { error: t("match.generateGroupMatchesFailed") };
 
   // Reset group_teams denormalized standings (wins/draws/losses/points_*) — scores in
   // matches table got wiped by the RPC above but standings were not touched.
@@ -300,7 +303,8 @@ async function applyDivisionPriorityOrdering(
 export async function generatePairMatchesAction(tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("match.noPermission") };
 
   const sb = await createAdminClient();
 
@@ -312,7 +316,7 @@ export async function generatePairMatchesAction(tournamentId: string) {
     .from("teams")
     .select("id, pairs(id, player_id_1, player_id_2, pair_level)")
     .eq("tournament_id", tournamentId);
-  if (!teams?.length) return { error: "ยังไม่มีทีม" };
+  if (!teams?.length) return { error: t("match.noTeams") };
 
   type RawPair = { id: string; player_id_1: string | null; player_id_2: string | null; pair_level: string | null };
   type RawTeam = { id: string; pairs: RawPair[] };
@@ -330,7 +334,7 @@ export async function generatePairMatchesAction(tournamentId: string) {
     const teamPairs = allTeamPairs
       .map((t) => ({ teamId: t.teamId, pairIds: t.pairs.map((p) => p.id) }))
       .filter((tp) => tp.pairIds.length > 0);
-    if (teamPairs.length < 2) return { error: "ต้องมีอย่างน้อย 2 ทีมที่มีคู่" };
+    if (teamPairs.length < 2) return { error: t("match.needTwoTeamsWithPairs") };
     const all = generateAllPairMatches(teamPairs);
     allMatchInserts = all.map((m, i) => ({
       round_number: 1, match_number: i + 1,
@@ -372,7 +376,7 @@ export async function generatePairMatchesAction(tournamentId: string) {
       }
       if (divMatches.length > 0) anyGenerated = true;
     }
-    if (!anyGenerated) return { error: "ต้องมีอย่างน้อย 2 ทีมที่มีคู่ในแต่ละ division" };
+    if (!anyGenerated) return { error: t("match.needTwoTeamsPerDivision") };
   }
 
   const { error: rpcError } = await sb.rpc("replace_tournament_matches", {
@@ -380,7 +384,7 @@ export async function generatePairMatchesAction(tournamentId: string) {
     p_round_type: "group",
     p_matches: allMatchInserts,
   });
-  if (rpcError) return { error: "สร้างแมตช์คู่ไม่สำเร็จ" };
+  if (rpcError) return { error: t("match.generatePairMatchesFailed") };
 
   // Apply division-priority ordering immediately so users don't need
   // to click "จัดคิวอัตโนมัติ" after generation.
@@ -506,7 +510,7 @@ async function insertAndResolveByes(
     p_round_type: "knockout",
     p_matches: inserts,
   });
-  if (error) return { error: "สร้างสายน็อกเอาต์ไม่สำเร็จ" };
+  if (error) return { error: "generateKnockoutFailed" };
 
   // Auto-complete BYE matches and advance winners. Lower-bracket BYE chains can
   // cascade > 2 rounds (e.g. deep double-elim with sparse seeds), so we loop
@@ -598,7 +602,8 @@ async function insertAndResolveByes(
 export async function generateKnockoutAction(tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("match.noPermission") };
 
   const sb = await createAdminClient();
 
@@ -607,7 +612,7 @@ export async function generateKnockoutAction(tournamentId: string) {
     .select("advance_count, seeding_method, format, has_lower_bracket, allow_drop_to_lower, match_unit, pair_division_thresholds")
     .eq("id", tournamentId)
     .single();
-  if (!tournament) return { error: "ไม่พบทัวร์นาเมนต์" };
+  if (!tournament) return { error: t("match.tournamentNotFound") };
 
   // T2 — knockout_fill_byes (team-mode group_knockout): read once here.
   const settings = await getTournamentSettings(tournamentId);
@@ -621,7 +626,7 @@ export async function generateKnockoutAction(tournamentId: string) {
   if (tournament.match_unit === "pair") {
     const { data: teamsData } = await sb.from("teams").select("id").eq("tournament_id", tournamentId);
     const teamIds = teamsData?.map((t) => t.id) ?? [];
-    if (!teamIds.length) return { error: "ยังไม่มีทีม" };
+    if (!teamIds.length) return { error: t("match.noTeams") };
 
     type RawPair = {
       id: string;
@@ -634,7 +639,7 @@ export async function generateKnockoutAction(tournamentId: string) {
       .select("id, pair_level, player1:team_players!player_id_1(display_name), player2:team_players!player_id_2(display_name)")
       .in("team_id", teamIds);
     const pairs = (pairsRaw as unknown as RawPair[]) ?? [];
-    if (pairs.length < 2) return { error: "ต้องมีอย่างน้อย 2 คู่" };
+    if (pairs.length < 2) return { error: t("match.needTwoPairs") };
 
     const thresholds: number[] = parseTournamentThresholds(tournament.pair_division_thresholds);
 
@@ -674,7 +679,7 @@ export async function generateKnockoutAction(tournamentId: string) {
         // No division split — single bracket from all pairs
         const standings = computeStandings(groupMatches, "pair", pairs.map((p) => p.id));
         let topSeeds = seedsFromStandings(standings, advanceCount);
-        if (topSeeds.length < 2) return { error: "คู่ที่ผ่านรอบมีไม่ถึง 2 คู่" };
+        if (topSeeds.length < 2) return { error: t("match.notEnoughPairsAdvanced") };
         if (tournament.seeding_method === "random") topSeeds = [...topSeeds].sort(() => Math.random() - 0.5);
         allMatches = buildBracket(toEntries(topSeeds, nextPowerOf2(topSeeds.length)));
       } else {
@@ -706,7 +711,7 @@ export async function generateKnockoutAction(tournamentId: string) {
           matchNumOffset += divMatches.length;
           anyBuilt = true;
         }
-        if (!anyBuilt) return { error: "ไม่มีคู่ที่ผ่านรอบเพียงพอใน division ใดเลย" };
+        if (!anyBuilt) return { error: t("match.noEnoughPairsInAnyDivision") };
       }
     } else {
       // knockout_only
@@ -734,7 +739,7 @@ export async function generateKnockoutAction(tournamentId: string) {
           allMatches = [...allMatches, ...tagged];
           matchNumOffset += divMatches.length;
         }
-        if (!allMatches.length) return { error: "ต้องมีอย่างน้อย 2 คู่ต่อ division" };
+        if (!allMatches.length) return { error: t("match.needTwoPairsPerDivision") };
       }
     }
 
@@ -765,7 +770,7 @@ export async function generateKnockoutAction(tournamentId: string) {
       p_round_type: "knockout",
       p_matches: inserts,
     });
-    if (insertErr) return { error: "สร้างสายน็อกเอาต์ไม่สำเร็จ" };
+    if (insertErr) return { error: t("match.generateKnockoutFailed") };
 
     // Resolve BYEs inline (cannot reuse insertAndResolveByes because division is now on inserts).
     // Loop until no more walkovers are produced — cascading lower-bracket BYE chains in
@@ -906,7 +911,7 @@ export async function generateKnockoutAction(tournamentId: string) {
   if (tournament.format === "knockout_only") {
     const { data: allTeams } = await sb
       .from("teams").select("id, name").eq("tournament_id", tournamentId).order("created_at");
-    if (!allTeams || allTeams.length < 2) return { error: "ต้องมีอย่างน้อย 2 ทีม" };
+    if (!allTeams || allTeams.length < 2) return { error: t("match.needTwoTeams") };
     const list = tournament.seeding_method === "random"
       ? [...allTeams].sort(() => Math.random() - 0.5) : allTeams;
     seeds = list.map((t) => ({ teamId: t.id, name: t.name }));
@@ -915,7 +920,7 @@ export async function generateKnockoutAction(tournamentId: string) {
       .from("groups")
       .select("id, group_teams(team_id, wins, draws, losses, points_for, points_against, team:teams(id, name, color))")
       .eq("tournament_id", tournamentId);
-    if (!groups?.length) return { error: "ยังไม่มีกลุ่ม — แบ่งกลุ่มก่อน" };
+    if (!groups?.length) return { error: t("match.noGroupsYet") };
 
     const advanceCount = tournament.advance_count ?? 2;
     type Advancer = Seed & { groupRank: number; pts: number; diff: number; pf: number };
@@ -941,7 +946,7 @@ export async function generateKnockoutAction(tournamentId: string) {
       }
     }
 
-    if (advancers.length < 2) return { error: "ผู้เข้ารอบยังไม่ครบ — ต้องมีอย่างน้อย 2 ทีม" };
+    if (advancers.length < 2) return { error: t("match.notEnoughAdvancers") };
 
     // T2 — knockout_fill_byes: replace first-round BYEs with the best non-advancing
     // teams (cross-group, ranked by finishing position then score). Gated off the
@@ -978,7 +983,7 @@ export async function generateKnockoutAction(tournamentId: string) {
   }
 
   const err = await insertAndResolveByes(sb, tournamentId, allMatches, false, groupMax);
-  if (err) return err;
+  if (err) return { error: t("match.generateKnockoutFailed") };
 
   // Apply division-priority ordering immediately after bracket insert.
   await applyDivisionPriorityOrdering(sb, tournamentId, "knockout");
@@ -1006,8 +1011,9 @@ export async function createManualMatchAction(input: {
 }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
-  if (input.pairAId === input.pairBId) return { error: "ต้องเลือกคู่ที่ต่างกัน" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: t("match.noPermission") };
+  if (input.pairAId === input.pairBId) return { error: t("match.pairsMustBeDifferent") };
 
   const sb = await createAdminClient();
 
@@ -1021,7 +1027,7 @@ export async function createManualMatchAction(input: {
       .eq("round_type", "knockout")
       .limit(1)
       .maybeSingle();
-    if (hasKo) return { error: "ปิดการสร้างแมตช์ manual หลังสร้างสายแล้ว (settings)" };
+    if (hasKo) return { error: t("match.manualMatchDisabledAfterBracket") };
   }
 
   const { data: pairsData } = await sb
@@ -1029,11 +1035,11 @@ export async function createManualMatchAction(input: {
     .select("id, team_id, pair_level, teams!inner(tournament_id)")
     .in("id", [input.pairAId, input.pairBId]);
 
-  if (!pairsData || pairsData.length !== 2) return { error: "ไม่พบคู่" };
+  if (!pairsData || pairsData.length !== 2) return { error: t("match.pairNotFound") };
 
   for (const p of pairsData) {
     const tid = (p.teams as unknown as { tournament_id: string }).tournament_id;
-    if (tid !== input.tournamentId) return { error: "คู่ไม่ได้อยู่ใน tournament นี้" };
+    if (tid !== input.tournamentId) return { error: t("match.pairNotInTournament") };
   }
 
   const pA = pairsData.find((p) => p.id === input.pairAId)!;
@@ -1054,7 +1060,7 @@ export async function createManualMatchAction(input: {
 
   const divA = pairDivNum(pA.pair_level as string | null);
   const divB = pairDivNum(pB.pair_level as string | null);
-  if (divA !== divB) return { error: "คู่ต้องอยู่ใน division เดียวกัน" };
+  if (divA !== divB) return { error: t("match.pairsDifferentDivision") };
 
   const nextMatchNumber = await getNextMatchNumber(sb, input.tournamentId, { roundType: "group" });
 
@@ -1072,7 +1078,7 @@ export async function createManualMatchAction(input: {
 
   if (error) {
     console.error("[createManualMatchAction]", error);
-    return { error: "สร้างแมตช์ไม่สำเร็จ" };
+    return { error: t("match.createMatchFailed") };
   }
 
   revalidatePath(`/tournaments/${input.tournamentId}`);
@@ -1097,30 +1103,31 @@ export async function recordMatchScoreAction(input: {
 }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: t("match.noPermission") };
 
-  if (!input.games.length) return { error: "ต้องมีอย่างน้อย 1 เกม" };
+  if (!input.games.length) return { error: t("match.resolve_no_games") };
   // Validate each game's scores are integers within [0, 99] (ScoreForm clamps to
   // this; a direct action call could pass negatives/NaN/huge values that corrupt
   // point totals + group standings — server validated only games.length before).
   for (const g of input.games) {
     if (!Number.isInteger(g.a) || !Number.isInteger(g.b) || g.a < 0 || g.b < 0 || g.a > 99 || g.b > 99) {
-      return { error: "คะแนนเกมไม่ถูกต้อง (0–99)" };
+      return { error: t("match.invalidGameScore") };
     }
   }
 
   const sb = await createAdminClient();
 
   const { data: match } = await sb.from("matches").select("*").eq("id", input.matchId).single();
-  if (!match) return { error: "ไม่พบแมตช์" };
+  if (!match) return { error: t("match.notFound") };
   // Scope the write to the authorized tournament — assertCanEdit only proved rights
   // on input.tournamentId, NOT that this match belongs to it. Without this an admin
   // of any tournament could record a score onto another tournament's match (IDOR).
-  if (match.tournament_id !== input.tournamentId) return { error: "ไม่พบแมตช์" };
+  if (match.tournament_id !== input.tournamentId) return { error: t("match.notFound") };
   // Block re-recording a completed match: record_match_score ADDS to group standings,
   // so a second call double-counts. Editing a result must go through reset first
   // (the UI only shows ScoreForm on non-completed matches).
-  if (match.status === "completed") return { error: "แมตช์นี้บันทึกผลแล้ว — รีเซ็ตก่อนแก้ไข" };
+  if (match.status === "completed") return { error: t("match.alreadyCompleted") };
 
   // Competition-class matches must satisfy their class's match_format
   // (fixed_2 / best_of_3 / best_of_5). sports_day matches (class_id null) stay
@@ -1134,7 +1141,7 @@ export async function recordMatchScoreAction(input: {
       .single();
     const format = (cls?.match_format ?? "best_of_3") as MatchFormat;
     const result = resolveMatchResult(input.games, format);
-    if (!result.ok) return { error: result.reason };
+    if (!result.ok) return { error: t(`match.resolve_${result.reason}`, { max: result.max ?? 0, winAt: result.winAt ?? 0 }) };
     winner = result.winner;
   } else {
     winner = gameWinner(input.games);
@@ -1145,7 +1152,7 @@ export async function recordMatchScoreAction(input: {
   // round_type is "group" | "knockout" today; `!== "group"` also covers any future
   // bracket-specific value (upper_*/grand_final) and a fixed_2 class KO that ties 1-1.
   if (match.round_type !== "group" && winner === "draw") {
-    return { error: "แมตช์น็อกเอาต์ไม่อนุญาตให้เสมอ" };
+    return { error: t("match.knockoutNoDrawAllowed") };
   }
 
   // Detect pair mode (pair_a_id/pair_b_id set) — applies to BOTH group and knockout
@@ -1170,7 +1177,7 @@ export async function recordMatchScoreAction(input: {
     p_team_b_score: gamesWonB,
     p_winner_slot: winnerSlot,
   });
-  if (rpcError) return { error: "บันทึกผลไม่สำเร็จ" };
+  if (rpcError) return { error: t("match.recordScoreFailed") };
 
   // Update group_teams standings only for team-mode group matches (not pair)
   if (match.group_id && !match.pair_a_id) {
@@ -1498,15 +1505,16 @@ export async function recordMatchScoreAction(input: {
 export async function resetMatchScoreAction(matchId: string, tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("match.noPermission") };
 
   const sb = await createAdminClient();
   const { data: match } = await sb.from("matches").select("*").eq("id", matchId).single();
   // Scope to the authorized tournament BEFORE touching standings — reverseGroupTeamStandings
   // below runs on match.group_id/team ids, so an out-of-tenant match would corrupt another
   // tournament's group_teams before the (already-scoped) RPC no-ops (IDOR / data-integrity).
-  if (!match || match.tournament_id !== tournamentId) return { error: "ไม่พบแมตช์" };
-  if (match.status !== "completed") return { error: "แมตช์นี้ยังไม่มีคะแนน" };
+  if (!match || match.tournament_id !== tournamentId) return { error: t("match.notFound") };
+  if (match.status !== "completed") return { error: t("match.notCompleted") };
 
   if (match.group_id && !match.pair_a_id && match.team_a_id && match.team_b_id) {
     const totals = sumGameScores(match.games);
@@ -1531,12 +1539,12 @@ export async function resetMatchScoreAction(matchId: string, tournamentId: strin
   });
   if (rpcErr) {
     const msg = rpcErr.message ?? "";
-    if (/next_match_already_completed/i.test(msg)) return { error: "รีเซ็ตไม่ได้ — รอบถัดไปเล่นไปแล้ว" };
-    if (/loser_next_match_already_completed/i.test(msg)) return { error: "รีเซ็ตไม่ได้ — แมตช์สายล่างถัดไปเล่นไปแล้ว" };
-    if (/match_not_found/i.test(msg)) return { error: "ไม่พบแมตช์" };
-    if (/match_not_completed/i.test(msg)) return { error: "แมตช์นี้ยังไม่มีคะแนน" };
+    if (/next_match_already_completed/i.test(msg)) return { error: t("match.resetBlockedNextCompleted") };
+    if (/loser_next_match_already_completed/i.test(msg)) return { error: t("match.resetBlockedLoserCompleted") };
+    if (/match_not_found/i.test(msg)) return { error: t("match.notFound") };
+    if (/match_not_completed/i.test(msg)) return { error: t("match.notCompleted") };
     console.error("[resetMatchScoreAction] rpc error:", rpcErr);
-    return { error: "รีเซ็ตผลไม่สำเร็จ" };
+    return { error: t("match.resetFailed") };
   }
   void rpcData; // new queue_position returned but not needed by caller
 
@@ -1674,7 +1682,8 @@ export async function reorderMatchQueueAction(
 ) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("match.noPermission") };
 
   const sb = await createAdminClient();
 
@@ -1696,9 +1705,9 @@ export async function reorderMatchQueueAction(
   if (rpcErr) {
     const msg = rpcErr.message ?? "";
     if (/not pending matches/i.test(msg)) {
-      return { error: "พบแมตช์ที่ไม่ใช่สถานะรอแข่งในลำดับ" };
+      return { error: t("match.reorderNonPendingFound") };
     }
-    return { error: "บันทึกลำดับไม่สำเร็จ" };
+    return { error: t("match.reorderFailed") };
   }
 
   await revalidateTournamentPaths(sb, tournamentId);
@@ -1717,7 +1726,8 @@ export async function reorderMatchQueueAction(
 export async function autoRotateQueueAction(tournamentId: string, restGap?: number) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("match.noPermission") };
 
   const sb = await createAdminClient();
 
@@ -1737,7 +1747,7 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
     .order("round_type", { ascending: true })
     .order("queue_position", { ascending: true, nullsFirst: false })
     .order("match_number");
-  if (error) return { error: "อ่านรายการแมตช์ไม่สำเร็จ" };
+  if (error) return { error: t("match.readMatchListFailed") };
   if (!pending || pending.length < 2) return { ok: true, rotated: 0 };
 
   // Snapshot current queue order BEFORE applying bracket preference so the
@@ -1876,7 +1886,7 @@ export async function autoRotateQueueAction(tournamentId: string, restGap?: numb
     p_tournament_id: tournamentId,
     p_ordered_ids: orderedIds,
   });
-  if (rpcErr) return { error: "บันทึกลำดับใหม่ไม่สำเร็จ" };
+  if (rpcErr) return { error: t("match.reorderFailed") };
 
   await revalidateTournamentPaths(sb, tournamentId);
   await writeAuditLog({
@@ -1904,7 +1914,8 @@ export async function setMatchCourtAction(input: {
 }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: t("match.noPermission") };
 
   const sb = await createAdminClient();
   const rawCourt = input.court?.trim() ?? "";
@@ -1922,7 +1933,7 @@ export async function setMatchCourtAction(input: {
       .neq("id", input.matchId)
       .maybeSingle();
     if (occupier) {
-      return { error: `สนาม ${court} ถูกใช้แมตช์ #${occupier.match_number} อยู่` };
+      return { error: t("match.courtOccupied", { court, n: occupier.match_number }) };
     }
   }
 
@@ -1931,7 +1942,7 @@ export async function setMatchCourtAction(input: {
     .update({ court })
     .eq("id", input.matchId)
     .eq("tournament_id", input.tournamentId);
-  if (error) return { error: "บันทึกสนามไม่สำเร็จ" };
+  if (error) return { error: t("match.saveCourtFailed") };
 
   await revalidateTournamentPaths(sb, input.tournamentId);
   await writeAuditLog({
@@ -1949,7 +1960,8 @@ export async function setMatchCourtAction(input: {
 export async function startMatchAction(matchId: string, tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("match.noPermission") };
 
   const sb = await createAdminClient();
   const { data: match } = await sb
@@ -1958,9 +1970,9 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
     .eq("id", matchId)
     .eq("tournament_id", tournamentId)
     .maybeSingle();
-  if (!match) return { error: "ไม่พบแมตช์" };
-  if (match.status === "completed") return { error: "แมตช์นี้จบแล้ว" };
-  if (match.status === "in_progress") return { error: "แมตช์นี้กำลังแข่งอยู่" };
+  if (!match) return { error: t("match.notFound") };
+  if (match.status === "completed") return { error: t("match.alreadyFinished") };
+  if (match.status === "in_progress") return { error: t("match.alreadyInProgress") };
 
   // Knockout R1 cannot start until all group matches of the same scope are completed.
   // Competition mode: scope by class_id (class matches carry division=NULL, so each
@@ -1982,7 +1994,7 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
     if ((pendingGroups ?? 0) > 0) {
       const divNum = parseDivision(match.division);
       const label = divNum !== null ? `แมตช์รอบกลุ่ม${divisionLabelTh(divNum)}` : "แมตช์รอบกลุ่ม";
-      return { error: `ต้องรอ${label}จบทุกคู่ก่อนจึงเริ่มน็อคเอ้าได้` };
+      return { error: t("match.waitGroupMatchesFirst", { label }) };
     }
   }
 
@@ -1992,7 +2004,7 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
 
   // require_court_to_start gate: reject if flag is on and no court assigned.
   if (settings.require_court_to_start && !match.court) {
-    return { error: "ต้องเลือกสนามก่อนเริ่มแมตช์" };
+    return { error: t("match.requireCourtBeforeStart") };
   }
 
   // require_checkin pre-gate: only differentiate the TBD-slot and
@@ -2005,13 +2017,13 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
     try {
       const collected = await collectMatchPlayerIds(sb, match);
       if (!collected.ok) {
-        if (collected.reason === "tbd") return { error: "ยังกำหนดทั้งสองฝั่งไม่ครบ — รอจับคู่ก่อน" };
-        return { error: "ทีมไม่มีผู้เล่น — เพิ่มผู้เล่นก่อนเริ่มแมตช์" };
+        if (collected.reason === "tbd") return { error: t("match.checkinTbdSlots") };
+        return { error: t("match.checkinNoPlayers") };
       }
       checkinPlayerIds = collected.ids;
     } catch (err) {
       console.error("[require_checkin gate]", err);
-      return { error: "ตรวจสอบสถานะเช็คอินไม่สำเร็จ ลองอีกครั้ง" };
+      return { error: t("match.checkinVerifyFailed") };
     }
   }
 
@@ -2030,7 +2042,7 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
       if (elapsedMs < requiredMs) {
         const remainSec = Math.ceil((requiredMs - elapsedMs) / 1000);
         const remainMin = Math.ceil(remainSec / 60);
-        return { error: `ต้องรออีก ${remainMin} นาที (cooldown ${settings.match_cooldown_minutes} นาที)` };
+        return { error: t("match.cooldownWait", { n: remainMin, cooldown: settings.match_cooldown_minutes }) };
       }
     }
   }
@@ -2048,7 +2060,7 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
       .neq("id", matchId)
       .maybeSingle();
     if (occupier) {
-      return { error: `สนาม ${match.court} ถูกใช้แมตช์ #${occupier.match_number} อยู่` };
+      return { error: t("match.courtOccupied", { court: match.court, n: occupier.match_number }) };
     }
   }
 
@@ -2060,18 +2072,18 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
   });
   if (!error && rpcRes && typeof rpcRes === "object" && (rpcRes as { ok?: boolean }).ok === false) {
     const r = rpcRes as { reason?: string; count?: number };
-    if (r.reason === "unchecked") return { error: `รอเช็คอิน ${r.count ?? 0} คน — เปิดแท็บทีมเพื่อเช็คอิน` };
-    if (r.reason === "in_progress") return { error: "แมตช์นี้กำลังแข่งอยู่" };
-    if (r.reason === "completed") return { error: "แมตช์นี้จบแล้ว" };
-    if (r.reason === "status_changed") return { error: "สถานะแมตช์เปลี่ยนระหว่างเริ่ม ลองอีกครั้ง" };
-    if (r.reason === "not_found") return { error: "ไม่พบแมตช์" };
-    return { error: "เริ่มแมตช์ไม่สำเร็จ" };
+    if (r.reason === "unchecked") return { error: t("match.uncheckedPlayers", { n: r.count ?? 0 }) };
+    if (r.reason === "in_progress") return { error: t("match.alreadyInProgress") };
+    if (r.reason === "completed") return { error: t("match.alreadyFinished") };
+    if (r.reason === "status_changed") return { error: t("match.statusChangedRetry") };
+    if (r.reason === "not_found") return { error: t("match.notFound") };
+    return { error: t("match.startFailed") };
   }
   if (error) {
     if (error.code === "23505") {
-      return { error: `สนาม ${match.court ?? "—"} ถูกใช้อยู่ — เลือกสนามอื่นแล้วลองใหม่` };
+      return { error: t("match.courtConflictRetry", { court: match.court ?? "—" }) };
     }
-    return { error: "อัปเดตสถานะไม่สำเร็จ" };
+    return { error: t("match.updateStatusFailed") };
   }
 
   await revalidateTournamentPaths(sb, tournamentId);
@@ -2131,7 +2143,8 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
 export async function cancelMatchAction(matchId: string, tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("match.noPermission") };
 
   const sb = await createAdminClient();
   const { data: match } = await sb
@@ -2140,8 +2153,8 @@ export async function cancelMatchAction(matchId: string, tournamentId: string) {
     .eq("id", matchId)
     .eq("tournament_id", tournamentId)
     .maybeSingle();
-  if (!match) return { error: "ไม่พบแมตช์" };
-  if (match.status !== "in_progress") return { error: "แมตช์นี้ไม่ได้กำลังแข่งอยู่" };
+  if (!match) return { error: t("match.notFound") };
+  if (match.status !== "in_progress") return { error: t("match.notInProgress") };
 
   // Atomic flip + tail-position assignment via RPC (prevents duplicate
   // queue_position when cancel and createManual run concurrently).
@@ -2151,7 +2164,7 @@ export async function cancelMatchAction(matchId: string, tournamentId: string) {
   });
   if (error) {
     console.error("[cancelMatchAction]", error);
-    return { error: "ยกเลิกการแข่งไม่สำเร็จ" };
+    return { error: t("match.cancelFailed") };
   }
 
   await revalidateTournamentPaths(sb, tournamentId);

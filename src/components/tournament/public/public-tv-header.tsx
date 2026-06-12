@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Trophy } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import { TvFullscreenButton } from "@/components/tournament/tv-fullscreen-button";
-import { TOURNAMENT_STATUS_LABEL } from "@/lib/tournament/status";
 import type { TournamentStatus } from "@/lib/types";
 
 export type PublicTvHeaderExtraLink = {
@@ -28,7 +28,7 @@ export type PublicTvHeaderProps = {
  * Both callers are async server components — this component is intentionally
  * a server component (no "use client" directive).
  */
-export function PublicTvHeader({
+export async function PublicTvHeader({
   name,
   venue,
   status,
@@ -37,6 +37,7 @@ export function PublicTvHeader({
   backLink,
   extraLinks = [],
 }: PublicTvHeaderProps) {
+  const t = await getTranslations("tournament");
   return (
     <header className="shrink-0 flex flex-wrap items-center justify-between gap-3 border-b pb-3">
       <div className="flex items-center gap-3 lg:gap-4 min-w-0">
@@ -56,7 +57,7 @@ export function PublicTvHeader({
       </div>
       <div className="flex items-center gap-3 lg:gap-4">
         <span className="px-3 py-1 lg:px-4 lg:py-1.5 rounded-full border text-sm lg:text-lg 2xl:text-xl font-semibold">
-          {TOURNAMENT_STATUS_LABEL[status] ?? status}
+          {t(`tournamentStatus.${status}`)}
         </span>
         {showFullscreenButton && <TvFullscreenButton />}
         {extraLinks.map((link) => (

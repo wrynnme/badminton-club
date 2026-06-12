@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { assertIsOwner, assertCanEdit } from "@/lib/tournament/permissions";
@@ -63,11 +64,12 @@ export type CreateTournamentInput = z.infer<typeof TournamentSchema>;
 export async function createTournamentAction(input: CreateTournamentInput) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (session.isGuest) return { error: "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้างทัวร์นาเมนต์" };
+  const t = await getTranslations("actions");
+  if (session.isGuest) return { error: t("tournament.requireLineLogin") };
 
   const parsed = TournamentSchema.safeParse(input);
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: t("tournament.invalidInput") };
   }
 
   const sb = await createAdminClient();
@@ -79,7 +81,7 @@ export async function createTournamentAction(input: CreateTournamentInput) {
 
   if (error || !data) {
     console.error("[createTournamentAction]", error);
-    return { error: "สร้างทัวร์นาเมนต์ไม่สำเร็จ" };
+    return { error: t("tournament.createFailed") };
   }
 
   await writeAuditLog({
@@ -100,14 +102,15 @@ export async function createTournamentAction(input: CreateTournamentInput) {
 export async function updateTournamentAction(input: Omit<CreateTournamentInput, "mode"> & { id: string }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
   const { id, ...rest } = input;
   const parsed = TournamentSchema.safeParse(rest);
   if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+    return { error: t("tournament.invalidInput") };
   }
 
-  if (!(await assertCanEdit(id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(id, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
 
@@ -128,7 +131,7 @@ export async function updateTournamentAction(input: Omit<CreateTournamentInput, 
       .eq("tournament_id", id)
       .neq("status", "pending");
     if ((count ?? 0) > 0) {
-      return { error: "ห้ามเปลี่ยน threshold หลังเริ่มแมตช์ — รีเซ็ตแมตช์เป็น pending ก่อน" };
+      return { error: t("tournament.thresholdChangeLocked") };
     }
   }
 
@@ -138,7 +141,7 @@ export async function updateTournamentAction(input: Omit<CreateTournamentInput, 
   const { error } = await sb.from("tournaments").update(updateData).eq("id", id);
   if (error) {
     console.error("[updateTournamentAction]", error);
-    return { error: "บันทึกการตั้งค่าไม่สำเร็จ" };
+    return { error: t("tournament.saveFailed") };
   }
 
   const changedFields: string[] = [];
@@ -172,7 +175,8 @@ export async function updateTournamentAction(input: Omit<CreateTournamentInput, 
 export async function updateCourtsAction(tournamentId: string, courts: string[]) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const COURT_NAME_MAX = 40;
   const COURTS_MAX = 50;
@@ -185,7 +189,7 @@ export async function updateCourtsAction(tournamentId: string, courts: string[])
   const { error } = await sb.from("tournaments").update({ courts: deduped }).eq("id", tournamentId);
   if (error) {
     console.error("[updateCourtsAction]", error);
-    return { error: "บันทึกสนามไม่สำเร็จ" };
+    return { error: t("tournament.saveCourtsFailed") };
   }
 
   await writeAuditLog({
@@ -205,14 +209,15 @@ export async function updateCourtsAction(tournamentId: string, courts: string[])
 export async function updateTournamentStatusAction(id: string, status: "draft" | "registering" | "ongoing" | "completed") {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertCanEdit(id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(id, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   const { error } = await sb.from("tournaments").update({ status }).eq("id", id);
   if (error) {
     console.error("[updateTournamentStatusAction]", error);
-    return { error: "บันทึกสถานะไม่สำเร็จ" };
+    return { error: t("tournament.saveStatusFailed") };
   }
 
   revalidatePath(`/tournaments/${id}`);
@@ -239,7 +244,8 @@ export async function updateTournamentSettingsAction(
 ) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   const { data: row, error: readErr } = await sb
@@ -247,7 +253,7 @@ export async function updateTournamentSettingsAction(
     .select("settings, share_token")
     .eq("id", tournamentId)
     .maybeSingle();
-  if (readErr || !row) return { error: "ไม่พบทัวร์นาเมนต์" };
+  if (readErr || !row) return { error: t("tournament.notFound") };
 
   const current = parseSettings(row.settings);
   const merged = TournamentSettingsSchema.parse({
@@ -269,7 +275,7 @@ export async function updateTournamentSettingsAction(
     .eq("id", tournamentId);
   if (writeErr) {
     console.error("[updateTournamentSettingsAction]", writeErr);
-    return { error: "บันทึก settings ไม่สำเร็จ" };
+    return { error: t("tournament.saveSettingsFailed") };
   }
 
   if (changedKeys.length > 0) {
@@ -302,17 +308,18 @@ export type CreateTeamInput = z.infer<typeof TeamSchema>;
 export async function createTeamAction(input: CreateTeamInput) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
   const parsed = TeamSchema.safeParse(input);
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "ข้อมูลไม่ถูกต้อง" };
+  if (!parsed.success) return { error: t("tournament.invalidInput") };
 
-  if (!(await assertCanEdit(parsed.data.tournament_id, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(parsed.data.tournament_id, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   const { error } = await sb.from("teams").insert(parsed.data);
   if (error) {
     console.error("[createTeamAction]", error);
-    return { error: "เพิ่มทีมไม่สำเร็จ" };
+    return { error: t("tournament.addTeamFailed") };
   }
 
   revalidatePath(`/tournaments/${parsed.data.tournament_id}`);
@@ -330,17 +337,18 @@ export async function createTeamAction(input: CreateTeamInput) {
 export async function deleteTeamAction(teamId: string, tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   // Scope to the asserted tournament — assertCanEdit only proved rights on tournamentId,
   // not that this team belongs to it (otherwise an admin of any tournament could delete
   // another tournament's team by id).
   const { data: team } = await sb.from("teams").select("tournament_id").eq("id", teamId).single();
-  if (!team || team.tournament_id !== tournamentId) return { error: "ไม่พบทีม" };
+  if (!team || team.tournament_id !== tournamentId) return { error: t("tournament.teamNotFound") };
   const { error: deleteError } = await sb.from("teams").delete().eq("id", teamId);
-  if (deleteError) return { error: "ลบทีมไม่สำเร็จ" };
+  if (deleteError) return { error: t("tournament.deleteTeamFailed") };
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
     tournament_id: tournamentId,
@@ -361,14 +369,15 @@ export async function addTeamPlayerAction(
 ) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   // Scope to the asserted tournament — verify the target team belongs to it before
   // inserting (assertCanEdit only covers tournamentId, not that teamId lives under it).
   const { data: team } = await sb.from("teams").select("tournament_id").eq("id", teamId).single();
-  if (!team || team.tournament_id !== tournamentId) return { error: "ไม่พบทีม" };
+  if (!team || team.tournament_id !== tournamentId) return { error: t("tournament.teamNotFound") };
   const { error } = await sb.from("team_players").insert({
     team_id: teamId,
     display_name: input.display_name,
@@ -381,7 +390,7 @@ export async function addTeamPlayerAction(
   });
   if (error) {
     console.error("[addTeamPlayerAction]", error);
-    return { error: "เพิ่มผู้เล่นไม่สำเร็จ" };
+    return { error: t("tournament.addPlayerFailed") };
   }
 
   revalidatePath(`/tournaments/${tournamentId}`);
@@ -399,19 +408,20 @@ export async function addTeamPlayerAction(
 export async function removeTeamPlayerAction(playerId: string, tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   // Scope to the asserted tournament — resolve the player's team and verify it belongs
   // to tournamentId before deleting (assertCanEdit alone would allow deleting a player
   // from another tournament's team by id).
   const { data: player } = await sb.from("team_players").select("team_id").eq("id", playerId).single();
-  if (!player) return { error: "ไม่พบผู้เล่น" };
+  if (!player) return { error: t("tournament.playerNotFound") };
   const { data: team } = await sb.from("teams").select("tournament_id").eq("id", player.team_id).single();
-  if (!team || team.tournament_id !== tournamentId) return { error: "ไม่พบผู้เล่น" };
+  if (!team || team.tournament_id !== tournamentId) return { error: t("tournament.playerNotFound") };
   const { error: deleteError } = await sb.from("team_players").delete().eq("id", playerId);
-  if (deleteError) return { error: "ลบผู้เล่นไม่สำเร็จ" };
+  if (deleteError) return { error: t("tournament.deletePlayerFailed") };
   revalidatePath(`/tournaments/${tournamentId}`);
   await writeAuditLog({
     tournament_id: tournamentId,
@@ -465,9 +475,10 @@ export async function importPlayersCsvAction(
 ): Promise<{ ok: true; teams: number; created: number; updated: number } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
-  if (!rows.length) return { error: "ไฟล์ไม่มีข้อมูล" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
+  if (!rows.length) return { error: t("tournament.csvEmpty") };
 
   const sb = await createAdminClient();
 
@@ -555,9 +566,10 @@ export async function importPairsCsvAction(
 ): Promise<{ ok: true; pairs: number; updated: number; skipped: number; unknownClassCodes: string[] } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
-  if (!rows.length) return { error: "ไฟล์ไม่มีข้อมูล" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
+  if (!rows.length) return { error: t("tournament.csvEmpty") };
 
   const sb = await createAdminClient();
 
@@ -580,7 +592,7 @@ export async function importPairsCsvAction(
     .from("tournament_classes").select("id, code").eq("tournament_id", tournamentId);
   const classByCode = new Map<string, string>((classRows ?? []).map((c) => [c.code, c.id]));
   if (requireClass && classByCode.size === 0) {
-    return { error: "ยังไม่มี class — สร้าง class ในแท็บตั้งค่าก่อนนำเข้าคู่" };
+    return { error: t("tournament.noClassesForImport") };
   }
   const unknownClassCodes = new Set<string>();
 
@@ -601,7 +613,7 @@ export async function importPairsCsvAction(
   // (wrong player). Surface it instead of last-write-wins. (Cross-tournament reuse
   // is fine — the query is already scoped to this tournament's teams.)
   if (dupCsvIds.size > 0) {
-    return { error: `id_player ซ้ำในทัวร์นาเมนต์ (แก้ให้ไม่ซ้ำก่อนนำเข้าคู่): ${[...dupCsvIds].join(", ")}` };
+    return { error: t("tournament.duplicatePlayerIds", { ids: [...dupCsvIds].join(", ") }) };
   }
 
   // Existing pairs indexed by id for upsert
@@ -692,10 +704,11 @@ export async function updateTeamPlayerAction(
 ) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
-  if (fields.display_name !== undefined && !fields.display_name.trim()) return { error: "กรุณาระบุชื่อ" };
+  if (fields.display_name !== undefined && !fields.display_name.trim()) return { error: t("tournament.nameRequired") };
 
   const update: Record<string, string | null> = {};
   if (fields.display_name !== undefined) update.display_name = fields.display_name.trim();
@@ -706,7 +719,7 @@ export async function updateTeamPlayerAction(
     .from("team_players").update(update).eq("id", playerId);
   if (error) {
     console.error("[updateTeamPlayerAction]", error);
-    return { error: "บันทึกข้อมูลผู้เล่นไม่สำเร็จ" };
+    return { error: t("tournament.savePlayerFailed") };
   }
 
   // When level_id changed, recompute pair_level for every pair containing this player
@@ -766,15 +779,16 @@ export async function updateTeamPlayerAction(
 export async function generateShareTokenAction(tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   const token = crypto.randomUUID();
   const { error } = await sb.from("tournaments").update({ share_token: token }).eq("id", tournamentId);
   if (error) {
     console.error("[generateShareTokenAction]", error);
-    return { error: "สร้างลิงก์ไม่สำเร็จ" };
+    return { error: t("tournament.generateTokenFailed") };
   }
 
   await writeAuditLog({
@@ -794,14 +808,15 @@ export async function generateShareTokenAction(tournamentId: string) {
 export async function revokeShareTokenAction(tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   const { error } = await sb.from("tournaments").update({ share_token: null }).eq("id", tournamentId);
   if (error) {
     console.error("[revokeShareTokenAction]", error);
-    return { error: "ยกเลิกลิงก์ไม่สำเร็จ" };
+    return { error: t("tournament.revokeTokenFailed") };
   }
 
   await writeAuditLog({
@@ -840,7 +855,8 @@ async function revalidateAllTournamentPaths(
 export async function toggleTeamPlayerCheckInAction(input: { playerId: string; tournamentId: string }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   const { data: player } = await sb
@@ -848,15 +864,15 @@ export async function toggleTeamPlayerCheckInAction(input: { playerId: string; t
     .select("id, display_name, checked_in_at, team:teams!inner(tournament_id)")
     .eq("id", input.playerId)
     .maybeSingle();
-  if (!player) return { error: "ไม่พบผู้เล่น" };
+  if (!player) return { error: t("tournament.playerNotFound") };
   const team = Array.isArray(player.team) ? player.team[0] : player.team;
-  if (!team || team.tournament_id !== input.tournamentId) return { error: "ผู้เล่นไม่อยู่ในทัวร์นี้" };
+  if (!team || team.tournament_id !== input.tournamentId) return { error: t("tournament.playerNotInTournament") };
 
   const next = player.checked_in_at ? null : new Date().toISOString();
   const { error } = await sb.from("team_players").update({ checked_in_at: next }).eq("id", input.playerId);
   if (error) {
     console.error("[toggleTeamPlayerCheckInAction]", error);
-    return { error: "บันทึกสถานะเช็คอินไม่สำเร็จ" };
+    return { error: t("tournament.saveCheckInFailed") };
   }
 
   await writeAuditLog({
@@ -876,7 +892,8 @@ export async function toggleTeamPlayerCheckInAction(input: { playerId: string; t
 export async function bulkCheckInTeamAction(input: { teamId: string; tournamentId: string; checkIn: boolean }) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(input.tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   const { data: team } = await sb
@@ -884,7 +901,7 @@ export async function bulkCheckInTeamAction(input: { teamId: string; tournamentI
     .select("id, name, tournament_id")
     .eq("id", input.teamId)
     .maybeSingle();
-  if (!team || team.tournament_id !== input.tournamentId) return { error: "ไม่พบทีม" };
+  if (!team || team.tournament_id !== input.tournamentId) return { error: t("tournament.teamNotFound") };
 
   const next = input.checkIn ? new Date().toISOString() : null;
   // Idempotent: only touch rows whose current state differs. Preserves existing
@@ -897,7 +914,7 @@ export async function bulkCheckInTeamAction(input: { teamId: string; tournamentI
   const { data: updated, error } = await q.select("id");
   if (error) {
     console.error("[bulkCheckInTeamAction]", error);
-    return { error: "บันทึกสถานะเช็คอินไม่สำเร็จ" };
+    return { error: t("tournament.saveCheckInFailed") };
   }
   const count = updated?.length ?? 0;
   if (count === 0) {
@@ -924,7 +941,8 @@ export async function bulkCheckInTeamAction(input: { teamId: string; tournamentI
 export async function resetAllCheckInsAction(tournamentId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   const { data: teams, error: teamsErr } = await sb
@@ -933,7 +951,7 @@ export async function resetAllCheckInsAction(tournamentId: string) {
     .eq("tournament_id", tournamentId);
   if (teamsErr) {
     console.error("[resetAllCheckInsAction] teams lookup:", teamsErr);
-    return { error: "โหลดทีมไม่สำเร็จ" };
+    return { error: t("tournament.loadTeamsFailed") };
   }
   const teamIds = (teams ?? []).map((t) => t.id);
   if (teamIds.length === 0) return { ok: true, count: 0, noop: true };
@@ -946,7 +964,7 @@ export async function resetAllCheckInsAction(tournamentId: string) {
     .select("id");
   if (error) {
     console.error("[resetAllCheckInsAction]", error);
-    return { error: "รีเซ็ตเช็คอินไม่สำเร็จ" };
+    return { error: t("tournament.resetCheckInFailed") };
   }
   const count = updated?.length ?? 0;
   if (count === 0) {

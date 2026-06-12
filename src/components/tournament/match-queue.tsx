@@ -56,14 +56,11 @@ import {
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
 import { parseDivision, divisionTone } from "@/lib/tournament/divisions";
 import { classTone, type ClassTone } from "@/lib/tournament/class-color";
-import { MATCH_STATUS_LABEL_TH, MATCH_STATUS_PILL_CLASS } from "@/lib/tournament/status-display";
+import { MATCH_STATUS_PILL_CLASS } from "@/lib/tournament/status-display";
 import { maxGamesForFormat } from "@/lib/tournament/match-format";
 import type { Match, MatchUnit, TournamentClass } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
-// Canonical labels + pill tones now live in status-display.ts (shared with
-// tv-match-card). Local aliases keep existing call sites unchanged.
-const STATUS_LABEL = MATCH_STATUS_LABEL_TH;
 const STATUS_TONE = MATCH_STATUS_PILL_CLASS;
 
 // Sort: group matches before knockout (round_type alphabetical 'group' < 'knockout'),
@@ -520,9 +517,10 @@ function DivisionBadge({
 }
 
 function StatusBadge({ status }: { status: Match["status"] }) {
+  const t = useTranslations("tournament");
   return (
     <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${STATUS_TONE[status]}`}>
-      {STATUS_LABEL[status]}
+      {t(`matchStatus.${status}`)}
     </span>
   );
 }

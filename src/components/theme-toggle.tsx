@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type Theme = "light" | "dark" | "system";
 
@@ -16,7 +17,13 @@ function applyTheme(theme: Theme) {
   document.cookie = `theme=${theme}; path=/; max-age=${maxAge}; SameSite=Lax`;
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({
+  className,
+  iconClassName = "h-4 w-4",
+}: {
+  className?: string;
+  iconClassName?: string;
+} = {}) {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
@@ -30,9 +37,25 @@ export function ThemeToggle() {
   };
 
   return (
-    <Button variant="ghost" size="icon" onClick={toggle} aria-label="Toggle theme">
-      <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-      <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={toggle}
+      aria-label="Toggle theme"
+      className={className}
+    >
+      <Sun
+        className={cn(
+          "rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0",
+          iconClassName,
+        )}
+      />
+      <Moon
+        className={cn(
+          "absolute rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100",
+          iconClassName,
+        )}
+      />
     </Button>
   );
 }

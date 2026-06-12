@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { assertIsOwner, assertCanEdit } from "@/lib/tournament/permissions";
@@ -62,11 +63,12 @@ export async function addCoAdminAction(
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const trimmed = profileId.trim();
-  if (!UUID_RE.test(trimmed)) return { error: "เลือกผู้ใช้จากผลการค้นหา" };
+  if (!UUID_RE.test(trimmed)) return { error: t("tournament.selectFromSearch") };
 
   const sb = await createAdminClient();
 
@@ -77,9 +79,9 @@ export async function addCoAdminAction(
     .eq("id", trimmed)
     .maybeSingle();
 
-  if (!profile) return { error: "ไม่พบผู้ใช้" };
-  if (profile.id === session.profileId) return { error: "ไม่สามารถเพิ่มตัวเองเป็น co-admin" };
-  if (profile.is_guest) return { error: "ไม่สามารถเพิ่ม guest เป็นผู้ดูแลร่วม" };
+  if (!profile) return { error: t("tournament.userNotFound") };
+  if (profile.id === session.profileId) return { error: t("tournament.cannotAddSelf") };
+  if (profile.is_guest) return { error: t("tournament.cannotAddGuest") };
 
   const { error } = await sb.from("tournament_admins").insert({
     tournament_id: tournamentId,
@@ -88,8 +90,8 @@ export async function addCoAdminAction(
   });
 
   if (error) {
-    if (error.code === "23505") return { error: "ผู้ใช้นี้เป็น co-admin อยู่แล้ว" };
-    return { error: "เพิ่มผู้ช่วยดูแลไม่สำเร็จ" };
+    if (error.code === "23505") return { error: t("tournament.alreadyCoAdmin") };
+    return { error: t("tournament.addCoAdminFailed") };
   }
 
   const targetName = profile.display_name ?? "(ไม่มีชื่อ)";
@@ -113,8 +115,9 @@ export async function removeCoAdminAction(
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   const { error: deleteError } = await sb
@@ -122,7 +125,7 @@ export async function removeCoAdminAction(
     .delete()
     .eq("tournament_id", tournamentId)
     .eq("user_id", userId);
-  if (deleteError) return { error: "ลบผู้ช่วยดูแลไม่สำเร็จ" };
+  if (deleteError) return { error: t("tournament.removeCoAdminFailed") };
 
   await writeAuditLog({
     tournament_id: tournamentId,
@@ -143,8 +146,9 @@ export async function getCoAdminsAction(
 ): Promise<{ ok: true; admins: TournamentAdmin[] } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   type Row = {
@@ -160,7 +164,7 @@ export async function getCoAdminsAction(
     .eq("tournament_id", tournamentId)
     .order("added_at", { ascending: true });
 
-  if (error) return { error: "โหลดรายชื่อผู้ช่วยดูแลไม่สำเร็จ" };
+  if (error) return { error: t("tournament.loadCoAdminsFailed") };
 
   const admins: TournamentAdmin[] = (data as unknown as Row[] ?? []).map((r) => ({
     tournament_id: r.tournament_id,
@@ -180,8 +184,9 @@ export async function searchProfilesAction(
 ): Promise<{ ok: true; results: ProfileSearchResult[] } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertIsOwner(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const q = query.trim();
   if (q.length < 1) return { ok: true, results: [] };
@@ -212,7 +217,7 @@ export async function searchProfilesAction(
 
   const { data, error } = await filtered.limit(20);
 
-  if (error) return { error: "ค้นหาไม่สำเร็จ" };
+  if (error) return { error: t("tournament.searchFailed") };
   return { ok: true, results: (data ?? []) as ProfileSearchResult[] };
 }
 
@@ -221,8 +226,9 @@ export async function getAuditLogsAction(
 ): Promise<{ ok: true; logs: AuditLogEntry[] } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
 
-  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: "ไม่มีสิทธิ์" };
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
 
   const sb = await createAdminClient();
   const { data, error } = await sb
@@ -232,6 +238,6 @@ export async function getAuditLogsAction(
     .order("created_at", { ascending: false })
     .limit(50);
 
-  if (error) return { error: "โหลดประวัติการแก้ไขไม่สำเร็จ" };
+  if (error) return { error: t("tournament.loadAuditLogsFailed") };
   return { ok: true, logs: (data ?? []) as AuditLogEntry[] };
 }
