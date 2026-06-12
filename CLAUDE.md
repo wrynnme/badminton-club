@@ -67,6 +67,7 @@ Trust but verify. Read the actual diff/changes before reporting done. Subagent s
 - Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1
 - Supabase (Postgres + RLS) — MCP connected via `.mcp.json`
 - Auth: LINE Login + Guest mode (HMAC-signed cookie, no Supabase Auth)
+- i18n: `next-intl` 4.x, cookie-based TH/EN (no URL routing) — see `## Internationalization (i18n)`
 - Font: Google Font Anuphan (`thai` + `latin` subsets)
 - Navigation progress bar: `@bprogress/next` 3.x (3px top bar, `var(--primary)`, no spinner)
 
@@ -117,6 +118,21 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - Root `body` has `overflow-x-clip` (not `overflow-x-hidden`) — global horizontal-overflow guard for iOS Safari; `clip` chosen so `position:sticky` children keep working
 - `EntityLink` (`src/components/tournament/stats/entity-link.tsx`) derives its base href via `usePathname().startsWith()` guard — admin context → `/tournaments/[id]/stats/...`, public-token context → `/t/[token]/stats/...`. Short-circuits self-links (`pathname.endsWith("/stats/<type>/<id>")`). Callers must gate `entityType="division"` on `thresholds.length > 0` (no-split tournaments otherwise 404).
 
+## Internationalization (i18n)
+
+`next-intl`, **cookie-based** (`locale` cookie, no URL routing — mirrors the `theme` cookie). TH default, EN second. Switcher lives in the account dropdown (`user-menu.tsx`) → `setLocaleAction` + `router.refresh()` (anonymous visitors get it inline in `site-header.tsx`).
+
+- `src/i18n/config.ts` — `locales` (`th`/`en`), `defaultLocale`, `LOCALE_COOKIE`, `NAMESPACES`. Add a namespace = add to this array **and** create both `messages/<loc>/<ns>.json` files.
+- `src/i18n/request.ts` — `getRequestConfig` loops `NAMESPACES`, composes `messages` (one top-level key per namespace) from `messages/<locale>/<ns>.json`.
+- `src/i18n/locale.ts` — `getUserLocale()` (plain reader, safe to call from `request.ts`). `src/i18n/actions.ts` — `setLocaleAction` (`"use server"`). Provider mounted in root layout.
+- 10 namespaces: `common · nav · home · auth · settings · club · tournament · stats · validation · actions`.
+- **Client component**: `const t = useTranslations("<ns>")` (from `next-intl`). **Async server component + server action**: `const t = await getTranslations("<ns>")` (from `next-intl/server`). NEVER make a client component `async`.
+- **Interpolation = ICU `{name}`, NOT JS `${name}`**: catalog value `"... {n} ..."`, call `t("key", { n })`. The placeholder name MUST match the passed param key (else next-intl throws at runtime).
+- **tsc does NOT catch missing/typo'd `t()` keys** — they render as the raw key string at runtime. After editing translations: (a) key-check — parse every `t("ns.key")` in changed files, assert each path exists in BOTH locales; (b) confirm th/en key parity; (c) `next build` (catches RSC-boundary errors). This gate is mandatory — tsc + vitest miss all three failure modes.
+- `actions` namespace is sub-keyed by domain: `club.* / tournament.* / class.* / match.*`. Server actions return translated `{ error: t("...") }`.
+- Display-label maps live in the `tournament` catalog under `matchStatus / result / tournamentStatus / matchFormat` — consumers index `t(\`matchStatus.${m.status}\`)`. The CSS class/badge maps stay in the lib (`status-display.ts` / `result-display.ts` / `status.ts` / `match-format.ts`); `resolveMatchResult` returns a reason **code** (translated at the call site).
+- **Intentionally kept Thai** (data/external, not UI chrome): `audit_logs.description`, LINE notification bodies, group-name generator (`กลุ่ม A`), `console.*`. **Deferred** (not yet translated): CSV export/template headers (coupled to the import parser), `permissions.ts` throw strings, Date/number `Intl.*` formatting.
+
 ## Tournament System (Phase 0–12 done; Phase 13 competition mode planned — see `spec.md`)
 
 ### Architecture
@@ -130,7 +146,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - `src/lib/tournament/divisions.ts` — pure helpers for N-division: `computePairDivision(pairLevel, thresholds[])` → `1..N | null` (Division 1 = TOP tier), `parseDivision(text)`, `divisionLabelTh(n)` → `"Division N"`, `divisionTone(n)` (cycles 8-color palette), `divisionCount(thresholds)`, `DIVISION_COLORS`
 - `src/lib/tournament/entity-stats.ts` — discriminated union `EntityStats = PairStats | PlayerStats | TeamStats | DivisionStats` (tagged with `entityType` literal). Shared `StatsBase` has `played/wins/losses/draws/pointsFor/pointsAgainst/pointsDiff/streak/matches/headToHead: Record<string, HeadToHeadRecord>`. `PlayerStats` requires `partnerBreakdown: Record<string, PartnerRecord>`. Helpers: `computePairStats`, `computePlayerStats` (filters matches where player owns both pairs), `computeTeamStats` (intra-team filtered at predicate), `computeDivisionStats` (filters via `divisionPairIds` set; `winRate` pinned to 0 — aggregate formula meaningless). All loops skip BYE walkovers via `m.games.length > 0` guard. 269 vitest tests.
 - `src/lib/tournament/stats-page-data.ts` — `loadStatsTournamentByAdmin(id, fromTab?)` + `loadStatsTournamentByToken(token)` returning `StatsPageData` (tournament + teams + pairs + matches + settings + competitorById + backHref). Shared between 8 stat pages (admin + public × 4 entities).
-- `src/lib/tournament/result-display.ts` — shared `RESULT_LABEL_TH` / `RESULT_TEXT_CLASS` + `formatWinRate(rate)` / `formatWlLabel(stats)` helpers.
+- `src/lib/tournament/result-display.ts` — `RESULT_TEXT_CLASS` / `RESULT_PILL_CLASS` (CSS only; W/L/D labels moved to the `tournament.result.*` catalog) + `formatWinRate(rate)` / `formatWlLabel(stats)` helpers.
 - `src/lib/tournament/settings.server.ts` — `getTournamentSettings(tournamentId)` server helper
 - `src/lib/export/csv.ts` — `generateMatchesCsv`, `generateRosterCsv`, `generatePlayerImportTemplate`, `generatePairImportTemplate`, `downloadCsv`
 
