@@ -10,6 +10,23 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-14 — whole-system club code-review (5-finder) — 🔴 P0 RLS FIXED, P1/P2 logged
+
+**Scope:** ทั้งระบบก๊วน (lib/actions/club*/clubs.ts/levels.ts, lib/club/*, 7 RPC, RLS, routes; ข้าม UI presentational). 5 finder ขนาน + verify กับ prod DB.
+
+**🔴 P0 — FIXED** (migration `20260614000100_fix_club_rls_anon_exposure`, **applied prod 2026-06-14**): ตารางก๊วนเปิดให้ role `anon` ผ่าน PostgREST (publishable key ติด browser bundle):
+- **anon เขียนได้** — `club_admins` + `club_expenses` มี policy "service role bypass" ที่จริงคือ `FOR ALL TO public USING(true) WITH CHECK(true)` (ลืม `TO service_role`) + anon มี DML grant → ใครก็ INSERT `club_admins` ตั้งตัวเป็น co-admin ก๊วนใดก็ได้ / ปลอม-ลบ ค่าใช้จ่าย
+- **anon อ่านได้** — `clubs`(รวม is_public=false: total_cost/court_fee/notes), `club_players`(profile_id/note/discount), `club_matches`, `club_locked_pairs`, `levels`, `profiles`(**line_user_id = PII**) ผ่าน `*_read_all` SELECT USING(true); notFound()+sanitizer กันแค่ SSR route, bypass ผ่าน data API ตรง
+- **Fix** — DROP 2 write-policy + DROP read-all 6 policy + REVOKE anon/authenticated DML บน 7 ตารางก๊วน. ปลอดภัยเพราะ app อ่าน/เขียนผ่าน service-role ล้วน (bypass RLS); anon browser client ใช้แค่ Realtime ทัวร์ฯ (matches/tournaments — ไม่แตะ). **Verify:** dangerous-policy 0 · club-policy 0 · anon-grant 0 · profiles-policy 0 · tournament-policy คง 2 · service-role อ่าน clubs/players ได้ · smoke homepage 200 / ก๊วน private→notFound / ทัวร์ฯ public 200 ไม่มี RLS error. scan ทั้งระบบ = มีแค่ 2 ตารางนี้ (ทัวร์ฯ สะอาด)
+
+**🟠 P1 — OPEN (ยังไม่แก้, user เลือกแก้ P0 ก่อน):**
+- `club-players.ts` `importClubPlayersAction` — UPDATE เวลา start/end key `(club_id, display_name)` ไม่มี row-id/profile_id/status → ชื่อซ้ำ (สมาชิก LINE + guest import) เวลาเขียนทับผิดคน. Fix: เก็บ id จาก RPC return → update by id
+- `cost-summary.ts:146` — `totalDiscount` รวม discount ดิบ แต่ grandTotal floor 0 ต่อคน → discount > ยอด → footer ไม่ reconcile. Fix: cap discount ที่ subtotal
+
+**🟡 P2 — OPEN:** court build/manual ไม่เช็ค ∈ clubs.courts (เฉพาะ setCourt เช็ค) · คะแนนเสมอ→บันทึก draft ไร้ผู้ชนะ · reorder/queue_position insert race · setShuttles ไม่กรอง status · manual match ไม่เช็ค `status='active'` · `toggleCheckIn` UPDATE ลืม `.eq(club_id)` (latent) · cost per_player ทิ้งยอดเต็มคนที่ถูกลบ roster · by_time คนเวลา-0 ถูกคิดส่วนแบ่ง gap · `remove_club_player_and_promote` ไม่ lock clubs row เหมือน add (cap overshoot rare) · `clone_global_levels_to_club` DEFINER ไม่มี ownership check ภายใน (ตอนนี้ปลอดภัย service-role-only)
+
+**✅ สะอาด:** `permissions.ts` (verify กับ DB), `public-view.ts` sanitizer (allowlist ครบ 20 club+15 player), `line-signup` (ไม่ ReDoS), RPC add/finish/locked/delete (lock+idempotent ถูก), permission gates + tenant-scope bulk ops ครบ
+
 ### 2026-06-14 — per-club skill levels + skill-aware matchmaking — /ship-check PASS (develop, ยังไม่ commit)
 
 ฟีเจอร์ใหม่ 3 ส่วน (redesign ระบบระดับฝีมือก๊วน): (1) **per-club level sets** — `levels.club_id` + copy-on-first-write RPC `clone_global_levels_to_club` แทน global ล้วน; ทัวร์ฯ ยังอ่าน global (`.is(club_id,null)`) ไม่กระทบ; write actions gate `assertCanManageClub` (เดิม non-guest ใดก็ได้). (2) **คิวจับคู่ตามระดับฝีมือ** — `pickBalancedMatch` (max_skill_gap เทียบ anchor + balance_strictness loose/balanced/strict + null-level eligible เสมอ) + `splitSides` intra-side-gap tiebreak + locked-pair mean-gap. (3) **UI** 3 control ในตั้งค่าคิว (เปิดเมื่อ skill_level_enabled) + ป้ายสถานะใน levels-manager. **Migrations APPLIED to prod 2026-06-14** (`20260613000100/000200/000300` — levels 8 rows tiny, additive/backward-compat; advisor security clean — RPC `search_path` set + revoked anon/auth). **Verify (Phase 0):** tsc 0 · vitest **625/625** · next build OK · i18n parity 13 key th/en. Default `max_skill_gap=0` → ก๊วนเดิมพฤติกรรมไม่เปลี่ยนจนกว่า admin ตั้งค่าเอง.
