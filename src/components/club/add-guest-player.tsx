@@ -80,7 +80,9 @@ export function AddGuestPlayer({ clubId, full, levels }: Props) {
         e.preventDefault();
         form.handleSubmit();
       }}
-      className="border rounded-lg p-4"
+      // basis-full: the parent row is flex-wrap (shared with the LINE-import
+      // button) — take a full row when expanded so the form isn't squeezed.
+      className="border rounded-lg p-4 w-full basis-full"
     >
       <p className="text-sm font-medium mb-3">{t("formTitle")}</p>
       <FieldGroup>

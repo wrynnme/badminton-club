@@ -66,7 +66,17 @@
     "selectTwoDifferentPlayers": "Select 2 different players",
     "selectUserFromSearch": "Select a user from search results",
     "specifyCourtName": "Specify a court name",
-    "userNotFound": "User not found"
+    "userNotFound": "User not found",
+    "importPlayersInvalidInput": "Invalid import data",
+    "importPlayersPartialFail": "Import partially failed",
+    "bulkSessionNoFields": "Select at least one field to update",
+    "bulkCheckInSuccess": "Checked in {count} player(s)",
+    "bulkUndoCheckInSuccess": "Undid check-in for {count} player(s)",
+    "bulkSetActiveSuccess": "Moved {count} player(s) to active",
+    "bulkSetReserveSuccess": "Moved {count} player(s) to reserve",
+    "bulkSessionSuccess": "Updated {count} player(s)",
+    "bulkDeleteSuccess": "Deleted {count} player(s)",
+    "bulkDeletePartialFail": "Deleted {deleted} · failed {failed}"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",

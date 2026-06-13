@@ -66,7 +66,17 @@
     "selectTwoDifferentPlayers": "เลือกผู้เล่น 2 คนที่ต่างกัน",
     "selectUserFromSearch": "เลือกผู้ใช้จากผลการค้นหา",
     "specifyCourtName": "ระบุชื่อสนาม",
-    "userNotFound": "ไม่พบผู้ใช้"
+    "userNotFound": "ไม่พบผู้ใช้",
+    "importPlayersInvalidInput": "ข้อมูลนำเข้าไม่ถูกต้อง",
+    "importPlayersPartialFail": "นำเข้าไม่สำเร็จบางส่วน",
+    "bulkSessionNoFields": "ต้องระบุอย่างน้อยหนึ่งช่องที่จะเปลี่ยน",
+    "bulkCheckInSuccess": "เช็คอินแล้ว {count} คน",
+    "bulkUndoCheckInSuccess": "ยกเลิกเช็คอินแล้ว {count} คน",
+    "bulkSetActiveSuccess": "เปลี่ยนเป็นตัวจริงแล้ว {count} คน",
+    "bulkSetReserveSuccess": "เปลี่ยนเป็นสำรองแล้ว {count} คน",
+    "bulkSessionSuccess": "บันทึกข้อมูลแล้ว {count} คน",
+    "bulkDeleteSuccess": "ลบแล้ว {deleted} คน",
+    "bulkDeletePartialFail": "ลบแล้ว {deleted} คน · ล้มเหลว {failed} คน"
   },
   "tournament": {
     "requireLineLogin": "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้างทัวร์นาเมนต์",
