@@ -18,6 +18,7 @@ import { resolveClubCourts } from "@/lib/club/courts";
 import { toPublicClub, toPublicPlayer } from "@/lib/club/public-view";
 import { ClubInfoRow } from "@/components/club/club-info-row";
 import { getTranslations } from "next-intl/server";
+import { getClubLevelsAction } from "@/lib/actions/levels";
 import type { Club, ClubMatch, ClubLockedPair, Level } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -50,14 +51,14 @@ export default async function PublicClubPage({
       .order("queue_position", { ascending: true, nullsFirst: false })
       .order("created_at", { ascending: true }),
     sb.from("club_locked_pairs").select("*").eq("club_id", id).order("created_at", { ascending: true }),
-    sb.from("levels").select("*").order("sort_order", { ascending: true }).order("real", { ascending: true }),
+    getClubLevelsAction(id),
   ]);
 
   const owner = ownerRes.data;
   const players = playersRes.data ?? [];
   const clubMatches: ClubMatch[] = (matchesRes.data ?? []) as ClubMatch[];
   const lockedPairs: ClubLockedPair[] = (lockedPairsRes.data ?? []) as ClubLockedPair[];
-  const levels: Level[] = (levelsRes.data ?? []) as Level[];
+  const levels: Level[] = levelsRes;
 
   const activeCount = players.filter((p) => p.status === "active").length;
   const reserveCount = players.filter((p) => p.status === "reserve").length;

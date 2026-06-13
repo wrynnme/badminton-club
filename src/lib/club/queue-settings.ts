@@ -19,6 +19,13 @@ import { z } from "zod";
  *  game_time_limit_min  จำกัดเวลา/เกม (0 = ไม่จำกัด) — UI hint สำหรับ referee
  *  not_ready_action     requeue = ต่อท้ายคิว, skip = ข้าม เมื่อผู้เล่นไม่พร้อม
  *  winner_stays_max     winner_stays: ชนะติดกันได้กี่เกมก่อนบังคับพัก (0 = ไม่จำกัด)
+ *  max_skill_gap        ระยะห่างระดับสูงสุดที่ยอมรับระหว่างผู้เล่นในแมตช์เดียวกัน
+ *                       (0 = ไม่จำกัด — พฤติกรรมเดิม); ใช้กับ level_match / smart
+ *  balance_strictness   loose    = ผ่อนเพดาน gap เมื่อไม่พอคน
+ *                       balanced = ผ่อนเพดาน (เหมือน loose; default)
+ *                       strict   = ปฏิเสธแมตช์ถ้าหา candidate ในเพดานไม่พอ
+ *  balance_locked_pairs true = เช็ก gap ระหว่าง mean level ของฝั่งล็อกกับฝ่ายตรงข้าม
+ *                       (strict + max_skill_gap > 0 เท่านั้น — default false)
  */
 export const ClubQueueSettingsSchema = z.object({
   court_count: z.number().int().min(1).max(20).default(1),
@@ -29,6 +36,9 @@ export const ClubQueueSettingsSchema = z.object({
   game_time_limit_min: z.number().int().min(0).max(120).default(0),
   not_ready_action: z.enum(["requeue", "skip"]).default("requeue"),
   winner_stays_max: z.number().int().min(0).max(20).default(2),
+  max_skill_gap: z.number().min(0).max(20).default(0),
+  balance_strictness: z.enum(["loose", "balanced", "strict"]).default("balanced"),
+  balance_locked_pairs: z.boolean().default(false),
 });
 
 export type ClubQueueSettings = z.infer<typeof ClubQueueSettingsSchema>;

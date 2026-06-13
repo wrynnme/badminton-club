@@ -210,7 +210,8 @@ export async function toggleCheckInAction(input: { club_id: string; player_id: s
   const { error } = await sb
     .from("club_players")
     .update({ checked_in_at: next })
-    .eq("id", input.player_id);
+    .eq("id", input.player_id)
+    .eq("club_id", input.club_id);
 
   if (error) return { error: error.message };
   revalidatePath(`/clubs/${input.club_id}`);
@@ -362,14 +363,14 @@ export async function importClubPlayersAction(
 
   // ── Main players via RPC (atomic capacity + status assignment) ─────────────
   // Track which successfully-added players carry a time window for the follow-up pass.
-  const timeUpdates: { name: string; start_time: string; end_time: string }[] = [];
+  const timeUpdates: { id: string; start_time: string; end_time: string }[] = [];
 
   for (const item of mainPlayers) {
     if (existingSet.has(item.name.trim().toLowerCase())) {
       skipped++;
       continue;
     }
-    const { error } = await sb.rpc("add_club_player", {
+    const { data: inserted, error } = await sb.rpc("add_club_player", {
       p_club_id: club_id,
       p_display_name: item.name,
       p_level_id: null,
@@ -380,9 +381,12 @@ export async function importClubPlayersAction(
     } else {
       added++;
       existingSet.add(item.name.trim().toLowerCase());
-      if (item.start_time && item.end_time) {
+      // Apply the time window by the freshly-inserted row id — NOT by display_name:
+      // a name shared with a pre-existing player would otherwise overwrite that
+      // player's session window too.
+      if (item.start_time && item.end_time && inserted?.id) {
         timeUpdates.push({
-          name: item.name,
+          id: inserted.id,
           start_time: item.start_time,
           end_time: item.end_time,
         });
@@ -394,12 +398,11 @@ export async function importClubPlayersAction(
   // Failures are silently ignored — `added` count is NOT decremented.
   if (timeUpdates.length > 0) {
     await Promise.all(
-      timeUpdates.map(({ name, start_time, end_time }) =>
+      timeUpdates.map(({ id, start_time, end_time }) =>
         sb
           .from("club_players")
           .update({ start_time, end_time })
-          .eq("club_id", club_id)
-          .eq("display_name", name),
+          .eq("id", id),
       ),
     );
   }

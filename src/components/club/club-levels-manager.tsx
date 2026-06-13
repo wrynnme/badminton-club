@@ -22,15 +22,19 @@ import type { Level } from "@/lib/types";
 
 type Props = {
   levels: Level[];
+  clubId: string;
+  isCustomized: boolean;
 };
 
 // ─── Inline edit row ──────────────────────────────────────────────────────────
 
 function EditRow({
   level,
+  clubId,
   onDone,
 }: {
   level: Level;
+  clubId: string;
   onDone: () => void;
 }) {
   const t = useTranslations("club.levelsManager");
@@ -50,7 +54,7 @@ function EditRow({
       return;
     }
     start(async () => {
-      const res = await updateLevelAction({ id: level.id, real: realNum, label: label.trim() });
+      const res = await updateLevelAction({ clubId, id: level.id, real: realNum, label: label.trim() });
       if ("error" in res) {
         toast.error(res.error);
       } else {
@@ -104,7 +108,7 @@ function EditRow({
 
 // ─── Level row (read mode) ────────────────────────────────────────────────────
 
-function LevelRow({ level }: { level: Level }) {
+function LevelRow({ level, clubId }: { level: Level; clubId: string }) {
   const t = useTranslations("club.levelsManager");
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -112,12 +116,12 @@ function LevelRow({ level }: { level: Level }) {
   const [pending, start] = useTransition();
 
   if (editing) {
-    return <EditRow level={level} onDone={() => setEditing(false)} />;
+    return <EditRow level={level} clubId={clubId} onDone={() => setEditing(false)} />;
   }
 
   function handleDelete() {
     start(async () => {
-      const res = await deleteLevelAction(level.id);
+      const res = await deleteLevelAction({ clubId, id: level.id });
       if ("error" in res) {
         toast.error(res.error);
       } else {
@@ -188,7 +192,7 @@ function LevelRow({ level }: { level: Level }) {
 
 // ─── Add row ──────────────────────────────────────────────────────────────────
 
-function AddRow() {
+function AddRow({ clubId }: { clubId: string }) {
   const t = useTranslations("club.levelsManager");
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -206,7 +210,7 @@ function AddRow() {
       return;
     }
     start(async () => {
-      const res = await createLevelAction({ real: realNum, label: label.trim() });
+      const res = await createLevelAction({ clubId, real: realNum, label: label.trim() });
       if ("error" in res) {
         toast.error(res.error);
       } else {
@@ -253,7 +257,7 @@ function AddRow() {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function ClubLevelsManager({ levels }: Props) {
+export function ClubLevelsManager({ levels, clubId, isCustomized }: Props) {
   const t = useTranslations("club.levelsManager");
   return (
     <Card>
@@ -262,15 +266,18 @@ export function ClubLevelsManager({ levels }: Props) {
         <p className="text-xs text-muted-foreground">
           {t("description")}
         </p>
+        <p className="text-xs text-muted-foreground">
+          {isCustomized ? t("usingClubSet") : t("usingGlobalDefault")}
+        </p>
       </CardHeader>
       <CardContent className="space-y-0.5">
         {levels.length === 0 && (
           <p className="text-sm text-muted-foreground py-1">{t("empty")}</p>
         )}
         {levels.map((l) => (
-          <LevelRow key={l.id} level={l} />
+          <LevelRow key={l.id} level={l} clubId={clubId} />
         ))}
-        <AddRow />
+        <AddRow clubId={clubId} />
         <p className="text-[11px] text-muted-foreground pt-1">
           {t("deleteWarning")}
         </p>

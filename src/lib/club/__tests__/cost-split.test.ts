@@ -176,6 +176,24 @@ describe("computeClubSplit — court gap policy", () => {
     expect(r.A.court + r.B.court).toBe(180);
   });
 
+  it("spread: a player whose window is entirely outside the session pays no gap share (P2 #10)", () => {
+    const r = byId(
+      computeClubSplit(
+        base({
+          players: [
+            ...players,
+            { id: "C", start: "22:00", end: "23:00", games: 1 }, // entirely after the 18–21 session
+          ],
+          courtSplit: "by_time",
+          courtFee: 180,
+        }),
+      ),
+    );
+    expect(r.A.court).toBe(90); // gap shared only across present players (A, B)
+    expect(r.B.court).toBe(90);
+    expect(r.C.court).toBe(0); // never present → excluded from the gap denominator
+  });
+
   it("ignore: gap segment is not collected (under-collects)", () => {
     const r = byId(
       computeClubSplit(

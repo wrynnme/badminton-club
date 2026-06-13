@@ -42,6 +42,15 @@ describe("computeClubCostSummary", () => {
     expect(s.grandTotal).toBe(130); // max(0,75-20)=55 + 75
   });
 
+  it("caps an over-large discount at the player's subtotal so totals reconcile (P1-B)", () => {
+    // p1 subtotal = 60 court + 15 shuttle = 75; a 200 discount must not count beyond 75.
+    const s = computeClubCostSummary({ club: baseClub, players: players({ p1: 200 }), matches, expenses: [] });
+    expect(s.totalDiscount).toBe(75); // min(200, 75) + min(0, 75)
+    expect(s.grandTotal).toBe(75); // max(0, 75-200)=0 + 75
+    // footer must reconcile: court + shuttle + expense − discount === grandTotal
+    expect(s.totalCourt + s.totalShuttle + s.totalExp - s.totalDiscount).toBe(s.grandTotal);
+  });
+
   it("adds personal expenses (empty payer list = all players)", () => {
     const s = computeClubCostSummary({
       club: baseClub,

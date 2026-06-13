@@ -15,6 +15,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { updateClubQueueSettingsAction } from "@/lib/actions/clubs";
 import type { ClubQueueSettings } from "@/lib/club/queue-settings";
 
@@ -307,6 +312,74 @@ export function ClubQueueSettings({
           checked={settings.skill_level_enabled}
           onChange={(v) => update("skill_level_enabled", v)}
         />
+
+        {/* Skill level sub-controls — only when skill_level_enabled */}
+        {settings.skill_level_enabled && (
+          <div className="ml-7 space-y-1 border-l pl-3 border-border">
+            {/* Max skill gap */}
+            <NumberRow
+              id="qs-max-skill-gap"
+              label={t("maxSkillGapLabel")}
+              description={t("maxSkillGapDesc")}
+              value={settings.max_skill_gap}
+              min={0}
+              max={20}
+              onChange={(v) => update("max_skill_gap", v)}
+            />
+
+            {/* Balance strictness */}
+            <div className="flex items-center justify-between gap-3 py-1.5">
+              <div className="space-y-0.5 leading-tight min-w-0">
+                <Label htmlFor="qs-balance-strictness" className="text-sm font-medium">
+                  {t("balanceStrictnessLabel")}
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {t("balanceStrictnessDesc")}
+                </p>
+              </div>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Select
+                      value={settings.balance_strictness}
+                      onValueChange={(v) =>
+                        update(
+                          "balance_strictness",
+                          v as ClubQueueSettings["balance_strictness"],
+                        )
+                      }
+                    >
+                      <SelectTrigger id="qs-balance-strictness" className="w-44 h-8 text-sm">
+                        <SelectValue>
+                          {(v: string) => {
+                            if (v === "loose") return t("strictnessLoose");
+                            if (v === "strict") return t("strictnessStrict");
+                            return t("strictnessBalanced");
+                          }}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="loose">{t("strictnessLoose")}</SelectItem>
+                        <SelectItem value="balanced">{t("strictnessBalanced")}</SelectItem>
+                        <SelectItem value="strict">{t("strictnessStrict")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  }
+                />
+                <TooltipContent>{t("balanceStrictnessTooltip")}</TooltipContent>
+              </Tooltip>
+            </div>
+
+            {/* Balance locked pairs */}
+            <ToggleRow
+              id="qs-balance-locked-pairs"
+              label={t("balanceLockedPairsLabel")}
+              description={t("balanceLockedPairsDesc")}
+              checked={settings.balance_locked_pairs}
+              onChange={(v) => update("balance_locked_pairs", v)}
+            />
+          </div>
+        )}
 
         {/* Game time limit */}
         <NumberRow

@@ -29,7 +29,7 @@ import { SettingsManager } from "@/components/tournament/settings-manager";
 import { getTranslations, getLocale } from "next-intl/server";
 import type { Tournament, TeamWithPlayers, GroupWithTeams, Team, PairWithPlayers, Match, TournamentClass, MatchFormat, Level } from "@/lib/types";
 import type { TournamentAdmin } from "@/lib/actions/admins";
-import { getLevelsAction } from "@/lib/actions/levels";
+import { getGlobalLevelsAction } from "@/lib/actions/levels";
 import { parseSettings } from "@/lib/tournament/settings";
 import { parseTournamentThresholds } from "@/lib/tournament/divisions";
 import { TOURNAMENT_STATUS_BADGE } from "@/lib/tournament/status";
@@ -67,7 +67,7 @@ export default async function TournamentDetailPage({
       .eq("team.tournament_id", id)
       .order("created_at"),
     sb.from("tournament_classes").select("*").eq("tournament_id", id).order("position"),
-    getLevelsAction(),
+    getGlobalLevelsAction(),
   ]);
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];

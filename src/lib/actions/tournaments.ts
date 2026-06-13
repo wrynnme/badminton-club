@@ -483,7 +483,7 @@ export async function importPlayersCsvAction(
   const sb = await createAdminClient();
 
   // Fetch levels once — resolve CSV `level` text (real numeric or label) → level_id
-  const { data: levelsData } = await sb.from("levels").select("id, real, label").order("sort_order");
+  const { data: levelsData } = await sb.from("levels").select("id, real, label").is("club_id", null).order("sort_order");
   const levels: Level[] = (levelsData ?? []) as Level[];
 
   function resolveLevelId(raw: string): string | null {
