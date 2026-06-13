@@ -42,6 +42,7 @@ export type Level = {
   label: string;
   sort_order: number;
   created_at: string;
+  club_id: string | null; // NULL = global default; UUID = club-specific override
 };
 
 export type CourtSplit = "even" | "by_time";

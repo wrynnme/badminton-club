@@ -32,6 +32,7 @@
     "invalidShuttleCount": "Invalid shuttle count",
     "invalidTotalCost": "Invalid total cost",
     "invalidWinner": "Invalid winner",
+    "cannotDeleteLastLevel": "At least one skill level must remain — cannot delete the last one",
     "levelAlreadyExists": "Level already exists",
     "levelNameRequired": "Level name is required",
     "loadPlayersFailed": "Failed to load players",

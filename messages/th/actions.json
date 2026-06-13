@@ -32,6 +32,7 @@
     "invalidShuttleCount": "จำนวนลูกไม่ถูกต้อง",
     "invalidTotalCost": "ยอดรวมค่าใช้จ่ายไม่ถูกต้อง",
     "invalidWinner": "ผู้ชนะไม่ถูกต้อง",
+    "cannotDeleteLastLevel": "ต้องเหลือระดับฝีมืออย่างน้อย 1 ระดับ — ลบทั้งหมดไม่ได้",
     "levelAlreadyExists": "ระดับนี้มีอยู่แล้ว",
     "levelNameRequired": "ระบุชื่อระดับ",
     "loadPlayersFailed": "โหลดรายชื่อผู้เล่นไม่สำเร็จ",

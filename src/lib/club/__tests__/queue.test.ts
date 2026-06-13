@@ -327,6 +327,270 @@ describe("parseQueueSettings", () => {
   });
 });
 
+describe("buildNextMatch — pickBalancedMatch (max_skill_gap / balance_strictness)", () => {
+  // Anchor = longest-rested (last_finished_at earliest). Others far away in level.
+  const anchorTs = "2026-06-06T09:00:00.000Z"; // rested longest
+  const otherTs  = "2026-06-06T10:00:00.000Z";
+
+  it("max_skill_gap=0 → same result as pickLevelMatch (backward compat)", () => {
+    const s = settings({
+      players_per_team: 1,
+      queue_mode: "level_match",
+      skill_level_enabled: true,
+      max_skill_gap: 0,
+    });
+    const pool = [
+      player("anchor", { level: 5, last_finished_at: anchorTs }),
+      player("far",    { level: 9, last_finished_at: otherTs }),
+      player("near",   { level: 5.5, last_finished_at: otherTs }),
+    ];
+    const m = buildNextMatch(pool, s)!;
+    // Should pick anchor + nearest (near, gap=0.5) — same as pickLevelMatch test above
+    expect(ids(m)).toEqual(["anchor", "near"]);
+  });
+
+  it("strict: rejects match when all candidates exceed max_skill_gap", () => {
+    const s = settings({
+      players_per_team: 1,
+      queue_mode: "level_match",
+      skill_level_enabled: true,
+      max_skill_gap: 2,
+      balance_strictness: "strict",
+    });
+    const pool = [
+      player("anchor", { level: 5, last_finished_at: anchorTs }),
+      player("far1",   { level: 9, last_finished_at: otherTs }),  // gap=4 > 2
+      player("far2",   { level: 10, last_finished_at: otherTs }), // gap=5 > 2
+    ];
+    // No eligible candidate within gap=2 → strict → null
+    expect(buildNextMatch(pool, s)).toBeNull();
+  });
+
+  it("loose: returns a match even when all candidates exceed max_skill_gap", () => {
+    const s = settings({
+      players_per_team: 1,
+      queue_mode: "level_match",
+      skill_level_enabled: true,
+      max_skill_gap: 2,
+      balance_strictness: "loose",
+    });
+    const pool = [
+      player("anchor", { level: 5, last_finished_at: anchorTs }),
+      player("far1",   { level: 9, last_finished_at: otherTs }),
+      player("far2",   { level: 10, last_finished_at: otherTs }),
+    ];
+    // loose → ผ่อนเพดาน → picks nearest available (far1, gap=4)
+    const m = buildNextMatch(pool, s)!;
+    expect(m).not.toBeNull();
+    expect(ids(m)).toContain("anchor");
+    expect(ids(m)).toContain("far1"); // nearest of the two far players
+  });
+
+  it("strict: picks match when enough candidates are within gap", () => {
+    const s = settings({
+      players_per_team: 1,
+      queue_mode: "level_match",
+      skill_level_enabled: true,
+      max_skill_gap: 3,
+      balance_strictness: "strict",
+    });
+    const pool = [
+      player("anchor", { level: 5, last_finished_at: anchorTs }),
+      player("close",  { level: 7, last_finished_at: otherTs }),  // gap=2 ≤ 3
+      player("far",    { level: 12, last_finished_at: otherTs }), // gap=7 > 3
+    ];
+    const m = buildNextMatch(pool, s)!;
+    expect(ids(m)).toEqual(["anchor", "close"]);
+  });
+
+  it("null-level player is always eligible regardless of max_skill_gap (strict)", () => {
+    const s = settings({
+      players_per_team: 1,
+      queue_mode: "level_match",
+      skill_level_enabled: true,
+      max_skill_gap: 2,
+      balance_strictness: "strict",
+    });
+    const pool = [
+      player("anchor",   { level: 5,    last_finished_at: anchorTs }),
+      player("far",      { level: 10,   last_finished_at: otherTs }), // gap=5 > 2
+      player("unranked", { level: null, last_finished_at: otherTs }), // null → always eligible
+    ];
+    // unranked counts as eligible → 1 eligible ≥ need-1(=1) → match formed
+    const m = buildNextMatch(pool, s)!;
+    expect(m).not.toBeNull();
+    expect(ids(m)).toContain("anchor");
+    expect(ids(m)).toContain("unranked");
+  });
+
+  it("smart mode with skill_level_enabled also routes through pickBalancedMatch", () => {
+    const s = settings({
+      players_per_team: 1,
+      queue_mode: "smart",
+      skill_level_enabled: true,
+      max_skill_gap: 2,
+      balance_strictness: "strict",
+    });
+    const pool = [
+      player("anchor", { level: 5, last_finished_at: anchorTs }),
+      player("far1",   { level: 9, last_finished_at: otherTs }),
+      player("far2",   { level: 10, last_finished_at: otherTs }),
+    ];
+    // smart + skill_level_enabled + strict + no eligible → null
+    expect(buildNextMatch(pool, s)).toBeNull();
+  });
+});
+
+describe("buildNextMatch — splitSides intra-side gap tiebreak (ppt=2)", () => {
+  it("greedy sum is preserved when it is uniquely optimal (existing test must stay green)", () => {
+    // Levels [10,1,8,3]: only one equal-sum partition exists → greedy result kept.
+    const s = settings({ players_per_team: 2, queue_mode: "fifo", skill_level_enabled: true });
+    const pool = [
+      player("p10", { position: 1, level: 10 }),
+      player("p1",  { position: 2, level: 1 }),
+      player("p8",  { position: 3, level: 8 }),
+      player("p3",  { position: 4, level: 3 }),
+    ];
+    const m = buildNextMatch(pool, s)!;
+    const sum = (side: MatchSide) =>
+      (pool.find((p) => p.id === side.player1)!.level ?? 0) +
+      (pool.find((p) => p.id === side.player2)!.level ?? 0);
+    expect(sum(m.sideA)).toBe(sum(m.sideB)); // sums must remain balanced
+    expect(sum(m.sideA)).toBe(11);
+  });
+
+  it("tiebreak selects partition with lower max intra-side gap when multiple equal-sum exist", () => {
+    // Levels [8,8,2,2] sorted desc → 3 partitions:
+    //   P1: (8,8)+(2,2)=16+4  — unequal
+    //   P2: (8,2)+(8,2)=10+10 — equal, max intra-gap = max(6,6)=6
+    //   P3: (8,2)+(8,2)=10+10 — equal, same as P2 (both have gap 6)
+    // Greedy: p8a→A(8), p8b→B(8), p2a→A(10), p2b→B(10) → A=[p8a,p2a], B=[p8b,p2b]
+    // Both P2/P3 equal-sum and same gap → tiebreak keeps first (stable).
+    const s = settings({ players_per_team: 2, queue_mode: "fifo", skill_level_enabled: true });
+    const pool = [
+      player("p8a", { position: 1, level: 8 }),
+      player("p8b", { position: 2, level: 8 }),
+      player("p2a", { position: 3, level: 2 }),
+      player("p2b", { position: 4, level: 2 }),
+    ];
+    const m = buildNextMatch(pool, s)!;
+    const lvlOf = (id: string | null) => pool.find((p) => p.id === id)?.level ?? 0;
+    const sumA = lvlOf(m.sideA.player1) + lvlOf(m.sideA.player2);
+    const sumB = lvlOf(m.sideB.player1) + lvlOf(m.sideB.player2);
+    expect(sumA).toBe(sumB); // still balanced
+    // intra-gap on each side should be ≤ 6 (both sides same level pair)
+    expect(Math.abs(lvlOf(m.sideA.player1) - lvlOf(m.sideA.player2))).toBeLessThanOrEqual(6);
+    expect(Math.abs(lvlOf(m.sideB.player1) - lvlOf(m.sideB.player2))).toBeLessThanOrEqual(6);
+  });
+});
+
+describe("buildNextMatch — balance_locked_pairs", () => {
+  it("default false: locked-pair match proceeds regardless of level gap", () => {
+    const s = settings({
+      players_per_team: 2,
+      queue_mode: "fifo",
+      max_skill_gap: 1,
+      balance_strictness: "strict",
+      balance_locked_pairs: false, // default — no mean-level check
+    });
+    const pool = [
+      player("a", { position: 1, level: 10 }),
+      player("b", { position: 2, level: 10 }),
+      player("c", { position: 3, level: 1 }),
+      player("d", { position: 4, level: 1 }),
+    ];
+    // a-b locked (level 10) vs c-d (level 1) — mean gap=9 >> max_skill_gap=1
+    // but balance_locked_pairs=false → no check → match proceeds
+    const m = buildNextMatch(pool, s, undefined, [["a", "b"]])!;
+    expect(m).not.toBeNull();
+  });
+
+  it("strict + balance_locked_pairs: rejects when mean gap exceeds max_skill_gap", () => {
+    const s = settings({
+      players_per_team: 2,
+      queue_mode: "fifo",
+      max_skill_gap: 1,
+      balance_strictness: "strict",
+      balance_locked_pairs: true,
+    });
+    const pool = [
+      player("a", { position: 1, level: 10 }),
+      player("b", { position: 2, level: 10 }),
+      player("c", { position: 3, level: 1 }),
+      player("d", { position: 4, level: 1 }),
+    ];
+    // mean(a,b)=10, mean(c,d)=1, gap=9 > max_skill_gap=1 → null
+    expect(buildNextMatch(pool, s, undefined, [["a", "b"]])).toBeNull();
+  });
+
+  it("strict + balance_locked_pairs: passes when mean gap is within max_skill_gap", () => {
+    const s = settings({
+      players_per_team: 2,
+      queue_mode: "fifo",
+      max_skill_gap: 3,
+      balance_strictness: "strict",
+      balance_locked_pairs: true,
+    });
+    const pool = [
+      player("a", { position: 1, level: 6 }),
+      player("b", { position: 2, level: 5 }),
+      player("c", { position: 3, level: 4 }),
+      player("d", { position: 4, level: 3 }),
+    ];
+    // mean(a,b)=5.5, mean(c,d)=3.5, gap=2 ≤ 3 → match proceeds
+    const m = buildNextMatch(pool, s, undefined, [["a", "b"]])!;
+    expect(m).not.toBeNull();
+  });
+});
+
+describe("buildNextMatch — null-anchor does not deadlock (FIX 1 P1-A)", () => {
+  it("anchor with level=null + strict max_skill_gap still produces a match", () => {
+    // anchor is never-played (last_finished_at=null = longest rest, sorts first).
+    // All opponents have ranked levels far from 0, which would be gapped-out if
+    // anchor.level==null were treated as 0. The fix skips the gap filter entirely
+    // when anchor.level is null, so a match must be returned.
+    const s = settings({
+      players_per_team: 1,
+      queue_mode: "level_match",
+      skill_level_enabled: true,
+      max_skill_gap: 2,
+      balance_strictness: "strict",
+    });
+    const pool = [
+      player("anchor",  { level: null, last_finished_at: null }),         // never played → anchor
+      player("ranked1", { level: 7, last_finished_at: "2026-06-06T10:00:00.000Z" }),
+      player("ranked2", { level: 9, last_finished_at: "2026-06-06T10:10:00.000Z" }),
+    ];
+    // Without the fix: lvl(anchor)=0, gap to ranked1=7 > 2, gap to ranked2=9 > 2
+    // → strict filter removes both candidates → returns null (deadlock).
+    // With the fix: anchor.level==null → skip gap filter → nearest picked → match.
+    const m = buildNextMatch(pool, s);
+    expect(m).not.toBeNull();
+    // anchor must be one of the participants
+    const matchIds = ids(m!);
+    expect(matchIds).toContain("anchor");
+  });
+
+  it("doubles: null-anchor + strict gap still forms a 4-player match", () => {
+    const s = settings({
+      players_per_team: 2,
+      queue_mode: "level_match",
+      skill_level_enabled: true,
+      max_skill_gap: 2,
+      balance_strictness: "strict",
+    });
+    const pool = [
+      player("anchor",  { level: null, last_finished_at: null }),
+      player("r1", { level: 8, last_finished_at: "2026-06-06T10:00:00.000Z" }),
+      player("r2", { level: 9, last_finished_at: "2026-06-06T10:05:00.000Z" }),
+      player("r3", { level: 7, last_finished_at: "2026-06-06T10:10:00.000Z" }),
+    ];
+    const m = buildNextMatch(pool, s);
+    expect(m).not.toBeNull();
+    expect(ids(m!)).toContain("anchor");
+  });
+});
+
 describe("deriveWinnerSide", () => {
   it("returns 'a' when side A scores higher", () => {
     expect(deriveWinnerSide(21, 18)).toBe("a");

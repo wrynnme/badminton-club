@@ -72,26 +72,66 @@ function orderPool(pool: QueuePlayer[], settings: ClubQueueSettings): QueuePlaye
 }
 
 /**
- * level_match: anchor = longest-rested player, then fill with the players whose
- * level is closest to the anchor (rest as tiebreak). Keeps fairness (anchor is
- * most-rested) while grouping similar levels into one match.
+ * balanced match: anchor = คนพักนานสุด, เลือกที่เหลือ nearest-to-anchor (rest เป็น
+ * tiebreak). เมื่อ max_skill_gap > 0 และ anchor มีระดับ → กรอง candidate ที่ห่างเกิน
+ * เพดานออก; ผู้เล่นที่ level===null ผ่านเสมอ (ยังไม่จัดระดับ).
+ *
+ * - max_skill_gap===0 หรือ anchor ยังไม่จัดระดับ → nearest-to-anchor ล้วน
+ * - strict + ไม่พอคน  → คืน null (caller คืน null ต่อ = ไม่มีแมตช์)
+ * - loose/balanced + ไม่พอคน → ผ่อนเพดาน เลือก nearest จาก candidate ทั้งหมด
  */
-function pickLevelMatch(pool: QueuePlayer[], need: number): QueuePlayer[] {
+function pickBalancedMatch(
+  pool: QueuePlayer[],
+  need: number,
+  settings: ClubQueueSettings,
+): QueuePlayer[] | null {
   const rested = [...pool].sort(cmpRestLongest);
   const anchor = rested[0];
-  const rest = rested.slice(1).sort((a, b) => {
+  const candidates = rested.slice(1);
+
+  // Sort comparator: nearest level to anchor first, rest_longest as tiebreak
+  const byNearest = (a: QueuePlayer, b: QueuePlayer) => {
     const da = Math.abs(lvl(a) - lvl(anchor));
     const db = Math.abs(lvl(b) - lvl(anchor));
     if (da !== db) return da - db;
     return cmpRestLongest(a, b);
-  });
-  return [anchor, ...rest.slice(0, need - 1)];
+  };
+
+  const gap = settings.max_skill_gap;
+
+  if (gap > 0 && anchor.level != null) {
+    // null-level players are always eligible (ยังไม่จัดระดับ — ห้ามกรองออก)
+    const eligible = candidates.filter(
+      (c) => c.level == null || Math.abs(lvl(c) - lvl(anchor)) <= gap,
+    );
+
+    if (eligible.length >= need - 1) {
+      // พอคน: เลือก nearest จาก eligible เท่านั้น
+      const sorted = [...eligible].sort(byNearest);
+      return [anchor, ...sorted.slice(0, need - 1)];
+    }
+
+    // ไม่พอคน: ตัดสินใจตาม strictness
+    if (settings.balance_strictness === "strict") {
+      return null; // ปฏิเสธแมตช์
+    }
+    // loose / balanced: ผ่อนเพดาน — ใช้ candidate ทั้งหมด
+  }
+
+  // max_skill_gap===0 / anchor ยังไม่จัดระดับ / fallthrough: nearest-to-anchor จาก candidate ทั้งหมด
+  const sorted = [...candidates].sort(byNearest);
+  return [anchor, ...sorted.slice(0, need - 1)];
 }
 
 /**
  * Split `chosen` (length = 2*players_per_team) into two sides.
- * skill_level_enabled → balance total level (snake: strongest + weakest vs middle).
+ * skill_level_enabled → balance total level (greedy: strongest first to lower-sum side).
  * Otherwise → split in the given order (first half = sideA).
+ *
+ * ppt===2 + equal sums after greedy → intra-side gap tiebreak: enumerate all 3
+ * possible pairings of the 4 sorted players, keep equal-sum ones, pick the
+ * partition with the smallest max(|partner_gap_A|, |partner_gap_B|). This avoids
+ * a [9,1] vs [5,5] split when a [6,4] vs [5,5] split achieves the same sum balance.
  */
 function splitSides(chosen: QueuePlayer[], settings: ClubQueueSettings): ProposedMatch {
   const ppt = settings.players_per_team;
@@ -116,6 +156,40 @@ function splitSides(chosen: QueuePlayer[], settings: ClubQueueSettings): Propose
         b.push(p);
         sumB += lvl(p);
       }
+    }
+
+    // Intra-side gap tiebreak — only for doubles when sums are already equal.
+    // Greedy with 4 players [p0,p1,p2,p3] sorted desc always yields partition P3:
+    // (p0,p3) vs (p1,p2). Check all 3 pairings for equal sums + lower max intra-gap.
+    if (ppt === 2 && sumA === sumB) {
+      const [p0, p1, p2, p3] = sorted;
+      // Three candidate partitions (each as [sideA, sideB]):
+      const partitions: [QueuePlayer[], QueuePlayer[]][] = [
+        [[p0, p1], [p2, p3]], // P1
+        [[p0, p2], [p1, p3]], // P2
+        [[p0, p3], [p1, p2]], // P3 — greedy result
+      ];
+      const intraSideGap = (s: QueuePlayer[]) => Math.abs(lvl(s[0]) - lvl(s[1]));
+      const maxGap = (pa: QueuePlayer[], pb: QueuePlayer[]) =>
+        Math.max(intraSideGap(pa), intraSideGap(pb));
+
+      let bestA = a;
+      let bestB = b;
+      let bestGap = maxGap(a, b);
+
+      for (const [pa, pb] of partitions) {
+        const sa = lvl(pa[0]) + lvl(pa[1]);
+        const sb = lvl(pb[0]) + lvl(pb[1]);
+        if (sa !== sb) continue; // skip unbalanced partitions
+        const g = maxGap(pa, pb);
+        if (g < bestGap) {
+          bestGap = g;
+          bestA = pa;
+          bestB = pb;
+        }
+      }
+      a = bestA;
+      b = bestB;
     }
   } else {
     a = chosen.slice(0, ppt);
@@ -201,6 +275,10 @@ export function buildNextMatch(
 ): ProposedMatch | null {
   const ppt = settings.players_per_team;
   const hasLocks = ppt === 2 && lockedPairs.length > 0;
+  // skill matchmaking applies to level_match / smart when enabled
+  const useBalanced =
+    settings.skill_level_enabled &&
+    (settings.queue_mode === "level_match" || settings.queue_mode === "smart");
 
   if (hasLocks) {
     const partnerOf = new Map<string, string>();
@@ -227,15 +305,33 @@ export function buildNextMatch(
 
     const sides = takeSides(orderPool(selectable, settings), partnerOf, 2, ppt);
     if (!sides) return null;
+
+    // balance_locked_pairs: ตรวจ gap ระหว่าง mean level ของ 2 ฝั่ง
+    if (settings.balance_locked_pairs && settings.max_skill_gap > 0 && settings.balance_strictness === "strict") {
+      const meanLevel = (side: MatchSide) => {
+        const ids = [side.player1, side.player2].filter((x): x is string => x != null);
+        const levels = ids.map((id) => pool.find((p) => p.id === id)).map((p) => lvl(p!));
+        return levels.reduce((s, v) => s + v, 0) / (levels.length || 1);
+      };
+      if (Math.abs(meanLevel(sides[0]) - meanLevel(sides[1])) > settings.max_skill_gap) {
+        return null;
+      }
+    }
+
     return { sideA: sides[0], sideB: sides[1] };
   }
 
   if (settings.rotation_mode === "winner_stays" && stayingSide) {
     if (pool.length < ppt) return null;
-    const ordered =
-      settings.queue_mode === "level_match"
-        ? pickLevelMatch(pool, ppt)
-        : orderPool(pool, settings).slice(0, ppt);
+    if (useBalanced) {
+      const picked = pickBalancedMatch(pool, ppt, settings);
+      if (!picked) return null;
+      return {
+        sideA: stayingSide,
+        sideB: { player1: picked[0].id, player2: ppt === 2 ? picked[1].id : null },
+      };
+    }
+    const ordered = orderPool(pool, settings).slice(0, ppt);
     return {
       sideA: stayingSide,
       sideB: { player1: ordered[0].id, player2: ppt === 2 ? ordered[1].id : null },
@@ -245,11 +341,13 @@ export function buildNextMatch(
   const need = ppt * 2;
   if (pool.length < need) return null;
 
-  const chosen =
-    settings.queue_mode === "level_match"
-      ? pickLevelMatch(pool, need)
-      : orderPool(pool, settings).slice(0, need);
+  if (useBalanced) {
+    const chosen = pickBalancedMatch(pool, need, settings);
+    if (!chosen) return null;
+    return splitSides(chosen, settings);
+  }
 
+  const chosen = orderPool(pool, settings).slice(0, need);
   return splitSides(chosen, settings);
 }
 

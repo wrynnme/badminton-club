@@ -14,7 +14,7 @@ import { MatchQueue } from "@/components/tournament/match-queue";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseSettings } from "@/lib/tournament/settings";
 import { parseTournamentThresholds } from "@/lib/tournament/divisions";
-import { getLevelsAction } from "@/lib/actions/levels";
+import { getGlobalLevelsAction } from "@/lib/actions/levels";
 import type {
   Tournament,
   TeamWithPlayers,
@@ -72,7 +72,7 @@ export default async function PublicTournamentPage({
       )
       .eq("team.tournament_id", t.id)
       .order("created_at"),
-    getLevelsAction(),
+    getGlobalLevelsAction(),
   ]);
 
   const teams: TeamWithPlayers[] = (teamsRes.data ?? []) as TeamWithPlayers[];

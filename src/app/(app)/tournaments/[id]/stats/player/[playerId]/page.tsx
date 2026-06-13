@@ -5,7 +5,7 @@ import { loadStatsTournamentByAdmin } from "@/lib/tournament/stats-page-data";
 import { computePlayerStats } from "@/lib/tournament/entity-stats";
 import { StatsPageShell } from "@/components/tournament/stats/stats-page-shell";
 import { PlayerStatsView } from "@/components/tournament/stats/player-stats-view";
-import { getLevelsAction } from "@/lib/actions/levels";
+import { getGlobalLevelsAction } from "@/lib/actions/levels";
 import type { TeamPlayer } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +25,7 @@ export default async function AdminPlayerStatsPage({
 
   const [data, levels] = await Promise.all([
     loadStatsTournamentByAdmin(id),
-    getLevelsAction(),
+    getGlobalLevelsAction(),
   ]);
   if (!data) notFound();
 
