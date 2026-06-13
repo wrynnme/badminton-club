@@ -10,6 +10,10 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-14 — tournament RLS lockdown (anon read leak — analog ของ club P0) — ✅ FIXED
+
+club review flag ฝั่งทัวร์ฯ ไว้ → สแกนพบรูปแบบเดียวกัน: ทุกตารางข้อมูลทัวร์ฯ มี `*_read_all` SELECT `USING(true)` ให้ public + anon DML grant → **anon อ่านได้ทุกทัวร์ฯ (รวมที่ไม่มี share_token) + `team_players` (display_name/profile_id = PII)** ผ่าน PostgREST ตรง (SSR sanitizer/notFound กันแค่ route). **ไม่มี write-enabling policy** (ต่างจาก club_admins/expenses — write default-deny อยู่แล้ว). **Fix** (migration `20260614000300_lock_tournament_tables_from_anon`, **applied prod**): ล็อก 6 ตารางที่ไม่มี Realtime (`teams`/`team_players`/`pairs`/`groups`/`group_teams`/`tournament_classes` — drop read-all + revoke anon/auth DML); `matches`/`tournaments` คง anon SELECT (Realtime `postgres_changes` ต้องใช้ รวม admin live-view ทัวร์ฯ private) revoke แค่ write grant. **Verify:** locked6 policy 0 · anon grant 0 · matches anon=SELECT เท่านั้น · realtime policy คง 2 · service-role อ่าน team_players ได้ (72) · smoke `/t/[token]` 200 ไม่มี RLS error เนื้อหา render ครบ. **Residual (ยอมรับ):** anon อ่าน metadata ทัวร์ฯ + สกอร์ ได้ (Realtime constraint — scope share_token ได้แต่ live-view ทัวร์ฯ private จะพัง).
+
 ### 2026-06-14 — whole-system club code-review (5-finder) — 🔴 P0 RLS FIXED, P1/P2 logged
 
 **Scope:** ทั้งระบบก๊วน (lib/actions/club*/clubs.ts/levels.ts, lib/club/*, 7 RPC, RLS, routes; ข้าม UI presentational). 5 finder ขนาน + verify กับ prod DB.
