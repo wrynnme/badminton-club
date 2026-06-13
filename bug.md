@@ -19,9 +19,9 @@ Dated entries below are the historical test-run / fix log (kept per the bug-trac
 - **anon อ่านได้** — `clubs`(รวม is_public=false: total_cost/court_fee/notes), `club_players`(profile_id/note/discount), `club_matches`, `club_locked_pairs`, `levels`, `profiles`(**line_user_id = PII**) ผ่าน `*_read_all` SELECT USING(true); notFound()+sanitizer กันแค่ SSR route, bypass ผ่าน data API ตรง
 - **Fix** — DROP 2 write-policy + DROP read-all 6 policy + REVOKE anon/authenticated DML บน 7 ตารางก๊วน. ปลอดภัยเพราะ app อ่าน/เขียนผ่าน service-role ล้วน (bypass RLS); anon browser client ใช้แค่ Realtime ทัวร์ฯ (matches/tournaments — ไม่แตะ). **Verify:** dangerous-policy 0 · club-policy 0 · anon-grant 0 · profiles-policy 0 · tournament-policy คง 2 · service-role อ่าน clubs/players ได้ · smoke homepage 200 / ก๊วน private→notFound / ทัวร์ฯ public 200 ไม่มี RLS error. scan ทั้งระบบ = มีแค่ 2 ตารางนี้ (ทัวร์ฯ สะอาด)
 
-**🟠 P1 — OPEN (ยังไม่แก้, user เลือกแก้ P0 ก่อน):**
-- `club-players.ts` `importClubPlayersAction` — UPDATE เวลา start/end key `(club_id, display_name)` ไม่มี row-id/profile_id/status → ชื่อซ้ำ (สมาชิก LINE + guest import) เวลาเขียนทับผิดคน. Fix: เก็บ id จาก RPC return → update by id
-- `cost-summary.ts:146` — `totalDiscount` รวม discount ดิบ แต่ grandTotal floor 0 ต่อคน → discount > ยอด → footer ไม่ reconcile. Fix: cap discount ที่ subtotal
+**🟠 P1 — ✅ FIXED 2026-06-14:**
+- `club-players.ts` `importClubPlayersAction` — UPDATE เวลา start/end เคย key `(club_id, display_name)` → ชื่อซ้ำ (สมาชิก LINE + guest import) เวลาเขียนทับผิดคน. **Fixed:** `add_club_player` RPC คืน row → เก็บ `inserted.id` ตอน insert สำเร็จ → UPDATE by `.eq("id", id)` (แม่นยำ ไม่ชนชื่อซ้ำ)
+- `cost-summary.ts` — `totalDiscount` รวม discount ดิบ แต่ grandTotal floor 0 ต่อคน → discount > ยอด → footer ไม่ reconcile. **Fixed:** cap discount ที่ subtotal (`Σ min(disc, court+shuttle+exp)`) → `court+shuttle+exp − totalDiscount === grandTotal` เป๊ะ. +1 vitest regression (discount 200 > subtotal 75 → reconcile). vitest 628/628
 
 **🟡 P2 — OPEN:** court build/manual ไม่เช็ค ∈ clubs.courts (เฉพาะ setCourt เช็ค) · คะแนนเสมอ→บันทึก draft ไร้ผู้ชนะ · reorder/queue_position insert race · setShuttles ไม่กรอง status · manual match ไม่เช็ค `status='active'` · `toggleCheckIn` UPDATE ลืม `.eq(club_id)` (latent) · cost per_player ทิ้งยอดเต็มคนที่ถูกลบ roster · by_time คนเวลา-0 ถูกคิดส่วนแบ่ง gap · `remove_club_player_and_promote` ไม่ lock clubs row เหมือน add (cap overshoot rare) · `clone_global_levels_to_club` DEFINER ไม่มี ownership check ภายใน (ตอนนี้ปลอดภัย service-role-only)
 

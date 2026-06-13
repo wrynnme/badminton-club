@@ -143,7 +143,15 @@ export function computeClubCostSummary(input: {
   const totalCourt = rows.reduce((s, r) => s + r.court, 0);
   const totalShuttle = rows.reduce((s, r) => s + r.shuttle, 0);
   const totalExp = [...expShareById.values()].reduce((s, v) => s + v, 0);
-  const totalDiscount = players.reduce((s, p) => s + (p.discount ?? 0), 0);
+  // Cap each player's discount at their pre-discount subtotal so the footer reconciles:
+  // grandTotal floors each player at max(0, …), so a discount larger than a player's
+  // subtotal must not be counted beyond what was actually applied.
+  // → totalCourt + totalShuttle + totalExp − totalDiscount === grandTotal.
+  const totalDiscount = rows.reduce((s, r) => {
+    const exp = expShareById.get(r.playerId) ?? 0;
+    const disc = discountById.get(r.playerId) ?? 0;
+    return s + Math.min(disc, r.court + r.shuttle + exp);
+  }, 0);
 
   return { rows, expShareById, totalCourt, totalShuttle, totalExp, totalDiscount, grandTotal };
 }
