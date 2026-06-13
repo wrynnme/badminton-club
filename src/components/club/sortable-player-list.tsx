@@ -6,12 +6,30 @@ import { useRouter } from "next/navigation";
 // 30s auto-refresh interval so the top bar doesn't flash on every tick.
 import { useRouter as useProgressRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
-import { RefreshCw, GripVertical, CheckCircle2, Circle, Loader2, Clock } from "lucide-react";
+import {
+  RefreshCw, GripVertical, CheckCircle2, Circle, Loader2, Clock,
+  CheckCheck, Users, Trash2, AlertTriangle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
+} from "@/components/ui/tooltip";
 import {
   DndContext,
   closestCenter,
@@ -34,7 +52,17 @@ import { CSS } from "@dnd-kit/utilities";
 import { Pencil } from "lucide-react";
 import { LeaveButton } from "@/components/club/leave-button";
 import { KickButton } from "@/components/club/kick-button";
-import { reorderPlayersAction, toggleCheckInAction, updateClubPlayerSessionAction, renameClubGuestAction, promoteClubReserveAction } from "@/lib/actions/club-players";
+import {
+  reorderPlayersAction,
+  toggleCheckInAction,
+  updateClubPlayerSessionAction,
+  renameClubGuestAction,
+  promoteClubReserveAction,
+  bulkCheckInClubPlayersAction,
+  bulkSetClubPlayerStatusAction,
+  bulkUpdateClubPlayerSessionAction,
+  bulkDeleteClubPlayersAction,
+} from "@/lib/actions/club-players";
 import type { ClubPlayer, Level } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -244,8 +272,6 @@ function SessionEditor({
 }
 
 // ─── Rename control (guests only, canManage only) ─────────────────────────────
-// Pencil button renders inline in the main row; the edit form expands as a
-// sub-row below it (same pattern as SessionEditor).
 
 function RenameButton({ onOpen }: { onOpen: () => void }) {
   const t = useTranslations("club.playerList");
@@ -331,6 +357,412 @@ function RenameForm({
   );
 }
 
+// ─── Bulk session dialog ──────────────────────────────────────────────────────
+
+function BulkSessionDialog({
+  open,
+  onOpenChange,
+  clubId,
+  playerIds,
+  sessionStart,
+  sessionEnd,
+  onDone,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  clubId: string;
+  playerIds: string[];
+  sessionStart?: string;
+  sessionEnd?: string;
+  onDone: () => void;
+}) {
+  const t = useTranslations("club.bulkSelect");
+  const router = useProgressRouter();
+  const [pending, start] = useTransition();
+
+  const clubStartPlaceholder = sessionStart?.slice(0, 5) ?? "";
+  const clubEndPlaceholder = sessionEnd?.slice(0, 5) ?? "";
+
+  const [enableStart, setEnableStart] = useState(false);
+  const [startVal, setStartVal] = useState("");
+  const [enableEnd, setEnableEnd] = useState(false);
+  const [endVal, setEndVal] = useState("");
+  const [enableGames, setEnableGames] = useState(false);
+  const [games, setGames] = useState(0);
+
+  // Reset fields each time the dialog opens.
+  useEffect(() => {
+    if (!open) return;
+    setEnableStart(false); setStartVal("");
+    setEnableEnd(false); setEndVal("");
+    setEnableGames(false); setGames(0);
+  }, [open]);
+
+  const noneEnabled = !enableStart && !enableEnd && !enableGames;
+
+  function handleSubmit() {
+    start(async () => {
+      const payload: {
+        clubId: string;
+        playerIds: string[];
+        start_time?: string;
+        end_time?: string;
+        games_played?: number;
+      } = { clubId, playerIds };
+      if (enableStart) payload.start_time = startVal;
+      if (enableEnd) payload.end_time = endVal;
+      if (enableGames) payload.games_played = games;
+
+      const res = await bulkUpdateClubPlayerSessionAction(payload);
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        toast.success(t("toastSession", { count: res.count }));
+        router.refresh();
+        onOpenChange(false);
+        onDone();
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t("sessionDialogTitle")}</DialogTitle>
+          <DialogDescription className="text-xs">{t("sessionDialogNote")}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-1 text-sm">
+          {/* Start time */}
+          <div className="flex items-center gap-3">
+            <Checkbox
+              checked={enableStart}
+              onCheckedChange={(v) => setEnableStart(!!v)}
+              id="bulk-start-enable"
+            />
+            <label htmlFor="bulk-start-enable" className="flex-1 cursor-pointer font-medium">
+              {t("sessionFieldStart")}
+            </label>
+            <Input
+              type="time"
+              value={startVal}
+              placeholder={clubStartPlaceholder}
+              disabled={!enableStart}
+              onChange={(e) => setStartVal(e.target.value)}
+              className="h-8 w-[110px] text-xs"
+            />
+          </div>
+
+          {/* End time */}
+          <div className="flex items-center gap-3">
+            <Checkbox
+              checked={enableEnd}
+              onCheckedChange={(v) => setEnableEnd(!!v)}
+              id="bulk-end-enable"
+            />
+            <label htmlFor="bulk-end-enable" className="flex-1 cursor-pointer font-medium">
+              {t("sessionFieldEnd")}
+            </label>
+            <Input
+              type="time"
+              value={endVal}
+              placeholder={clubEndPlaceholder}
+              disabled={!enableEnd}
+              onChange={(e) => setEndVal(e.target.value)}
+              className="h-8 w-[110px] text-xs"
+            />
+          </div>
+
+          {/* Games */}
+          <div className="flex items-center gap-3">
+            <Checkbox
+              checked={enableGames}
+              onCheckedChange={(v) => setEnableGames(!!v)}
+              id="bulk-games-enable"
+            />
+            <label htmlFor="bulk-games-enable" className="flex-1 cursor-pointer font-medium">
+              {t("sessionFieldGames")}
+            </label>
+            <Input
+              type="number"
+              min={0}
+              max={500}
+              value={games}
+              disabled={!enableGames}
+              onChange={(e) => setGames(Math.max(0, parseInt(e.target.value, 10) || 0))}
+              className="h-8 w-[80px] text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <DialogClose render={
+            <Button variant="outline" disabled={pending}>{t("sessionDialogCancel")}</Button>
+          } />
+          <Button onClick={handleSubmit} disabled={pending || noneEnabled}>
+            {pending
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />{t("sessionDialogSubmitting")}</>
+              : t("sessionDialogSubmit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Bulk delete dialog ───────────────────────────────────────────────────────
+
+function BulkDeleteDialog({
+  open,
+  onOpenChange,
+  clubId,
+  players,
+  onDone,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  clubId: string;
+  players: ClubPlayer[];
+  onDone: () => void;
+}) {
+  const t = useTranslations("club.bulkSelect");
+  const router = useProgressRouter();
+  const [pending, start] = useTransition();
+
+  function handleConfirm() {
+    start(async () => {
+      const res = await bulkDeleteClubPlayersAction({
+        clubId,
+        playerIds: players.map((p) => p.id),
+      });
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        if (res.failed > 0) {
+          toast.error(t("toastDeletePartial", { deleted: res.deleted, failed: res.failed }));
+        } else {
+          toast.success(t("toastDeleted", { count: res.deleted }));
+        }
+        router.refresh();
+        onOpenChange(false);
+        onDone();
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
+            {t("deleteDialogTitle", { n: players.length })}
+          </DialogTitle>
+          <DialogDescription>{t("deleteDialogDesc")}</DialogDescription>
+        </DialogHeader>
+
+        {/* Scrollable name list */}
+        <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm max-h-36 overflow-y-auto">
+          <p className="text-xs text-muted-foreground mb-1">{t("deleteListLabel")}</p>
+          <ul className="space-y-0.5">
+            {players.map((p) => (
+              <li key={p.id} className="truncate">{p.display_name}</li>
+            ))}
+          </ul>
+        </div>
+
+        <ul className="text-sm text-muted-foreground space-y-1.5 list-disc pl-5">
+          <li>
+            {t("deleteBullet1")}
+            <span className="text-foreground font-medium ml-1">{t("deleteBullet1Emph")}</span>
+          </li>
+          <li>{t("deleteBullet2")}</li>
+          <li>{t("deleteBullet3")}</li>
+        </ul>
+        <p className="text-sm font-medium text-destructive">{t("deletePermanent")}</p>
+
+        <DialogFooter className="gap-2">
+          <DialogClose render={
+            <Button variant="outline" disabled={pending}>{t("deleteCancel")}</Button>
+          } />
+          <Button variant="destructive" onClick={handleConfirm} disabled={pending}>
+            {pending
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />{t("deleteDeleting")}</>
+              : t("deleteConfirm")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── Bulk action bar ──────────────────────────────────────────────────────────
+
+function BulkActionBar({
+  clubId,
+  selectedIds,
+  allPlayers,
+  sessionStart,
+  sessionEnd,
+  onClearSelection,
+}: {
+  clubId: string;
+  selectedIds: Set<string>;
+  allPlayers: ClubPlayer[];
+  sessionStart?: string;
+  sessionEnd?: string;
+  onClearSelection: () => void;
+}) {
+  const t = useTranslations("club.bulkSelect");
+  const router = useProgressRouter();
+  const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [pending, start] = useTransition();
+
+  const selectedPlayers = allPlayers.filter((p) => selectedIds.has(p.id));
+  const playerIds = selectedPlayers.map((p) => p.id);
+  const n = selectedIds.size;
+
+  if (n === 0) return null;
+
+  function runBulkCheckIn(checkIn: boolean) {
+    start(async () => {
+      const res = await bulkCheckInClubPlayersAction({ clubId, playerIds, checkIn });
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        toast.success(
+          checkIn
+            ? t("toastCheckIn", { count: res.count })
+            : t("toastUndoCheckIn", { count: res.count })
+        );
+        router.refresh();
+        onClearSelection();
+      }
+    });
+  }
+
+  function runBulkStatus(status: "active" | "reserve") {
+    start(async () => {
+      const res = await bulkSetClubPlayerStatusAction({ clubId, playerIds, status });
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        toast.success(
+          status === "active"
+            ? t("toastSetActive", { count: res.count })
+            : t("toastSetReserve", { count: res.count })
+        );
+        router.refresh();
+        onClearSelection();
+      }
+    });
+  }
+
+  return (
+    <>
+      <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-1.5 rounded-lg border bg-background/95 backdrop-blur px-3 py-2 shadow-md text-sm">
+        <span className="font-medium text-xs mr-1 shrink-0">
+          {t("selectedCount", { n })}
+        </span>
+
+        {/* Check in */}
+        <Tooltip>
+          <TooltipTrigger render={
+            <Button size="xs" variant="outline" disabled={pending} onClick={() => runBulkCheckIn(true)}
+              aria-label={t("checkInTooltip")}>
+              <CheckCheck className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1">{t("checkIn")}</span>
+            </Button>
+          } />
+          <TooltipContent>{t("checkInTooltip")}</TooltipContent>
+        </Tooltip>
+
+        {/* Undo check-in */}
+        <Tooltip>
+          <TooltipTrigger render={
+            <Button size="xs" variant="outline" disabled={pending} onClick={() => runBulkCheckIn(false)}
+              aria-label={t("undoCheckInTooltip")}>
+              <Circle className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1">{t("undoCheckIn")}</span>
+            </Button>
+          } />
+          <TooltipContent>{t("undoCheckInTooltip")}</TooltipContent>
+        </Tooltip>
+
+        {/* Set active */}
+        <Tooltip>
+          <TooltipTrigger render={
+            <Button size="xs" variant="outline" disabled={pending} onClick={() => runBulkStatus("active")}
+              aria-label={t("setActiveTooltip")}>
+              <Users className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1">{t("setActive")}</span>
+            </Button>
+          } />
+          <TooltipContent>{t("setActiveTooltip")}</TooltipContent>
+        </Tooltip>
+
+        {/* Set reserve */}
+        <Tooltip>
+          <TooltipTrigger render={
+            <Button size="xs" variant="outline" disabled={pending} onClick={() => runBulkStatus("reserve")}
+              aria-label={t("setReserveTooltip")}>
+              <span className="hidden sm:inline">{t("setReserve")}</span>
+              <span className="sm:hidden">{t("setReserve")}</span>
+            </Button>
+          } />
+          <TooltipContent>{t("setReserveTooltip")}</TooltipContent>
+        </Tooltip>
+
+        {/* Edit session */}
+        <Tooltip>
+          <TooltipTrigger render={
+            <Button size="xs" variant="outline" disabled={pending}
+              onClick={() => setSessionDialogOpen(true)}
+              aria-label={t("editSessionTooltip")}>
+              <Clock className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1">{t("editSession")}</span>
+            </Button>
+          } />
+          <TooltipContent>{t("editSessionTooltip")}</TooltipContent>
+        </Tooltip>
+
+        {/* Delete */}
+        <Tooltip>
+          <TooltipTrigger render={
+            <Button size="xs" variant="destructive" disabled={pending}
+              onClick={() => setDeleteDialogOpen(true)}
+              aria-label={t("deleteTooltip")}>
+              <Trash2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1">{t("delete")}</span>
+            </Button>
+          } />
+          <TooltipContent>{t("deleteTooltip")}</TooltipContent>
+        </Tooltip>
+      </div>
+
+      <BulkSessionDialog
+        open={sessionDialogOpen}
+        onOpenChange={setSessionDialogOpen}
+        clubId={clubId}
+        playerIds={playerIds}
+        sessionStart={sessionStart}
+        sessionEnd={sessionEnd}
+        onDone={onClearSelection}
+      />
+
+      <BulkDeleteDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        clubId={clubId}
+        players={selectedPlayers}
+        onDone={onClearSelection}
+      />
+    </>
+  );
+}
+
 // ─── Shared row body (presentational — no useSortable) ───────────────────────
 // Used by both SortableItem (active, draggable) and ReserveItem (static).
 
@@ -346,6 +778,8 @@ type RowBodyProps = {
   dragHandle?: React.ReactNode;
   /** Position label shown before the name (e.g. "1." or "#1"). */
   positionLabel: React.ReactNode;
+  /** Select-mode checkbox — provided when selectMode is on */
+  selectCheckbox?: React.ReactNode;
 };
 
 function PlayerRowBody({
@@ -358,6 +792,7 @@ function PlayerRowBody({
   levelById,
   dragHandle,
   positionLabel,
+  selectCheckbox,
 }: RowBodyProps) {
   const t = useTranslations("club.playerList");
   const isCheckedIn = !!player.checked_in_at;
@@ -379,6 +814,7 @@ function PlayerRowBody({
     <>
       {/* Main row */}
       <div className="flex items-center gap-2">
+        {selectCheckbox}
         {dragHandle}
         <span className="text-muted-foreground w-6 tabular-nums">{positionLabel}</span>
         <span className="font-medium">{player.display_name}</span>
@@ -439,6 +875,9 @@ function SortableItem({
   sessionStart,
   sessionEnd,
   levelById,
+  selectMode,
+  selected,
+  onToggleSelect,
 }: {
   player: ClubPlayer;
   index: number;
@@ -448,11 +887,15 @@ function SortableItem({
   sessionStart?: string;
   sessionEnd?: string;
   levelById?: Map<string, { label: string }>;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
 }) {
   const t = useTranslations("club.playerList");
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: player.id,
-    disabled: !canManage,
+    // Disable drag when in select mode
+    disabled: !canManage || selectMode,
   });
 
   const style = {
@@ -463,7 +906,7 @@ function SortableItem({
 
   const isCheckedIn = !!player.checked_in_at;
 
-  const dragHandle = canManage ? (
+  const dragHandle = canManage && !selectMode ? (
     <button
       {...attributes}
       {...listeners}
@@ -475,13 +918,24 @@ function SortableItem({
     </button>
   ) : null;
 
+  const selectCheckbox = selectMode ? (
+    <Checkbox
+      checked={selected}
+      onCheckedChange={() => onToggleSelect(player.id)}
+      className="shrink-0"
+      aria-label={player.display_name}
+    />
+  ) : null;
+
   return (
     <li
       ref={setNodeRef}
       style={style}
-      className={`flex flex-col border rounded px-3 py-2 bg-background transition-colors text-sm ${
-        isCheckedIn ? "border-green-500/30 bg-green-500/5 dark:bg-green-500/5" : ""
-      }`}
+      className={cn(
+        "flex flex-col border rounded px-3 py-2 bg-background transition-colors text-sm",
+        isCheckedIn && "border-green-500/30 bg-green-500/5 dark:bg-green-500/5",
+        selected && "ring-1 ring-primary/60 bg-primary/5",
+      )}
     >
       <PlayerRowBody
         player={player}
@@ -493,6 +947,7 @@ function SortableItem({
         levelById={levelById}
         dragHandle={dragHandle}
         positionLabel={`${index + 1}.`}
+        selectCheckbox={selectCheckbox}
       />
     </li>
   );
@@ -509,6 +964,9 @@ function ReserveItem({
   sessionStart,
   sessionEnd,
   levelById,
+  selectMode,
+  selected,
+  onToggleSelect,
 }: {
   player: ClubPlayer;
   rank: number;
@@ -518,11 +976,14 @@ function ReserveItem({
   sessionStart?: string;
   sessionEnd?: string;
   levelById?: Map<string, { label: string }>;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
 }) {
   const t = useTranslations("club.playerList");
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: player.id,
-    disabled: !canManage,
+    disabled: !canManage || selectMode,
   });
 
   const style = {
@@ -531,7 +992,7 @@ function ReserveItem({
     opacity: isDragging ? 0.5 : 0.7,
   };
 
-  const dragHandle = canManage ? (
+  const dragHandle = canManage && !selectMode ? (
     <button
       {...attributes}
       {...listeners}
@@ -543,11 +1004,23 @@ function ReserveItem({
     </button>
   ) : null;
 
+  const selectCheckbox = selectMode ? (
+    <Checkbox
+      checked={selected}
+      onCheckedChange={() => onToggleSelect(player.id)}
+      className="shrink-0"
+      aria-label={player.display_name}
+    />
+  ) : null;
+
   return (
     <li
       ref={setNodeRef}
       style={style}
-      className="flex flex-col border rounded px-3 py-2 bg-background text-sm"
+      className={cn(
+        "flex flex-col border rounded px-3 py-2 bg-background text-sm",
+        selected && "ring-1 ring-primary/60 bg-primary/5",
+      )}
     >
       <PlayerRowBody
         player={player}
@@ -559,6 +1032,7 @@ function ReserveItem({
         levelById={levelById}
         dragHandle={dragHandle}
         positionLabel={`#${rank}`}
+        selectCheckbox={selectCheckbox}
       />
     </li>
   );
@@ -628,6 +1102,7 @@ export function SortablePlayerList({
   sessionEnd,
 }: Props) {
   const t = useTranslations("club.playerList");
+  const tBulk = useTranslations("club.bulkSelect");
   const levelById = levels
     ? new Map(levels.map((l) => [l.id, l]))
     : undefined;
@@ -644,7 +1119,38 @@ export function SortablePlayerList({
   // changing from any OTHER parent re-render still reconciles via the effect below.
   const mutatingRef = useRef(false);
 
+  // ─── Selection mode state ────────────────────────────────────────────────
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleSelectMode() {
+    setSelectMode((v) => !v);
+    setSelectedIds(new Set());
+  }
+
+  function togglePlayerSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
   useEffect(() => { setItems(players); }, [players]);
+
+  // When players list changes externally (e.g. after bulk delete), prune stale ids.
+  useEffect(() => {
+    const validIds = new Set(players.map((p) => p.id));
+    setSelectedIds((prev) => {
+      const pruned = new Set([...prev].filter((id) => validIds.has(id)));
+      return pruned.size === prev.size ? prev : pruned;
+    });
+  }, [players]);
 
   const refresh = useCallback(() => {
     if (mutatingRef.current) return;
@@ -666,6 +1172,19 @@ export function SortablePlayerList({
   const reserve = items.filter((p) => p.status === "reserve");
   // A reserve is mid-drag → highlight the active list as the promote drop target.
   const draggingReserve = draggingId != null && reserve.some((p) => p.id === draggingId);
+
+  // Select-all state: all = every player checked, partial = some.
+  const allPlayerIds = items.map((p) => p.id);
+  const allSelected = allPlayerIds.length > 0 && allPlayerIds.every((id) => selectedIds.has(id));
+  const partialSelected = !allSelected && allPlayerIds.some((id) => selectedIds.has(id));
+
+  function handleSelectAll() {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allPlayerIds));
+    }
+  }
 
   function handleDragStart(event: DragStartEvent) {
     setDraggingId(String(event.active.id));
@@ -764,8 +1283,47 @@ export function SortablePlayerList({
             </Badge>
           )}
         </div>
-        {refreshBtn}
+        <div className="flex items-center gap-1.5">
+          {/* Select-mode toggle — canManage + ≥1 player */}
+          {canManage && (
+            <Tooltip>
+              <TooltipTrigger render={
+                <Button
+                  variant={selectMode ? "secondary" : "outline"}
+                  size="xs"
+                  onClick={toggleSelectMode}
+                  aria-label={selectMode ? tBulk("doneMode") : tBulk("toggleMode")}
+                >
+                  {selectMode ? tBulk("doneMode") : tBulk("toggleMode")}
+                </Button>
+              } />
+              <TooltipContent>
+                {selectMode ? tBulk("doneMode") : tBulk("toggleMode")}
+              </TooltipContent>
+            </Tooltip>
+          )}
+          {refreshBtn}
+        </div>
       </div>
+
+      {/* Select-all row */}
+      {selectMode && (
+        <div className="flex items-center gap-2 px-1 py-1 text-sm">
+          <Checkbox
+            checked={allSelected}
+            indeterminate={partialSelected}
+            onCheckedChange={handleSelectAll}
+            aria-label={tBulk("selectAll", { n: items.length })}
+          />
+          <button
+            type="button"
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            onClick={handleSelectAll}
+          >
+            {tBulk("selectAll", { n: items.length })}
+          </button>
+        </div>
+      )}
 
       {/* One DndContext over both lists so a reserve can be dragged up into the
           active list (→ promote) as well as active rows reordered among themselves. */}
@@ -797,6 +1355,9 @@ export function SortablePlayerList({
                     sessionStart={sessionStart}
                     sessionEnd={sessionEnd}
                     levelById={levelById}
+                    selectMode={selectMode}
+                    selected={selectedIds.has(p.id)}
+                    onToggleSelect={togglePlayerSelect}
                   />
                 ))
               )}
@@ -810,7 +1371,7 @@ export function SortablePlayerList({
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-muted-foreground">{t("reserveLabel", { count: reserve.length })}</span>
               <Badge variant="secondary" className="text-xs">{t("reserveQueueBadge")}</Badge>
-              {canManage && (
+              {canManage && !selectMode && (
                 <span className="text-[11px] text-muted-foreground">{t("dragUpHint")}</span>
               )}
             </div>
@@ -827,6 +1388,9 @@ export function SortablePlayerList({
                     sessionStart={sessionStart}
                     sessionEnd={sessionEnd}
                     levelById={levelById}
+                    selectMode={selectMode}
+                    selected={selectedIds.has(p.id)}
+                    onToggleSelect={togglePlayerSelect}
                   />
                 ))}
               </ol>
@@ -834,6 +1398,18 @@ export function SortablePlayerList({
           </div>
         )}
       </DndContext>
+
+      {/* Bulk action bar — sticky bottom, visible when ≥1 selected */}
+      {selectMode && selectedIds.size > 0 && (
+        <BulkActionBar
+          clubId={clubId}
+          selectedIds={selectedIds}
+          allPlayers={items}
+          sessionStart={sessionStart}
+          sessionEnd={sessionEnd}
+          onClearSelection={clearSelection}
+        />
+      )}
     </div>
   );
 }

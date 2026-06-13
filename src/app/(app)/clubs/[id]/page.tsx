@@ -2,6 +2,8 @@ import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { format } from "date-fns";
 import { CalendarDays, Clock, MapPin, Users, Wallet } from "lucide-react";
+import { getLocale } from "next-intl/server";
+import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +12,7 @@ import { ClubTabs } from "@/components/club/club-tabs";
 import { ClubDashboard } from "@/components/club/club-dashboard";
 import { computeClubCostSummary } from "@/lib/club/cost-summary";
 import { AddGuestPlayer } from "@/components/club/add-guest-player";
+import { LineImportDialog } from "@/components/club/line-import-dialog";
 import { EditClubForm } from "@/components/club/edit-club-form";
 import { SortablePlayerList } from "@/components/club/sortable-player-list";
 import { ExpenseManager } from "@/components/club/expense-manager";
@@ -139,6 +142,7 @@ export default async function ClubDetailPage({
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
+  const locale = await getLocale();
   const t = await getTranslations("club");
 
   return (
@@ -169,7 +173,7 @@ export default async function ClubDetailPage({
           <ClubInfoRow label={<MapPin className="h-4 w-4" />} text={club.venue} />
           <ClubInfoRow
             label={<CalendarDays className="h-4 w-4" />}
-            text={format(new Date(club.play_date), "EEE d MMM yyyy")}
+            text={format(new Date(club.play_date), "EEE d MMM yyyy", { locale: dateFnsLocaleOf(locale) })}
           />
           <ClubInfoRow
             label={<Clock className="h-4 w-4" />}
@@ -214,7 +218,15 @@ export default async function ClubDetailPage({
             <div className="space-y-6">
               <section className="space-y-2">
                 <h2 className="font-semibold">{t("page.playerListHeading", { count: joined })}</h2>
-                {canManage && <AddGuestPlayer clubId={club.id} full={full} levels={levels} />}
+                {canManage && (
+                  <div className="flex flex-wrap gap-2">
+                    <AddGuestPlayer clubId={club.id} full={full} levels={levels} />
+                    <LineImportDialog
+                      clubId={club.id}
+                      existingNames={players.map((p) => p.display_name)}
+                    />
+                  </div>
+                )}
                 <SortablePlayerList
                   clubId={club.id}
                   players={players}

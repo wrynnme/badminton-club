@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { format } from "date-fns";
-import { th } from "date-fns/locale";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useTranslations, useLocale } from "next-intl";
+import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getAuditLogsAction } from "@/lib/actions/admins";
@@ -12,6 +12,7 @@ import type { AuditLogEntry } from "@/lib/actions/admins";
 
 export function AuditLogPanel({ tournamentId }: { tournamentId: string }) {
   const t = useTranslations("tournament");
+  const locale = useLocale();
   const [isOpen, setIsOpen] = useState(false);
   const [logs, setLogs] = useState<AuditLogEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -86,7 +87,7 @@ export function AuditLogPanel({ tournamentId }: { tournamentId: string }) {
                 {logs.map((log) => (
                   <li key={log.id} className="text-xs text-muted-foreground flex gap-2">
                     <span className="shrink-0 tabular-nums">
-                      {format(new Date(log.created_at), "d MMM HH:mm", { locale: th })}
+                      {format(new Date(log.created_at), "d MMM HH:mm", { locale: dateFnsLocaleOf(locale) })}
                     </span>
                     <span className="shrink-0 font-medium text-foreground">{log.actor_name}</span>
                     <span>{log.description}</span>

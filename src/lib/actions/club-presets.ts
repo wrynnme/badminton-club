@@ -175,6 +175,83 @@ export async function deleteClubPresetAction(
   return { ok: true };
 }
 
+// ─── Profile search / name-resolution (preset co-admin + regular profile link) ─
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export type PresetProfileResult = {
+  id: string;
+  display_name: string | null;
+};
+
+/**
+ * Search profiles for the co-admin picker in the preset form.
+ * Guests and the calling user are excluded. Returns at most 20 results.
+ */
+export async function searchPresetProfilesAction(
+  query: string,
+  excludeIds: string[] = [],
+): Promise<{ ok: true; results: PresetProfileResult[] } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
+  if (session.isGuest) return { error: t("club.requireLineForPreset") };
+
+  const q = query.trim();
+  if (q.length < 2) return { ok: true, results: [] };
+
+  // Filter excludeIds to valid UUIDs only to keep the .not("id","in",...) literal safe
+  const safeExcludes = [
+    session.profileId,
+    ...excludeIds.filter((id) => UUID_RE.test(id)),
+  ];
+  // Dedupe
+  const uniqueExcludes = [...new Set(safeExcludes)];
+
+  const escapedQ = q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+
+  const sb = await createAdminClient();
+
+  // uniqueExcludes always has at least session.profileId — never empty
+  const { data, error } = await sb
+    .from("profiles")
+    // line_user_id NOT selected (PII); used only as filter to exclude guests
+    .select("id, display_name")
+    .ilike("display_name", `%${escapedQ}%`)
+    .not("line_user_id", "is", null)
+    .not("id", "in", `(${uniqueExcludes.join(",")})`)
+    .limit(20);
+
+  if (error) return { error: t("club.searchFailed") };
+  return { ok: true, results: (data ?? []) as PresetProfileResult[] };
+}
+
+/**
+ * Resolve display names for a list of profile UUIDs (used to populate
+ * co-admin chips and regular profile badges when editing a preset).
+ */
+export async function getProfileNamesAction(
+  ids: string[],
+): Promise<{ ok: true; results: PresetProfileResult[] } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
+  if (session.isGuest) return { error: t("club.requireLineForPreset") };
+
+  // Filter to valid UUIDs, dedupe
+  const safeIds = [...new Set(ids.filter((id) => UUID_RE.test(id)))];
+  if (safeIds.length === 0) return { ok: true, results: [] };
+
+  const sb = await createAdminClient();
+  const { data, error } = await sb
+    .from("profiles")
+    .select("id, display_name")
+    .in("id", safeIds);
+
+  if (error) return { error: t("club.searchFailed") };
+  return { ok: true, results: (data ?? []) as PresetProfileResult[] };
+}
+
 // ─── Apply ───────────────────────────────────────────────────────────────────
 
 /**

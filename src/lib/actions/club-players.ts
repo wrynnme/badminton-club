@@ -272,6 +272,365 @@ export async function updateClubPlayerDiscountAction(
   return { ok: true };
 }
 
+// ─── Batch LINE import ────────────────────────────────────────────────────────
+
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+const playerWithTimeSchema = z.object({
+  name: z.string().min(1).max(60),
+  start_time: z.string().regex(TIME_RE).nullable().optional(),
+  end_time: z.string().regex(TIME_RE).nullable().optional(),
+});
+
+const importSchema = z.object({
+  club_id: z.string().uuid(),
+  players: z.array(playerWithTimeSchema).min(0).max(100),
+  reserve_players: z.array(playerWithTimeSchema).min(0).max(50),
+});
+
+export type ImportPlayerItem = z.infer<typeof playerWithTimeSchema>;
+export type ImportClubPlayersInput = z.infer<typeof importSchema>;
+
+export type ImportClubPlayersOk = {
+  ok: true;
+  added: number;
+  reserved: number;
+  skipped: number;
+  failed: number;
+};
+
+/**
+ * Batch-import guest players parsed from a LINE sign-up message.
+ *
+ * Main players go through the `add_club_player` RPC (atomic capacity check).
+ * Reserve players are inserted directly with status='reserve'.
+ * Duplicates (against existing club_players.display_name) are skipped.
+ *
+ * After the main-player RPC loop, time windows are applied in a separate
+ * Promise.all pass. A failed time-update does NOT decrement `added` — the
+ * player row exists; the time window is a best-effort enrichment. This is safe
+ * because in-batch dedup (below) guarantees each name appears at most once in
+ * `mainPlayers`, and pre-existing duplicates were already skipped, so the
+ * follow-up UPDATE by (club_id, display_name) is unambiguous.
+ */
+export async function importClubPlayersAction(
+  input: ImportClubPlayersInput,
+): Promise<ImportClubPlayersOk | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const parsed = importSchema.safeParse(input);
+  if (!parsed.success) {
+    return { error: t("club.importPlayersInvalidInput") };
+  }
+
+  const { club_id, players, reserve_players } = parsed.data;
+  const sb = await createAdminClient();
+
+  if (!(await assertCanManageClub(sb, club_id, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  // Fetch existing display_names to detect duplicates.
+  const { data: existing } = await sb
+    .from("club_players")
+    .select("display_name")
+    .eq("club_id", club_id);
+  const existingSet = new Set(
+    (existing ?? []).map((r) => r.display_name.trim().toLowerCase()),
+  );
+
+  // Dedupe within the batch (case-insensitive, order-preserving first-seen),
+  // keyed on name.
+  function dedupePlayers(list: ImportPlayerItem[]): ImportPlayerItem[] {
+    const seen = new Set<string>();
+    return list.filter((item) => {
+      const key = item.name.trim().toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+
+  const mainPlayers = dedupePlayers(players);
+  const resPlayers = dedupePlayers(reserve_players);
+
+  let added = 0;
+  let skipped = 0;
+  let failed = 0;
+
+  // ── Main players via RPC (atomic capacity + status assignment) ─────────────
+  // Track which successfully-added players carry a time window for the follow-up pass.
+  const timeUpdates: { name: string; start_time: string; end_time: string }[] = [];
+
+  for (const item of mainPlayers) {
+    if (existingSet.has(item.name.trim().toLowerCase())) {
+      skipped++;
+      continue;
+    }
+    const { error } = await sb.rpc("add_club_player", {
+      p_club_id: club_id,
+      p_display_name: item.name,
+      p_level_id: null,
+      p_note: null,
+    });
+    if (error) {
+      failed++;
+    } else {
+      added++;
+      existingSet.add(item.name.trim().toLowerCase());
+      if (item.start_time && item.end_time) {
+        timeUpdates.push({
+          name: item.name,
+          start_time: item.start_time,
+          end_time: item.end_time,
+        });
+      }
+    }
+  }
+
+  // ── Follow-up: apply time windows for successfully-added main players ──────
+  // Failures are silently ignored — `added` count is NOT decremented.
+  if (timeUpdates.length > 0) {
+    await Promise.all(
+      timeUpdates.map(({ name, start_time, end_time }) =>
+        sb
+          .from("club_players")
+          .update({ start_time, end_time })
+          .eq("club_id", club_id)
+          .eq("display_name", name),
+      ),
+    );
+  }
+
+  // ── Reserve players: direct insert at tail of position sequence ───────────
+  let reserved = 0;
+
+  if (resPlayers.length > 0) {
+    const { data: maxRow } = await sb
+      .from("club_players")
+      .select("position")
+      .eq("club_id", club_id)
+      .order("position", { ascending: false, nullsFirst: false })
+      .limit(1)
+      .maybeSingle();
+    const basePosition = (maxRow?.position ?? 0) + 1;
+
+    const insertRows = resPlayers
+      .filter((item) => !existingSet.has(item.name.trim().toLowerCase()))
+      .map((item, i) => ({
+        club_id,
+        profile_id: null as null,
+        display_name: item.name,
+        status: "reserve" as const,
+        position: basePosition + i,
+        level_id: null as null,
+        note: null as null,
+        start_time: item.start_time ?? null,
+        end_time: item.end_time ?? null,
+      }));
+
+    skipped += resPlayers.length - insertRows.length;
+
+    if (insertRows.length > 0) {
+      const { error } = await sb.from("club_players").insert(insertRows);
+      if (error) {
+        failed += insertRows.length;
+      } else {
+        reserved = insertRows.length;
+      }
+    }
+  }
+
+  revalidatePath(`/clubs/${club_id}`);
+  return { ok: true, added, reserved, skipped, failed };
+}
+
+// ─── Bulk actions ─────────────────────────────────────────────────────────────
+
+const BulkIdsSchema = z
+  .array(z.string().uuid())
+  .min(1)
+  .max(100)
+  .transform((ids) => [...new Set(ids)]); // dedupe
+
+/**
+ * Bulk check-in / undo check-in for a set of players.
+ * Idempotent: only touches rows whose current state differs from the desired state.
+ */
+export async function bulkCheckInClubPlayersAction(input: {
+  clubId: string;
+  playerIds: string[];
+  checkIn: boolean;
+}): Promise<{ ok: true; count: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const ids = BulkIdsSchema.safeParse(input.playerIds);
+  if (!ids.success) return { error: t("club.invalidData") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId)))
+    return { error: t("club.noPermission") };
+
+  let query = sb
+    .from("club_players")
+    .update({ checked_in_at: input.checkIn ? new Date().toISOString() : null })
+    .eq("club_id", input.clubId)
+    .in("id", ids.data);
+
+  // Only touch rows whose state differs to keep the operation idempotent.
+  if (input.checkIn) {
+    query = query.is("checked_in_at", null);
+  } else {
+    query = query.not("checked_in_at", "is", null);
+  }
+
+  const { data, error } = await query.select("id");
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true, count: data?.length ?? 0 };
+}
+
+/**
+ * Bulk set status ("active" | "reserve") for a set of players.
+ * Admin override — no cap check (same as promoteClubReserveAction).
+ * Only touches rows whose status currently differs.
+ */
+export async function bulkSetClubPlayerStatusAction(input: {
+  clubId: string;
+  playerIds: string[];
+  status: "active" | "reserve";
+}): Promise<{ ok: true; count: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const ids = BulkIdsSchema.safeParse(input.playerIds);
+  if (!ids.success) return { error: t("club.invalidData") };
+  if (input.status !== "active" && input.status !== "reserve")
+    return { error: t("club.invalidData") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId)))
+    return { error: t("club.noPermission") };
+
+  const { data, error } = await sb
+    .from("club_players")
+    .update({ status: input.status })
+    .eq("club_id", input.clubId)
+    .in("id", ids.data)
+    .neq("status", input.status) // only rows that need changing
+    .select("id");
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true, count: data?.length ?? 0 };
+}
+
+const BulkSessionSchema = z.object({
+  start_time: z.string().optional(),
+  end_time: z.string().optional(),
+  games_played: z.coerce.number().int().min(0).max(500).optional(),
+});
+
+/**
+ * Bulk update session fields for a set of players.
+ * Only applies fields explicitly provided (undefined = leave untouched).
+ * Empty string times ("") are stored as null (= use club window).
+ */
+export async function bulkUpdateClubPlayerSessionAction(input: {
+  clubId: string;
+  playerIds: string[];
+  start_time?: string;
+  end_time?: string;
+  games_played?: number;
+}): Promise<{ ok: true; count: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const ids = BulkIdsSchema.safeParse(input.playerIds);
+  if (!ids.success) return { error: t("club.invalidData") };
+
+  const parsed = BulkSessionSchema.safeParse({
+    start_time: input.start_time,
+    end_time: input.end_time,
+    games_played: input.games_played,
+  });
+  if (!parsed.success) return { error: t("club.invalidData") };
+
+  // Build only the fields that were explicitly provided.
+  const patch: Record<string, unknown> = {};
+  if (input.start_time !== undefined)
+    patch.start_time = parsed.data.start_time?.trim() || null;
+  if (input.end_time !== undefined)
+    patch.end_time = parsed.data.end_time?.trim() || null;
+  if (input.games_played !== undefined)
+    patch.games_played = parsed.data.games_played;
+
+  if (Object.keys(patch).length === 0)
+    return { error: t("club.bulkSessionNoFields") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId)))
+    return { error: t("club.noPermission") };
+
+  const { data, error } = await sb
+    .from("club_players")
+    .update(patch)
+    .eq("club_id", input.clubId)
+    .in("id", ids.data)
+    .select("id");
+
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true, count: data?.length ?? 0 };
+}
+
+/**
+ * Bulk delete players using the atomic remove_club_player_and_promote RPC
+ * (delete + auto-promote earliest reserve into the freed slot) called sequentially
+ * per player so the promote semantics hold after each removal.
+ */
+export async function bulkDeleteClubPlayersAction(input: {
+  clubId: string;
+  playerIds: string[];
+}): Promise<{ ok: true; deleted: number; failed: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const ids = BulkIdsSchema.safeParse(input.playerIds);
+  if (!ids.success) return { error: t("club.invalidData") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId)))
+    return { error: t("club.noPermission") };
+
+  let deleted = 0;
+  let failed = 0;
+  for (const playerId of ids.data) {
+    const { error } = await sb.rpc("remove_club_player_and_promote", {
+      p_player_id: playerId,
+      p_club_id: input.clubId,
+    });
+    if (error) {
+      failed++;
+    } else {
+      deleted++;
+    }
+  }
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true, deleted, failed };
+}
+
 /** Owner / co-admin renames a guest player (profile_id IS NULL — LINE players keep their account name). */
 export async function renameClubGuestAction(
   clubId: string,

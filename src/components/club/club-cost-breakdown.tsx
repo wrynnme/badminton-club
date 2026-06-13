@@ -132,10 +132,25 @@ export function ClubCostBreakdown({
   const { rows, totalCourt, totalShuttle, totalExp, totalDiscount, grandTotal, totalShuttlesUsed } =
     computeClubCostRows({ club, players, matches, expenses });
 
+  const tCostCsv = useTranslations("club");
+
+  const costCsvLabels = {
+    colPlayer: tCostCsv("costCsv.colPlayer"),
+    colHours: tCostCsv("costCsv.colHours"),
+    colGames: tCostCsv("costCsv.colGames"),
+    colShuttlesUsed: tCostCsv("costCsv.colShuttlesUsed"),
+    colCourtFee: tCostCsv("costCsv.colCourtFee"),
+    colShuttleFee: tCostCsv("costCsv.colShuttleFee"),
+    colExpense: tCostCsv("costCsv.colExpense"),
+    colDiscount: tCostCsv("costCsv.colDiscount"),
+    colTotal: tCostCsv("costCsv.colTotal"),
+    grandTotal: tCostCsv("costCsv.grandTotal"),
+  };
+
   function handleExport() {
-    const csv = generateClubCostCsv({ club, players, matches, expenses });
+    const csv = generateClubCostCsv({ club, players, matches, expenses }, costCsvLabels);
     const datePart = club.play_date ? `-${club.play_date}` : "";
-    downloadCsv(csv, `ค่าใช้จ่าย-${club.name}${datePart}.csv`);
+    downloadCsv(csv, `${tCostCsv("costCsv.filenamePrefix")}-${club.name}${datePart}.csv`);
   }
 
   const SPLIT_LABEL: Record<string, string> = {
