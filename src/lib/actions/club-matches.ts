@@ -71,11 +71,16 @@ export async function buildNextClubMatchAction(
   // Load settings.
   const { data: clubRow, error: clubFetchError } = await sb
     .from("clubs")
-    .select("queue_settings")
+    .select("queue_settings, courts")
     .eq("id", clubId)
     .single();
   if (clubFetchError || !clubRow) return { error: t("club.clubNotFound") };
   const settings = parseQueueSettings(clubRow.queue_settings);
+
+  // Court must be one of the club's named courts (when any are configured) —
+  // mirror setClubMatchCourtAction so a phantom court can't be created.
+  const courts = (clubRow.courts ?? []) as string[];
+  if (courts.length > 0 && !courts.includes(courtName)) return { error: t("club.courtNotInClub") };
 
   // Load active players for this club (level resolved via the levels FK).
   // Reserves (status='reserve') are excluded — they wait until promoted and are
@@ -379,6 +384,12 @@ export async function finishClubMatchAction(input: {
       ? deriveWinnerSide(input.scoreA, input.scoreB) ?? undefined
       : undefined);
 
+  // A full-score finish with equal scores has no winner — badminton has no ties.
+  // (winner-only finish and the no-score "ไม่ลงคะแนน" mode are unaffected.)
+  if (input.winnerSide == null && input.scoreA != null && input.scoreB != null && input.scoreA === input.scoreB) {
+    return { error: t("club.tieNotAllowed") };
+  }
+
   const { error: rpcError } = await sb.rpc("finish_club_match", {
     p_match_id: input.matchId,
     p_winner_side: winnerSide ?? null,
@@ -531,7 +542,8 @@ export async function setClubMatchShuttlesAction(
   const { error: updateError } = await sb
     .from("club_matches")
     .update({ shuttles_used: n })
-    .eq("id", matchId);
+    .eq("id", matchId)
+    .neq("status", "cancelled"); // shuttles only feed cost for non-cancelled matches
   if (updateError) return { error: updateError.message };
 
   revalidatePath(`/clubs/${match.club_id}`);
@@ -565,11 +577,15 @@ export async function createClubManualMatchAction(input: {
   // Load players_per_team from settings to validate side sizes.
   const { data: clubRow, error: clubErr } = await sb
     .from("clubs")
-    .select("queue_settings")
+    .select("queue_settings, courts")
     .eq("id", clubId)
     .single();
   if (clubErr || !clubRow) return { error: t("club.clubNotFound") };
   const ppt = parseQueueSettings(clubRow.queue_settings).players_per_team;
+
+  // Court must be one of the club's named courts (when any are configured).
+  const courts = (clubRow.courts ?? []) as string[];
+  if (courts.length > 0 && !courts.includes(courtName)) return { error: t("club.courtNotInClub") };
 
   const cleanA = sideA.filter(Boolean);
   const cleanB = sideB.filter(Boolean);
@@ -640,6 +656,23 @@ export async function reorderClubQueueAction(
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
+
+  // orderedIds must be exactly this club's pending set (no stale/foreign/dup ids).
+  // Otherwise unmatched ids no-op while matched ones get positions by array index,
+  // silently producing gaps / collisions in queue_position.
+  const { data: pendingRows } = await sb
+    .from("club_matches")
+    .select("id")
+    .eq("club_id", clubId)
+    .eq("status", "pending");
+  const pendingIds = new Set((pendingRows ?? []).map((r) => r.id));
+  if (
+    new Set(orderedIds).size !== orderedIds.length ||
+    orderedIds.length !== pendingIds.size ||
+    !orderedIds.every((id) => pendingIds.has(id))
+  ) {
+    return { error: t("club.invalidQueueOrder") };
+  }
 
   // Renumber pending matches in parallel (independent updates) — mirrors
   // reorderPlayersAction; avoids N sequential round-trips on every drag.

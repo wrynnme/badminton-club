@@ -210,7 +210,8 @@ export async function toggleCheckInAction(input: { club_id: string; player_id: s
   const { error } = await sb
     .from("club_players")
     .update({ checked_in_at: next })
-    .eq("id", input.player_id);
+    .eq("id", input.player_id)
+    .eq("club_id", input.club_id);
 
   if (error) return { error: error.message };
   revalidatePath(`/clubs/${input.club_id}`);

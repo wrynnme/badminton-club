@@ -162,9 +162,14 @@ function computeCourt(input: SplitInput): Map<string, number> {
       if (gapPolicy === "owner" && input.ownerId && out.has(input.ownerId)) {
         out.set(input.ownerId, (out.get(input.ownerId) ?? 0) + segCost);
       } else {
-        // "spread" (and owner-fallback): share equally across all players.
-        const each = segCost / n;
-        for (const p of players) out.set(p.id, (out.get(p.id) ?? 0) + each);
+        // "spread" (and owner-fallback): share equally across players who were
+        // present in the session at all (clamped window non-empty). A player whose
+        // recorded window lies entirely outside the session paid no court time and
+        // is excluded; fall back to all players only if nobody attended (avoid /0).
+        const attendedIds = win.filter((w) => w.pe > w.ps).map((w) => w.id);
+        const denom = attendedIds.length > 0 ? attendedIds : players.map((p) => p.id);
+        const each = segCost / denom.length;
+        for (const id of denom) out.set(id, (out.get(id) ?? 0) + each);
       }
     }
   }
