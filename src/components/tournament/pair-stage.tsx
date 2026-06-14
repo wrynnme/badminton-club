@@ -13,7 +13,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { generatePairMatchesAction } from "@/lib/actions/matches";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
-import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
+import { parseDivision, divisionTone } from "@/lib/tournament/divisions";
 import { classTone } from "@/lib/tournament/class-color";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { computeStandings, aggregatePairStandingsToTeams } from "@/lib/tournament/scoring";
@@ -314,7 +314,7 @@ export function PairStage({
             {divisionKeys.map((divKey) => {
               const matchList = matchesByDivision.get(divKey) ?? [];
               const open = isOpen(divKey);
-              const label = divKey !== null ? divisionLabelTh(divKey) : t("pairStage.noGroupMatches");
+              const label = divKey !== null ? t("division", { n: divKey }) : t("pairStage.noGroupMatches");
               const tone = divKey !== null ? divisionTone(divKey) : null;
               const completedCount = matchList.filter((m) => m.status === "completed").length;
 
@@ -420,7 +420,7 @@ export function PairStage({
                         <span className={`inline-block w-1.5 h-1.5 rounded-full ${tone.bg} ${tone.border} border`} />
                         <p className={`text-xs font-medium ${tone.text}`}>
                           <EntityLink entityType="division" entityId={String(divKey)}>
-                            {divisionLabelTh(divKey!)}
+                            {t("division", { n: divKey! })}
                           </EntityLink>
                         </p>
                         <span className="text-xs text-muted-foreground">

@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { gameWinner } from "@/lib/tournament/scoring";
 import type { TeamStats } from "@/lib/tournament/entity-stats";
 import type { Team, PairWithPlayers } from "@/lib/types";
-import { computePairDivision, parsePairLevel, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
+import { computePairDivision, parsePairLevel, divisionTone } from "@/lib/tournament/divisions";
 import { EntityLink } from "@/components/tournament/stats/entity-link";
 import { StreakPill } from "./shared/streak-pill";
 import { StatHeaderCards } from "./shared/stat-header-cards";
@@ -29,6 +29,7 @@ export function TeamStatsView({
   thresholds?: number[];
 }) {
   const t = useTranslations("stats");
+  const tDiv = useTranslations("tournament");
 
   const hasDivisions = thresholds.length > 0;
   // Map pairId -> division number (1..N) or null when unknown / no split
@@ -225,7 +226,7 @@ export function TeamStatsView({
               {divKeysSorted.map((divKey) => {
                 const rows = groups.get(divKey) ?? [];
                 const tone = divKey !== null ? divisionTone(divKey) : null;
-                const label = divKey !== null ? divisionLabelTh(divKey) : t("teamView.unassignedDivision");
+                const label = divKey !== null ? tDiv("division", { n: divKey }) : t("teamView.unassignedDivision");
                 return (
                   <div key={String(divKey)} className="space-y-1">
                     <p className={`text-xs font-medium px-4 ${tone?.text ?? "text-muted-foreground"}`}>

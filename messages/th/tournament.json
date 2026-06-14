@@ -109,7 +109,7 @@
     "tooltipWinner": "Winner bracket (สายชนะ)",
     "tooltipLoser": "Loser bracket (สายแพ้)",
     "tooltipGrandFinal": "Grand Final (ชิงชนะเลิศ)",
-    "tooltipDivision": "Division {div}",
+    "tooltipDivision": "ดิวิชั่น {div}",
     "labelCourt": "สนาม",
     "badgeCourt": "สนาม {court}",
     "tooltipNeedCourt": "ต้องเลือกสนามก่อน",
@@ -325,10 +325,10 @@
     "toastSaved": "บันทึกรายการสนามแล้ว"
   },
   "thresholdChipList": {
-    "label": "Thresholds แบ่ง Division",
+    "label": "Thresholds แบ่งดิวิชั่น",
     "placeholder": "เช่น 5",
     "btnAdd": "เพิ่ม threshold",
-    "description": "→ จะแบ่งเป็น {N} Division · threshold เรียงน้อย→มาก เช่น 3,5,7 → 4 Div · pair_level > สูงสุด = D1"
+    "description": "→ จะแบ่งเป็น {N} ดิวิชั่น · threshold เรียงน้อย→มาก เช่น 3,5,7 → 4 ดิวิชั่น · pair_level > สูงสุด = D1"
   },
   "tvFullscreenButton": {
     "toastUnsupported": "ไม่รองรับโหมดเต็มจอ",
@@ -390,13 +390,13 @@
     "requireCourtDesc": "บล็อกปุ่ม 'เริ่ม' ในแท็บตารางคิวจนกว่าจะเลือกสนาม",
     "requireCheckIn": "ต้องเช็คอินก่อนเริ่มแมตช์",
     "requireCheckInDesc": "ผู้เล่นทุกคนในแมตช์ต้องเช็คอินก่อน กดเริ่มถึงไม่ติด (แท็บทีม)",
-    "divisionOrder": "ลำดับ Division ใน auto-rotate",
-    "divisionOrderDesc": "กำหนดว่า Division ไหนแข่งก่อนในตารางคิว",
+    "divisionOrder": "ลำดับดิวิชั่นใน auto-rotate",
+    "divisionOrderDesc": "กำหนดว่าดิวิชั่นไหนแข่งก่อนในตารางคิว",
     "orderInterleaved": "สลับ",
     "orderSequential": "ตามลำดับ",
     "orderChunked": "เป็นชุด",
-    "divisionPriorityLabel": "ลำดับ Division",
-    "divisionPriorityDesc": "ลำดับ Div ที่จะลงสนามก่อน (เช่น 2,1) — ว่างไว้ = 1..{nDivisions}",
+    "divisionPriorityLabel": "ลำดับดิวิชั่น",
+    "divisionPriorityDesc": "ลำดับดิวิชั่นที่จะลงสนามก่อน (เช่น 2,1) — ว่างไว้ = 1..{nDivisions}",
     "divisionPriorityError": "ใส่เลข 1–{nDivisions} คั่นด้วยจุลภาค เช่น 1,2,3",
     "chunkSize": "ขนาด chunk (N)",
     "chunkSizeDesc": "แมตช์ต่อชุดเมื่อสลับ chunked",
@@ -443,7 +443,7 @@
     "tvRefreshIntervalDesc": "30–300 วินาที (fallback เมื่อปิด Realtime)",
     "tvFontSection": "ขนาดฟอนต์",
     "tvStandingsFontSize": "ขนาดฟอนต์ตารางอันดับ",
-    "tvStandingsFontSizeDesc": "ปรับขนาดตัวอักษรในตารางคะแนน Division",
+    "tvStandingsFontSizeDesc": "ปรับขนาดตัวอักษรในตารางคะแนนดิวิชั่น",
     "fontSm": "เล็ก",
     "fontMd": "กลาง",
     "fontLg": "ใหญ่",
@@ -513,7 +513,7 @@
     "chartTitlePairs": "คะแนนรวมต่อคู่",
     "chartTitleTeams": "คะแนนรวมต่อทีม",
     "chartTop10": "สูงสุด 10 อันดับแรก",
-    "chartWDL": "Win / Draw / Loss แยก Division",
+    "chartWDL": "Win / Draw / Loss แยกดิวิชั่น",
     "chartWDLDesc": "นับเฉพาะแมตช์ที่จบแล้ว",
     "courtUsageTitle": "การใช้สนาม",
     "courtMostUsed": "สนามที่ใช้บ่อยสุด",
@@ -674,6 +674,7 @@
   "classKnockoutStage": {
     "emptyNoKoClasses": "ยังไม่มี class ที่มีรอบน็อคเอ้า — เพิ่ม class ในแท็บ \"ตั้งค่า\""
   },
+  "division": "ดิวิชั่น {n}",
   "matchStatus": {
     "pending": "รอแข่ง",
     "in_progress": "กำลังแข่ง",

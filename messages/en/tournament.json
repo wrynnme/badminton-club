@@ -674,6 +674,7 @@
   "classKnockoutStage": {
     "emptyNoKoClasses": "No classes with a knockout stage yet — add a class in the Settings tab"
   },
+  "division": "Division {n}",
   "matchStatus": {
     "pending": "Waiting",
     "in_progress": "In progress",

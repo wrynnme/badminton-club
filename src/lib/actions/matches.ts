@@ -17,7 +17,7 @@ import { assertCanEdit } from "@/lib/tournament/permissions";
 import { writeAuditLog } from "@/lib/tournament/audit";
 import { notifyTournamentEvent } from "@/lib/notification/line";
 import { getTournamentSettings } from "@/lib/tournament/settings.server";
-import { computePairDivision, parseDivision, parsePairLevel, divisionLabelTh, parseTournamentThresholds } from "@/lib/tournament/divisions";
+import { computePairDivision, parseDivision, parsePairLevel, parseTournamentThresholds } from "@/lib/tournament/divisions";
 import type { TournamentSettings } from "@/lib/tournament/settings";
 
 async function loginRedirect(): Promise<never> {
@@ -1993,7 +1993,11 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
     const { count: pendingGroups } = await groupQuery;
     if ((pendingGroups ?? 0) > 0) {
       const divNum = parseDivision(match.division);
-      const label = divNum !== null ? `แมตช์รอบกลุ่ม${divisionLabelTh(divNum)}` : "แมตช์รอบกลุ่ม";
+      const tTour = await getTranslations("tournament");
+      const label =
+        divNum !== null
+          ? `แมตช์รอบกลุ่ม${tTour("division", { n: divNum })}`
+          : "แมตช์รอบกลุ่ม";
       return { error: t("match.waitGroupMatchesFirst", { label }) };
     }
   }

@@ -42,7 +42,8 @@
   - `pair_level > thresholds[N-2]` → Division 1 (top); …; `≤ thresholds[0]` → Division N (bottom)
   - Division 1 = highest skill tier
 - Cross-division matches only in knockout
-- Helpers: `computePairDivision(level, thresholds[])`, `divisionLabelTh(n)`, `divisionTone(n)`, `divisionCount(thresholds)`, `DIVISION_COLORS` — `src/lib/tournament/divisions.ts`
+- Helpers: `computePairDivision(level, thresholds[])`, `divisionTone(n)`, `divisionCount(thresholds)`, `DIVISION_COLORS` — `src/lib/tournament/divisions.ts`
+- Division label is **i18n catalog**, not a lib helper: top-level `tournament.division` key (`"ดิวิชั่น {n}"` TH / `"Division {n}"` EN). Consumers call `t("division", { n })` (client `useTranslations("tournament")` / server `getTranslations("tournament")`). The old `divisionLabelTh(n)` lib helper (returned hardcoded English `"Division N"`) was removed 2026-06-14 — it leaked English into the Thai UI.
 - Class color: `classTone(index)`, `classToneById(classes, classId)`, `NEUTRAL_TONE`, type `ClassTone` — `src/lib/tournament/class-color.ts` (reuses `DIVISION_COLORS`, cycle-of-8 keyed by class `position` index; null/unknown → NEUTRAL_TONE; no DB color column)
 
 ### CSV Import (2-step)
@@ -1451,7 +1452,7 @@ Settings UI in "การแสดงผล TV" Card is split into sub-groups: "
   - `scoring.test.ts` — `gameWinner`, `leaguePoints`, `computeStandings` (sort order, tie-breaks, team + pair unit)
   - `scheduling.test.ts` — `balancedRoundRobin` (equal/unequal sides, 1v1/0v0 edge), `generateAllPairMatches`
   - `bracket.test.ts` — `buildBracket` (4/8/16 entries, `next_match_id` wiring), `nextPowerOf2`, `roundLabel`, `buildDoubleBracket` shape
-  - `divisions.test.ts` — `computePairDivision` boundaries, empty/1-element/2-element thresholds, `divisionLabelTh`, `divisionCount`, `divisionTone` cycling
+  - `divisions.test.ts` — `computePairDivision` boundaries, empty/1-element/2-element thresholds, `divisionCount`, `divisionTone` cycling (the `divisionLabelTh` block was dropped 2026-06-14 when the helper moved to the i18n catalog)
   - `settings.test.ts` — `parseSettings({}) → DEFAULT_SETTINGS`, legacy `queue_bracket_preference` translation, invalid input fallback
   - `competitor.test.ts` — `teamToCompetitor`, `pairToCompetitor` name formation, `buildCompetitorMap` lookup
 - Source files are not modified by tests (lib is read-only). Server-side / Supabase-touching modules (`audit.ts`, `permissions.ts`, `settings.server.ts`) excluded — would require mocking.
