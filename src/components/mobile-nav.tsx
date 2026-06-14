@@ -47,9 +47,17 @@ export function MobileNav({
           {t("tournaments")}
         </Link>
         {loggedIn && !isGuest && (
-          <Link href="/clubs/new" className={item}>
-            {t("createClub")}
-          </Link>
+          <>
+            <Link href="/clubs/mine" className={item}>
+              {t("myClubs")}
+            </Link>
+            <Link href="/tournaments/mine" className={item}>
+              {t("myTournaments")}
+            </Link>
+            <Link href="/clubs/new" className={item}>
+              {t("createClub")}
+            </Link>
+          </>
         )}
         <div className="my-1 border-t" />
         {loggedIn ? (

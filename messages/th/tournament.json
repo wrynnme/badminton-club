@@ -712,6 +712,8 @@
     "advanceCount": "ผ่านรอบ {count} ทีม/กลุ่ม",
     "newTournamentHeading": "สร้างทัวร์นาเมนต์",
     "newTournamentCardTitle": "ข้อมูลทัวร์นาเมนต์",
+    "myListHeading": "ทัวร์นาเมนต์ของฉัน",
+    "myListEmpty": "ยังไม่มีทัวร์นาเมนต์ที่คุณเป็นเจ้าของหรือดูแล",
     "listHeading": "Tournament",
     "listCreateButton": "สร้างทัวร์นาเมนต์",
     "listEmpty": "ยังไม่มีทัวร์นาเมนต์",

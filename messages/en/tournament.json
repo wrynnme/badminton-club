@@ -712,6 +712,8 @@
     "advanceCount": "{count} teams advance per group",
     "newTournamentHeading": "Create tournament",
     "newTournamentCardTitle": "Tournament info",
+    "myListHeading": "My Tournaments",
+    "myListEmpty": "You don't own or co-admin any tournaments yet",
     "listHeading": "Tournament",
     "listCreateButton": "Create tournament",
     "listEmpty": "No tournaments yet",
