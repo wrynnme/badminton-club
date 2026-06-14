@@ -551,6 +551,7 @@
     "dangerZoneHeading": "Danger zone",
     "dangerZoneDesc": "Permanently delete this club including all players, matches, and expenses — cannot be undone",
     "newClubTitle": "Create new club",
+    "myListHeading": "My Clubs",
     "listHeading": "All clubs",
     "createButton": "+ Create club",
     "guestHint": "Sign in with LINE to create a club (guest mode can only join clubs)",

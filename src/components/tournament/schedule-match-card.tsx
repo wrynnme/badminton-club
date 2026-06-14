@@ -3,7 +3,7 @@ import { getTranslations, getLocale } from "next-intl/server";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { gameWinner, sumGameScores } from "@/lib/tournament/scoring";
-import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
+import { parseDivision, divisionTone } from "@/lib/tournament/divisions";
 import { MATCH_STATUS_PILL_CLASS } from "@/lib/tournament/status-display";
 import type { Match } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
@@ -137,10 +137,10 @@ export async function ScheduleMatchCard({
   const statusLabel = t(`matchStatus.${match.status}`);
   const statusCls = MATCH_STATUS_PILL_CLASS[match.status] ?? MATCH_STATUS_PILL_CLASS.pending;
 
-  // Division badge — text identical to the old inline `Division {n}`; tone color
+  // Division badge — localized "ดิวิชั่น {n}" / "Division {n}"; tone color
   // only when coloredDivision is on (court page passes false → unchanged outline).
   const dn = match.division ? parseDivision(match.division) : null;
-  const divLabel = match.division ? (dn ? divisionLabelTh(dn) : `Division ${match.division}`) : null;
+  const divLabel = match.division ? t("division", { n: dn ?? match.division }) : null;
   const tone = coloredDivision && dn ? divisionTone(dn) : null;
 
   const hasMeta = Boolean(court || queuePosition != null || scheduled);

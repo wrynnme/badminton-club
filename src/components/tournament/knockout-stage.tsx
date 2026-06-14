@@ -15,7 +15,7 @@ import { generateKnockoutAction } from "@/lib/actions/matches";
 import { generateKnockoutForClassAction } from "@/lib/actions/classes";
 import { buildCompetitorMap, teamToCompetitor } from "@/lib/tournament/competitor";
 import { roundLabel, lowerRoundLabel } from "@/lib/tournament/bracket";
-import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
+import { parseDivision, divisionTone } from "@/lib/tournament/divisions";
 import type { Match, Team, MatchUnit, PairWithPlayers } from "@/lib/types";
 
 function BracketSection({
@@ -379,7 +379,7 @@ export function KnockoutStage({
                       <div>
                         <div className="text-xs text-muted-foreground">
                           {isMultiDivision && divKey !== null
-                            ? t("knockoutStage.championDiv", { div: divisionLabelTh(divKey) })
+                            ? t("knockoutStage.championDiv", { div: t("division", { n: divKey }) })
                             : t("knockoutStage.champion")}
                         </div>
                         <div className="font-bold text-lg flex items-center gap-2">
@@ -418,7 +418,7 @@ export function KnockoutStage({
                         className={`h-3.5 w-3.5 transition-transform duration-200 ${divOpen ? "" : "-rotate-90"}`}
                       />
                       <span className={`inline-block w-2 h-2 rounded-full ${tone?.bg ?? ""} border ${tone?.border ?? ""}`} />
-                      <span>{divisionLabelTh(divKey)}</span>
+                      <span>{t("division", { n: divKey })}</span>
                       <span className="ml-1 text-xs font-normal text-muted-foreground">
                         ({divPlayableCompleted}/{divPlayableTotal})
                       </span>

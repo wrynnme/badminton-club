@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   computePairDivision,
   divisionCount,
-  divisionLabelTh,
   divisionTone,
   parseDivision,
   parsePairLevel,
@@ -108,15 +107,6 @@ describe("computePairDivision 3 thresholds [2, 5, 8]", () => {
   it("level 4 → Division 3", () => expect(computePairDivision(4, T)).toBe(3));
   it("level 2 → Division 4", () => expect(computePairDivision(2, T)).toBe(4));
   it("level 1 → Division 4", () => expect(computePairDivision(1, T)).toBe(4));
-});
-
-// ---------------------------------------------------------------------------
-// divisionLabelTh
-// ---------------------------------------------------------------------------
-describe("divisionLabelTh", () => {
-  it("divisionLabelTh(1) → 'Division 1'", () => expect(divisionLabelTh(1)).toBe("Division 1"));
-  it("divisionLabelTh(2) → 'Division 2'", () => expect(divisionLabelTh(2)).toBe("Division 2"));
-  it("divisionLabelTh(10) → 'Division 10'", () => expect(divisionLabelTh(10)).toBe("Division 10"));
 });
 
 // ---------------------------------------------------------------------------

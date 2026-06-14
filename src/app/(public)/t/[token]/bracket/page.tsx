@@ -8,7 +8,7 @@ import { PublicTvHeader } from "@/components/tournament/public/public-tv-header"
 import { buildVisualBracket } from "@/lib/tournament/bracket-visual";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseSettings } from "@/lib/tournament/settings";
-import { divisionLabelTh, parseDivision } from "@/lib/tournament/divisions";
+import { parseDivision } from "@/lib/tournament/divisions";
 import { getTranslations } from "next-intl/server";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
 
@@ -135,7 +135,7 @@ export default async function PublicBracketPage({
                 <div key={`div-${divKey ?? "none"}`}>
                   {isMultiDivision && divKey !== null && (
                     <h2 className="text-base lg:text-lg font-semibold mb-3">
-                      {divisionLabelTh(divKey)}
+                      {tl("division", { n: divKey })}
                     </h2>
                   )}
 

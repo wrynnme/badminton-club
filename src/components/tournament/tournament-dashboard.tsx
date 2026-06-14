@@ -41,7 +41,6 @@ import {
 } from "@/lib/tournament/scoring";
 import {
   buildPairDivisionMap,
-  divisionLabelTh,
   parseDivision,
   parseTournamentThresholds,
 } from "@/lib/tournament/divisions";
@@ -332,7 +331,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
     return keys.map((k) => {
       const b = buckets.get(k)!;
       return {
-        division: divisionLabelTh(k),
+        division: t("division", { n: k }),
         wins: b.wins,
         draws: b.draws,
         losses: b.losses,
@@ -491,7 +490,7 @@ export function TournamentDashboard({ tournament, teams, pairs, matches }: Props
               </TabsTrigger>
               {Array.from({ length: divisionCountN }, (_, i) => i + 1).map((d) => (
                 <TabsTrigger key={d} value={String(d)} className="text-xs px-2.5">
-                  Div {d}
+                  {t("division", { n: d })}
                 </TabsTrigger>
               ))}
             </TabsList>

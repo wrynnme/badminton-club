@@ -674,6 +674,7 @@
   "classKnockoutStage": {
     "emptyNoKoClasses": "No classes with a knockout stage yet — add a class in the Settings tab"
   },
+  "division": "Division {n}",
   "matchStatus": {
     "pending": "Waiting",
     "in_progress": "In progress",
@@ -712,7 +713,9 @@
     "advanceCount": "{count} teams advance per group",
     "newTournamentHeading": "Create tournament",
     "newTournamentCardTitle": "Tournament info",
-    "listHeading": "Tournament",
+    "myListHeading": "My Tournaments",
+    "myListEmpty": "You don't own or co-admin any tournaments yet",
+    "listHeading": "Tournaments",
     "listCreateButton": "Create tournament",
     "listEmpty": "No tournaments yet",
     "listCreateFirst": "Create your first tournament",

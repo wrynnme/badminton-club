@@ -5,18 +5,19 @@ import { Button } from "@/components/ui/button";
 import { getTranslations } from "next-intl/server";
 import { ClubCard, type ClubCardData } from "@/components/club/club-card";
 import { ownerOrAdminOrFilter } from "@/lib/owner-scope";
+import { PresetManager } from "@/components/club/preset-manager";
+import { listClubPresetsAction } from "@/lib/actions/club-presets";
+import type { ClubPreset } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function ClubsPage() {
+export default async function MyClubsPage() {
   const sb = await createAdminClient();
   const session = await getSession();
   const canCreate = !!session && !session.isGuest;
-  const today = new Date().toISOString().slice(0, 10);
 
-  // Clubs are owner/co-admin only — list only the clubs this user owns or co-admins.
   let clubs: ClubCardData[] = [];
-  if (session) {
+  if (session && !session.isGuest) {
     const { data: adminRows } = await sb
       .from("club_admins")
       .select("club_id")
@@ -25,16 +26,27 @@ export default async function ClubsPage() {
     const { data } = await sb
       .from("clubs")
       .select("id, name, venue, play_date, start_time, end_time, max_players")
-      .gte("play_date", today)
       .or(ownerOrAdminOrFilter(session.profileId, adminClubIds))
-      .order("play_date", { ascending: true });
+      .order("play_date", { ascending: false });
     clubs = (data ?? []) as ClubCardData[];
   }
 
-  const { data: counts } = await sb.from("club_players").select("club_id");
+  const clubIds = clubs.map((c) => c.id);
   const countMap = new Map<string, number>();
-  for (const r of counts ?? []) {
-    countMap.set(r.club_id, (countMap.get(r.club_id) ?? 0) + 1);
+  if (clubIds.length) {
+    const { data: counts } = await sb
+      .from("club_players")
+      .select("club_id")
+      .in("club_id", clubIds);
+    for (const r of counts ?? []) {
+      countMap.set(r.club_id, (countMap.get(r.club_id) ?? 0) + 1);
+    }
+  }
+
+  let presets: ClubPreset[] = [];
+  if (canCreate) {
+    const presetsResult = await listClubPresetsAction();
+    if ("presets" in presetsResult) presets = presetsResult.presets;
   }
 
   const t = await getTranslations("club");
@@ -42,7 +54,7 @@ export default async function ClubsPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t("page.listHeading")}</h1>
+        <h1 className="text-2xl font-bold">{t("page.myListHeading")}</h1>
         {canCreate && (
           <Link href="/clubs/new">
             <Button>{t("page.createButton")}</Button>
@@ -50,11 +62,7 @@ export default async function ClubsPage() {
         )}
       </div>
 
-      {session?.isGuest && (
-        <p className="text-xs text-muted-foreground">{t("page.guestHint")}</p>
-      )}
-
-      {!clubs?.length ? (
+      {!clubs.length ? (
         <p className="text-muted-foreground">
           {canCreate ? t("page.emptyWithCreate") : t("page.emptyNoCreate")}
         </p>
@@ -65,6 +73,8 @@ export default async function ClubsPage() {
           ))}
         </div>
       )}
+
+      {canCreate && <PresetManager presets={presets} />}
     </div>
   );
 }

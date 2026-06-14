@@ -36,10 +36,6 @@ export function parsePairLevel(raw: string | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function divisionLabelTh(n: number): string {
-  return `Division ${n}`;
-}
-
 /**
  * Parse the raw `tournaments.pair_division_thresholds` jsonb-ish value into a
  * clean `number[]`. Filters out non-numeric / NaN / Infinity entries.

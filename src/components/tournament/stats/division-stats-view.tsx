@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
+import { divisionTone } from "@/lib/tournament/divisions";
 import { gameWinner, sumGameScores, computeStandings } from "@/lib/tournament/scoring";
 import type { DivisionStats } from "@/lib/tournament/entity-stats";
 import type { PairWithPlayers, Match, Team } from "@/lib/types";
@@ -69,9 +69,10 @@ export function DivisionStatsView({
   teamById?: Map<string, Team>;
 }) {
   const t = useTranslations("stats.divisionView");
+  const tDiv = useTranslations("tournament");
 
   const tone = divisionTone(division);
-  const label = divisionLabelTh(division);
+  const label = tDiv("division", { n: division });
 
   // Pair IDs in this division
   const divisionPairIds = divisionPairs.map((p) => p.id);

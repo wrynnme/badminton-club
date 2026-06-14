@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { createManualMatchAction } from "@/lib/actions/matches";
-import { computePairDivision, parsePairLevel, divisionLabelTh } from "@/lib/tournament/divisions";
+import { computePairDivision, parsePairLevel } from "@/lib/tournament/divisions";
 import type { PairWithPlayers } from "@/lib/types";
 
 function pairLabel(pair: PairWithPlayers): string {
@@ -135,7 +135,7 @@ export function ManualMatchDialog({
                 {pairBOptions.length === 0 ? (
                   <SelectItem value="__none__" disabled>
                     {divA != null
-                      ? t("manualMatchDialog.emptyNoPairsInDiv", { divLabel: divisionLabelTh(divA) })
+                      ? t("manualMatchDialog.emptyNoPairsInDiv", { divLabel: t("division", { n: divA }) })
                       : t("manualMatchDialog.emptyNoSameDiv")}
                   </SelectItem>
                 ) : (

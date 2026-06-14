@@ -3,7 +3,7 @@
 import { useTranslations } from "next-intl";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { divisionLabelTh, divisionTone, parseDivision } from "@/lib/tournament/divisions";
+import { divisionTone, parseDivision } from "@/lib/tournament/divisions";
 import type { PairStats } from "@/lib/tournament/entity-stats";
 import type { PairWithPlayers } from "@/lib/types";
 import { StreakPill } from "./shared/streak-pill";
@@ -23,6 +23,7 @@ export function PairStatsView({
   competitorById: Map<string, CompetitorEntry>;
 }) {
   const t = useTranslations("stats");
+  const tDiv = useTranslations("tournament");
 
   const pairName =
     pair.display_pair_name ||
@@ -65,7 +66,7 @@ export function PairStatsView({
                 variant="outline"
                 className={`${tone.border} ${tone.bg} ${tone.text} shrink-0`}
               >
-                {divisionLabelTh(divNum)}
+                {tDiv("division", { n: divNum })}
               </Badge>
             )}
           </div>

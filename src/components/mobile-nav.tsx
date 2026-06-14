@@ -47,9 +47,17 @@ export function MobileNav({
           {t("tournaments")}
         </Link>
         {loggedIn && !isGuest && (
-          <Link href="/clubs/new" className={item}>
-            {t("createClub")}
-          </Link>
+          <>
+            <Link href="/clubs/mine" className={item}>
+              {t("myClubs")}
+            </Link>
+            <Link href="/tournaments/mine" className={item}>
+              {t("myTournaments")}
+            </Link>
+            <Link href="/clubs/new" className={item}>
+              {t("createClub")}
+            </Link>
+          </>
         )}
         <div className="my-1 border-t" />
         {loggedIn ? (
@@ -60,6 +68,9 @@ export function MobileNav({
                 {isGuest && <Badge variant="secondary">{t("guest")}</Badge>}
               </div>
             )}
+            <Link href="/profile" className={item}>
+              {t("profile")}
+            </Link>
             <Link href="/settings" className={item}>
               {t("settings")}
             </Link>

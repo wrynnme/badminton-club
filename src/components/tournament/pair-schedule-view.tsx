@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScheduleMatchCard } from "@/components/tournament/schedule-match-card";
 import { MatchHistoryList } from "@/components/tournament/stats/shared/match-history-list";
 import { partitionPairMatches } from "@/lib/tournament/pair-schedule";
-import { parseDivision, divisionLabelTh, divisionTone } from "@/lib/tournament/divisions";
+import { parseDivision, divisionTone } from "@/lib/tournament/divisions";
 import type { Match, PairWithPlayers } from "@/lib/types";
 import type { Competitor } from "@/lib/tournament/competitor";
 
@@ -74,7 +74,7 @@ export function PairScheduleView({
             </div>
             {divNum && tone && (
               <Badge variant="outline" className={`${tone.border} ${tone.bg} ${tone.text} shrink-0`}>
-                {divisionLabelTh(divNum)}
+                {t("division", { n: divNum })}
               </Badge>
             )}
           </div>

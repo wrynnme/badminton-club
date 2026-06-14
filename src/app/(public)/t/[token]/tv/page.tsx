@@ -140,7 +140,7 @@ export default async function TvDisplayPage({
         standingsPages.push({
           kind: "table",
           id: `div-${d}`,
-          title: `Division ${d}`,
+          title: tl("division", { n: d }),
           rows: rowsFromStandings(buckets.get(d) ?? [], pairNameLookup),
         });
       }
