@@ -68,6 +68,9 @@ export function MobileNav({
                 {isGuest && <Badge variant="secondary">{t("guest")}</Badge>}
               </div>
             )}
+            <Link href="/profile" className={item}>
+              {t("profile")}
+            </Link>
             <Link href="/settings" className={item}>
               {t("settings")}
             </Link>

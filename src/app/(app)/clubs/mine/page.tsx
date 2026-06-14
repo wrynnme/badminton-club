@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import { CalendarDays, MapPin, Users } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
+import { PresetManager } from "@/components/club/preset-manager";
+import { listClubPresetsAction } from "@/lib/actions/club-presets";
+import type { ClubPreset } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +55,12 @@ export default async function MyClubsPage() {
     for (const r of counts ?? []) {
       countMap.set(r.club_id, (countMap.get(r.club_id) ?? 0) + 1);
     }
+  }
+
+  let presets: ClubPreset[] = [];
+  if (canCreate) {
+    const presetsResult = await listClubPresetsAction();
+    if ("presets" in presetsResult) presets = presetsResult.presets;
   }
 
   const locale = await getLocale();
@@ -112,6 +121,8 @@ export default async function MyClubsPage() {
           })}
         </div>
       )}
+
+      {canCreate && <PresetManager presets={presets} />}
     </div>
   );
 }

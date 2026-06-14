@@ -33,7 +33,7 @@ export function UserMenu({
   const t = useTranslations("nav");
 
   const items = [
-    { href: "/settings", label: t("profile"), icon: User },
+    { href: "/profile", label: t("profile"), icon: User },
     { href: "/clubs/mine", label: t("myClubs"), icon: Users },
     { href: "/tournaments/mine", label: t("myTournaments"), icon: Trophy },
     { href: "/settings", label: t("settings"), icon: Settings },

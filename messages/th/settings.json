@@ -1,8 +1,6 @@
 {
   "title": "ตั้งค่าบัญชี",
   "profileSection": "โปรไฟล์",
-  "pastClubsSection": "ก๊วนของเราที่หมดอายุแล้ว",
-  "pastClubsEmpty": "ยังไม่มีก๊วนที่ผ่านมา",
   "accountSection": "บัญชี",
   "logout": "ออกจากระบบ",
   "logoutTooltip": "ออกจากระบบเฉพาะอุปกรณ์นี้",

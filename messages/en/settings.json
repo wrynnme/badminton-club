@@ -1,8 +1,6 @@
 {
   "title": "Account settings",
   "profileSection": "Profile",
-  "pastClubsSection": "My expired clubs",
-  "pastClubsEmpty": "No past clubs yet",
   "accountSection": "Account",
   "logout": "Log out",
   "logoutTooltip": "Log out on this device only",
