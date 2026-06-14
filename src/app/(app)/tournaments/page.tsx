@@ -1,14 +1,10 @@
 import Link from "next/link";
-import { format } from "date-fns";
 import { Trophy, Plus } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TOURNAMENT_STATUS_BADGE } from "@/lib/tournament/status";
-import { getTranslations, getLocale } from "next-intl/server";
-import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
+import { getTranslations } from "next-intl/server";
+import { TournamentCard } from "@/components/tournament/tournament-card";
 import type { Tournament } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -22,14 +18,7 @@ export default async function TournamentsPage() {
     .select("*")
     .order("created_at", { ascending: false });
 
-  const locale = await getLocale();
   const t = await getTranslations("tournament");
-
-  const formatLabel: Record<string, string> = {
-    group_only: t("page.formatGroupOnly"),
-    group_knockout: t("page.formatGroupKnockout"),
-    knockout_only: t("page.formatKnockoutOnly"),
-  };
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -57,35 +46,13 @@ export default async function TournamentsPage() {
               <Button variant="outline">{t("page.listCreateFirst")}</Button>
             </Link>
           )}
-          {session?.isGuest && (
-            <p className="text-xs">{t("page.listGuestHint")}</p>
-          )}
+          {session?.isGuest && <p className="text-xs">{t("page.listGuestHint")}</p>}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {(tournaments as Tournament[]).map((tournament) => {
-            return (
-              <Link key={tournament.id} href={`/tournaments/${tournament.id}`}>
-                <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base leading-snug">{tournament.name}</CardTitle>
-                      <Badge variant={TOURNAMENT_STATUS_BADGE[tournament.status]} className="shrink-0">
-                        {t(`tournamentStatus.${tournament.status}`)}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="text-sm text-muted-foreground space-y-1">
-                    {tournament.venue && <p>📍 {tournament.venue}</p>}
-                    {tournament.start_date && (
-                      <p>📅 {format(new Date(tournament.start_date), "d MMM yyyy", { locale: dateFnsLocaleOf(locale) })}</p>
-                    )}
-                    <p>🏆 {formatLabel[tournament.format]} · {t("page.listTeamCount", { count: tournament.team_count })}</p>
-                  </CardContent>
-                </Card>
-              </Link>
-            );
-          })}
+          {(tournaments as Tournament[]).map((tournament) => (
+            <TournamentCard key={tournament.id} tournament={tournament} />
+          ))}
         </div>
       )}
     </div>

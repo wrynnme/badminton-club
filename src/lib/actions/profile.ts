@@ -40,6 +40,6 @@ export async function updateProfileDisplayNameAction(input: UpdateProfileInput) 
     isGuest: session.isGuest,
   });
 
-  revalidatePath("/settings");
+  revalidatePath("/profile");
   return { ok: true as const };
 }
