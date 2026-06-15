@@ -304,7 +304,9 @@
     "notReadyLabel": "When not ready",
     "notReadyDesc": "What to do when a player is not ready",
     "notReadyRequeue": "Requeue at back",
-    "notReadySkip": "Skip"
+    "notReadySkip": "Skip",
+    "realtimeEnabledLabel": "Live updates (Realtime)",
+    "realtimeEnabledDesc": "On = queue & roster auto-update across devices without refreshing"
   },
   "tabs": {
     "dashboard": "Dashboard",

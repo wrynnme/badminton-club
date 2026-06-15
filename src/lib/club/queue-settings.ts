@@ -26,6 +26,9 @@ import { z } from "zod";
  *                       strict   = ปฏิเสธแมตช์ถ้าหา candidate ในเพดานไม่พอ
  *  balance_locked_pairs true = เช็ก gap ระหว่าง mean level ของฝั่งล็อกกับฝ่ายตรงข้าม
  *                       (strict + max_skill_gap > 0 เท่านั้น — default false)
+ *  realtime_enabled     true = หน้าก๊วน subscribe Realtime broadcast (topic `club:<id>`)
+ *                       → คิว/ผู้เล่นอัปเดตสดข้ามอุปกรณ์โดยไม่ต้องรีเฟรช (default true,
+ *                       mirror tournaments.settings.realtime_enabled). ปิด = manual refresh
  */
 export const ClubQueueSettingsSchema = z.object({
   court_count: z.number().int().min(1).max(20).default(1),
@@ -39,6 +42,7 @@ export const ClubQueueSettingsSchema = z.object({
   max_skill_gap: z.number().min(0).max(20).default(0),
   balance_strictness: z.enum(["loose", "balanced", "strict"]).default("balanced"),
   balance_locked_pairs: z.boolean().default(false),
+  realtime_enabled: z.boolean().default(true),
 });
 
 export type ClubQueueSettings = z.infer<typeof ClubQueueSettingsSchema>;

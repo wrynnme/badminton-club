@@ -304,7 +304,9 @@
     "notReadyLabel": "เมื่อไม่พร้อม",
     "notReadyDesc": "ทำอะไรเมื่อผู้เล่นไม่พร้อมเล่น",
     "notReadyRequeue": "ต่อท้ายคิว",
-    "notReadySkip": "ข้าม"
+    "notReadySkip": "ข้าม",
+    "realtimeEnabledLabel": "อัปเดตสด (Realtime)",
+    "realtimeEnabledDesc": "เปิด = คิวและรายชื่ออัปเดตเองข้ามอุปกรณ์โดยไม่ต้องรีเฟรช"
   },
   "tabs": {
     "dashboard": "แดชบอร์ด",
