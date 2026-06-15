@@ -426,6 +426,7 @@ function PendingRow({
                   className="h-7 px-2"
                   disabled={startBusy}
                   onClick={handleStart}
+                  aria-label={t("startTooltip", { court: match.court })}
                 >
                   <Play className="h-3.5 w-3.5" />
                 </Button>
@@ -442,6 +443,7 @@ function PendingRow({
                   className="h-7 px-2 text-destructive hover:text-destructive"
                   disabled={cancelBusy}
                   onClick={handleCancel}
+                  aria-label={t("cancelTooltip")}
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>
