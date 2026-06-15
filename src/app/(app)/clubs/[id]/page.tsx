@@ -27,6 +27,7 @@ import { ClubCourtManager } from "@/components/club/club-court-manager";
 import { ClubLevelsManager } from "@/components/club/club-levels-manager";
 import { ClubQueuePanel } from "@/components/club/club-queue-panel";
 import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
+import { ClubLiveWrapper } from "@/components/club/club-live-wrapper";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
 import { resolveClubCourts } from "@/lib/club/courts";
 import { ClubInfoRow } from "@/components/club/club-info-row";
@@ -145,6 +146,7 @@ export default async function ClubDetailPage({
   const t = await getTranslations("club");
 
   return (
+    <ClubLiveWrapper clubId={club.id} realtimeEnabled={queueSettings.realtime_enabled}>
     <div className="space-y-6 max-w-3xl mx-auto">
       <div>
         <div className="flex items-start justify-between gap-2">
@@ -355,5 +357,6 @@ export default async function ClubDetailPage({
         />
       </Suspense>
     </div>
+    </ClubLiveWrapper>
   );
 }

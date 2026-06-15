@@ -424,6 +424,15 @@ export function ClubQueueSettings({
             </SelectContent>
           </Select>
         </div>
+
+        {/* Realtime auto-refresh */}
+        <ToggleRow
+          id="qs-realtime"
+          label={t("realtimeEnabledLabel")}
+          description={t("realtimeEnabledDesc")}
+          checked={settings.realtime_enabled}
+          onChange={(v) => update("realtime_enabled", v)}
+        />
       </CardContent>
     </Card>
   );
