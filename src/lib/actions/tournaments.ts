@@ -17,6 +17,7 @@ import {
 } from "@/lib/tournament/settings";
 import { parseTournamentThresholds } from "@/lib/tournament/divisions";
 import { pairLevelString, embeddedReal, realOf } from "@/lib/tournament/levels";
+import { PrizeTemplateSchema, type PrizeTemplateEntry } from "@/lib/tournament/prizes";
 import type { Level } from "@/lib/types";
 
 async function loginRedirect(): Promise<never> {
@@ -204,6 +205,41 @@ export async function updateCourtsAction(tournamentId: string, courts: string[])
 
   revalidatePath(`/tournaments/${tournamentId}`);
   return { ok: true, courts: deduped };
+}
+
+export async function updatePrizeTemplateAction(
+  tournamentId: string,
+  template: PrizeTemplateEntry[],
+) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
+  if (!(await assertCanEdit(tournamentId, session.profileId))) return { error: t("tournament.noPermission") };
+
+  const parsed = PrizeTemplateSchema.safeParse(template);
+  if (!parsed.success) return { error: t("tournament.savePrizeTemplateFailed") };
+  const cleaned = [...parsed.data].sort((a, b) => a.rank - b.rank);
+
+  const sb = await createAdminClient();
+  const { error } = await sb.from("tournaments").update({ prize_template: cleaned }).eq("id", tournamentId);
+  if (error) {
+    console.error("[updatePrizeTemplateAction]", error);
+    return { error: t("tournament.savePrizeTemplateFailed") };
+  }
+
+  await writeAuditLog({
+    tournament_id: tournamentId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "prize_template_updated",
+    entity_type: "tournament",
+    entity_id: tournamentId,
+    description: `อัปเดตรายการรางวัล: ${cleaned.length} รายการ`,
+  });
+
+  revalidatePath(`/tournaments/${tournamentId}`);
+  revalidatePath(`/tournaments/${tournamentId}/prizes`);
+  return { ok: true, prizeTemplate: cleaned };
 }
 
 export async function updateTournamentStatusAction(id: string, status: "draft" | "registering" | "ongoing" | "completed") {

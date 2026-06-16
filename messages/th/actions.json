@@ -90,6 +90,7 @@
     "saveFailed": "บันทึกการตั้งค่าไม่สำเร็จ",
     "saveStatusFailed": "บันทึกสถานะไม่สำเร็จ",
     "saveCourtsFailed": "บันทึกสนามไม่สำเร็จ",
+    "savePrizeTemplateFailed": "บันทึกรายการรางวัลไม่สำเร็จ",
     "saveSettingsFailed": "บันทึก settings ไม่สำเร็จ",
     "thresholdChangeLocked": "ห้ามเปลี่ยน threshold หลังเริ่มแมตช์ — รีเซ็ตแมตช์เป็น pending ก่อน",
     "teamNotFound": "ไม่พบทีม",
