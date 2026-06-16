@@ -111,6 +111,17 @@ function resolveSide(
   return `${n1} / ${n2}`;
 }
 
+// The 4 player slots as inline-edit state, derived from a match row (null → "" so the
+// combobox shows its placeholder). Shared by the seed, the re-sync effect, and the revert.
+function slotsFromMatch(m: ClubMatch) {
+  return {
+    a1: m.side_a_player1 ?? "",
+    a2: m.side_a_player2 ?? "",
+    b1: m.side_b_player1 ?? "",
+    b2: m.side_b_player2 ?? "",
+  };
+}
+
 // ─── Elapsed ticker — updates every second for a single in_progress match ────
 
 function ElapsedTicker({ startedAt }: { startedAt: string }) {
@@ -361,10 +372,65 @@ function PendingRow({
   const t = useTranslations("club.queuePanel");
   const [startBusy, startTransition] = useTransition();
   const [cancelBusy, cancelTransition] = useTransition();
+  const [editBusy, editTransition] = useTransition();
+
+  // Local slot state for inline editing (manager only). Seeded from the match row and
+  // re-synced when the server row changes (a persist or an external realtime / 30s refresh)
+  // — but NOT while a local optimistic edit is in flight (editBusyRef), or a refresh
+  // landing mid-edit would flicker the just-picked slot back to its old value.
+  const [slots, setSlots] = useState(() => slotsFromMatch(match));
+  const editBusyRef = useRef(false);
+  editBusyRef.current = editBusy;
+  useEffect(() => {
+    if (editBusyRef.current) return;
+    setSlots(slotsFromMatch(match));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match.side_a_player1, match.side_a_player2, match.side_b_player1, match.side_b_player2]);
 
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
   const sideB = resolveSide(match.side_b_player1, match.side_b_player2, nameMap);
-  const isMatchFull = isClubMatchFull(match, playersPerTeam);
+  // Fullness from the LIVE local slots (manager) so the "เริ่ม" button flips the instant
+  // the roster completes — before the persist round-trip lands. Read-only uses the row.
+  const isMatchFull = isClubMatchFull(
+    canManage
+      ? {
+          side_a_player1: slots.a1 || null,
+          side_a_player2: slots.a2 || null,
+          side_b_player1: slots.b1 || null,
+          side_b_player2: slots.b2 || null,
+        }
+      : match,
+    playersPerTeam,
+  );
+
+  type SlotKey = "a1" | "a2" | "b1" | "b2";
+  // Options for one slot: every club player except those already placed in this match's
+  // OTHER slots — the autocomplete never offers a player already in the match.
+  function optionsFor(self: SlotKey) {
+    const used = new Set<string>();
+    (["a1", "a2", "b1", "b2"] as SlotKey[]).forEach((k) => {
+      if (k !== self && slots[k]) used.add(slots[k]);
+    });
+    return players.filter((p) => !used.has(p.id));
+  }
+
+  // Pick / change / clear a slot inline → persist the whole roster immediately. Optimistic
+  // (the slot updates instantly); on error, toast + revert to the server row.
+  function changeSlot(self: SlotKey, id: string) {
+    const next = { ...slots, [self]: id };
+    setSlots(next);
+    const sideAArr = (playersPerTeam === 2 ? [next.a1, next.a2] : [next.a1]).filter(Boolean);
+    const sideBArr = (playersPerTeam === 2 ? [next.b1, next.b2] : [next.b1]).filter(Boolean);
+    editTransition(async () => {
+      const res = await setClubMatchPlayersAction({ matchId: match.id, sideA: sideAArr, sideB: sideBArr });
+      if ("error" in res) {
+        toast.error(res.error);
+        setSlots(slotsFromMatch(match)); // revert optimistic edit to server truth
+      } else {
+        onRefresh();
+      }
+    });
+  }
 
   function handleStart() {
     startTransition(async () => {
@@ -419,18 +485,25 @@ function PendingRow({
         onRefresh={onRefresh}
         badgeClassName="shrink-0 text-xs"
       />
-      <span className="flex-1 text-sm truncate">
-        {sideA} <span className="text-muted-foreground">vs</span> {sideB}
-      </span>
+      {canManage ? (
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+          <InlinePlayerSlot value={slots.a1} options={optionsFor("a1")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("a1", id)} />
+          {playersPerTeam === 2 && (
+            <InlinePlayerSlot value={slots.a2} options={optionsFor("a2")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("a2", id)} />
+          )}
+          <span className="px-0.5 text-xs text-muted-foreground">vs</span>
+          <InlinePlayerSlot value={slots.b1} options={optionsFor("b1")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("b1", id)} />
+          {playersPerTeam === 2 && (
+            <InlinePlayerSlot value={slots.b2} options={optionsFor("b2")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("b2", id)} />
+          )}
+        </div>
+      ) : (
+        <span className="flex-1 text-sm truncate">
+          {sideA} <span className="text-muted-foreground">vs</span> {sideB}
+        </span>
+      )}
       {canManage && (
         <div className="flex items-center gap-1 shrink-0">
-          <EditPlayersDialog
-            match={match}
-            players={players}
-            nameMap={nameMap}
-            ppt={playersPerTeam}
-            onRefresh={onRefresh}
-          />
           <Tooltip>
             <TooltipTrigger
               render={
@@ -438,7 +511,7 @@ function PendingRow({
                   size="sm"
                   variant="default"
                   className="h-7 px-2"
-                  disabled={startBusy || !isMatchFull}
+                  disabled={startBusy || editBusy || !isMatchFull}
                   onClick={handleStart}
                   aria-label={isMatchFull ? t("startTooltip", { court: match.court }) : t("startNeedsFullTooltip")}
                 >
@@ -1183,146 +1256,83 @@ function ManualMatchDialog({
   );
 }
 
-// ─── Edit-players dialog (pending match) ──────────────────────────────────────
-// Fill in a partial roster, swap a player, or clear a slot on a PENDING match.
-// Empty slots stay empty (the match stays queued but cannot START until full —
-// isClubMatchFull). Court is changed separately via the row's CourtSelect, so this
-// dialog is players-only. Controlled trigger (not DialogTrigger) so it can re-seed
-// from the live match each open.
-
-function EditPlayersDialog({
-  match,
-  players,
+// ─── Inline player slot (pending match) ───────────────────────────────────────
+// A compact autocomplete for ONE match slot. `options` is pre-filtered by the parent
+// to exclude players already placed in this match's other slots (no dupes). Picking an
+// item — or the "clear" item — calls onPick, which persists the whole roster immediately.
+// No dialog: the manager edits the lineup right in the queue row.
+function InlinePlayerSlot({
+  value,
+  options,
   nameMap,
-  ppt,
-  onRefresh,
+  disabled,
+  onPick,
 }: {
-  match: ClubMatch;
-  players: { id: string; display_name: string }[];
+  value: string;
+  options: { id: string; display_name: string }[];
   nameMap: Map<string, string>;
-  ppt: number;
-  onRefresh: () => void;
+  disabled?: boolean;
+  onPick: (id: string) => void;
 }) {
   const t = useTranslations("club.queuePanel");
   const [open, setOpen] = useState(false);
-  const [busy, startTransition] = useTransition();
+  const [query, setQuery] = useState("");
 
-  const [sideA1, setSideA1] = useState<string>(match.side_a_player1 ?? UNSET);
-  const [sideA2, setSideA2] = useState<string>(match.side_a_player2 ?? UNSET);
-  const [sideB1, setSideB1] = useState<string>(match.side_b_player1 ?? UNSET);
-  const [sideB2, setSideB2] = useState<string>(match.side_b_player2 ?? UNSET);
-
-  // Re-seed from the match each open. The row stays mounted across 30s refreshes, so
-  // a half-finished edit (or a server-side change) must not bleed into the next open.
-  function seed() {
-    setSideA1(match.side_a_player1 ?? UNSET);
-    setSideA2(match.side_a_player2 ?? UNSET);
-    setSideB1(match.side_b_player1 ?? UNSET);
-    setSideB2(match.side_b_player2 ?? UNSET);
-  }
-
-  function handleSubmit() {
-    const sideA = (ppt === 2 ? [sideA1, sideA2] : [sideA1]).filter(Boolean);
-    const sideB = (ppt === 2 ? [sideB1, sideB2] : [sideB1]).filter(Boolean);
-    const all = [...sideA, ...sideB];
-    if (all.length < 1) {
-      toast.error(t("toastManualSelectAtLeastOne"));
-      return;
-    }
-    if (new Set(all).size !== all.length) {
-      toast.error(t("toastManualDuplicate"));
-      return;
-    }
-    startTransition(async () => {
-      const res = await setClubMatchPlayersAction({ matchId: match.id, sideA, sideB });
-      if ("error" in res) {
-        toast.error(res.error);
-      } else {
-        toast.success(t("toastPlayersSaved"));
-        setOpen(false);
-        onRefresh();
-      }
-    });
-  }
-
-  // One side slot: PlayerSelect + a clear button (shown only when the slot is set) so
-  // a partial roster stays reachable by editing (not just by delete+recreate).
-  function slot(id: string, label: string, value: string, onChange: (v: string) => void) {
-    return (
-      <div className="flex items-end gap-1">
-        <div className="min-w-0 flex-1">
-          <PlayerSelect id={id} label={label} value={value} onChange={onChange} players={players} nameMap={nameMap} />
-        </div>
-        {value && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 shrink-0 text-muted-foreground"
-                  onClick={() => onChange(UNSET)}
-                  aria-label={t("editClearSlot")}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              }
-            />
-            <TooltipContent>{t("editClearSlot")}</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-    );
-  }
+  const selectedName = value ? (nameMap.get(value) ?? value) : "";
+  const q = query.trim().toLowerCase();
+  const filtered = q ? options.filter((p) => p.display_name.toLowerCase().includes(q)) : options;
 
   return (
-    <>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2"
-              onClick={() => { seed(); setOpen(true); }}
-              aria-label={t("editPlayersTooltip")}
-            >
-              <PenLine className="h-3.5 w-3.5" />
-            </Button>
-          }
-        />
-        <TooltipContent>{t("editPlayersTooltip")}</TooltipContent>
-      </Tooltip>
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>{t("editDialogTitle")}</DialogTitle>
-            <p className="text-xs text-muted-foreground">{t("editDialogHint")}</p>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <p className="text-sm font-medium">{t("manualSideA")}</p>
-              {slot("ep-sideA1", ppt === 2 ? t("manualPlayer1") : t("manualPlayer"), sideA1, setSideA1)}
-              {ppt === 2 && slot("ep-sideA2", t("manualPlayer2"), sideA2, setSideA2)}
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm font-medium">{t("manualSideB")}</p>
-              {slot("ep-sideB1", ppt === 2 ? t("manualPlayer1") : t("manualPlayer"), sideB1, setSideB1)}
-              {ppt === 2 && slot("ep-sideB2", t("manualPlayer2"), sideB2, setSideB2)}
-            </div>
-          </div>
-
-          <DialogFooter>
-            <DialogClose render={<Button variant="outline" disabled={busy}>{t("manualDialogCancel")}</Button>} />
-            <Button onClick={handleSubmit} disabled={busy}>
-              {busy ? t("editDialogSaving") : t("editDialogSubmit")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
+      <PopoverTrigger
+        render={
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            role="combobox"
+            aria-expanded={open}
+            aria-label={t("slotEditAria")}
+            disabled={disabled}
+            className="h-7 max-w-[8rem] min-w-[4.5rem] justify-between gap-1 px-2 text-xs font-normal"
+          >
+            <span className={`truncate ${selectedName ? "" : "text-muted-foreground"}`}>
+              {selectedName || t("manualSelectPlayer")}
+            </span>
+            <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
+          </Button>
+        }
+      />
+      <PopoverContent className="w-(--anchor-width) min-w-44 p-0" align="start">
+        <Command shouldFilter={false}>
+          <CommandInput placeholder={t("manualSearchPlaceholder")} value={query} onValueChange={setQuery} />
+          <CommandList>
+            <CommandEmpty>{t("manualNoPlayer")}</CommandEmpty>
+            <CommandGroup>
+              {value && (
+                <CommandItem
+                  value="__clear__"
+                  className="text-muted-foreground"
+                  onSelect={() => { onPick(""); setOpen(false); setQuery(""); }}
+                >
+                  {t("slotClearOption")}
+                </CommandItem>
+              )}
+              {filtered.map((p) => (
+                <CommandItem
+                  key={p.id}
+                  value={p.id}
+                  onSelect={() => { onPick(p.id); setOpen(false); setQuery(""); }}
+                >
+                  <span className="flex-1 truncate">{p.display_name}</span>
+                  {value === p.id && <Check className="h-4 w-4 shrink-0" />}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 

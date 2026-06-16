@@ -10,6 +10,10 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-17 — Club queue: inline player-edit (autocomplete, no dialog) — ✅ PASS (develop)
+
+ปรับ UX แก้ผู้เล่นในแท็บ "รอแข่ง": จาก `EditPlayersDialog` (กดดินสอเปิด dialog) → `InlinePlayerSlot` — **autocomplete ต่อช่องในแถวเลย** (เปลี่ยนได้ทันที ไม่ต้องเข้า form). ตัวเลือกของแต่ละช่อง **กรองผู้เล่นที่อยู่ช่องอื่นของแมตช์เดียวกันออก** (กันเลือกซ้ำ). เลือก/ล้างช่อง → persist ทันทีผ่าน `setClubMatchPlayersAction` (optimistic local state + revert on error); ปุ่ม "เริ่ม" คำนวณ `isClubMatchFull` จาก local slots → flip ทันที. ลบ component `EditPlayersDialog` + 7 i18n key ตาย (`editDialog*`/`editPlayersTooltip`/`editClearSlot`/`toastPlayersSaved`), เพิ่ม `slotEditAria` + `slotClearOption` (th+en). **Gates:** tsc 0 · vitest 640/640 · `next build` OK · i18n parity PASS. **Live Playwright net-zero smoke (prod):** seed แมตช์ partial (A1=Anna) → 4 inline slot render (ไม่มี dialog) · เปิด dropdown A2 = [Ben,Cara,Dan] **ตัด Anna** ✓ · pick Ben (DB A2=Ben ทันที) · B1=[Cara,Dan] · B2=[Dan] (filter ไล่ระดับถูก) · ครบ 4 → "เริ่ม" enable → start → `in_progress` · console 0 error · teardown 0 row.
+
 ### 2026-06-17 — Club queue: partial roster + edit pending players + detailed error — ✅ PASS (develop)
 
 ฟีเจอร์ใหม่ "คิวก๊วน — สร้างแมตช์ไม่ครบคน + แก้ผู้เล่น pending + error ละเอียด" (develop). ไม่มี open bug. **Code gates:** tsc 0 · vitest **640/640** (+5 `isClubMatchFull`) · `next build` OK · i18n key-check + th/en parity PASS (5 `actions.club.*` + 10 `club.queuePanel.*` keys; ลบ key กำพร้า `toastManualSelectAll`). Files: migration `20260617000100_club_match_partial_roster.sql` · `types.ts` (side_*_player1 → `string|null`) · `queue.ts` (`isClubMatchFull`) · `club-matches.ts` (relax `createClubManualMatchAction` · `startClubMatchAction` full-gate · ใหม่ `setClubMatchPlayersAction` · `buildNextClubMatchAction` detailed error) · `club-queue-panel.tsx` (`EditPlayersDialog` + start-disabled + relax manual).

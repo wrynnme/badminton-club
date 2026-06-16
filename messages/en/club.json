@@ -265,13 +265,8 @@
     "toastManualSelectAtLeastOne": "Select at least 1 player",
     "manualPartialHint": "Pick any number (at least 1) — save now and fill the rest later, but you can't start until the roster is full",
     "startNeedsFullTooltip": "Select all players before starting",
-    "editPlayersTooltip": "Edit this match's players",
-    "editClearSlot": "Remove player from this slot",
-    "editDialogTitle": "Edit players",
-    "editDialogHint": "Add, swap, or remove players (pending matches only). Empty slots are allowed, but you can't start until the roster is full",
-    "editDialogSubmit": "Save",
-    "editDialogSaving": "Saving…",
-    "toastPlayersSaved": "Players saved",
+    "slotEditAria": "Change this slot's player",
+    "slotClearOption": "— Remove player —",
     "activeDropTarget": "Drop here to promote to active"
   },
   "queueSettings": {
