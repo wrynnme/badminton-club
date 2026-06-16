@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildNextMatch,
   deriveWinnerSide,
+  isClubMatchFull,
   type QueuePlayer,
   type MatchSide,
 } from "@/lib/club/queue";
@@ -601,5 +602,41 @@ describe("deriveWinnerSide", () => {
   it("returns null on a tie", () => {
     expect(deriveWinnerSide(21, 21)).toBeNull();
     expect(deriveWinnerSide(0, 0)).toBeNull();
+  });
+});
+
+describe("isClubMatchFull", () => {
+  const m = (
+    a1: string | null,
+    a2: string | null,
+    b1: string | null,
+    b2: string | null,
+  ) => ({ side_a_player1: a1, side_a_player2: a2, side_b_player1: b1, side_b_player2: b2 });
+
+  describe("doubles (ppt=2)", () => {
+    it("is full only when all four slots are filled", () => {
+      expect(isClubMatchFull(m("a", "b", "c", "d"), 2)).toBe(true);
+    });
+    it("is not full when any slot is empty", () => {
+      expect(isClubMatchFull(m("a", "b", "c", null), 2)).toBe(false); // 3 players
+      expect(isClubMatchFull(m("a", null, "c", null), 2)).toBe(false); // 2 players (one per side)
+      expect(isClubMatchFull(m("a", "b", null, null), 2)).toBe(false); // one side empty
+      expect(isClubMatchFull(m("a", null, null, null), 2)).toBe(false); // 1 player
+      expect(isClubMatchFull(m(null, null, null, null), 2)).toBe(false); // empty
+    });
+    it("is not full when a player1 slot is empty even if its player2 is set", () => {
+      expect(isClubMatchFull(m(null, "b", "c", "d"), 2)).toBe(false);
+    });
+  });
+
+  describe("singles (ppt=1)", () => {
+    it("is full when both player1 slots are filled (player2 slots ignored)", () => {
+      expect(isClubMatchFull(m("a", null, "b", null), 1)).toBe(true);
+    });
+    it("is not full when a player1 slot is empty", () => {
+      expect(isClubMatchFull(m("a", null, null, null), 1)).toBe(false); // 1 player
+      expect(isClubMatchFull(m(null, null, "b", null), 1)).toBe(false);
+      expect(isClubMatchFull(m(null, null, null, null), 1)).toBe(false); // empty
+    });
   });
 });

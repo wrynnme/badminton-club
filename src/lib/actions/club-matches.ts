@@ -11,6 +11,7 @@ import {
 import {
   buildNextMatch,
   deriveWinnerSide,
+  isClubMatchFull,
   type QueuePlayer,
   type MatchSide,
 } from "@/lib/club/queue";
@@ -25,11 +26,23 @@ async function loadClubMatchForManage(
   sb: Awaited<ReturnType<typeof createAdminClient>>,
   matchId: string,
   profileId: string,
-): Promise<{ match: { id: string; club_id: string } } | { error: string }> {
+): Promise<
+  | {
+      match: {
+        id: string;
+        club_id: string;
+        side_a_player1: string | null;
+        side_a_player2: string | null;
+        side_b_player1: string | null;
+        side_b_player2: string | null;
+      };
+    }
+  | { error: string }
+> {
   const t = await getTranslations("actions");
   const { data: match, error } = await sb
     .from("club_matches")
-    .select("id, club_id")
+    .select("id, club_id, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
     .eq("id", matchId)
     .single();
   if (error || !match) return { error: t("club.matchNotFound") };
@@ -37,6 +50,42 @@ async function loadClubMatchForManage(
     return { error: t("club.noPermission") };
   }
   return { match };
+}
+
+/**
+ * Validate + clean a manual/edited match roster — shared by createClubManualMatchAction
+ * (new pending match) and setClubMatchPlayersAction (edit a pending match). Partial
+ * rosters allowed: each side ≤ ppt, ≥1 player overall, all distinct, all members of the
+ * club. Returns the cleaned per-side id arrays (empty slots simply absent) or a
+ * translated error. The caller maps cleanA[0]/cleanA[1]/… onto the side_*_player* columns.
+ */
+async function resolveMatchSides(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  clubId: string,
+  sideA: string[],
+  sideB: string[],
+  ppt: number,
+  t: Awaited<ReturnType<typeof getTranslations>>,
+): Promise<{ cleanA: string[]; cleanB: string[] } | { error: string }> {
+  const cleanA = sideA.filter(Boolean);
+  const cleanB = sideB.filter(Boolean);
+  if (cleanA.length > ppt || cleanB.length > ppt) {
+    return { error: ppt === 2 ? t("club.mustSelectTwoPerSide") : t("club.mustSelectOnePerSide") };
+  }
+  if (cleanA.length + cleanB.length < 1) return { error: t("club.mustSelectAtLeastOnePlayer") };
+
+  const all = [...cleanA, ...cleanB];
+  if (new Set(all).size !== all.length) return { error: t("club.duplicatePlayer") };
+
+  // All chosen players must belong to this club.
+  const { data: members } = await sb
+    .from("club_players")
+    .select("id")
+    .eq("club_id", clubId)
+    .in("id", all);
+  if (!members || members.length !== all.length) return { error: t("club.playerNotInClub") };
+
+  return { cleanA, cleanB };
 }
 
 /**
@@ -216,7 +265,22 @@ export async function buildNextClubMatchAction(
 
   // Build the proposed match.
   const proposed = buildNextMatch(pool, settings, stayingSide, lockedPairs);
-  if (!proposed) return { error: t("club.notEnoughPlayersForMatch") };
+  if (!proposed) {
+    // Detailed reason instead of a flat "not enough players":
+    //  - available < needed  → genuinely short of bodies (report the counts so the
+    //    organizer sees why: how many checked in, how many already playing/queued).
+    //  - available ≥ needed but null → enough bodies but no valid lineup (skill-gap
+    //    strict filtered the pool out, or a locked player's partner isn't available).
+    // winner_stays only draws the opponents, so it needs ppt (not 2*ppt) more players.
+    const needed = stayingSide ? settings.players_per_team : settings.players_per_team * 2;
+    const available = pool.length;
+    const checkedIn = allPlayers.filter((p) => p.checked_in_at != null).length;
+    const playing = activePlayers.size;
+    if (available < needed) {
+      return { error: t("club.notEnoughPlayersDetail", { needed, available, checkedIn, playing }) };
+    }
+    return { error: t("club.cannotFormMatchSkillLock") };
+  }
 
   // Compute next queue_position for this club's pending matches.
   const { data: maxRow } = await sb
@@ -268,6 +332,17 @@ export async function startClubMatchAction(
   if ("error" in guard) return { error: guard.error };
   const { match } = guard;
 
+  const t = await getTranslations("actions");
+  // Roster-completeness gate: a partial-roster match (reserved with empty slots) may
+  // sit in the pending queue but must be fully staffed before it can start.
+  const { data: clubRow } = await sb
+    .from("clubs")
+    .select("queue_settings")
+    .eq("id", match.club_id)
+    .single();
+  const ppt = parseQueueSettings(clubRow?.queue_settings ?? {}).players_per_team;
+  if (!isClubMatchFull(match, ppt)) return { error: t("club.matchNotFullToStart") };
+
   const { error: updateError } = await sb
     .from("club_matches")
     .update({ status: "in_progress", started_at: new Date().toISOString() })
@@ -275,7 +350,6 @@ export async function startClubMatchAction(
     .eq("status", "pending");
 
   if (updateError) {
-    const t = await getTranslations("actions");
     if (updateError.code === "23505") return { error: t("club.courtHasActiveMatch") };
     // trg_club_match_player_guard: a player on this match is already in another
     // in_progress match of the club (closes the concurrent double-start race).
@@ -587,22 +661,12 @@ export async function createClubManualMatchAction(input: {
   const courts = (clubRow.courts ?? []) as string[];
   if (courts.length > 0 && !courts.includes(courtName)) return { error: t("club.courtNotInClub") };
 
-  const cleanA = sideA.filter(Boolean);
-  const cleanB = sideB.filter(Boolean);
-  if (cleanA.length !== ppt || cleanB.length !== ppt) {
-    return { error: ppt === 2 ? t("club.mustSelectTwoPerSide") : t("club.mustSelectOnePerSide") };
-  }
-
-  const all = [...cleanA, ...cleanB];
-  if (new Set(all).size !== all.length) return { error: t("club.duplicatePlayer") };
-
-  // All chosen players must belong to this club.
-  const { data: members } = await sb
-    .from("club_players")
-    .select("id")
-    .eq("club_id", clubId)
-    .in("id", all);
-  if (!members || members.length !== all.length) return { error: t("club.playerNotInClub") };
+  // Partial roster allowed: reserve a match/court with as few as 1 player and fill the
+  // rest later (setClubMatchPlayersAction). Starting is separately gated on a full
+  // roster (isClubMatchFull).
+  const resolved = await resolveMatchSides(sb, clubId, sideA, sideB, ppt, t);
+  if ("error" in resolved) return { error: resolved.error };
+  const { cleanA, cleanB } = resolved;
 
   // queue_position = tail of pending.
   const { data: maxRow } = await sb
@@ -620,10 +684,10 @@ export async function createClubManualMatchAction(input: {
     .insert({
       club_id: clubId,
       court: courtName,
-      side_a_player1: cleanA[0],
-      side_a_player2: ppt === 2 ? cleanA[1] : null,
-      side_b_player1: cleanB[0],
-      side_b_player2: ppt === 2 ? cleanB[1] : null,
+      side_a_player1: cleanA[0] ?? null,
+      side_a_player2: cleanA[1] ?? null,
+      side_b_player1: cleanB[0] ?? null,
+      side_b_player2: cleanB[1] ?? null,
       status: "pending",
       queue_position: nextQueuePosition,
     })
@@ -633,6 +697,61 @@ export async function createClubManualMatchAction(input: {
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true, match: newMatch as ClubMatch };
+}
+
+/**
+ * Owner / co-admin edits the players of a PENDING match (fill in a partial roster,
+ * swap players, or clear a slot). Only pending matches are editable — once started,
+ * the roster is frozen. sideA/sideB are 0..ppt ids each; ≥1 player overall. Empty
+ * slots become null (the match stays in the queue but can't START until full).
+ */
+export async function setClubMatchPlayersAction(input: {
+  matchId: string;
+  sideA: string[];
+  sideB: string[];
+}): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+  const guard = await loadClubMatchForManage(sb, input.matchId, session.profileId);
+  if ("error" in guard) return { error: guard.error };
+  const { match } = guard;
+
+  const t = await getTranslations("actions");
+
+  // Load players_per_team to bound each side's size.
+  const { data: clubRow } = await sb
+    .from("clubs")
+    .select("queue_settings")
+    .eq("id", match.club_id)
+    .single();
+  const ppt = parseQueueSettings(clubRow?.queue_settings ?? {}).players_per_team;
+
+  const resolved = await resolveMatchSides(sb, match.club_id, input.sideA, input.sideB, ppt, t);
+  if ("error" in resolved) return { error: resolved.error };
+  const { cleanA, cleanB } = resolved;
+
+  // Only a pending match's roster is editable. The status filter no-ops (0 rows) for
+  // in_progress/completed/cancelled → reported as matchCannotEditPlayers (also covers
+  // the race where the match was started between load and update).
+  const { data: updated, error } = await sb
+    .from("club_matches")
+    .update({
+      side_a_player1: cleanA[0] ?? null,
+      side_a_player2: cleanA[1] ?? null,
+      side_b_player1: cleanB[0] ?? null,
+      side_b_player2: cleanB[1] ?? null,
+    })
+    .eq("id", input.matchId)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
+  if (error) return { error: error.message };
+  if (!updated) return { error: t("club.matchCannotEditPlayers") };
+
+  revalidatePath(`/clubs/${match.club_id}`);
+  return { ok: true };
 }
 
 /**

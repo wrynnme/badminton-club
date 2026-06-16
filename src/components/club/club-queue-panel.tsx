@@ -68,10 +68,12 @@ import {
   setClubMatchShuttlesAction,
   setClubMatchCourtAction,
   createClubManualMatchAction,
+  setClubMatchPlayersAction,
   reorderClubQueueAction,
   deleteClubMatchAction,
 } from "@/lib/actions/club-matches";
 import type { ClubMatch } from "@/lib/types";
+import { isClubMatchFull } from "@/lib/club/queue";
 import type { ClubQueueSettings } from "@/lib/club/queue-settings";
 import { firstFreeCourt, occupiedCourtMap } from "@/lib/club/courts";
 import { cn } from "@/lib/utils";
@@ -99,11 +101,11 @@ function formatElapsed(startedAt: string): string {
 }
 
 function resolveSide(
-  player1: string,
+  player1: string | null,
   player2: string | null,
   nameMap: Map<string, string>,
 ): string {
-  const n1 = nameMap.get(player1) ?? "—";
+  const n1 = player1 ? (nameMap.get(player1) ?? "—") : "—";
   if (!player2) return n1;
   const n2 = nameMap.get(player2) ?? "—";
   return `${n1} / ${n2}`;
@@ -338,6 +340,8 @@ function CourtSelect({
 function PendingRow({
   match,
   nameMap,
+  players,
+  playersPerTeam,
   courts,
   canManage,
   onRefresh,
@@ -346,6 +350,8 @@ function PendingRow({
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
+  players: { id: string; display_name: string }[];
+  playersPerTeam: number;
   courts: string[];
   canManage: boolean;
   onRefresh: () => void;
@@ -358,6 +364,7 @@ function PendingRow({
 
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
   const sideB = resolveSide(match.side_b_player1, match.side_b_player2, nameMap);
+  const isMatchFull = isClubMatchFull(match, playersPerTeam);
 
   function handleStart() {
     startTransition(async () => {
@@ -417,6 +424,13 @@ function PendingRow({
       </span>
       {canManage && (
         <div className="flex items-center gap-1 shrink-0">
+          <EditPlayersDialog
+            match={match}
+            players={players}
+            nameMap={nameMap}
+            ppt={playersPerTeam}
+            onRefresh={onRefresh}
+          />
           <Tooltip>
             <TooltipTrigger
               render={
@@ -424,15 +438,17 @@ function PendingRow({
                   size="sm"
                   variant="default"
                   className="h-7 px-2"
-                  disabled={startBusy}
+                  disabled={startBusy || !isMatchFull}
                   onClick={handleStart}
-                  aria-label={t("startTooltip", { court: match.court })}
+                  aria-label={isMatchFull ? t("startTooltip", { court: match.court }) : t("startNeedsFullTooltip")}
                 >
                   <Play className="h-3.5 w-3.5" />
                 </Button>
               }
             />
-            <TooltipContent>{t("startTooltip", { court: match.court })}</TooltipContent>
+            <TooltipContent>
+              {isMatchFull ? t("startTooltip", { court: match.court }) : t("startNeedsFullTooltip")}
+            </TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -462,12 +478,16 @@ function PendingRow({
 function SortablePendingRow({
   match,
   nameMap,
+  players,
+  playersPerTeam,
   courts,
   onRefresh,
   rowNumber,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
+  players: { id: string; display_name: string }[];
+  playersPerTeam: number;
   courts: string[];
   onRefresh: () => void;
   rowNumber: number;
@@ -486,6 +506,8 @@ function SortablePendingRow({
       <PendingRow
         match={match}
         nameMap={nameMap}
+        players={players}
+        playersPerTeam={playersPerTeam}
         courts={courts}
         canManage
         onRefresh={onRefresh}
@@ -986,12 +1008,14 @@ function ManualMatchDialog({
   }
 
   function handleSubmit() {
-    const sideA = ppt === 2 ? [sideA1, sideA2] : [sideA1];
-    const sideB = ppt === 2 ? [sideB1, sideB2] : [sideB1];
+    const sideA = (ppt === 2 ? [sideA1, sideA2] : [sideA1]).filter(Boolean);
+    const sideB = (ppt === 2 ? [sideB1, sideB2] : [sideB1]).filter(Boolean);
     const all = [...sideA, ...sideB];
 
-    if (all.some((id) => !id)) {
-      toast.error(t("toastManualSelectAll"));
+    // Partial roster allowed: reserve a court with as few as 1 player, fill the rest
+    // later. Start stays gated on a full roster (server + the row's disabled "เริ่ม").
+    if (all.length < 1) {
+      toast.error(t("toastManualSelectAtLeastOne"));
       return;
     }
     if (new Set(all).size !== all.length) {
@@ -1030,6 +1054,7 @@ function ManualMatchDialog({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>{t("manualDialogTitle")}</DialogTitle>
+          <p className="text-xs text-muted-foreground">{t("manualPartialHint")}</p>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
@@ -1155,6 +1180,149 @@ function ManualMatchDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Edit-players dialog (pending match) ──────────────────────────────────────
+// Fill in a partial roster, swap a player, or clear a slot on a PENDING match.
+// Empty slots stay empty (the match stays queued but cannot START until full —
+// isClubMatchFull). Court is changed separately via the row's CourtSelect, so this
+// dialog is players-only. Controlled trigger (not DialogTrigger) so it can re-seed
+// from the live match each open.
+
+function EditPlayersDialog({
+  match,
+  players,
+  nameMap,
+  ppt,
+  onRefresh,
+}: {
+  match: ClubMatch;
+  players: { id: string; display_name: string }[];
+  nameMap: Map<string, string>;
+  ppt: number;
+  onRefresh: () => void;
+}) {
+  const t = useTranslations("club.queuePanel");
+  const [open, setOpen] = useState(false);
+  const [busy, startTransition] = useTransition();
+
+  const [sideA1, setSideA1] = useState<string>(match.side_a_player1 ?? UNSET);
+  const [sideA2, setSideA2] = useState<string>(match.side_a_player2 ?? UNSET);
+  const [sideB1, setSideB1] = useState<string>(match.side_b_player1 ?? UNSET);
+  const [sideB2, setSideB2] = useState<string>(match.side_b_player2 ?? UNSET);
+
+  // Re-seed from the match each open. The row stays mounted across 30s refreshes, so
+  // a half-finished edit (or a server-side change) must not bleed into the next open.
+  function seed() {
+    setSideA1(match.side_a_player1 ?? UNSET);
+    setSideA2(match.side_a_player2 ?? UNSET);
+    setSideB1(match.side_b_player1 ?? UNSET);
+    setSideB2(match.side_b_player2 ?? UNSET);
+  }
+
+  function handleSubmit() {
+    const sideA = (ppt === 2 ? [sideA1, sideA2] : [sideA1]).filter(Boolean);
+    const sideB = (ppt === 2 ? [sideB1, sideB2] : [sideB1]).filter(Boolean);
+    const all = [...sideA, ...sideB];
+    if (all.length < 1) {
+      toast.error(t("toastManualSelectAtLeastOne"));
+      return;
+    }
+    if (new Set(all).size !== all.length) {
+      toast.error(t("toastManualDuplicate"));
+      return;
+    }
+    startTransition(async () => {
+      const res = await setClubMatchPlayersAction({ matchId: match.id, sideA, sideB });
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        toast.success(t("toastPlayersSaved"));
+        setOpen(false);
+        onRefresh();
+      }
+    });
+  }
+
+  // One side slot: PlayerSelect + a clear button (shown only when the slot is set) so
+  // a partial roster stays reachable by editing (not just by delete+recreate).
+  function slot(id: string, label: string, value: string, onChange: (v: string) => void) {
+    return (
+      <div className="flex items-end gap-1">
+        <div className="min-w-0 flex-1">
+          <PlayerSelect id={id} label={label} value={value} onChange={onChange} players={players} nameMap={nameMap} />
+        </div>
+        {value && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0 text-muted-foreground"
+                  onClick={() => onChange(UNSET)}
+                  aria-label={t("editClearSlot")}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              }
+            />
+            <TooltipContent>{t("editClearSlot")}</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2"
+              onClick={() => { seed(); setOpen(true); }}
+              aria-label={t("editPlayersTooltip")}
+            >
+              <PenLine className="h-3.5 w-3.5" />
+            </Button>
+          }
+        />
+        <TooltipContent>{t("editPlayersTooltip")}</TooltipContent>
+      </Tooltip>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("editDialogTitle")}</DialogTitle>
+            <p className="text-xs text-muted-foreground">{t("editDialogHint")}</p>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{t("manualSideA")}</p>
+              {slot("ep-sideA1", ppt === 2 ? t("manualPlayer1") : t("manualPlayer"), sideA1, setSideA1)}
+              {ppt === 2 && slot("ep-sideA2", t("manualPlayer2"), sideA2, setSideA2)}
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{t("manualSideB")}</p>
+              {slot("ep-sideB1", ppt === 2 ? t("manualPlayer1") : t("manualPlayer"), sideB1, setSideB1)}
+              {ppt === 2 && slot("ep-sideB2", t("manualPlayer2"), sideB2, setSideB2)}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" disabled={busy}>{t("manualDialogCancel")}</Button>} />
+            <Button onClick={handleSubmit} disabled={busy}>
+              {busy ? t("editDialogSaving") : t("editDialogSubmit")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -1333,6 +1501,8 @@ export function ClubQueuePanel({
                         key={m.id}
                         match={m}
                         nameMap={nameMap.current}
+                        players={players}
+                        playersPerTeam={settings.players_per_team}
                         courts={courts}
                         onRefresh={onRefresh}
                         rowNumber={i + 1}
@@ -1347,6 +1517,8 @@ export function ClubQueuePanel({
                   key={m.id}
                   match={m}
                   nameMap={nameMap.current}
+                  players={players}
+                  playersPerTeam={settings.players_per_team}
                   courts={courts}
                   canManage={false}
                   onRefresh={onRefresh}
