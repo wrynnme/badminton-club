@@ -147,9 +147,19 @@ export type Tournament = {
   pair_division_thresholds: number[];
   share_token: string | null;
   courts: string[];
+  prize_template: PrizeTemplateEntry[];
   settings: Record<string, unknown>;
   notes: string | null;
   created_at: string;
+};
+
+// One configurable award tier shown on the prize-summary page. `rank` is the
+// placement (1 = champion); `cash`/`trophy` are display-only ceremony metadata.
+export type PrizeTemplateEntry = {
+  rank: number;
+  label: string;
+  cash: number;
+  trophy: boolean;
 };
 
 export type Team = {

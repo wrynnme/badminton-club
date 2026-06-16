@@ -90,6 +90,7 @@
     "saveFailed": "Failed to save settings",
     "saveStatusFailed": "Failed to save status",
     "saveCourtsFailed": "Failed to save courts",
+    "savePrizeTemplateFailed": "Failed to save prize list",
     "saveSettingsFailed": "Failed to save settings",
     "thresholdChangeLocked": "Cannot change division thresholds after matches have started — reset all matches to pending first",
     "teamNotFound": "Team not found",

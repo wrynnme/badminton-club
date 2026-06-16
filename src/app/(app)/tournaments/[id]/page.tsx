@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
+import Link from "next/link";
 import { format } from "date-fns";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
-import { Trophy, MapPin, CalendarDays, Users, Swords, GitBranch } from "lucide-react";
+import { Trophy, MapPin, CalendarDays, Users, Swords, GitBranch, Medal } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Badge } from "@/components/ui/badge";
@@ -159,7 +160,17 @@ export default async function TournamentDetailPage({
             <Trophy className="h-6 w-6 shrink-0" />
             <h1 className="text-2xl font-bold">{t.name}</h1>
           </div>
-          <Badge variant={TOURNAMENT_STATUS_BADGE[t.status]}>{tl(`tournamentStatus.${t.status}`)}</Badge>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <Badge variant={TOURNAMENT_STATUS_BADGE[t.status]}>{tl(`tournamentStatus.${t.status}`)}</Badge>
+            <Link
+              href={`/tournaments/${t.id}/prizes`}
+              className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-md border border-border hover:bg-accent transition-colors"
+              title={tl("prizes.tooltipLink")}
+            >
+              <Medal className="h-3.5 w-3.5" />
+              {tl("prizes.linkLabel")}
+            </Link>
+          </div>
         </div>
 
         {/* Info card */}
