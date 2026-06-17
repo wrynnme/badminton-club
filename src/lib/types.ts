@@ -4,7 +4,14 @@ export type Profile = {
   display_name: string;
   picture_url: string | null;
   is_guest: boolean;
+  is_site_admin: boolean; // single site owner who edits global settings (/admin)
   created_at: string;
+};
+
+// Global, site-wide settings (singleton row, id=1). Edited only by a site admin.
+export type AppSettings = {
+  qr_logo_enabled: boolean;
+  qr_logo_url: string | null; // null = bundled default (/thaiqr-logo.png)
 };
 
 export type Club = {

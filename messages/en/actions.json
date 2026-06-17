@@ -222,5 +222,9 @@
     "resolve_too_many_games": "Too many games — maximum is {max}",
     "resolve_need_full_games": "All {max} games must be played",
     "resolve_need_clinch": "A side must win {winAt} games to clinch"
+  },
+  "admin": {
+    "notSiteAdmin": "Site owner only",
+    "invalidImage": "Invalid image file"
   }
 }

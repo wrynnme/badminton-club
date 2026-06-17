@@ -1,0 +1,16 @@
+{
+  "title": "Admin",
+  "qrLogoTitle": "Centre QR logo (site-wide)",
+  "qrLogoDesc": "Applied to every club's number-generated PromptPay QR",
+  "enabledLabel": "Show centre QR logo",
+  "on": "On",
+  "off": "Off",
+  "saved": "Saved",
+  "usingDefault": "Using default logo (Thai QR Payment)",
+  "usingCustom": "Using uploaded logo",
+  "uploadBtn": "Upload logo",
+  "uploading": "Uploading…",
+  "useDefault": "Use default",
+  "uploadInvalid": "File must be a PNG/JPG/WebP image under 1MB",
+  "disabledHint": "Off — QR will have no centre logo"
+}

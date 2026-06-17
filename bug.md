@@ -10,6 +10,12 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-18 — Centre QR logo: เปิด/ปิด + เปลี่ยนรูป (global, เจ้าของเว็บ) — ✅ PASS (develop)
+
+ทำโลโก้กลาง QR เป็นค่า global แก้ได้เฉพาะ site owner. **DB:** migration `20260618000100` (`profiles.is_site_admin` + ตาราง singleton `app_settings{qr_logo_enabled,qr_logo_url}` id=1) + `20260618000200` (bucket `app-assets`) — **applied prod ผ่าน MCP**. ใหม่: `isSiteAdmin()`, `getAppSettings()`/`resolveQrLogoUrl()`, actions `setQrLogoEnabled/uploadQrLogo/removeQrLogo` (gate isSiteAdmin), หน้า `/admin` + `AdminQrLogoManager`, ลิงก์ใน `/settings` (เฉพาะ owner). `GeneratedQr` รับ `logoUrl` (null=ปิด); club page → `resolveQrLogoUrl`. namespace `admin` (14 keys th/en) + `actions.admin.*`. **Gate:** tsc 0 · vitest 654/654 · build OK · parity admin/actions/club ครบ. **Live smoke (prod, net-zero):** site-admin เห็น /admin · non-admin → 404 ✓ · กดปิด → DB enabled=false + club QR ไม่มีโลโก้ (0 img) ✓ · เปิด+อัปโหลดรูป → DB url=app-assets + storage obj 1 + club QR ใช้รูป custom ✓ · console 0 error · teardown 0 row + คืน app_settings เดิม (true,null) + ลบ storage. **selector bug ในเทสต์เอง** (ไม่ใช่บั๊กแอป): `hasText:'ปิด'` แมตช์ "เปิด" ด้วย (substring) → ใช้ exact match แทน. **ยังไม่ commit.**
+
+  - **ship-check รอบ 3 (2026-06-18):** code-review ทั้ง diff → 0 P0/P1; เจอ **1 P2 แก้แล้ว** — ลิงก์ /admin ในหน้า /settings nest `Tooltip→Button(render=Link)` ทำให้ hydration mismatch + base-ui warning "button rendered as non-`<button>`" (console 2 errors) → เปลี่ยนเป็น `<Link className={buttonVariants(...)}>` ตรง ๆ. Re-smoke: ลิงก์ render เป็น `<a href="/admin">` คลิกไป /admin ได้ · **console 0 errors** · teardown 0 row. tsc 0 · vitest 654/654 · build OK.
+
 ### 2026-06-18 — Club payment ship-check รอบ 2 (เต็มฟีเจอร์ + 1b + zoom) — ✅ PASS (develop)
 
 code-review (high) ทั้ง diff master..develop (19 ไฟล์) → **ไม่มี P0/P1**, เจอ P2 3 จุด **แก้ครบ**:

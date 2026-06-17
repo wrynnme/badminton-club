@@ -222,5 +222,9 @@
     "resolve_too_many_games": "จำนวนเกมเกินกำหนด (สูงสุด {max} เกม)",
     "resolve_need_full_games": "ต้องเล่นครบ {max} เกม",
     "resolve_need_clinch": "ต้องชนะให้ครบ {winAt} เกมก่อน"
+  },
+  "admin": {
+    "notSiteAdmin": "เฉพาะเจ้าของเว็บเท่านั้น",
+    "invalidImage": "ไฟล์รูปไม่ถูกต้อง"
   }
 }

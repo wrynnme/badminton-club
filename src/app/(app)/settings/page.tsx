@@ -1,7 +1,10 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import { ShieldCheck } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { Button } from "@/components/ui/button";
+import { isSiteAdmin } from "@/lib/auth/site-admin";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -12,6 +15,8 @@ export default async function SettingsPage() {
   if (!session) redirect("/?auth_error=login_required&redirectTo=/settings");
 
   const t = await getTranslations("settings");
+  const siteAdmin = await isSiteAdmin();
+  const tAdmin = await getTranslations("admin");
 
   return (
     <div className="mx-auto max-w-lg space-y-6 px-4 py-8">
@@ -42,6 +47,20 @@ export default async function SettingsPage() {
           </form>
         </CardContent>
       </Card>
+
+      {siteAdmin && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{tAdmin("title")}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Link href="/admin" className={`${buttonVariants({ variant: "outline" })} gap-2`} title={tAdmin("qrLogoDesc")}>
+              <ShieldCheck className="h-4 w-4" />
+              {tAdmin("qrLogoTitle")}
+            </Link>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

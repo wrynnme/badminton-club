@@ -53,15 +53,41 @@ const QRCode = dynamic(() => import("react-qr-code"), { ssr: false });
 
 const baht = (n: number) => `฿${n.toLocaleString()}`;
 
+/**
+ * PromptPay QR. When `logoUrl` is set, overlays that logo in the centre (error-
+ * correction level "H" / 30% keeps the ~26%-width logo scannable). `logoUrl` comes
+ * from the site-wide setting (/admin) → null means the site owner turned it off.
+ */
+function GeneratedQr({ value, size, logoUrl }: { value: string; size: number; logoUrl: string | null }) {
+  const logo = Math.round(size * 0.26);
+  return (
+    <div className="relative" style={{ width: size, height: size }}>
+      <QRCode value={value} size={size} level="H" />
+      {logoUrl && (
+        // white backing punches a clean hole in the QR behind the (transparent) logo
+        <span
+          className="absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 place-items-center rounded-md bg-white"
+          style={{ width: logo, height: logo, padding: Math.round(logo * 0.1) }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoUrl} alt="" className="h-full w-full object-contain" />
+        </span>
+      )}
+    </div>
+  );
+}
+
 type Props = {
   clubId: string;
   club: Club;
   players: ClubPlayer[];
   matches: ClubMatch[];
   expenses: ClubExpense[];
+  /** Site-wide centre-of-QR logo URL (/admin setting); null = logo turned off. */
+  qrLogoUrl: string | null;
 };
 
-export function ClubPaymentCollector({ clubId, club, players, matches, expenses }: Props) {
+export function ClubPaymentCollector({ clubId, club, players, matches, expenses, qrLogoUrl }: Props) {
   const t = useTranslations("club.payment");
 
   // Per-player rows from the SAME builder the breakdown table uses → totals match.
@@ -143,6 +169,7 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses 
                   paid={paidIds.has(row.playerId)}
                   promptpayId={ppNumber ? club.promptpay_id! : null}
                   qrImage={ppNumber ? null : qrImage}
+                  qrLogoUrl={qrLogoUrl}
                   promptpayName={club.promptpay_name}
                   onToggle={(nowPaid) =>
                     setPaidIds((prev) => {
@@ -347,6 +374,7 @@ function PlayerReceipt({
   paid,
   promptpayId,
   qrImage,
+  qrLogoUrl,
   promptpayName,
   onToggle,
 }: {
@@ -356,6 +384,7 @@ function PlayerReceipt({
   paid: boolean;
   promptpayId: string | null;
   qrImage: string | null;
+  qrLogoUrl: string | null;
   promptpayName: string | null;
   onToggle: (nowPaid: boolean) => void;
 }) {
@@ -425,7 +454,7 @@ function PlayerReceipt({
                 aria-label={t("tapToZoom")}
                 className="relative shrink-0 cursor-zoom-in rounded-lg border bg-white p-2"
               >
-                <QRCode value={payload} size={96} />
+                <GeneratedQr value={payload} size={96} logoUrl={qrLogoUrl} />
                 <span className="absolute bottom-1 right-1 rounded-md bg-black/55 p-0.5 text-white">
                   <Maximize2 className="h-3 w-3" />
                 </span>
@@ -489,7 +518,7 @@ function PlayerReceipt({
                 <div className="flex flex-col items-center gap-3 py-2">
                   {payload ? (
                     <div className="rounded-lg bg-white p-3">
-                      <QRCode value={payload} size={240} />
+                      <GeneratedQr value={payload} size={240} logoUrl={qrLogoUrl} />
                     </div>
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element

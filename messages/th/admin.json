@@ -1,0 +1,16 @@
+{
+  "title": "ผู้ดูแลระบบ",
+  "qrLogoTitle": "โลโก้กลาง QR (ทั้งระบบ)",
+  "qrLogoDesc": "ใช้กับ QR PromptPay ที่สร้างจากเบอร์ของทุกก๊วน",
+  "enabledLabel": "แสดงโลโก้กลาง QR",
+  "on": "เปิด",
+  "off": "ปิด",
+  "saved": "บันทึกแล้ว",
+  "usingDefault": "ใช้โลโก้เริ่มต้น (Thai QR Payment)",
+  "usingCustom": "ใช้โลโก้ที่อัปโหลด",
+  "uploadBtn": "อัปโหลดโลโก้",
+  "uploading": "กำลังอัปโหลด…",
+  "useDefault": "ใช้โลโก้เริ่มต้น",
+  "uploadInvalid": "ไฟล์ต้องเป็นรูป PNG/JPG/WebP ขนาดไม่เกิน 1MB",
+  "disabledHint": "ปิดอยู่ — QR จะไม่มีโลโก้ตรงกลาง"
+}
