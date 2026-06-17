@@ -83,7 +83,9 @@
     "bulkSetReserveSuccess": "เปลี่ยนเป็นสำรองแล้ว {count} คน",
     "bulkSessionSuccess": "บันทึกข้อมูลแล้ว {count} คน",
     "bulkDeleteSuccess": "ลบแล้ว {deleted} คน",
-    "bulkDeletePartialFail": "ลบแล้ว {deleted} คน · ล้มเหลว {failed} คน"
+    "bulkDeletePartialFail": "ลบแล้ว {deleted} คน · ล้มเหลว {failed} คน",
+    "invalidPromptPay": "เบอร์พร้อมเพย์/เลขบัตรประชาชนไม่ถูกต้อง",
+    "invalidQrImage": "ไฟล์รูป QR ไม่ถูกต้อง"
   },
   "tournament": {
     "requireLineLogin": "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้างทัวร์นาเมนต์",

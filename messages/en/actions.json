@@ -83,7 +83,9 @@
     "bulkSetReserveSuccess": "Moved {count} player(s) to reserve",
     "bulkSessionSuccess": "Updated {count} player(s)",
     "bulkDeleteSuccess": "Deleted {count} player(s)",
-    "bulkDeletePartialFail": "Deleted {deleted} · failed {failed}"
+    "bulkDeletePartialFail": "Deleted {deleted} · failed {failed}",
+    "invalidPromptPay": "Invalid PromptPay number / national ID",
+    "invalidQrImage": "Invalid QR image file"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",

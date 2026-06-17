@@ -21,6 +21,7 @@ import { DeleteClubButton } from "@/components/club/delete-club-button";
 import { ClubVisibilityControls } from "@/components/club/club-visibility-controls";
 import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
+import { ClubPaymentCollector } from "@/components/club/club-payment-collector";
 import { HourlyHeadcount } from "@/components/club/hourly-headcount";
 import { ClubQueueSettings } from "@/components/club/club-queue-settings";
 import { ClubCourtManager } from "@/components/club/club-court-manager";
@@ -324,6 +325,16 @@ export default async function ClubDetailPage({
                 !canManage && (
                   <p className="text-sm text-muted-foreground">{t("page.expenseEmpty")}</p>
                 )
+              )}
+
+              {canManage && (
+                <ClubPaymentCollector
+                  clubId={club.id}
+                  club={club}
+                  players={players}
+                  matches={clubMatches}
+                  expenses={expenses}
+                />
               )}
             </div>
           }
