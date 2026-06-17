@@ -60,7 +60,7 @@ function cmpRestLongest(a: QueuePlayer, b: QueuePlayer): number {
  * level_match is handled separately (anchor + nearest-level), so this covers
  * fifo / rest_longest / smart (smart v1 = rest_longest; level only affects the split).
  */
-function orderPool(pool: QueuePlayer[], settings: ClubQueueSettings): QueuePlayer[] {
+export function orderPool(pool: QueuePlayer[], settings: ClubQueueSettings): QueuePlayer[] {
   const copy = [...pool];
   if (settings.queue_mode === "fifo") {
     copy.sort(cmpFifo);
@@ -349,6 +349,46 @@ export function buildNextMatch(
 
   const chosen = orderPool(pool, settings).slice(0, need);
   return splitSides(chosen, settings);
+}
+
+/** The 4 side columns of a match (null = empty slot). */
+export type PartialSlots = {
+  a1: string | null;
+  a2: string | null;
+  b1: string | null;
+  b2: string | null;
+};
+
+/**
+ * Fallback when the pool is too small for a FULL match: place the available players (in
+ * queue order) into the slots as a PARTIAL match — the organizer reserves the court now,
+ * fills the remaining slot(s) later (inline edit), and can't START until the roster is full
+ * (isClubMatchFull). Fill sideA then sideB in order; winner_stays keeps the staying side on
+ * sideA and draws opponents into sideB. Empty slots are null. Returns null only when there's
+ * nothing to place (empty pool).
+ */
+export function buildPartialMatch(
+  pool: QueuePlayer[],
+  settings: ClubQueueSettings,
+  stayingSide?: MatchSide,
+): PartialSlots | null {
+  const ppt = settings.players_per_team;
+  const ordered = orderPool(pool, settings);
+  if (ordered.length === 0) return null;
+  if (settings.rotation_mode === "winner_stays" && stayingSide) {
+    return {
+      a1: stayingSide.player1,
+      a2: stayingSide.player2,
+      b1: ordered[0]?.id ?? null,
+      b2: ppt === 2 ? (ordered[1]?.id ?? null) : null,
+    };
+  }
+  return {
+    a1: ordered[0]?.id ?? null,
+    a2: ppt === 2 ? (ordered[1]?.id ?? null) : null,
+    b1: (ppt === 2 ? ordered[2]?.id : ordered[1]?.id) ?? null,
+    b2: ppt === 2 ? (ordered[3]?.id ?? null) : null,
+  };
 }
 
 /**

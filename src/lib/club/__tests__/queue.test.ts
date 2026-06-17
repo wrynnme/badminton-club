@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildNextMatch,
+  buildPartialMatch,
   deriveWinnerSide,
   isClubMatchFull,
   type QueuePlayer,
@@ -638,5 +639,42 @@ describe("isClubMatchFull", () => {
       expect(isClubMatchFull(m(null, null, "b", null), 1)).toBe(false);
       expect(isClubMatchFull(m(null, null, null, null), 1)).toBe(false); // empty
     });
+  });
+});
+
+describe("buildPartialMatch", () => {
+  const fifo = (o: Partial<ClubQueueSettings> = {}) =>
+    settings({ queue_mode: "fifo", players_per_team: 2, ...o });
+  const p = (id: string, pos: number) => player(id, { position: pos });
+
+  it("doubles: 3 available → fills a1,a2,b1 in queue order, b2 empty", () => {
+    const r = buildPartialMatch([p("c", 3), p("a", 1), p("b", 2)], fifo());
+    expect(r).toEqual({ a1: "a", a2: "b", b1: "c", b2: null });
+  });
+  it("doubles: 2 available → a1,a2 only", () => {
+    expect(buildPartialMatch([p("a", 1), p("b", 2)], fifo())).toEqual({
+      a1: "a", a2: "b", b1: null, b2: null,
+    });
+  });
+  it("doubles: 1 available → a1 only", () => {
+    expect(buildPartialMatch([p("a", 1)], fifo())).toEqual({
+      a1: "a", a2: null, b1: null, b2: null,
+    });
+  });
+  it("singles: 1 available → a1 only (b1 empty)", () => {
+    expect(buildPartialMatch([p("a", 1)], fifo({ players_per_team: 1 }))).toEqual({
+      a1: "a", a2: null, b1: null, b2: null,
+    });
+  });
+  it("empty pool → null", () => {
+    expect(buildPartialMatch([], fifo())).toBeNull();
+  });
+  it("winner_stays: staying side keeps A, opponents fill B (partial)", () => {
+    const r = buildPartialMatch(
+      [p("x", 1)],
+      fifo({ rotation_mode: "winner_stays" }),
+      { player1: "w1", player2: "w2" },
+    );
+    expect(r).toEqual({ a1: "w1", a2: "w2", b1: "x", b2: null });
   });
 });
