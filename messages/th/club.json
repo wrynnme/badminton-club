@@ -221,6 +221,7 @@
     "noResult": "จบแบบไม่ระบุผล",
     "noResultTooltip": "บันทึกว่าจบโดยไม่มีผู้ชนะ (เซ็ตที่กรอกจะถูกบันทึก)",
     "scoreAriaLabel": "คะแนน {side}",
+    "durationTooltip": "เวลาที่ใช้เล่น",
     "toastSetIncompleteError": "กรอกคะแนนเซ็ตให้ครบทั้งสองฝั่ง",
     "toastScoreRangeError": "คะแนน 0–99",
     "shuttleDecrTooltip": "ลดลูกที่ใช้ในแมตช์นี้",

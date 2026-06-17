@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle } from "lucide-react";
+import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -98,6 +98,21 @@ function formatElapsed(startedAt: string): string {
   const minutes = Math.floor(totalSec / 60);
   const seconds = totalSec % 60;
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+// Fixed play duration (started_at → ended_at) for a finished match. mm:ss, or
+// h:mm:ss once it passes an hour. Null if either timestamp is missing.
+function formatDuration(startedAt: string | null, endedAt: string | null): string | null {
+  if (!startedAt || !endedAt) return null;
+  const ms = new Date(endedAt).getTime() - new Date(startedAt).getTime();
+  if (ms < 0) return null;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
 }
 
 function resolveSide(
@@ -880,6 +895,7 @@ function CompletedRow({
   const sideB = resolveSide(match.side_b_player1, match.side_b_player2, nameMap);
 
   const gameSets = match.games ?? [];
+  const duration = formatDuration(match.started_at, match.ended_at);
   const winnerA = match.winner_side === "a";
   const winnerB = match.winner_side === "b";
 
@@ -906,6 +922,19 @@ function CompletedRow({
       ) : null}
       {match.winner_side && (
         <Trophy className="h-3.5 w-3.5 text-warning shrink-0" />
+      )}
+      {duration && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="flex items-center gap-0.5 shrink-0 text-xs tabular-nums text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                {duration}
+              </span>
+            }
+          />
+          <TooltipContent>{t("durationTooltip")}</TooltipContent>
+        </Tooltip>
       )}
       <div className="ml-auto flex items-center gap-1">
         <ShuttleCounter match={match} canManage={canManage} onRefresh={onRefresh} />

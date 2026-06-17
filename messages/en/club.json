@@ -221,6 +221,7 @@
     "noResult": "Finish without result",
     "noResultTooltip": "Record match as finished with no winner (entered sets are saved)",
     "scoreAriaLabel": "Score {side}",
+    "durationTooltip": "Time played",
     "toastSetIncompleteError": "Fill in both scores of each set",
     "toastScoreRangeError": "Score must be 0–99",
     "shuttleDecrTooltip": "Decrease shuttles used in this match",
