@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-18 — Club payment ship-check รอบ 2 (เต็มฟีเจอร์ + 1b + zoom) — ✅ PASS (develop)
+
+code-review (high) ทั้ง diff master..develop (19 ไฟล์) → **ไม่มี P0/P1**, เจอ P2 3 จุด **แก้ครบ**:
+- **P2-1** server-action body limit: อัปโหลดรูปส่ง base64 (พอง ~1.37×) → ไฟล์ >~750KB ชน Next default 1MB limit ทั้งที่ cap 1MB. แก้: `next.config.ts` +`experimental.serverActions.bodySizeLimit:'2mb'` (รับ 1MB จริง).
+- **P2-2** สถานะ paid เป็น optimistic local ไม่ resync ตอน props เปลี่ยน (refresh เครื่องอื่น). แก้: `useEffect` resync จาก server props keyed บน signature (กัน clobber optimistic ของตัวเอง).
+- **P2-3** ตั้งทั้งเบอร์+รูป → เบอร์ชนะแต่ preview รูปยังโชว์ งง. แก้: เพิ่ม note `numberPriorityNote` "กำลังใช้เบอร์ — รูปใช้เมื่อไม่มีเบอร์".
+simplify: ไม่มีเพิ่ม (baht ยก module scope รอบก่อนแล้ว). **Gates:** tsc 0 · vitest 654/654 · build OK · key-check 0 missing · parity 39/39. **Live smoke (prod):** seed club เบอร์+2 ผู้เล่น → toggle A paid → DB A=paid B=unpaid + UI 1/2 คงค่าหลัง reload (resync ไม่พัง) ✓ · อัปโหลดรูปทั้งที่มีเบอร์ → note "กำลังใช้เบอร์" โผล่ + receipt ใช้ QR generate ไม่ใช่รูป (number wins) ✓ · console 0 error · teardown 0 row + storage 0 (ลบ object ผ่าน Storage API). **ยังไม่ commit** 4 ไฟล์ (next.config.ts + collector + 2 locale).
+
 ### 2026-06-17 — Club payment collection (PromptPay QR + paid tracking) — ✅ PASS (develop, ship-check + live smoke)
 
 ฟีเจอร์ใหม่: เก็บเงินตอนก๊วนจบฝั่ง manager — ผู้เล่นมาสแกน QR PromptPay (ฝังยอดของคนนั้น) ที่เครื่อง owner/co-admin แล้วกดเช็ค "จ่ายแล้ว/ยังไม่จ่าย" ต่อคน. Migration `20260617000200_club_payments` (clubs +promptpay_id/name/qr_image, club_players +paid_at + partial index) **applied ผ่าน supabase MCP** (อนุมัติใน plan). ใหม่: `promptpay.ts` (EMVCo+CRC16 pure) · `club-payments.ts` (3 actions) · `club-payment-collector.tsx` (แท็บค่าใช้จ่าย, แบบ C ใบเสร็จ+progress) · `public-view.ts` strip 4 ฟิลด์ใหม่ · `club.payment.*` 30 keys th/en · `design/club-pay-mockup.html` (3 mockup ให้เลือก). **Gates:** tsc **0** · vitest **654/654** (+8 promptpay, +2 public-view) · `next build` OK · i18n key-check 0 missing + parity PASS. code-review (high) เจอ P2×2 (สี dark-mode hardcode → แก้เป็น `text-amber-600 dark:…`; UX config ไม่ยุบเอง → ปล่อยไว้) · simplify (ยก `baht` helper ขึ้น module). **Live Playwright net-zero smoke (prod DB):** seed ก๊วน court 400 + 3 ผู้เล่น (ยอด 134×3=402) → login owner via cookie → แท็บค่าใช้จ่ายโชว์ "เก็บเงิน" + config → กรอกเบอร์ 0812345678 + บันทึก → DB `promptpay_id` set ✓ · กางใบเสร็จ A → QR เรนเดอร์ (svg) ✓ · กด "จ่ายแล้ว" → DB A.paid_at set, B/C ยังไม่จ่าย (isolation ✓), summary → 1/3 ✓ · console 0 error · teardown 0 row. Phase 2 (หลายผู้รับ) = เลื่อนไป.

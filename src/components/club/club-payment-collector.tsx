@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -69,10 +69,15 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses 
   const nameById = new Map(players.map((p) => [p.id, p.display_name]));
   const payable = rows.filter((r) => r.total > 0);
 
-  // Optimistic paid state (manager-driven single session — seeded from DB props).
-  const [paidIds, setPaidIds] = useState<Set<string>>(
-    () => new Set(players.filter((p) => p.paid_at).map((p) => p.id)),
-  );
+  // Optimistic paid state, seeded from DB props. Resync when the server set changes
+  // (e.g. realtime/refresh from another device) — keyed on a stable signature so a
+  // toggle's own optimistic update isn't clobbered before its action lands.
+  const serverPaid = players.filter((p) => p.paid_at).map((p) => p.id);
+  const serverPaidKey = [...serverPaid].sort().join(",");
+  const [paidIds, setPaidIds] = useState<Set<string>>(() => new Set(serverPaid));
+  useEffect(() => {
+    setPaidIds(new Set(serverPaidKey ? serverPaidKey.split(",") : []));
+  }, [serverPaidKey]);
 
   const collected = payable.filter((r) => paidIds.has(r.playerId)).reduce((s, r) => s + r.total, 0);
   const grandTotal = payable.reduce((s, r) => s + r.total, 0);
@@ -322,6 +327,9 @@ function PromptPayConfig({
                 {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ImageUp className="h-3.5 w-3.5" />}
                 {uploading ? t("uploading") : t("uploadBtn")}
               </Button>
+            )}
+            {qrImage && isValidPromptPayId(ppId) && (
+              <p className="text-[11px] text-muted-foreground">{t("numberPriorityNote")}</p>
             )}
           </div>
         </CollapsibleContent>

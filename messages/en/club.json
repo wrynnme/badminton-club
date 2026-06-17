@@ -696,6 +696,7 @@
     "uploadedQr": "Uploaded QR",
     "removeQr": "Remove image",
     "qrImageHint": "This QR has no amount — tell the player to enter ฿{amount}",
-    "tapToZoom": "Tap the QR to enlarge"
+    "tapToZoom": "Tap the QR to enlarge",
+    "numberPriorityNote": "Using the PromptPay number — this image is used only when no number is set"
   }
 }

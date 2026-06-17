@@ -20,6 +20,14 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_APP_VERSION: version,
     NEXT_PUBLIC_GIT_COMMIT: gitHash,
   },
+  experimental: {
+    // QR images upload through a server action as a base64 data URL (~1.37× the raw
+    // bytes). The club-qr bucket caps files at 1MB, so allow up to 2MB of body here —
+    // otherwise a ~750KB+ image would hit Next's default 1MB server-action body limit.
+    serverActions: {
+      bodySizeLimit: "2mb",
+    },
+  },
 };
 
 export default withNextIntl(nextConfig);
