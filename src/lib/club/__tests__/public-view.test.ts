@@ -23,6 +23,9 @@ const baseClub: Club = {
   queue_settings: { players_per_team: 2, court_count: 3 },
   courts: ["1", "2", "3"],
   is_public: true,
+  promptpay_id: "0812345678",
+  promptpay_name: "เจ้าของก๊วน",
+  promptpay_qr_image: "https://example.com/qr.png",
 };
 
 const basePlayer: ClubPlayer = {
@@ -41,6 +44,7 @@ const basePlayer: ClubPlayer = {
   games_played: 4,
   last_finished_at: "2026-06-10T13:00:00Z",
   discount: 50,
+  paid_at: "2026-06-10T14:00:00Z",
 };
 
 describe("toPublicClub", () => {
@@ -51,6 +55,9 @@ describe("toPublicClub", () => {
     expect(pub.total_cost).toBe(0);
     expect(pub.notes).toBeNull();
     expect(pub.shuttle_info).toBeNull();
+    expect(pub.promptpay_id).toBeNull();
+    expect(pub.promptpay_name).toBeNull();
+    expect(pub.promptpay_qr_image).toBeNull();
   });
 
   it("keeps safe identity + config fields", () => {
@@ -79,6 +86,7 @@ describe("toPublicPlayer", () => {
     expect(pub.profile_id).toBeNull();
     expect(pub.note).toBeNull();
     expect(pub.discount).toBe(0);
+    expect(pub.paid_at).toBeNull();
   });
 
   it("keeps name + usage fields the public roster renders", () => {

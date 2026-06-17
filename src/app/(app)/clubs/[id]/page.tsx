@@ -21,6 +21,7 @@ import { DeleteClubButton } from "@/components/club/delete-club-button";
 import { ClubVisibilityControls } from "@/components/club/club-visibility-controls";
 import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
+import { ClubPaymentCollector } from "@/components/club/club-payment-collector";
 import { HourlyHeadcount } from "@/components/club/hourly-headcount";
 import { ClubQueueSettings } from "@/components/club/club-queue-settings";
 import { ClubCourtManager } from "@/components/club/club-court-manager";
@@ -33,6 +34,7 @@ import { resolveClubCourts } from "@/lib/club/courts";
 import { ClubInfoRow } from "@/components/club/club-info-row";
 import { getTranslations } from "next-intl/server";
 import { getClubLevelsAction } from "@/lib/actions/levels";
+import { getAppSettings, resolveQrLogoUrl } from "@/lib/app-settings";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
 import type { ClubMatch, ClubLockedPair, Level } from "@/lib/types";
@@ -56,7 +58,7 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -89,6 +91,7 @@ export default async function ClubDetailPage({
       .eq("club_id", id)
       .order("created_at", { ascending: true }),
     getClubLevelsAction(id),
+    getAppSettings(),
   ]);
 
   const owner = ownerRes.data;
@@ -324,6 +327,17 @@ export default async function ClubDetailPage({
                 !canManage && (
                   <p className="text-sm text-muted-foreground">{t("page.expenseEmpty")}</p>
                 )
+              )}
+
+              {canManage && (
+                <ClubPaymentCollector
+                  clubId={club.id}
+                  club={club}
+                  players={players}
+                  matches={clubMatches}
+                  expenses={expenses}
+                  qrLogoUrl={resolveQrLogoUrl(appSettings)}
+                />
               )}
             </div>
           }

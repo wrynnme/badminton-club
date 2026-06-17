@@ -4,9 +4,14 @@ import { useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Save, Loader2 } from "lucide-react";
+import { Save, Loader2, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { updateClubCostConfigAction } from "@/lib/actions/club-cost";
@@ -27,6 +32,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
   const t = useTranslations("club.costManager");
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [open, setOpen] = useState(true);
 
   const [courtFee, setCourtFee] = useState(initial.court_fee);
   const [courtSplit, setCourtSplit] = useState<CourtSplit>(initial.court_split);
@@ -54,11 +60,25 @@ export function ClubCostManager({ clubId, initial }: Props) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{t("title")}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        {/* Court fee */}
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CardHeader>
+          <CollapsibleTrigger
+            render={
+              <button
+                type="button"
+                className="flex w-full items-center gap-1.5 text-left font-heading text-base leading-snug font-medium"
+              />
+            }
+          >
+            {t("title")}
+            <ChevronDown
+              className={`ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+            />
+          </CollapsibleTrigger>
+        </CardHeader>
+        <CollapsibleContent>
+          <CardContent className="space-y-5">
+            {/* Court fee */}
         <div className="space-y-2">
           <Label className="text-sm font-medium">{t("courtFeeLabel")}</Label>
           <div className="relative max-w-[140px]">
@@ -205,7 +225,9 @@ export function ClubCostManager({ clubId, initial }: Props) {
           )}
           {t("save")}
         </Button>
-      </CardContent>
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 }

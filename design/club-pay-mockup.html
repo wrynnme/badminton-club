@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mockup — เก็บเงินก๊วน (PromptPay) · 3 แบบให้เลือก</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #eef1f6;
+    --card: #ffffff;
+    --primary: #4f46e5;
+    --primary-soft: #eef0ff;
+    --paid: #16a34a;
+    --paid-soft: #e9f7ee;
+    --warn: #b45309;
+    --text: #1c1d2b;
+    --muted: #6b7280;
+    --border: #e6e8ee;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(20,22,40,.06), 0 8px 24px rgba(20,22,40,.06);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Anuphan', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    padding: 24px 12px 80px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page-head { max-width: 1180px; margin: 0 auto 18px; }
+  .page-head h1 { font-size: 20px; font-weight: 700; }
+  .page-head p { color: var(--muted); font-size: 14px; margin-top: 2px; }
+
+  /* variant tab switcher */
+  .switch { display: flex; gap: 8px; flex-wrap: wrap; max-width: 1180px; margin: 0 auto 22px; }
+  .switch button {
+    font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--border); background: var(--card); color: var(--muted);
+    padding: 9px 16px; border-radius: 999px; transition: .15s;
+  }
+  .switch button.on { background: var(--primary); border-color: var(--primary); color: #fff; box-shadow: var(--shadow); }
+  .switch .desc { color: var(--muted); font-weight: 400; }
+
+  /* phone frame */
+  .stage { max-width: 1180px; margin: 0 auto; display: none; }
+  .stage.on { display: block; }
+  .phone {
+    width: 100%; max-width: 430px; margin: 0 auto;
+    background: var(--card); border-radius: 28px; padding: 18px 16px 26px;
+    box-shadow: var(--shadow); border: 1px solid var(--border);
+  }
+  .variant-note {
+    max-width: 430px; margin: 0 auto 14px; background: #fffbe9; border: 1px solid #f3e6b3;
+    color: #7a5d10; font-size: 13px; padding: 10px 14px; border-radius: 12px;
+  }
+
+  .club-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .club-bar .logo { width: 34px; height: 34px; border-radius: 10px; background: var(--primary); color:#fff; display:grid; place-items:center; font-weight:700; }
+  .club-bar h2 { font-size: 16px; font-weight: 700; }
+  .club-bar small { color: var(--muted); font-size: 12px; display:block; }
+
+  /* receiver chip */
+  .receiver {
+    display: flex; align-items: center; gap: 10px; background: var(--primary-soft);
+    border: 1px solid #dfe2ff; border-radius: 12px; padding: 10px 12px; margin-bottom: 14px;
+  }
+  .receiver .pp { width: 30px; height: 30px; border-radius: 8px; background:#fff; border:1px solid #dfe2ff; display:grid; place-items:center; color:var(--primary); font-weight:700; font-size:13px; }
+  .receiver b { font-size: 13.5px; }
+  .receiver span { color: var(--muted); font-size: 12px; display:block; }
+  .receiver .edit { margin-left:auto; color: var(--primary); font-size:12px; font-weight:600; background:none; border:none; cursor:pointer; }
+
+  /* summary */
+  .summary { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; }
+  .summary .row { display: flex; justify-content: space-between; align-items: baseline; }
+  .summary .big { font-size: 24px; font-weight: 700; }
+  .summary .big .slash { color: var(--muted); font-weight: 500; font-size: 17px; }
+  .summary .label { color: var(--muted); font-size: 13px; }
+  .summary .count { font-weight: 600; font-size: 14px; }
+  .progress { height: 9px; background: #eceef3; border-radius: 999px; overflow: hidden; margin-top: 11px; }
+  .progress > i { display:block; height: 100%; background: var(--paid); border-radius: 999px; }
+  .summary .left { color: var(--warn); font-size: 12.5px; margin-top: 8px; font-weight: 500; }
+
+  /* player row (variant A) */
+  .list { display: flex; flex-direction: column; gap: 8px; }
+  .prow {
+    display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+    border: 1px solid var(--border); border-radius: 14px; background: var(--card);
+  }
+  .prow.paid { background: var(--paid-soft); border-color: #cdebd6; }
+  .prow .av { width: 34px; height: 34px; border-radius: 50%; background:#f0f1f5; display:grid; place-items:center; font-weight:600; font-size:14px; color:var(--muted); flex:none; }
+  .prow.paid .av { background:#d6efdd; color: var(--paid); }
+  .prow .nm { flex: 1; min-width: 0; }
+  .prow .nm b { font-size: 14.5px; font-weight: 600; }
+  .prow .nm small { display:block; color: var(--muted); font-size: 11.5px; }
+  .prow .amt { font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; }
+  .iconbtn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border); background:#fff; cursor:pointer; display:grid; place-items:center; flex:none; }
+  .iconbtn svg { width:18px; height:18px; }
+  .paidtoggle {
+    border: none; cursor: pointer; font-family: inherit; font-weight: 600; font-size: 12.5px;
+    border-radius: 999px; padding: 7px 12px; white-space: nowrap; flex: none;
+  }
+  .paidtoggle.no { background: #fff; border:1px solid var(--border); color: var(--muted); }
+  .paidtoggle.yes { background: var(--paid); color:#fff; }
+
+  /* focus variant B */
+  .namescroll { display:flex; gap:7px; overflow-x:auto; padding-bottom:6px; margin-bottom:14px; }
+  .nameschip { flex:none; border:1px solid var(--border); background:#fff; border-radius:999px; padding:7px 13px; font-size:13px; font-weight:600; cursor:pointer; color:var(--muted); position:relative; }
+  .nameschip.sel { background: var(--primary); color:#fff; border-color:var(--primary); }
+  .nameschip.paid::after { content:'✓'; color:var(--paid); font-weight:700; margin-left:5px; }
+  .nameschip.sel.paid::after { color:#bff5cf; }
+  .focuscard { border:1px solid var(--border); border-radius: var(--radius); padding: 20px 16px; text-align:center; }
+  .focuscard .who { color: var(--muted); font-size: 13px; }
+  .focuscard .who b { color: var(--text); font-size: 18px; display:block; margin-top:2px; }
+  .focuscard .due { font-size: 13px; color: var(--muted); margin-top: 14px; }
+  .focuscard .due b { display:block; font-size: 40px; font-weight: 700; color: var(--text); letter-spacing:-1px; }
+  .qrwrap { background:#fff; border:1px solid var(--border); border-radius: 16px; padding: 14px; display:inline-block; margin: 16px auto 6px; }
+  .focuscard .ppline { color: var(--muted); font-size: 12.5px; }
+  .focuscard .ppline b { color: var(--text); }
+  .scanhint { color: var(--primary); font-size:12.5px; margin-top:10px; font-weight:600; }
+  .bigbtn { width:100%; font-family:inherit; font-size:15px; font-weight:700; cursor:pointer; border:none; border-radius: 14px; padding: 14px; margin-top: 16px; }
+  .bigbtn.pay { background: var(--paid); color:#fff; }
+  .bigbtn.undo { background:#fff; border:1px solid var(--paid); color: var(--paid); }
+
+  /* receipt variant C */
+  .acc { border:1px solid var(--border); border-radius:14px; margin-bottom:9px; overflow:hidden; background:#fff; }
+  .acc.paid { border-color:#cdebd6; }
+  .acc > .hd { display:flex; align-items:center; gap:10px; padding:12px; cursor:pointer; }
+  .acc.paid > .hd { background: var(--paid-soft); }
+  .acc .hd .nm { flex:1; font-weight:600; font-size:14.5px; }
+  .acc .hd .st { font-size:11.5px; font-weight:600; padding:3px 9px; border-radius:999px; }
+  .st.no { background:#fff4e6; color:var(--warn); }
+  .st.yes { background:#d6efdd; color:var(--paid); }
+  .acc .hd .amt { font-weight:700; font-variant-numeric:tabular-nums; }
+  .acc .bd { display:none; padding: 4px 14px 14px; border-top:1px dashed var(--border); }
+  .acc.open .bd { display:block; }
+  .acc .bd .ln { display:flex; justify-content:space-between; font-size:13px; padding:5px 0; color:var(--muted); }
+  .acc .bd .ln.tot { color:var(--text); font-weight:700; border-top:1px solid var(--border); margin-top:4px; padding-top:8px; font-size:14.5px; }
+  .acc .bd .qrrow { display:flex; gap:12px; align-items:center; margin-top:12px; }
+  .acc .bd .qrrow .qrsm { background:#fff; border:1px solid var(--border); border-radius:12px; padding:8px; }
+  .chev { transition:.2s; color:var(--muted); }
+  .acc.open .chev { transform: rotate(180deg); }
+
+  /* config card (shared, collapsible) */
+  .config { border:1px solid var(--border); border-radius:14px; background:#fafbfc; margin-bottom:16px; overflow:hidden; }
+  .config .chd { display:flex; align-items:center; gap:8px; padding:12px; cursor:pointer; font-weight:600; font-size:13.5px; }
+  .config .cbd { display:none; padding: 0 12px 14px; }
+  .config.open .cbd { display:block; }
+  .config .fld { margin-bottom:9px; }
+  .config label { font-size:12px; color:var(--muted); display:block; margin-bottom:4px; }
+  .config input { width:100%; font-family:inherit; font-size:14px; padding:9px 11px; border:1px solid var(--border); border-radius:10px; }
+
+  /* dialog */
+  .backdrop { position:fixed; inset:0; background:rgba(20,22,40,.5); display:none; place-items:center; padding:18px; z-index:50; }
+  .backdrop.on { display:grid; }
+  .dialog { background:#fff; border-radius:20px; width:100%; max-width:330px; padding:20px; text-align:center; box-shadow: var(--shadow); }
+  .dialog .who { font-size:13px; color:var(--muted); }
+  .dialog .who b { display:block; font-size:18px; color:var(--text); }
+  .dialog .amt { font-size:34px; font-weight:700; margin:6px 0 2px; }
+  .dialog .ppline { color:var(--muted); font-size:12.5px; }
+  .dialog .row2 { display:flex; gap:8px; margin-top:16px; }
+  .dialog .row2 button { flex:1; font-family:inherit; font-weight:600; font-size:13.5px; padding:11px; border-radius:12px; cursor:pointer; border:1px solid var(--border); background:#fff; color:var(--text); }
+  .dialog .row2 .pay { background:var(--paid); color:#fff; border-color:var(--paid); }
+  .dialog .close { position:absolute; }
+  .seg { color: var(--muted); font-size:12px; text-align:center; margin: 18px auto 0; max-width:430px; }
+</style>
+</head>
+<body>
+  <div class="page-head">
+    <h1>เก็บเงินก๊วนตอนจบ — QR PromptPay + เช็คจ่ายแล้ว/ยังไม่จ่าย</h1>
+    <p>Mockup ฝั่ง <b>เจ้าของ/co-admin</b> · ผู้เล่นเดินมาสแกนที่เครื่อง manager → กดยืนยัน "จ่ายแล้ว". เลือกแบบที่ชอบด้านล่าง</p>
+  </div>
+
+  <div class="switch">
+    <button class="on" data-go="A">แบบ A · <span class="desc">ลิสต์ในแถว</span></button>
+    <button data-go="B">แบบ B · <span class="desc">โฟกัสทีละคน</span></button>
+    <button data-go="C">แบบ C · <span class="desc">ใบเสร็จ + progress</span></button>
+  </div>
+
+  <!-- ───────────────── VARIANT A ───────────────── -->
+  <div class="stage on" id="A">
+    <div class="variant-note">แบบ A — เห็นทุกคนเรียงกัน ยอด+สถานะครบในตาราง กด <b>QR</b> เปิดป็อปอัป, แตะ <b>จ่ายแล้ว</b> สลับสถานะเร็ว เหมาะเก็บไว ๆ ทีละหลายคน</div>
+    <div class="phone">
+      <div class="club-bar">
+        <div class="logo">ก</div>
+        <div><h2>ก๊วนวันอาทิตย์</h2><small>อา. 15 มิ.ย. 2569 · 18:00–21:00</small></div>
+      </div>
+
+      <div class="config" id="cfgA">
+        <div class="chd" onclick="this.parentElement.classList.toggle('open')">
+          <span>⚙️ ตั้งค่าผู้รับเงิน (PromptPay)</span>
+          <span class="chev" style="margin-left:auto">▾</span>
+        </div>
+        <div class="cbd">
+          <div class="fld"><label>เบอร์พร้อมเพย์ / เลขบัตรประชาชน</label><input value="081-234-5678" /></div>
+          <div class="fld"><label>ชื่อผู้รับ (โชว์เหนือ QR)</label><input value="สมหญิง (เจ้าของก๊วน)" /></div>
+        </div>
+      </div>
+
+      <div class="summary">
+        <div class="row"><span class="label">เก็บได้แล้ว</span><span class="count" id="cntA">3/6 คน</span></div>
+        <div class="row"><span class="big" id="sumA">฿950 <span class="slash">/ ฿1,720</span></span></div>
+        <div class="progress"><i id="barA" style="width:55%"></i></div>
+        <div class="left" id="leftA">ยังเหลืออีก 3 คน · ฿770</div>
+      </div>
+
+      <div class="list" id="listA"></div>
+    </div>
+    <p class="seg">* QR ในป็อปอัปจะ <b>ฝังยอดของคนนั้นไว้แล้ว</b> — สแกนแล้วยอดเด้งในแอปธนาคารเลย ไม่ต้องพิมพ์</p>
+  </div>
+
+  <!-- ───────────────── VARIANT B ───────────────── -->
+  <div class="stage" id="B">
+    <div class="variant-note">แบบ B — เลือกคนจากแถบบน → การ์ดใหญ่ QR + ยอด เหมาะ <b>ยื่นจอให้ผู้เล่นสแกน</b> ทีละคน ชัดเจน กดยืนยันปุ่มเดียว</div>
+    <div class="phone">
+      <div class="club-bar">
+        <div class="logo">ก</div>
+        <div><h2>ก๊วนวันอาทิตย์</h2><small>เก็บแล้ว 3/6 · ฿950 / ฿1,720</small></div>
+      </div>
+      <div class="namescroll" id="chipsB"></div>
+      <div id="focusB"></div>
+    </div>
+  </div>
+
+  <!-- ───────────────── VARIANT C ───────────────── -->
+  <div class="stage" id="C">
+    <div class="variant-note">แบบ C — ใบเสร็จต่อคน (กางดูค่าคอร์ท/ค่าลูก/ส่วนลด) + QR ในตัว + แถบรวมบนสุด เหมาะคนที่อยากโชว์ที่มาของยอดให้ผู้เล่นเห็น</div>
+    <div class="phone">
+      <div class="club-bar">
+        <div class="logo">ก</div>
+        <div><h2>ก๊วนวันอาทิตย์</h2><small>ใบเสร็จรายคน</small></div>
+      </div>
+      <div class="summary">
+        <div class="row"><span class="label">ความคืบหน้าการเก็บเงิน</span><span class="count">3/6 คน</span></div>
+        <div class="row"><span class="big">฿950 <span class="slash">/ ฿1,720</span></span></div>
+        <div class="progress"><i style="width:55%"></i></div>
+      </div>
+      <div id="accC"></div>
+    </div>
+  </div>
+
+  <!-- shared QR dialog -->
+  <div class="backdrop" id="bd">
+    <div class="dialog">
+      <div class="who">เก็บเงินจาก<b id="dgName">—</b></div>
+      <div class="qrwrap" id="dgQr"></div>
+      <div class="amt" id="dgAmt">฿0</div>
+      <div class="ppline">พร้อมเพย์ <b>081-234-5678</b> · สมหญิง (เจ้าของก๊วน)</div>
+      <div class="row2">
+        <button onclick="closeDg()">ปิด</button>
+        <button class="pay" onclick="payFromDg()">✓ จ่ายแล้ว</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ── data ──
+  const PLAYERS = [
+    { id:'p1', name:'สมชาย', games:6, court:120, shuttle:160, exp:40, disc:0,  paid:true  },
+    { id:'p2', name:'พลอย',  games:5, court:120, shuttle:120, exp:40, disc:0,  paid:true  },
+    { id:'p3', name:'เบส',   games:4, court:80,  shuttle:80,  exp:40, disc:0,  paid:false },
+    { id:'p4', name:'หนึ่ง', games:7, court:160, shuttle:150, exp:40, disc:0,  paid:true  },
+    { id:'p5', name:'เจมส์', games:4, court:120, shuttle:80,  exp:40, disc:0,  paid:false },
+    { id:'p6', name:'มะนาว', games:6, court:130, shuttle:160, exp:40, disc:0,  paid:false },
+  ];
+  PLAYERS.forEach(p => p.total = p.court + p.shuttle + p.exp - p.disc);
+  const baht = n => '฿' + n.toLocaleString();
+
+  // ── faux QR (deterministic per seed; looks like a real QR) ──
+  function qrSvg(seed, px) {
+    const N = 25, cell = px / N;
+    let h = 2166136261;
+    for (const ch of String(seed)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+    const rng = () => { h ^= h << 13; h ^= h >>> 17; h ^= h << 5; return (h >>> 0) / 4294967296; };
+    const finder = (x,y) => (x<7&&y<7)||(x>=N-7&&y<7)||(x<7&&y>=N-7);
+    let r = `<svg width="${px}" height="${px}" viewBox="0 0 ${px} ${px}" xmlns="http://www.w3.org/2000/svg"><rect width="${px}" height="${px}" fill="#fff"/>`;
+    for (let y=0;y<N;y++) for (let x=0;x<N;x++) {
+      if (finder(x,y)) continue;
+      if (rng() > 0.52) r += `<rect x="${x*cell}" y="${y*cell}" width="${cell}" height="${cell}" fill="#15161f"/>`;
+    }
+    const fp = (ox,oy) => {
+      r += `<rect x="${ox*cell}" y="${oy*cell}" width="${7*cell}" height="${7*cell}" fill="#15161f"/>`;
+      r += `<rect x="${(ox+1)*cell}" y="${(oy+1)*cell}" width="${5*cell}" height="${5*cell}" fill="#fff"/>`;
+      r += `<rect x="${(ox+2)*cell}" y="${(oy+2)*cell}" width="${3*cell}" height="${3*cell}" fill="#15161f"/>`;
+    };
+    fp(0,0); fp(N-7,0); fp(0,N-7);
+    return r + '</svg>';
+  }
+
+  const initials = n => n.slice(0,1);
+
+  function recalc() {
+    const paid = PLAYERS.filter(p=>p.paid);
+    const collected = paid.reduce((s,p)=>s+p.total,0);
+    const total = PLAYERS.reduce((s,p)=>s+p.total,0);
+    const remain = total - collected;
+    const pct = Math.round(collected/total*100);
+    return { paidN: paid.length, n: PLAYERS.length, collected, total, remain, pct };
+  }
+
+  // ── Variant A ──
+  function renderA() {
+    const el = document.getElementById('listA');
+    el.innerHTML = PLAYERS.map(p => `
+      <div class="prow ${p.paid?'paid':''}">
+        <div class="av">${initials(p.name)}</div>
+        <div class="nm"><b>${p.name}</b><small>${p.games} เกม</small></div>
+        <div class="amt">${baht(p.total)}</div>
+        <button class="iconbtn" title="แสดง QR" onclick="openDg('${p.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#4f46e5" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M14 20h.01M20 20v.01M17 20h.01"/></svg>
+        </button>
+        <button class="paidtoggle ${p.paid?'yes':'no'}" onclick="togglePaid('${p.id}')">${p.paid?'✓ จ่ายแล้ว':'ยังไม่จ่าย'}</button>
+      </div>`).join('');
+    const s = recalc();
+    document.getElementById('cntA').textContent = `${s.paidN}/${s.n} คน`;
+    document.getElementById('sumA').innerHTML = `${baht(s.collected)} <span class="slash">/ ${baht(s.total)}</span>`;
+    document.getElementById('barA').style.width = s.pct + '%';
+    document.getElementById('leftA').textContent = s.remain>0 ? `ยังเหลืออีก ${s.n-s.paidN} คน · ${baht(s.remain)}` : 'เก็บครบแล้ว 🎉';
+  }
+
+  // ── Variant B ──
+  let selB = 'p3';
+  function renderB() {
+    const chips = document.getElementById('chipsB');
+    chips.innerHTML = PLAYERS.map(p => `<button class="nameschip ${p.id===selB?'sel':''} ${p.paid?'paid':''}" onclick="selB='${p.id}';renderB()">${p.name}</button>`).join('');
+    const p = PLAYERS.find(x=>x.id===selB);
+    document.getElementById('focusB').innerHTML = `
+      <div class="focuscard">
+        <div class="who">เก็บเงินจาก <b>${p.name}</b></div>
+        <div class="qrwrap">${qrSvg(p.id+p.total, 190)}</div>
+        <div class="ppline">พร้อมเพย์ <b>081-234-5678</b><br/>สมหญิง (เจ้าของก๊วน)</div>
+        <div class="due">ยอดที่ต้องจ่าย<b>${baht(p.total)}</b></div>
+        ${p.paid
+          ? `<div class="scanhint" style="color:var(--paid)">✓ จ่ายแล้ว</div><button class="bigbtn undo" onclick="togglePaid('${p.id}')">ยกเลิกสถานะจ่าย</button>`
+          : `<div class="scanhint">📲 ยื่นจอให้ผู้เล่นสแกน แล้วกดยืนยัน</div><button class="bigbtn pay" onclick="togglePaid('${p.id}')">✓ ยืนยันจ่ายแล้ว</button>`}
+      </div>`;
+  }
+
+  // ── Variant C ──
+  function renderC() {
+    const el = document.getElementById('accC');
+    el.innerHTML = PLAYERS.map((p,i) => `
+      <div class="acc ${p.paid?'paid':''} ${i===0?'open':''}">
+        <div class="hd" onclick="this.parentElement.classList.toggle('open')">
+          <span class="nm">${p.name}</span>
+          <span class="st ${p.paid?'yes':'no'}">${p.paid?'จ่ายแล้ว':'ยังไม่จ่าย'}</span>
+          <span class="amt">${baht(p.total)}</span>
+          <span class="chev">▾</span>
+        </div>
+        <div class="bd">
+          <div class="ln"><span>ค่าคอร์ท</span><span>${baht(p.court)}</span></div>
+          <div class="ln"><span>ค่าลูก (${p.games} เกม)</span><span>${baht(p.shuttle)}</span></div>
+          <div class="ln"><span>ค่าใช้จ่ายอื่น</span><span>${baht(p.exp)}</span></div>
+          ${p.disc?`<div class="ln"><span>ส่วนลด</span><span>-${baht(p.disc)}</span></div>`:''}
+          <div class="ln tot"><span>รวมต้องจ่าย</span><span>${baht(p.total)}</span></div>
+          <div class="qrrow">
+            <div class="qrsm">${qrSvg(p.id+p.total, 96)}</div>
+            <div style="flex:1">
+              <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px">สแกนพร้อมเพย์ 081-234-5678 (สมหญิง)</div>
+              <button class="paidtoggle ${p.paid?'yes':'no'}" style="width:100%" onclick="event.stopPropagation();togglePaid('${p.id}')">${p.paid?'✓ จ่ายแล้ว':'กดเมื่อจ่ายแล้ว'}</button>
+            </div>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  // ── shared interactions ──
+  function togglePaid(id) {
+    const p = PLAYERS.find(x=>x.id===id); p.paid = !p.paid;
+    renderA(); renderB(); renderC();
+  }
+
+  let dgId = null;
+  function openDg(id) {
+    dgId = id; const p = PLAYERS.find(x=>x.id===id);
+    document.getElementById('dgName').textContent = p.name;
+    document.getElementById('dgAmt').textContent = baht(p.total);
+    document.getElementById('dgQr').innerHTML = qrSvg(p.id+p.total, 180);
+    document.getElementById('bd').classList.add('on');
+  }
+  function closeDg(){ document.getElementById('bd').classList.remove('on'); }
+  function payFromDg(){ if(dgId){ const p=PLAYERS.find(x=>x.id===dgId); p.paid=true; renderA();renderB();renderC(); } closeDg(); }
+  document.getElementById('bd').addEventListener('click', e => { if(e.target.id==='bd') closeDg(); });
+
+  // ── tab switch ──
+  document.querySelectorAll('.switch button').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.switch button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');
+    document.querySelectorAll('.stage').forEach(s=>s.classList.remove('on'));
+    document.getElementById(b.dataset.go).classList.add('on');
+  }));
+
+  renderA(); renderB(); renderC();
+</script>
+</body>
+</html>

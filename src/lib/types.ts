@@ -4,7 +4,14 @@ export type Profile = {
   display_name: string;
   picture_url: string | null;
   is_guest: boolean;
+  is_site_admin: boolean; // single site owner who edits global settings (/admin)
   created_at: string;
+};
+
+// Global, site-wide settings (singleton row, id=1). Edited only by a site admin.
+export type AppSettings = {
+  qr_logo_enabled: boolean;
+  qr_logo_url: string | null; // null = bundled default (/thaiqr-logo.png)
 };
 
 export type Club = {
@@ -33,6 +40,11 @@ export type Club = {
   // Visibility: false = manager-only (default); true = public read-only at /c/[id]
   // (cost/money hidden from public viewers). Toggled by the owner.
   is_public: boolean;
+  // Payment collection (PromptPay). Manager shows a per-player QR (amount embedded)
+  // for in-person collection; null = not configured. promptpay_id = mobile / national ID.
+  promptpay_id: string | null;
+  promptpay_name: string | null;
+  promptpay_qr_image: string | null; // uploaded QR image URL (alternative to promptpay_id)
 };
 
 // Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").
@@ -66,6 +78,7 @@ export type ClubPlayer = {
   games_played: number; // manual pre-queue fallback; auto-incremented from completed club_matches once rotation queue is used
   last_finished_at: string | null; // ISO; rest-ordering input for queue_mode='rest_longest'
   discount: number; // per-player discount subtracted from the cost-breakdown grand total
+  paid_at: string | null; // ISO when the player paid (null = unpaid); set by manager during collection
 };
 
 // Locked pair: two players forced to be teammates by the rotation queue.

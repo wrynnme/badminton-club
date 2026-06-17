@@ -23,6 +23,7 @@ export const NAMESPACES = [
   "stats", // stats views
   "validation", // zod / form error messages
   "actions", // server-action error / toast strings
+  "admin", // site-owner /admin page (global settings)
 ] as const;
 
 export type Namespace = (typeof NAMESPACES)[number];

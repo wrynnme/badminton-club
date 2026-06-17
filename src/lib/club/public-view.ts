@@ -38,6 +38,10 @@ export function toPublicClub(club: Club): Club {
     total_cost: 0,
     notes: null,
     shuttle_info: null,
+    // payment receiver details — never expose on the anonymous public view
+    promptpay_id: null,
+    promptpay_name: null,
+    promptpay_qr_image: null,
   };
 }
 
@@ -64,5 +68,6 @@ export function toPublicPlayer(p: ClubPlayer): ClubPlayer {
     profile_id: null,
     note: null,
     discount: 0,
+    paid_at: null, // payment status is manager-only money data
   };
 }

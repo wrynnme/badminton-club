@@ -4,10 +4,15 @@ import { useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Link2, Unlink, Users } from "lucide-react";
+import { ChevronDown, Link2, Unlink, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -45,6 +50,7 @@ export function ClubLockedPairs({
 }) {
   const t = useTranslations("club.lockedPairs");
   const router = useRouter();
+  const [open, setOpen] = useState(true);
 
   // Build a stable name-resolution map (keyed on club_players.id = p.id)
   const nameMap = new Map<string, string>(
@@ -53,35 +59,54 @@ export function ClubLockedPairs({
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm flex items-center gap-1.5">
-          <Users className="h-4 w-4" />
-          {t("title")}
-        </CardTitle>
-        <p className="text-xs text-muted-foreground">
-          {t("description")}
-        </p>
-      </CardHeader>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CardHeader className="pb-3">
+          <CollapsibleTrigger
+            render={
+              <button
+                type="button"
+                className="flex w-full items-center gap-1.5 text-left font-heading text-sm leading-snug font-medium"
+              />
+            }
+          >
+            <Users className="h-4 w-4 shrink-0" />
+            {t("title")}
+            {locks.length > 0 && (
+              <span className="text-xs font-normal text-muted-foreground">
+                ({locks.length})
+              </span>
+            )}
+            <ChevronDown
+              className={`ml-auto h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+            />
+          </CollapsibleTrigger>
+          <p className="text-xs text-muted-foreground">
+            {t("description")}
+          </p>
+        </CardHeader>
 
-      <CardContent className="space-y-4">
-        {/* Create form — canManage only */}
-        {canManage && (
-          <CreateLockForm
-            clubId={clubId}
-            players={players}
-            nameMap={nameMap}
-            onSuccess={() => router.refresh()}
-          />
-        )}
+        <CollapsibleContent>
+          <CardContent className="space-y-4">
+            {/* Create form — canManage only */}
+            {canManage && (
+              <CreateLockForm
+                clubId={clubId}
+                players={players}
+                nameMap={nameMap}
+                onSuccess={() => router.refresh()}
+              />
+            )}
 
-        {/* Active locks list */}
-        <LockList
-          locks={locks}
-          nameMap={nameMap}
-          canManage={canManage}
-          onSuccess={() => router.refresh()}
-        />
-      </CardContent>
+            {/* Active locks list */}
+            <LockList
+              locks={locks}
+              nameMap={nameMap}
+              canManage={canManage}
+              onSuccess={() => router.refresh()}
+            />
+          </CardContent>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 }
