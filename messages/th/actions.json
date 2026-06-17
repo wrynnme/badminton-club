@@ -29,7 +29,7 @@
     "invalidQueueOrder": "ลำดับคิวไม่ถูกต้อง",
     "invalidQueueSettings": "การตั้งค่าคิวไม่ถูกต้อง",
     "invalidScore": "คะแนนไม่ถูกต้อง",
-    "tieNotAllowed": "ผลเสมอบันทึกไม่ได้ — แบดมินตันต้องมีผู้ชนะ",
+    "invalidGames": "ข้อมูลเซ็ตไม่ถูกต้อง",
     "invalidShuttleCount": "จำนวนลูกไม่ถูกต้อง",
     "invalidTotalCost": "ยอดรวมค่าใช้จ่ายไม่ถูกต้อง",
     "invalidWinner": "ผู้ชนะไม่ถูกต้อง",

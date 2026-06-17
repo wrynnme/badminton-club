@@ -11,12 +11,11 @@ import {
 import {
   buildNextMatch,
   buildPartialMatch,
-  deriveWinnerSide,
   isClubMatchFull,
   type QueuePlayer,
   type MatchSide,
 } from "@/lib/club/queue";
-import type { ClubMatch } from "@/lib/types";
+import type { ClubMatch, Game } from "@/lib/types";
 
 /**
  * Fetch a club_match by id + verify the caller can manage its club. Shared by the
@@ -438,8 +437,7 @@ export async function setClubMatchCourtAction(input: {
 export async function finishClubMatchAction(input: {
   matchId: string;
   winnerSide?: "a" | "b";
-  scoreA?: number;
-  scoreB?: number;
+  games?: Game[];
 }): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -451,37 +449,36 @@ export async function finishClubMatchAction(input: {
   const { match } = guard;
 
   const t = await getTranslations("actions");
-  // Validate caller-supplied score/winner — a server action is a directly-invokable
-  // POST endpoint and TS types are erased at runtime. Scores must be integers in
-  // [0, 99]; winnerSide ∈ {a,b}. Otherwise garbage flows straight into the RPC.
+  // Validate caller-supplied winner/games — a server action is a directly-invokable
+  // POST endpoint and TS types are erased at runtime. The winner is chosen MANUALLY
+  // (winnerSide ∈ {a,b}); per-set scores are kept only as a record, so they carry no
+  // tie constraint. Each game is two integers in [0, 99]; cap the set count so the
+  // jsonb stays bounded. Otherwise garbage flows straight into the RPC.
   if (input.winnerSide != null && input.winnerSide !== "a" && input.winnerSide !== "b") {
     return { error: t("club.invalidWinner") };
   }
-  for (const s of [input.scoreA, input.scoreB]) {
-    if (s != null && (!Number.isInteger(s) || s < 0 || s > 99)) {
+  const games = input.games ?? [];
+  if (!Array.isArray(games) || games.length > 9) {
+    return { error: t("club.invalidGames") };
+  }
+  for (const g of games) {
+    if (
+      g == null ||
+      !Number.isInteger(g.a) || g.a < 0 || g.a > 99 ||
+      !Number.isInteger(g.b) || g.b < 0 || g.b > 99
+    ) {
       return { error: t("club.invalidScore") };
     }
   }
 
-  // Full-score finish derives the winner from the score (server-authoritative);
-  // an explicit winnerSide (winner-only finish) is honored as-is.
-  const winnerSide =
-    input.winnerSide ??
-    (input.scoreA != null && input.scoreB != null
-      ? deriveWinnerSide(input.scoreA, input.scoreB) ?? undefined
-      : undefined);
-
-  // A full-score finish with equal scores has no winner — badminton has no ties.
-  // (winner-only finish and the no-score "ไม่ลงคะแนน" mode are unaffected.)
-  if (input.winnerSide == null && input.scoreA != null && input.scoreB != null && input.scoreA === input.scoreB) {
-    return { error: t("club.tieNotAllowed") };
-  }
-
+  // games is the per-set detail; legacy score_a/score_b are left null on new rows
+  // (display prefers games). winner_side is the manual pick, honored as-is.
   const { error: rpcError } = await sb.rpc("finish_club_match", {
     p_match_id: input.matchId,
-    p_winner_side: winnerSide ?? null,
-    p_score_a: input.scoreA ?? null,
-    p_score_b: input.scoreB ?? null,
+    p_winner_side: input.winnerSide ?? null,
+    p_score_a: null,
+    p_score_b: null,
+    p_games: games,
   });
   if (rpcError) return { error: rpcError.message };
 

@@ -29,7 +29,7 @@
     "invalidQueueOrder": "Invalid queue order",
     "invalidQueueSettings": "Invalid queue settings",
     "invalidScore": "Invalid score",
-    "tieNotAllowed": "A tie can't be recorded — badminton needs a winner",
+    "invalidGames": "Invalid set data",
     "invalidShuttleCount": "Invalid shuttle count",
     "invalidTotalCost": "Invalid total cost",
     "invalidWinner": "Invalid winner",
