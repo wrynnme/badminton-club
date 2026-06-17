@@ -352,6 +352,32 @@ export function buildNextMatch(
 }
 
 /**
+ * A match is "full" (ready to start) when every required player slot is filled.
+ * Partial-roster matches (an organizer reserves a court with as few as 1 player)
+ * leave slots null until edited — they may sit in the pending queue but cannot be
+ * STARTED. doubles (ppt=2) need all four slots; singles (ppt=1) need both player1
+ * slots (the player2 slots are always null for singles).
+ *
+ * Pure + shared: startClubMatchAction guards on it server-side, and the queue panel
+ * disables the "เริ่ม" button with it client-side, so the two never disagree.
+ */
+export function isClubMatchFull(
+  m: {
+    side_a_player1: string | null;
+    side_a_player2: string | null;
+    side_b_player1: string | null;
+    side_b_player2: string | null;
+  },
+  playersPerTeam: number,
+): boolean {
+  if (m.side_a_player1 == null || m.side_b_player1 == null) return false;
+  if (playersPerTeam === 2) {
+    return m.side_a_player2 != null && m.side_b_player2 != null;
+  }
+  return true;
+}
+
+/**
  * Derive the winning side from a finished game's score.
  * Returns "a" / "b" for the higher score, or null on a tie (a recorded full
  * score should normally have a winner — callers may reject the tie at input).

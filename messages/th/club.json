@@ -260,9 +260,13 @@
     "manualDialogSubmit": "เพิ่มแมตช์",
     "manualDialogSubmitConfirm": "ยืนยันสร้าง (เคยเจอกัน)",
     "manualDialogCreating": "กำลังสร้าง…",
-    "toastManualSelectAll": "กรุณาเลือกผู้เล่นให้ครบ",
     "toastManualDuplicate": "ผู้เล่นซ้ำกัน กรุณาเลือกใหม่",
     "toastManualAdded": "เพิ่มแมตช์แล้ว",
+    "toastManualSelectAtLeastOne": "เลือกผู้เล่นอย่างน้อย 1 คน",
+    "manualPartialHint": "เลือกกี่คนก็ได้ (อย่างน้อย 1 คน) — สร้างค้างไว้แล้วเติมให้ครบทีหลังได้ แต่ยังกดเริ่มไม่ได้จนกว่าผู้เล่นจะครบ",
+    "startNeedsFullTooltip": "ต้องเลือกผู้เล่นให้ครบก่อนเริ่ม",
+    "slotEditAria": "เปลี่ยนผู้เล่นในช่องนี้",
+    "slotClearOption": "— เอาผู้เล่นออก —",
     "activeDropTarget": "วางที่นี่เพื่อเลื่อนเป็นตัวจริง"
   },
   "queueSettings": {

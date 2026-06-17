@@ -82,14 +82,17 @@ export type ClubLockedPair = {
 export type ClubMatchStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
 // Live rotation-queue match. side_*_player2 null = singles (players_per_team=1).
+// All four player slots are nullable: a partial-roster match (organizer reserves a
+// court with as few as 1 player, fills the rest later) leaves the empty slots null
+// until edited. A match can't be STARTED until full (isClubMatchFull guard).
 export type ClubMatch = {
   id: string;
   club_id: string;
   court: string; // named court (FK-by-name to clubs.courts); was int 1..N pre-2026-06-08
 
-  side_a_player1: string;
+  side_a_player1: string | null;
   side_a_player2: string | null;
-  side_b_player1: string;
+  side_b_player1: string | null;
   side_b_player2: string | null;
   status: ClubMatchStatus;
   shuttles_used: number; // shuttles consumed by this match (for shuttle_split="per_match")
