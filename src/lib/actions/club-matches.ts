@@ -10,6 +10,7 @@ import {
 } from "@/lib/club/queue-settings";
 import {
   buildNextMatch,
+  buildPartialMatch,
   deriveWinnerSide,
   isClubMatchFull,
   type QueuePlayer,
@@ -263,23 +264,35 @@ export async function buildNextClubMatchAction(
     r.player2_id,
   ]);
 
-  // Build the proposed match.
+  // Build the next match. If the pool is too small for a FULL match, fall back to a PARTIAL
+  // match (reserve the court with the players available now; the organizer fills the rest
+  // inline and can't START until full). The two error paths remain: nobody free at all, or
+  // enough bodies but a constraint (skill-gap strict / locked partner absent) blocked it.
   const proposed = buildNextMatch(pool, settings, stayingSide, lockedPairs);
-  if (!proposed) {
-    // Detailed reason instead of a flat "not enough players":
-    //  - available < needed  → genuinely short of bodies (report the counts so the
-    //    organizer sees why: how many checked in, how many already playing/queued).
-    //  - available ≥ needed but null → enough bodies but no valid lineup (skill-gap
-    //    strict filtered the pool out, or a locked player's partner isn't available).
+  let slotIds: { a1: string | null; a2: string | null; b1: string | null; b2: string | null };
+  if (proposed) {
+    slotIds = {
+      a1: proposed.sideA.player1,
+      a2: proposed.sideA.player2 ?? null,
+      b1: proposed.sideB.player1,
+      b2: proposed.sideB.player2 ?? null,
+    };
+  } else {
     // winner_stays only draws the opponents, so it needs ppt (not 2*ppt) more players.
     const needed = stayingSide ? settings.players_per_team : settings.players_per_team * 2;
     const available = pool.length;
     const checkedIn = allPlayers.filter((p) => p.checked_in_at != null).length;
     const playing = activePlayers.size;
-    if (available < needed) {
+    if (available >= needed) {
+      // Enough bodies but no valid lineup (skill-gap strict / a locked player's partner is
+      // absent). Don't hide that behind a half-filled match — surface it.
+      return { error: t("club.cannotFormMatchSkillLock") };
+    }
+    const partial = available > 0 ? buildPartialMatch(pool, settings, stayingSide) : null;
+    if (!partial) {
       return { error: t("club.notEnoughPlayersDetail", { needed, available, checkedIn, playing }) };
     }
-    return { error: t("club.cannotFormMatchSkillLock") };
+    slotIds = partial;
   }
 
   // Compute next queue_position for this club's pending matches.
@@ -299,10 +312,10 @@ export async function buildNextClubMatchAction(
     .insert({
       club_id: clubId,
       court: courtName,
-      side_a_player1: proposed.sideA.player1,
-      side_a_player2: proposed.sideA.player2 ?? null,
-      side_b_player1: proposed.sideB.player1,
-      side_b_player2: proposed.sideB.player2 ?? null,
+      side_a_player1: slotIds.a1,
+      side_a_player2: slotIds.a2,
+      side_b_player1: slotIds.b1,
+      side_b_player2: slotIds.b2,
       status: "pending",
       queue_position: nextQueuePosition,
     })
