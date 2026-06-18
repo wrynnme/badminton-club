@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle } from "lucide-react";
+import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -72,7 +72,7 @@ import {
   reorderClubQueueAction,
   deleteClubMatchAction,
 } from "@/lib/actions/club-matches";
-import type { ClubMatch } from "@/lib/types";
+import type { ClubMatch, Game } from "@/lib/types";
 import { isClubMatchFull } from "@/lib/club/queue";
 import type { ClubQueueSettings } from "@/lib/club/queue-settings";
 import { firstFreeCourt, occupiedCourtMap } from "@/lib/club/courts";
@@ -100,6 +100,21 @@ function formatElapsed(startedAt: string): string {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
+// Fixed play duration (started_at → ended_at) for a finished match. mm:ss, or
+// h:mm:ss once it passes an hour. Null if either timestamp is missing.
+function formatDuration(startedAt: string | null, endedAt: string | null): string | null {
+  if (!startedAt || !endedAt) return null;
+  const ms = new Date(endedAt).getTime() - new Date(startedAt).getTime();
+  if (ms < 0) return null;
+  const totalSec = Math.floor(ms / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
+    : `${m}:${String(s).padStart(2, "0")}`;
+}
+
 function resolveSide(
   player1: string | null,
   player2: string | null,
@@ -109,6 +124,25 @@ function resolveSide(
   if (!player2) return n1;
   const n2 = nameMap.get(player2) ?? "—";
   return `${n1} / ${n2}`;
+}
+
+// A compact {a,b} summary of a finished match for the prior-meeting hint:
+// one set → that set's points; multiple sets → sets-won count; legacy row with no
+// `games` → its single score_a/score_b; nothing recorded → null.
+function clubScoreParts(m: ClubMatch): { a: number; b: number } | null {
+  const games = m.games ?? [];
+  if (games.length === 1) return { a: games[0].a, b: games[0].b };
+  if (games.length > 1) {
+    let a = 0;
+    let b = 0;
+    for (const g of games) {
+      if (g.a > g.b) a += 1;
+      else if (g.b > g.a) b += 1;
+    }
+    return { a, b };
+  }
+  if (m.score_a != null && m.score_b != null) return { a: m.score_a, b: m.score_b };
+  return null;
 }
 
 // The 4 player slots as inline-edit state, derived from a match row (null → "" so the
@@ -609,46 +643,61 @@ function InProgressRow({
   const t = useTranslations("club.queuePanel");
   const [finishOpen, setFinishOpen] = useState(false);
   const [finishBusy, finishTransition] = useTransition();
-  const [scoreA, setScoreA] = useState("");
-  const [scoreB, setScoreB] = useState("");
+  // Per-set score rows (strings while editing). Starts with one blank set; leaving
+  // every set blank finishes winner-only (no score recorded), preserving the quick path.
+  const [games, setGames] = useState<{ a: string; b: string }[]>([{ a: "", b: "" }]);
 
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
   const sideB = resolveSide(match.side_b_player1, match.side_b_player2, nameMap);
 
-  function handleFinish(opts: {
-    winnerSide?: "a" | "b";
-    scoreA?: number;
-    scoreB?: number;
-  } = {}) {
+  const addGame = () =>
+    setGames((g) => (g.length < 9 ? [...g, { a: "", b: "" }] : g));
+  const removeGame = (i: number) =>
+    setGames((g) => (g.length > 1 ? g.filter((_, idx) => idx !== i) : g));
+  const setGameVal = (i: number, side: "a" | "b", v: string) =>
+    setGames((g) => g.map((row, idx) => (idx === i ? { ...row, [side]: v } : row)));
+
+  function handleFinish(opts: { winnerSide?: "a" | "b"; games?: Game[] } = {}) {
     finishTransition(async () => {
       const res = await finishClubMatchAction({ matchId: match.id, ...opts });
       if ("error" in res) {
         toast.error(res.error);
       } else {
         setFinishOpen(false);
-        setScoreA("");
-        setScoreB("");
+        setGames([{ a: "", b: "" }]);
         onRefresh();
       }
     });
   }
 
-  function handleScoreFinish() {
-    const a = parseInt(scoreA, 10);
-    const b = parseInt(scoreB, 10);
-    if (Number.isNaN(a) || Number.isNaN(b)) {
-      toast.error(t("toastScoreInvalidError"));
-      return;
+  // Collect non-blank set rows. The winner is picked manually (winner buttons), so
+  // sets carry no tie check — only range + completeness. Returns null on a bad row
+  // (toast already shown); [] when every row is blank (winner-only finish).
+  function collectGames(): Game[] | null {
+    const out: Game[] = [];
+    for (const row of games) {
+      const aRaw = row.a.trim();
+      const bRaw = row.b.trim();
+      if (aRaw === "" && bRaw === "") continue; // untouched row → skip
+      const a = parseInt(aRaw, 10);
+      const b = parseInt(bRaw, 10);
+      if (aRaw === "" || bRaw === "" || Number.isNaN(a) || Number.isNaN(b)) {
+        toast.error(t("toastSetIncompleteError"));
+        return null;
+      }
+      if (a < 0 || b < 0 || a > 99 || b > 99) {
+        toast.error(t("toastScoreRangeError"));
+        return null;
+      }
+      out.push({ a, b });
     }
-    if (a < 0 || b < 0 || a > 99 || b > 99) {
-      toast.error(t("toastScoreRangeError"));
-      return;
-    }
-    if (a === b) {
-      toast.error(t("toastScoreEqualError"));
-      return;
-    }
-    handleFinish({ scoreA: a, scoreB: b });
+    return out;
+  }
+
+  function commitFinish(winnerSide?: "a" | "b") {
+    const parsed = collectGames();
+    if (parsed === null) return;
+    handleFinish({ winnerSide, games: parsed });
   }
 
   return (
@@ -698,50 +747,78 @@ function InProgressRow({
 
       {finishOpen && canManage && (
         <div className="mt-2 ml-2 flex flex-col gap-2">
-          {/* โหมด 1 — กรอกคะแนนเต็ม (ผู้ชนะคำนวณจากคะแนน) */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground shrink-0">{t("scoreLabel")}</span>
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={99}
-              value={scoreA}
-              onChange={(e) => setScoreA(e.target.value)}
-              disabled={finishBusy}
-              aria-label={t("scoreAriaLabel", { side: sideA })}
-              className="h-7 w-14 text-center text-xs"
-            />
-            <span className="text-xs text-muted-foreground">:</span>
-            <Input
-              type="number"
-              inputMode="numeric"
-              min={0}
-              max={99}
-              value={scoreB}
-              onChange={(e) => setScoreB(e.target.value)}
-              disabled={finishBusy}
-              aria-label={t("scoreAriaLabel", { side: sideB })}
-              className="h-7 w-14 text-center text-xs"
-            />
+          {/* คะแนนแต่ละเซ็ต — เพิ่ม/ลบเซ็ตได้ (กรอกหรือไม่ก็ได้) */}
+          <span className="text-xs text-muted-foreground">{t("scoreLabel")}</span>
+          {games.map((row, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground shrink-0 w-12">
+                {t("setLabel", { n: i + 1 })}
+              </span>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={99}
+                value={row.a}
+                onChange={(e) => setGameVal(i, "a", e.target.value)}
+                disabled={finishBusy}
+                aria-label={t("scoreAriaLabel", { side: sideA })}
+                className="h-7 w-14 text-center text-xs"
+              />
+              <span className="text-xs text-muted-foreground">:</span>
+              <Input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={99}
+                value={row.b}
+                onChange={(e) => setGameVal(i, "b", e.target.value)}
+                disabled={finishBusy}
+                aria-label={t("scoreAriaLabel", { side: sideB })}
+                className="h-7 w-14 text-center text-xs"
+              />
+              {games.length > 1 && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 shrink-0 text-muted-foreground"
+                        disabled={finishBusy}
+                        onClick={() => removeGame(i)}
+                        aria-label={t("removeSetAriaLabel", { n: i + 1 })}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>{t("removeSetTooltip")}</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          ))}
+          <div>
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Button
                     size="sm"
-                    variant="default"
+                    variant="outline"
                     className="h-7 text-xs"
-                    disabled={finishBusy}
-                    onClick={handleScoreFinish}
+                    disabled={finishBusy || games.length >= 9}
+                    onClick={addGame}
                   >
-                    {t("saveScoreButton")}
+                    <Plus className="h-3 w-3 mr-1" />
+                    {t("addSetButton")}
                   </Button>
                 }
               />
-              <TooltipContent>{t("saveScoreTooltip")}</TooltipContent>
+              <TooltipContent>{t("addSetTooltip")}</TooltipContent>
             </Tooltip>
           </div>
-          {/* โหมด 2/3 — กดฝั่งผู้ชนะ หรือจบแบบไม่ระบุผล */}
+          {/* เลือกผู้ชนะเพื่อจบ — บันทึกเซ็ตที่กรอก พร้อมผู้ชนะที่เลือก (เลือกเอง) */}
+          <span className="text-xs text-muted-foreground">{t("pickWinnerLabel")}</span>
           <div className="flex flex-wrap gap-2">
             <Tooltip>
               <TooltipTrigger
@@ -751,7 +828,7 @@ function InProgressRow({
                     variant="outline"
                     className="h-7 text-xs"
                     disabled={finishBusy}
-                    onClick={() => handleFinish({ winnerSide: "a" })}
+                    onClick={() => commitFinish("a")}
                   >
                     <Trophy className="h-3 w-3 mr-1" />
                     {t("sideAWins")}
@@ -768,7 +845,7 @@ function InProgressRow({
                     variant="outline"
                     className="h-7 text-xs"
                     disabled={finishBusy}
-                    onClick={() => handleFinish({ winnerSide: "b" })}
+                    onClick={() => commitFinish("b")}
                   >
                     <Trophy className="h-3 w-3 mr-1" />
                     {t("sideBWins")}
@@ -785,7 +862,7 @@ function InProgressRow({
                     variant="ghost"
                     className="h-7 text-xs"
                     disabled={finishBusy}
-                    onClick={() => handleFinish({})}
+                    onClick={() => commitFinish(undefined)}
                   >
                     {t("noResult")}
                   </Button>
@@ -817,6 +894,8 @@ function CompletedRow({
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
   const sideB = resolveSide(match.side_b_player1, match.side_b_player2, nameMap);
 
+  const gameSets = match.games ?? [];
+  const duration = formatDuration(match.started_at, match.ended_at);
   const winnerA = match.winner_side === "a";
   const winnerB = match.winner_side === "b";
 
@@ -828,13 +907,34 @@ function CompletedRow({
       <span className={winnerA ? "text-winner font-medium" : ""}>{sideA}</span>
       <span className="text-xs">vs</span>
       <span className={winnerB ? "text-winner font-medium" : ""}>{sideB}</span>
-      {match.score_a != null && match.score_b != null && (
+      {gameSets.length > 0 ? (
+        <span className="flex items-center gap-1.5 shrink-0 text-xs font-medium tabular-nums text-foreground">
+          {gameSets.map((g, i) => (
+            <span key={i}>
+              {g.a}-{g.b}
+            </span>
+          ))}
+        </span>
+      ) : match.score_a != null && match.score_b != null ? (
         <span className="text-xs font-medium tabular-nums text-foreground shrink-0">
           {match.score_a} : {match.score_b}
         </span>
-      )}
+      ) : null}
       {match.winner_side && (
         <Trophy className="h-3.5 w-3.5 text-warning shrink-0" />
+      )}
+      {duration && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span className="flex items-center gap-0.5 shrink-0 text-xs tabular-nums text-muted-foreground">
+                <Clock className="h-3 w-3" />
+                {duration}
+              </span>
+            }
+          />
+          <TooltipContent>{t("durationTooltip")}</TooltipContent>
+        </Tooltip>
       )}
       <div className="ml-auto flex items-center gap-1">
         <ShuttleCounter match={match} canManage={canManage} onRefresh={onRefresh} />
@@ -1055,7 +1155,7 @@ function ManualMatchDialog({
     if (last.status === "in_progress") return t("priorInProgress");
     if (last.status === "pending") return t("priorPending");
     // completed
-    const hasScore = last.score_a != null && last.score_b != null;
+    const parts = clubScoreParts(last);
     const winnerIds =
       last.winner_side === "a"
         ? [last.side_a_player1, last.side_a_player2]
@@ -1066,8 +1166,8 @@ function ManualMatchDialog({
       .filter(Boolean)
       .map((id) => nameMap.get(id!) ?? "?")
       .join(" & ");
-    if (hasScore && winnerName) return t("priorWinnerScore", { name: winnerName, a: last.score_a ?? 0, b: last.score_b ?? 0 });
-    if (hasScore) return t("priorScore", { a: last.score_a ?? 0, b: last.score_b ?? 0 });
+    if (parts && winnerName) return t("priorWinnerScore", { name: winnerName, a: parts.a, b: parts.b });
+    if (parts) return t("priorScore", { a: parts.a, b: parts.b });
     if (winnerName) return t("priorWinner", { name: winnerName });
     return t("priorNoResult");
   }, [priorMeetings, nameMap, t]);

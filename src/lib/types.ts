@@ -111,8 +111,9 @@ export type ClubMatch = {
   shuttles_used: number; // shuttles consumed by this match (for shuttle_split="per_match")
   queue_position: number | null;
   winner_side: "a" | "b" | null;
-  score_a: number | null;
+  score_a: number | null; // legacy single-set points; new rows leave null and use `games`
   score_b: number | null;
+  games: Game[]; // per-set detail [{a,b}, …]; [] = winner-only / no-result / legacy row
   started_at: string | null;
   ended_at: string | null;
   created_at: string;
