@@ -50,7 +50,7 @@ export function ClubLockedPairs({
 }) {
   const t = useTranslations("club.lockedPairs");
   const router = useRouter();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   // Build a stable name-resolution map (keyed on club_players.id = p.id)
   const nameMap = new Map<string, string>(

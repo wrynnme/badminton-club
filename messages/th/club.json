@@ -702,5 +702,22 @@
     "qrImageHint": "QR นี้ไม่ได้ฝังยอด — แจ้งผู้เล่นโอน ฿{amount} เอง",
     "tapToZoom": "กดที่ QR เพื่อขยาย",
     "numberPriorityNote": "กำลังใช้เบอร์พร้อมเพย์ — รูปนี้จะถูกใช้เมื่อไม่ได้กรอกเบอร์"
+  },
+  "slip": {
+    "sectionTitle": "ส่งสลิปเรียกเก็บเงิน",
+    "sectionHint": "เลือกผู้เล่นแล้วส่งสลิปพร้อม QR ให้แต่ละคนทาง LINE",
+    "selectAll": "เลือกทั้งหมด",
+    "selectedCount": "เลือก {n} คน",
+    "sendSlip": "ส่งสลิป",
+    "shareButton": "แชร์",
+    "downloadButton": "ดาวน์โหลด PNG",
+    "downloadAllButton": "ดาวน์โหลดที่เลือกทั้งหมด",
+    "generating": "กำลังสร้างรูป…",
+    "dialogTitle": "สลิปของ {name}",
+    "footerNote": "พร้อมเพย์ · {name}",
+    "qrImageHint": "โอน {amount} บาท",
+    "noPromptpay": "ตั้งค่าพร้อมเพย์ก่อนจึงจะส่งสลิปได้",
+    "shareText": "ค่าก๊วน {club} · {amount} บาท",
+    "shareError": "แชร์ไม่สำเร็จ ลองดาวน์โหลดแทน"
   }
 }

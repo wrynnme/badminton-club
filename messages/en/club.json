@@ -702,5 +702,22 @@
     "qrImageHint": "This QR has no amount — tell the player to enter ฿{amount}",
     "tapToZoom": "Tap the QR to enlarge",
     "numberPriorityNote": "Using the PromptPay number — this image is used only when no number is set"
+  },
+  "slip": {
+    "sectionTitle": "Send payment slips",
+    "sectionHint": "Select players and send each person a slip with their QR via LINE",
+    "selectAll": "Select all",
+    "selectedCount": "{n} selected",
+    "sendSlip": "Send slip",
+    "shareButton": "Share",
+    "downloadButton": "Download PNG",
+    "downloadAllButton": "Download all selected",
+    "generating": "Generating image…",
+    "dialogTitle": "Slip for {name}",
+    "footerNote": "PromptPay · {name}",
+    "qrImageHint": "Transfer {amount} ฿",
+    "noPromptpay": "Set up PromptPay first to send slips",
+    "shareText": "Club fee {club} · {amount} ฿",
+    "shareError": "Share failed — try downloading instead"
   }
 }

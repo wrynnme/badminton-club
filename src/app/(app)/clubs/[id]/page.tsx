@@ -22,6 +22,7 @@ import { ClubVisibilityControls } from "@/components/club/club-visibility-contro
 import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
 import { ClubPaymentCollector } from "@/components/club/club-payment-collector";
+import { ClubSlipShare } from "@/components/club/club-slip-share";
 import { HourlyHeadcount } from "@/components/club/hourly-headcount";
 import { ClubQueueSettings } from "@/components/club/club-queue-settings";
 import { ClubCourtManager } from "@/components/club/club-court-manager";
@@ -332,6 +333,15 @@ export default async function ClubDetailPage({
               {canManage && (
                 <ClubPaymentCollector
                   clubId={club.id}
+                  club={club}
+                  players={players}
+                  matches={clubMatches}
+                  expenses={expenses}
+                  qrLogoUrl={resolveQrLogoUrl(appSettings)}
+                />
+              )}
+              {canManage && (
+                <ClubSlipShare
                   club={club}
                   players={players}
                   matches={clubMatches}
