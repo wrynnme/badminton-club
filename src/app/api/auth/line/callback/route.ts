@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { createAdminClient } from "@/lib/supabase/server";
 import { setSession } from "@/lib/auth/session";
+import { upsertLineProfile } from "@/lib/auth/line-profile";
 
 export async function GET(req: NextRequest) {
   const url = new URL(req.url);
@@ -53,51 +53,14 @@ export async function GET(req: NextRequest) {
     pictureUrl?: string;
   };
 
-  // Profile sync. First login seeds display_name from LINE; return logins only
-  // refresh the picture and DO NOT touch display_name, so a name the user edited
-  // in /settings survives. Trade-off: LINE-side renames are no longer mirrored.
-  // (A plain upsert can't do this — onConflict would overwrite every column,
-  // display_name included.)
-  const sb = await createAdminClient();
-
-  const { data: updated, error: updateError } = await sb
-    .from("profiles")
-    .update({ picture_url: lineProfile.pictureUrl ?? null, is_guest: false })
-    .eq("line_user_id", lineProfile.userId)
-    .select()
-    .maybeSingle();
-
-  if (updateError) {
-    return NextResponse.redirect(new URL("/?auth_error=db", req.url));
-  }
-
-  let profile = updated;
-  if (!profile) {
-    // First login for this LINE account.
-    const { data: inserted, error: insertError } = await sb
-      .from("profiles")
-      .insert({
-        line_user_id: lineProfile.userId,
-        display_name: lineProfile.displayName,
-        picture_url: lineProfile.pictureUrl ?? null,
-        is_guest: false,
-      })
-      .select()
-      .single();
-
-    if (insertError?.code === "23505") {
-      // Concurrent first-login race: a parallel request inserted the row between
-      // our update and insert. Re-read it instead of failing the login.
-      const { data: raced } = await sb
-        .from("profiles")
-        .select()
-        .eq("line_user_id", lineProfile.userId)
-        .single();
-      profile = raced ?? null;
-    } else if (!insertError) {
-      profile = inserted;
-    }
-  }
+  // Profile sync — shared with the LIFF auto-login endpoint (see line-profile.ts).
+  // First login seeds display_name from LINE; return logins only refresh the
+  // picture, so a name the user edited in /settings survives.
+  const profile = await upsertLineProfile({
+    userId: lineProfile.userId,
+    displayName: lineProfile.displayName,
+    pictureUrl: lineProfile.pictureUrl,
+  });
 
   if (!profile) {
     return NextResponse.redirect(new URL("/?auth_error=db", req.url));
