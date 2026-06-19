@@ -79,6 +79,9 @@ export type ClubPlayer = {
   last_finished_at: string | null; // ISO; rest-ordering input for queue_mode='rest_longest'
   discount: number; // per-player discount subtracted from the cost-breakdown grand total
   paid_at: string | null; // ISO when the player paid (null = unpaid); set by manager during collection
+  bill_amount: number | null; // amount snapshotted when the LINE bill was pushed
+  paid_method: "promptpay_slip" | "manual" | null; // how paid_at was set
+  bill_pushed_at: string | null; // ISO; null = bill not pushed
 };
 
 // Locked pair: two players forced to be teammates by the rotation queue.
@@ -293,5 +296,31 @@ export type ClubPreset = {
   owner_id: string;
   name: string;
   config: ClubPresetConfig;
+  created_at: string;
+};
+
+// Payment slip record — created when a player uploads a transfer slip for verification.
+export type ClubPaymentSlip = {
+  id: string;
+  club_id: string;
+  club_player_id: string;
+  image_path: string;
+  amount_detected: number | null;
+  sender_name: string | null;
+  receiver_name: string | null;
+  trans_ref: string | null;
+  verify_status: "pending" | "verified" | "failed" | "manual";
+  verify_raw: unknown | null;
+  created_at: string;
+};
+
+// Audit trail for club-level manager actions (billing pushes, payment toggles, etc.).
+export type ClubAuditLog = {
+  id: string;
+  club_id: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  event_type: string;
+  detail: string | null;
   created_at: string;
 };

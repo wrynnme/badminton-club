@@ -113,6 +113,27 @@ export default async function ClubDetailPage({
     added_at: r.added_at,
   }));
 
+  // Derive which players have a linked LINE account — used by ClubPaymentCollector
+  // to show reachability badges and enable the "Bill via LINE" button.
+  // Only ship the derived id list (not line_user_id) to the client.
+  const profileIds = players
+    .map((p) => p.profile_id)
+    .filter((pid): pid is string => pid !== null);
+
+  let lineReachableIds: string[] = [];
+  if (profileIds.length > 0) {
+    const { data: profileRows } = await sb
+      .from("profiles")
+      .select("id, line_user_id")
+      .in("id", profileIds);
+    const profileHasLine = new Set(
+      (profileRows ?? []).filter((r) => r.line_user_id).map((r) => r.id),
+    );
+    lineReachableIds = players
+      .filter((p) => p.profile_id && profileHasLine.has(p.profile_id))
+      .map((p) => p.id);
+  }
+
   const joined = players.length;
   const activeCount = players.filter((p) => p.status === "active").length;
   const reserveCount = players.filter((p) => p.status === "reserve").length;
@@ -338,6 +359,7 @@ export default async function ClubDetailPage({
                   matches={clubMatches}
                   expenses={expenses}
                   qrLogoUrl={resolveQrLogoUrl(appSettings)}
+                  lineReachableIds={lineReachableIds}
                 />
               )}
               {canManage && (

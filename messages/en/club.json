@@ -701,7 +701,13 @@
     "removeQr": "Remove image",
     "qrImageHint": "This QR has no amount — tell the player to enter ฿{amount}",
     "tapToZoom": "Tap the QR to enlarge",
-    "numberPriorityNote": "Using the PromptPay number — this image is used only when no number is set"
+    "numberPriorityNote": "Using the PromptPay number — this image is used only when no number is set",
+    "pushLineBtn": "Bill via LINE",
+    "pushLineTip": "Send bill + QR to all LINE-linked players who haven't paid yet",
+    "pushResult": "Sent to {pushed} · No LINE {noLine} · Failed {failed}",
+    "pushing": "Sending bills…",
+    "billPushed": "Bill sent",
+    "noLine": "No LINE"
   },
   "slip": {
     "sectionTitle": "Send payment slips",

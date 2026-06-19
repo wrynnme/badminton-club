@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-19 — ก๊วน: Auto-billing via LINE — Phase 1 (push บิล) — ✅ tsc/vitest/build PASS · ⏳ live-test รอ LINE bot setup
+
+ฟีเจอร์ใหญ่ใหม่ (Hybrid: บอท push บิล → ผู้เล่นส่งสลิป → verify อัตโนมัติ + fallback เจ้าของยืนยัน; แผนเต็มใน `~/.claude/plans/immutable-sparking-boole.md`). **Phase 1 = ส่งบิลผ่าน LINE** เสร็จ code+gate; Phase 2 (webhook+verify) / Phase 3 (review queue) ยังไม่ทำ.
+- **DB (applied prod, additive):** migration `20260619000100_club_billing` — `club_players` +bill_amount/paid_method/bill_pushed_at; ตารางใหม่ `club_payment_slips` + `club_audit_logs` (RLS on, service-role); private bucket `payment-slips` (PII). ยืนยัน schema ลงครบผ่าน execute_sql.
+- **โค้ด (delegate 3 wave):** `line-club.ts` (push/reply/getContent/verifyLineSignature) · `slip-verify.ts` (adapter stub + pure `matchSlipToBill` Hybrid) · `club-billing.ts` `pushClubBillsAction` (QR ฝังยอด→public bucket→Flex บิล→push→stamp+audit) · UI ปุ่ม+badge ใน collector · page derive `lineReachableIds` (ไม่ ship line_user_id) · i18n `club.payment.*` +6 keys.
+- **Gate:** tsc 0 · vitest **671** (+46: matchSlipToBill 12 + verifyLineSignature 5 + fixture) · next build OK · i18n parity 45/45 th/en · `public-view.ts` null 3 ฟิลด์ billing (กันรั่ว public).
+- **⏳ ยังไม่ live-test push จริง** (รอ prereq นอกโค้ด): LINE Login+Messaging provider เดียวกัน · ผู้เล่นแอดเพื่อนบอท · env `LINE_MESSAGING_CHANNEL_SECRET` + `SLIP_VERIFY_*` · เปิด webhook (Phase 2). โค้ด push พร้อมทำงานทันทีที่ตั้ง bot เสร็จ.
+
 ### 2026-06-18 — ก๊วน: สลิปเรียกเก็บเงินรายคน (QR ส่ง LINE) + collapse default flip — ✅ ship-check PASS (live-smoke จับ+แก้ QR-blank bug)
 
 ฟีเจอร์ใหม่ `ClubSlipShare` (`club-slip-share.tsx`, manager-only, แท็บ "ค่าใช้จ่าย"): เลือกผู้เล่น (default ติ๊กคนยังไม่จ่าย) → เปิด Dialog `SlipCard` (การ์ดโมเดิร์น สี explicit กัน dark-mode bleed) = breakdown + QR ฝังยอด (`buildPromptPayPayload`) → แชร์ Web Share API (→ LINE มือถือ) / ดาวน์โหลด PNG (fallback) + batch download. รูปจาก `modern-screenshot` `domToBlob({scale:3})` (warm-up + `document.fonts.ready`). ยอดจาก `computeClubCostRows` (ไม่ drift). `GeneratedQr` extract → `generated-qr.tsx` (collector). **สลิปใช้ `SlipQr` raster** (`qrcode.toDataURL`→`<img>`) ไม่ใช่ react-qr-code SVG. namespace `club.slip.*` (15 keys). +dep `modern-screenshot` + `qrcode`. **Hotfix พร้อมกัน:** `club-cost-manager.tsx` + `club-locked-pairs.tsx` `useState(true)`→`useState(false)` → การ์ด "ตั้งค่าแบ่งค่าใช้จ่าย" + "ล็อคคู่" default ยุบ.

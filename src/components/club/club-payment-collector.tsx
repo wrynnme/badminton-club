@@ -13,9 +13,11 @@ import {
   QrCode,
   RotateCcw,
   Save,
+  Send,
   Trash2,
   Wallet,
 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -45,6 +47,7 @@ import {
   uploadClubPromptPayQrAction,
   removeClubPromptPayQrAction,
 } from "@/lib/actions/club-payments";
+import { pushClubBillsAction } from "@/lib/actions/club-billing";
 import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import { GeneratedQr } from "@/components/club/generated-qr";
@@ -59,10 +62,16 @@ type Props = {
   expenses: ClubExpense[];
   /** Site-wide centre-of-QR logo URL (/admin setting); null = logo turned off. */
   qrLogoUrl: string | null;
+  /** club_players.id values whose linked profile has a non-null line_user_id. */
+  lineReachableIds: string[];
 };
 
-export function ClubPaymentCollector({ clubId, club, players, matches, expenses, qrLogoUrl }: Props) {
+export function ClubPaymentCollector({ clubId, club, players, matches, expenses, qrLogoUrl, lineReachableIds }: Props) {
   const t = useTranslations("club.payment");
+  const [pushing, startPush] = useTransition();
+
+  const reachable = new Set(lineReachableIds);
+  const billPushedAtById = new Map(players.map((p) => [p.id, p.bill_pushed_at]));
 
   // Per-player rows from the SAME builder the breakdown table uses → totals match.
   const { rows } = computeClubCostRows({ club, players, matches, expenses });
@@ -130,6 +139,35 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                 </span>
                 {paidCount > 0 && <ResetPaidButton clubId={clubId} onReset={() => setPaidIds(new Set())} />}
               </div>
+              <div className="pt-1">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1.5 text-xs"
+                        disabled={pushing || payable.length === 0}
+                        onClick={() => {
+                          startPush(async () => {
+                            const res = await pushClubBillsAction({ clubId });
+                            if ("error" in res) {
+                              toast.error(res.error);
+                            } else {
+                              toast.success(t("pushResult", { pushed: res.pushed, noLine: res.skippedNoLine, failed: res.failed }));
+                            }
+                          });
+                        }}
+                      />
+                    }
+                  >
+                    {pushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                    {pushing ? t("pushing") : t("pushLineBtn")}
+                  </TooltipTrigger>
+                  <TooltipContent>{t("pushLineTip")}</TooltipContent>
+                </Tooltip>
+              </div>
             </div>
 
             {/* per-player receipts */}
@@ -145,6 +183,8 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                   qrImage={ppNumber ? null : qrImage}
                   qrLogoUrl={qrLogoUrl}
                   promptpayName={club.promptpay_name}
+                  lineReachable={reachable.has(row.playerId)}
+                  billPushedAt={billPushedAtById.get(row.playerId) ?? null}
                   onToggle={(nowPaid) =>
                     setPaidIds((prev) => {
                       const next = new Set(prev);
@@ -350,6 +390,8 @@ function PlayerReceipt({
   qrImage,
   qrLogoUrl,
   promptpayName,
+  lineReachable,
+  billPushedAt,
   onToggle,
 }: {
   clubId: string;
@@ -360,6 +402,8 @@ function PlayerReceipt({
   qrImage: string | null;
   qrLogoUrl: string | null;
   promptpayName: string | null;
+  lineReachable: boolean;
+  billPushedAt: string | null;
   onToggle: (nowPaid: boolean) => void;
 }) {
   const t = useTranslations("club.payment");
@@ -392,6 +436,16 @@ function PlayerReceipt({
           {paid ? <Check className="h-4 w-4" /> : name.slice(0, 1)}
         </span>
         <span className="flex-1 min-w-0 truncate text-sm font-medium">{name}</span>
+        {!lineReachable && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-muted-foreground shrink-0">
+            {t("noLine")}
+          </Badge>
+        )}
+        {lineReachable && billPushedAt && !paid && (
+          <Badge variant="outline" className="text-[10px] h-5 px-1.5 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 shrink-0">
+            {t("billPushed")}
+          </Badge>
+        )}
         <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${paid ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>
           {paid ? t("paid") : t("unpaid")}
         </span>
