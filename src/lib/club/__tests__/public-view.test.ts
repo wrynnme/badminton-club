@@ -45,6 +45,9 @@ const basePlayer: ClubPlayer = {
   last_finished_at: "2026-06-10T13:00:00Z",
   discount: 50,
   paid_at: "2026-06-10T14:00:00Z",
+  bill_amount: 330,
+  paid_method: "manual",
+  bill_pushed_at: "2026-06-10T10:00:00Z",
 };
 
 describe("toPublicClub", () => {

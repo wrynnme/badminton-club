@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>พรีวิวสลิปเรียกเก็บเงินรายคน — Club Slip (modern card)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@300;400;500;600;700&family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root { --green: #2e7d4f; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Anuphan", system-ui, sans-serif;
+    background: #eef1f4;
+    color: #111827;
+    padding: 32px 16px 64px;
+  }
+  .page-title { text-align: center; max-width: 760px; margin: 0 auto 4px; font-family: "Chakra Petch", sans-serif; font-size: 22px; }
+  .page-sub { text-align: center; max-width: 760px; margin: 0 auto 28px; color: #6b7280; font-size: 14px; line-height: 1.5; }
+  .note { max-width: 760px; margin: 0 auto 28px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 10px 14px; border-radius: 10px; font-size: 12.5px; line-height: 1.55; }
+  .grid { display: flex; flex-wrap: wrap; gap: 28px; justify-content: center; align-items: flex-start; }
+  .case { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .case-label { font-size: 12px; color: #6b7280; }
+
+  /* ── SlipCard — ต้องตรงกับ src/components/club/club-slip-share.tsx ── */
+  .slip {
+    width: 360px;
+    background: #ffffff;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.12);
+  }
+  .slip__header { background: var(--green); padding: 16px 20px 14px; color: #ffffff; }
+  .slip__club { font-family: "Chakra Petch", "Anuphan", sans-serif; font-size: 18px; font-weight: 700; letter-spacing: 0.2px; }
+  .slip__date { font-size: 13px; margin-top: 4px; opacity: 0.85; }
+  .slip__body { padding: 16px 20px 8px; background: #fff; }
+  .slip__name { font-size: 16px; font-weight: 700; color: #111827; margin-bottom: 12px; }
+  .rows { font-size: 13px; color: #6b7280; }
+  .row { display: flex; justify-content: space-between; padding: 4px 0; }
+  .num { font-variant-numeric: tabular-nums; }
+  .divider { border-top: 1px solid #e5e7eb; margin: 10px 0 8px; }
+  .total { display: flex; justify-content: space-between; align-items: baseline; }
+  .total__label { font-size: 13px; font-weight: 600; color: #111827; }
+  .total__value { font-size: 24px; font-weight: 700; color: var(--green); font-variant-numeric: tabular-nums; }
+  .slip__qrwrap { display: flex; flex-direction: column; align-items: center; padding: 12px 20px 16px; background: #fff; }
+  .slip__qrpanel { background: #f9fafb; border-radius: 12px; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .qr { position: relative; width: 220px; height: 220px; }
+  .qr svg { display: block; width: 220px; height: 220px; }
+  .qr__logo { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); width: 57px; height: 57px; display: grid; place-items: center; background: #fff; border-radius: 6px; padding: 6px; font-size: 26px; }
+  .qrhint { font-size: 11px; color: #6b7280; text-align: center; }
+  .slip__footer { padding: 0 20px 16px; font-size: 11px; color: #9ca3af; text-align: center; background: #fff; }
+</style>
+</head>
+<body>
+  <h1 class="page-title">สลิปเรียกเก็บเงินรายคน — แบบ “การ์ดโมเดิร์น”</h1>
+  <p class="page-sub">พรีวิวตรงกับ component จริง <code>SlipCard</code> (<code>src/components/club/club-slip-share.tsx</code>) — หัวการ์ดเขียวแบรนด์ <code>#2e7d4f</code>, กว้าง 360px, สี explicit ทั้งหมด (กัน dark-mode bleed ตอน capture เป็น PNG). ในแอปจริงรูปถูกถ่ายด้วย <code>modern-screenshot</code> แล้วแชร์เข้า LINE / ดาวน์โหลด.</p>
+  <div class="note"><strong>หมายเหตุ:</strong> QR ในหน้านี้เป็น <strong>ภาพตัวอย่าง (placeholder)</strong> เพื่อโชว์เลย์เอาต์เท่านั้น — สแกนไม่ได้. ในแอปจริง QR สร้างจาก <code>buildPromptPayPayload(promptpay_id, ยอดของคนนั้น)</code> เป็น PromptPay dynamic QR ที่แอปธนาคารเด้งยอดอัตโนมัติ และโลโก้กลางเป็นโลโก้ Thai QR จริง (<code>public/thaiqr-logo.png</code>).</div>
+
+  <div class="grid">
+
+    <!-- Case 1: ครบทุกบรรทัด (มี expense + ส่วนลด) -->
+    <div class="case">
+      <span class="case-label">เคส A — มีค่าใช้จ่ายอื่น + ส่วนลด</span>
+      <div class="slip">
+        <div class="slip__header">
+          <div class="slip__club">🏸 ก๊วนวันอาทิตย์</div>
+          <div class="slip__date">18 มิ.ย. 2026</div>
+        </div>
+        <div class="slip__body">
+          <div class="slip__name">สมชาย ใจดี</div>
+          <div class="rows">
+            <div class="row"><span>ค่าคอร์ด</span><span class="num">฿80</span></div>
+            <div class="row"><span>ค่าลูก (6 เกม)</span><span class="num">฿120</span></div>
+            <div class="row"><span>ค่าใช้จ่ายอื่น</span><span class="num">฿30</span></div>
+            <div class="row"><span>ส่วนลด</span><span class="num">-฿10</span></div>
+          </div>
+          <div class="divider"></div>
+          <div class="total"><span class="total__label">รวมที่ต้องจ่าย</span><span class="total__value">฿220</span></div>
+        </div>
+        <div class="slip__qrwrap">
+          <div class="slip__qrpanel">
+            <div class="qr">
+              <svg viewBox="0 0 29 29" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="29" height="29" fill="#fff"/><g fill="#111827"><rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/><rect x="22" y="0" width="7" height="7"/><rect x="23" y="1" width="5" height="5" fill="#fff"/><rect x="24" y="2" width="3" height="3"/><rect x="0" y="22" width="7" height="7"/><rect x="1" y="23" width="5" height="5" fill="#fff"/><rect x="2" y="24" width="3" height="3"/><rect x="9" y="0" width="1" height="1"/><rect x="11" y="0" width="1" height="1"/><rect x="13" y="0" width="2" height="1"/><rect x="17" y="0" width="1" height="1"/><rect x="19" y="0" width="1" height="1"/><rect x="9" y="2" width="2" height="2"/><rect x="13" y="2" width="1" height="2"/><rect x="16" y="2" width="3" height="1"/><rect x="0" y="9" width="1" height="2"/><rect x="2" y="9" width="2" height="1"/><rect x="5" y="9" width="1" height="3"/><rect x="8" y="9" width="3" height="2"/><rect x="12" y="9" width="2" height="2"/><rect x="15" y="9" width="1" height="1"/><rect x="17" y="9" width="2" height="3"/><rect x="21" y="9" width="1" height="2"/><rect x="23" y="9" width="3" height="1"/><rect x="27" y="9" width="1" height="2"/><rect x="9" y="12" width="2" height="2"/><rect x="13" y="12" width="3" height="1"/><rect x="19" y="12" width="2" height="2"/><rect x="23" y="12" width="1" height="3"/><rect x="26" y="12" width="2" height="1"/><rect x="9" y="15" width="1" height="2"/><rect x="12" y="15" width="2" height="2"/><rect x="16" y="15" width="2" height="1"/><rect x="20" y="15" width="1" height="2"/><rect x="25" y="15" width="2" height="2"/><rect x="9" y="18" width="3" height="1"/><rect x="14" y="18" width="1" height="3"/><rect x="17" y="18" width="2" height="2"/><rect x="22" y="18" width="2" height="1"/><rect x="26" y="18" width="1" height="2"/><rect x="9" y="21" width="2" height="2"/><rect x="13" y="22" width="2" height="2"/><rect x="16" y="21" width="1" height="3"/><rect x="19" y="22" width="3" height="1"/><rect x="24" y="21" width="2" height="2"/><rect x="27" y="22" width="1" height="2"/><rect x="11" y="25" width="1" height="2"/><rect x="14" y="25" width="2" height="1"/><rect x="18" y="25" width="1" height="2"/><rect x="21" y="26" width="2" height="1"/><rect x="25" y="25" width="1" height="2"/></g></svg>
+              <div class="qr__logo">🏸</div>
+            </div>
+          </div>
+          <!-- ไม่มี qrhint เพราะใช้เบอร์พร้อมเพย์ (QR ฝังยอดแล้ว) -->
+        </div>
+        <div class="slip__footer">พร้อมเพย์ · สมชาย ใจดี</div>
+      </div>
+    </div>
+
+    <!-- Case 2: ไม่มี expense/ส่วนลด -->
+    <div class="case">
+      <span class="case-label">เคส B — เฉพาะคอร์ด + ลูก (ซ่อนบรรทัดที่เป็น 0)</span>
+      <div class="slip">
+        <div class="slip__header">
+          <div class="slip__club">🏸 ก๊วนวันอาทิตย์</div>
+          <div class="slip__date">18 มิ.ย. 2026</div>
+        </div>
+        <div class="slip__body">
+          <div class="slip__name">มานี รักเรียน</div>
+          <div class="rows">
+            <div class="row"><span>ค่าคอร์ด</span><span class="num">฿80</span></div>
+            <div class="row"><span>ค่าลูก (4 เกม)</span><span class="num">฿80</span></div>
+          </div>
+          <div class="divider"></div>
+          <div class="total"><span class="total__label">รวมที่ต้องจ่าย</span><span class="total__value">฿160</span></div>
+        </div>
+        <div class="slip__qrwrap">
+          <div class="slip__qrpanel">
+            <div class="qr">
+              <svg viewBox="0 0 29 29" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="29" height="29" fill="#fff"/><g fill="#111827"><rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/><rect x="22" y="0" width="7" height="7"/><rect x="23" y="1" width="5" height="5" fill="#fff"/><rect x="24" y="2" width="3" height="3"/><rect x="0" y="22" width="7" height="7"/><rect x="1" y="23" width="5" height="5" fill="#fff"/><rect x="2" y="24" width="3" height="3"/><rect x="10" y="0" width="1" height="1"/><rect x="12" y="0" width="2" height="1"/><rect x="16" y="0" width="1" height="1"/><rect x="18" y="0" width="2" height="1"/><rect x="9" y="2" width="1" height="2"/><rect x="12" y="2" width="2" height="2"/><rect x="15" y="2" width="3" height="1"/><rect x="19" y="2" width="1" height="2"/><rect x="0" y="9" width="2" height="1"/><rect x="3" y="9" width="1" height="3"/><rect x="5" y="9" width="1" height="2"/><rect x="8" y="9" width="2" height="2"/><rect x="11" y="9" width="3" height="2"/><rect x="16" y="9" width="1" height="3"/><rect x="18" y="9" width="2" height="1"/><rect x="21" y="9" width="2" height="2"/><rect x="24" y="9" width="1" height="3"/><rect x="26" y="9" width="2" height="1"/><rect x="10" y="12" width="2" height="2"/><rect x="14" y="12" width="3" height="1"/><rect x="20" y="12" width="2" height="2"/><rect x="26" y="12" width="1" height="3"/><rect x="9" y="15" width="2" height="1"/><rect x="13" y="15" width="1" height="2"/><rect x="16" y="15" width="2" height="2"/><rect x="20" y="15" width="1" height="2"/><rect x="23" y="15" width="2" height="1"/><rect x="10" y="18" width="3" height="1"/><rect x="15" y="18" width="1" height="3"/><rect x="18" y="18" width="2" height="2"/><rect x="22" y="18" width="1" height="2"/><rect x="25" y="18" width="2" height="1"/><rect x="9" y="21" width="2" height="2"/><rect x="14" y="22" width="2" height="2"/><rect x="17" y="21" width="1" height="3"/><rect x="20" y="22" width="3" height="1"/><rect x="25" y="21" width="2" height="2"/><rect x="12" y="25" width="1" height="2"/><rect x="15" y="25" width="2" height="1"/><rect x="19" y="25" width="1" height="2"/><rect x="22" y="26" width="2" height="1"/><rect x="26" y="25" width="1" height="2"/></g></svg>
+              <div class="qr__logo">🏸</div>
+            </div>
+          </div>
+        </div>
+        <div class="slip__footer">พร้อมเพย์ · ก๊วนวันอาทิตย์</div>
+      </div>
+    </div>
+
+    <!-- Case 3: ไม่มีเบอร์พร้อมเพย์ ใช้รูป QR อัปโหลด (ไม่ฝังยอด) -->
+    <div class="case">
+      <span class="case-label">เคส C — ใช้รูป QR อัปโหลด (ไม่ฝังยอด → มี hint โอนเอง)</span>
+      <div class="slip">
+        <div class="slip__header">
+          <div class="slip__club">🏸 ก๊วนวันอาทิตย์</div>
+          <div class="slip__date">18 มิ.ย. 2026</div>
+        </div>
+        <div class="slip__body">
+          <div class="slip__name">วิชัย ตั้งใจ</div>
+          <div class="rows">
+            <div class="row"><span>ค่าคอร์ด</span><span class="num">฿80</span></div>
+            <div class="row"><span>ค่าลูก (5 เกม)</span><span class="num">฿100</span></div>
+            <div class="row"><span>ค่าใช้จ่ายอื่น</span><span class="num">฿20</span></div>
+          </div>
+          <div class="divider"></div>
+          <div class="total"><span class="total__label">รวมที่ต้องจ่าย</span><span class="total__value">฿200</span></div>
+        </div>
+        <div class="slip__qrwrap">
+          <div class="slip__qrpanel">
+            <div class="qr">
+              <svg viewBox="0 0 29 29" shape-rendering="crispEdges" xmlns="http://www.w3.org/2000/svg"><rect width="29" height="29" fill="#fff"/><g fill="#111827"><rect x="0" y="0" width="7" height="7"/><rect x="1" y="1" width="5" height="5" fill="#fff"/><rect x="2" y="2" width="3" height="3"/><rect x="22" y="0" width="7" height="7"/><rect x="23" y="1" width="5" height="5" fill="#fff"/><rect x="24" y="2" width="3" height="3"/><rect x="0" y="22" width="7" height="7"/><rect x="1" y="23" width="5" height="5" fill="#fff"/><rect x="2" y="24" width="3" height="3"/><rect x="9" y="1" width="2" height="1"/><rect x="13" y="0" width="1" height="2"/><rect x="16" y="1" width="2" height="1"/><rect x="19" y="0" width="1" height="2"/><rect x="9" y="3" width="1" height="1"/><rect x="11" y="3" width="3" height="1"/><rect x="16" y="3" width="1" height="1"/><rect x="18" y="3" width="2" height="1"/><rect x="1" y="9" width="2" height="1"/><rect x="4" y="9" width="1" height="3"/><rect x="6" y="9" width="1" height="2"/><rect x="9" y="9" width="2" height="2"/><rect x="12" y="9" width="3" height="2"/><rect x="17" y="9" width="1" height="3"/><rect x="19" y="9" width="2" height="1"/><rect x="22" y="9" width="2" height="2"/><rect x="25" y="9" width="1" height="3"/><rect x="11" y="12" width="2" height="2"/><rect x="15" y="12" width="3" height="1"/><rect x="21" y="12" width="2" height="2"/><rect x="27" y="12" width="1" height="3"/><rect x="9" y="15" width="2" height="1"/><rect x="14" y="15" width="1" height="2"/><rect x="17" y="15" width="2" height="2"/><rect x="21" y="15" width="1" height="2"/><rect x="24" y="15" width="2" height="1"/><rect x="10" y="18" width="3" height="1"/><rect x="16" y="18" width="1" height="3"/><rect x="19" y="18" width="2" height="2"/><rect x="23" y="18" width="1" height="2"/><rect x="26" y="18" width="2" height="1"/><rect x="9" y="21" width="2" height="2"/><rect x="15" y="22" width="2" height="2"/><rect x="18" y="21" width="1" height="3"/><rect x="21" y="22" width="3" height="1"/><rect x="26" y="21" width="2" height="2"/><rect x="13" y="25" width="1" height="2"/><rect x="16" y="25" width="2" height="1"/><rect x="20" y="25" width="1" height="2"/><rect x="23" y="26" width="2" height="1"/><rect x="27" y="25" width="1" height="2"/></g></svg>
+            </div>
+            <div class="qrhint">โอน 200 บาท</div>
+          </div>
+        </div>
+        <div class="slip__footer">พร้อมเพย์ · ก๊วนวันอาทิตย์</div>
+      </div>
+    </div>
+
+  </div>
+</body>
+</html>

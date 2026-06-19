@@ -22,6 +22,8 @@ import { ClubVisibilityControls } from "@/components/club/club-visibility-contro
 import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
 import { ClubPaymentCollector } from "@/components/club/club-payment-collector";
+import { ClubSlipShare } from "@/components/club/club-slip-share";
+import { ClubSlipReview, type ReviewItem } from "@/components/club/club-slip-review";
 import { HourlyHeadcount } from "@/components/club/hourly-headcount";
 import { ClubQueueSettings } from "@/components/club/club-queue-settings";
 import { ClubCourtManager } from "@/components/club/club-court-manager";
@@ -112,6 +114,27 @@ export default async function ClubDetailPage({
     added_at: r.added_at,
   }));
 
+  // Derive which players have a linked LINE account — used by ClubPaymentCollector
+  // to show reachability badges and enable the "Bill via LINE" button.
+  // Only ship the derived id list (not line_user_id) to the client.
+  const profileIds = players
+    .map((p) => p.profile_id)
+    .filter((pid): pid is string => pid !== null);
+
+  let lineReachableIds: string[] = [];
+  if (profileIds.length > 0) {
+    const { data: profileRows } = await sb
+      .from("profiles")
+      .select("id, line_user_id")
+      .in("id", profileIds);
+    const profileHasLine = new Set(
+      (profileRows ?? []).filter((r) => r.line_user_id).map((r) => r.id),
+    );
+    lineReachableIds = players
+      .filter((p) => p.profile_id && profileHasLine.has(p.profile_id))
+      .map((p) => p.id);
+  }
+
   const joined = players.length;
   const activeCount = players.filter((p) => p.status === "active").length;
   const reserveCount = players.filter((p) => p.status === "reserve").length;
@@ -127,6 +150,56 @@ export default async function ClubDetailPage({
       redirect(`/?auth_error=login_required&redirectTo=${encodeURIComponent(`/clubs/${club.id}`)}`);
     }
     redirect("/clubs");
+  }
+
+  // ── Slip review queue (manual verify_status) ─────────────────────────────
+  // canManage is guaranteed true below this point (redirect fires above for others).
+  let slipReviewItems: ReviewItem[] = [];
+  {
+    const { data: slipRows } = await sb
+      .from("club_payment_slips")
+      .select("id, club_player_id, image_path, amount_detected, created_at")
+      .eq("club_id", id)
+      .eq("verify_status", "manual")
+      .order("created_at", { ascending: false });
+
+    if (slipRows && slipRows.length > 0) {
+      // Batch signed URLs for private slip images (10-min expiry = 600s).
+      const paths = slipRows
+        .map((s) => s.image_path)
+        .filter((p): p is string => p !== null);
+      const signedUrlMap = new Map<string, string>();
+      if (paths.length > 0) {
+        const { data: signed } = await sb.storage
+          .from("payment-slips")
+          .createSignedUrls(paths, 600);
+        (signed ?? []).forEach((entry) => {
+          if (entry.signedUrl && entry.path)
+            signedUrlMap.set(entry.path, entry.signedUrl);
+        });
+      }
+
+      const playerById = new Map(players.map((p) => [p.id, p]));
+
+      slipReviewItems = slipRows.map((slip) => {
+        const player = slip.club_player_id
+          ? playerById.get(slip.club_player_id)
+          : undefined;
+        const signedUrl =
+          slip.image_path ? (signedUrlMap.get(slip.image_path) ?? null) : null;
+        return {
+          slipId: slip.id,
+          signedUrl,
+          playerName: player?.display_name ?? "—",
+          amountDetected:
+            typeof slip.amount_detected === "number"
+              ? slip.amount_detected
+              : null,
+          billAmount: player?.bill_amount ?? null,
+          createdAt: slip.created_at,
+        };
+      });
+    }
   }
 
   const queueSettings = parseQueueSettings(club.queue_settings);
@@ -337,7 +410,20 @@ export default async function ClubDetailPage({
                   matches={clubMatches}
                   expenses={expenses}
                   qrLogoUrl={resolveQrLogoUrl(appSettings)}
+                  lineReachableIds={lineReachableIds}
                 />
+              )}
+              {canManage && (
+                <ClubSlipShare
+                  club={club}
+                  players={players}
+                  matches={clubMatches}
+                  expenses={expenses}
+                  qrLogoUrl={resolveQrLogoUrl(appSettings)}
+                />
+              )}
+              {canManage && (
+                <ClubSlipReview clubId={club.id} items={slipReviewItems} />
               )}
             </div>
           }

@@ -68,6 +68,9 @@ export function toPublicPlayer(p: ClubPlayer): ClubPlayer {
     profile_id: null,
     note: null,
     discount: 0,
-    paid_at: null, // payment status is manager-only money data
+    paid_at: null,       // payment status is manager-only money data
+    bill_amount: null,   // billing metadata — manager-only
+    paid_method: null,
+    bill_pushed_at: null,
   };
 }

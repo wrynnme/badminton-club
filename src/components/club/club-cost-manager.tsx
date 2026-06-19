@@ -32,7 +32,7 @@ export function ClubCostManager({ clubId, initial }: Props) {
   const t = useTranslations("club.costManager");
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   const [courtFee, setCourtFee] = useState(initial.court_fee);
   const [courtSplit, setCourtSplit] = useState<CourtSplit>(initial.court_split);
