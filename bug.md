@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-19 — ก๊วน: ตั้งค่ายืนยันสลิปรายก๊วน (manual + BYOK) — ✅ ship-check PASS (live-smoke byok+manual)
+
+ตัด env กลาง `SLIP_VERIFY_*` → ตั้งค่ายืนยันสลิป**รายก๊วน** 2 โหมด: manual (default ทุกก๊วน) / byok (ก๊วนสมัคร provider+key เอง). PR #3 → develop. migration `20260619000200_club_billing_verify_config` **applied prod** (column `clubs.billing_verify_settings` + ตาราง `club_billing_secrets` RLS-locked service-role).
+- **code-review (high, 3 finder):** P1×1 (webhook: ผู้เล่นบิลหลายก๊วน → auto-confirm ผิดก๊วน) **แก้** (multiClub → บังคับ manual ไม่ verify) · receiver-name substring ไม่มี length floor — byok ทำให้ reachable **harden** (ต้อง ≥3 ตัวอักษร) · 2 convention (raw `<button>` → shadcn Button · hardcoded string → i18n) **แก้** · cleanup **simplify** (ตัด clubs-read ทั้งก้อน เพราะ next set ครบ 4 field, query 4→2, validate ผ่าน `Schema.parse`). P3 (key_set race, audit actor_name null) เลื่อน.
+- **Gate:** tsc 0 · vitest **695** (+1 receiver length-floor) · next build OK · i18n parity (17 `club.payment` + 5 `actions` + 2 placeholder, th/en).
+- **live-smoke PASS:** seed ก๊วน+owner cookie → cost tab → byok+SlipOK branch 99999 + key → บันทึก → DB `{mode:byok,provider:slipok,branch_id:"99999",key_set:true}` + `club_billing_secrets.api_key` ตรง + UI badge "• Auto" + masked placeholder · สลับ manual → `{mode:manual,key_set:false}` + secret ลบ (0 แถว) · console 0 err · **teardown net-zero 0/0/0 (orchestrator verify เอง)**.
+- **⏳ ก่อนใช้จริง:** byok ต้องสมัคร SlipOK/EasySlip + ใส่ key ในหน้าตั้งค่าก๊วน (ไม่ต้อง env กลาง). PR #3 ยังไม่ merge.
+
 ### 2026-06-19 — ก๊วน: Auto-billing via LINE — Phase 1+2+3 (push + webhook + review queue) — ✅ ship-check PASS (Phase 3 live-smoke) · ⏳ live-test ลูป LINE จริงรอ bot
 
 ฟีเจอร์ใหญ่ใหม่ (Hybrid: บอท push บิล → ผู้เล่นส่งสลิป → verify อัตโนมัติ + fallback เจ้าของยืนยัน; แผนเต็มใน `~/.claude/plans/immutable-sparking-boole.md`). **Phase 1 (ส่งบิล) + Phase 2 (webhook รับสลิป+verify)** เสร็จ code+gate; Phase 3 (review queue ให้เจ้าของยืนยัน) ยังไม่ทำ — fallback ใช้ paid-toggle เดิม.

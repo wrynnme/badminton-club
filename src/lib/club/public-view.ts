@@ -42,6 +42,8 @@ export function toPublicClub(club: Club): Club {
     promptpay_id: null,
     promptpay_name: null,
     promptpay_qr_image: null,
+    // billing verify config — redact: mode reveals whether the club has byok keys set up
+    billing_verify_settings: {},
   };
 }
 
