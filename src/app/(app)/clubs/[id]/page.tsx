@@ -32,6 +32,7 @@ import { ClubQueuePanel } from "@/components/club/club-queue-panel";
 import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
 import { ClubLiveWrapper } from "@/components/club/club-live-wrapper";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
+import { parseBillingVerifySettings } from "@/lib/club/billing-verify-settings";
 import { resolveClubCourts } from "@/lib/club/courts";
 import { ClubInfoRow } from "@/components/club/club-info-row";
 import { getTranslations } from "next-intl/server";
@@ -203,6 +204,7 @@ export default async function ClubDetailPage({
   }
 
   const queueSettings = parseQueueSettings(club.queue_settings);
+  const billingVerifySettings = parseBillingVerifySettings(club.billing_verify_settings);
 
   // Named courts (clubs.courts), else a legacy ['1'..'N'] fallback (see resolveClubCourts).
   const clubCourts = resolveClubCourts(club.courts, queueSettings.court_count);
@@ -411,6 +413,7 @@ export default async function ClubDetailPage({
                   expenses={expenses}
                   qrLogoUrl={resolveQrLogoUrl(appSettings)}
                   lineReachableIds={lineReachableIds}
+                  billingVerifySettings={billingVerifySettings}
                 />
               )}
               {canManage && (

@@ -12,8 +12,10 @@
  *   LINE_MESSAGING_CHANNEL_ACCESS_TOKEN  — push API calls (used by helpers)
  *   NEXT_PUBLIC_SUPABASE_URL             — Supabase project URL
  *   SUPABASE_SERVICE_ROLE_KEY            — service-role key (bypasses RLS)
- *   SLIP_VERIFY_PROVIDER                 — "easyslip" | "slipok" (optional; falls back to manual)
- *   SLIP_VERIFY_API_KEY                  — provider API key (optional)
+ *
+ * Slip verification is now per-club (no platform-level env vars):
+ *   clubs.billing_verify_settings  — mode ("manual"|"byok") + provider + branch_id
+ *   club_billing_secrets            — api_key (read separately, never joined into clubs.*)
  */
 
 import { NextRequest, NextResponse, after } from "next/server";
@@ -23,6 +25,7 @@ import {
   pushTextToUser,
 } from "@/lib/notification/line-club";
 import { verifySlip, matchSlipToBill } from "@/lib/club/slip-verify";
+import { parseBillingVerifySettings } from "@/lib/club/billing-verify-settings";
 import { createAdminClient } from "@/lib/supabase/server";
 
 // ---------------------------------------------------------------------------
@@ -58,6 +61,7 @@ interface ClubRow {
   name: string;
   promptpay_id: string | null;
   promptpay_name: string | null;
+  billing_verify_settings: Record<string, unknown> | null;
 }
 
 interface CandidateBill {
@@ -155,7 +159,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         const { data: rawCandidates } = await sb
           .from("club_players")
           .select(
-            "id, club_id, bill_amount, display_name, clubs(id, name, promptpay_id, promptpay_name)",
+            "id, club_id, bill_amount, display_name, clubs(id, name, promptpay_id, promptpay_name, billing_verify_settings)",
           )
           .eq("profile_id", profile.id)
           .is("paid_at", null)
@@ -182,19 +186,55 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
 
         // ----------------------------------------------------------------
-        // D. Verify slip via provider adapter
+        // D. Fast-path: resolve target club from candidates[0]
+        //    Parse its billing_verify_settings to determine verify mode.
+        //    Multi-club loop is deferred to a future phase — for now we
+        //    use the most-recent bill's club as the verification context.
         // ----------------------------------------------------------------
-        const detected = await verifySlip({ imageBuffer: buf });
+        const primaryClub = resolveClub(candidates[0].clubs);
+        const verifySettings = parseBillingVerifySettings(
+          primaryClub?.billing_verify_settings ?? null,
+        );
 
         // ----------------------------------------------------------------
-        // E. Pick the target bill
-        //    If verified + amount known → match by amount (±0.01 THB).
+        // E. Verify slip (or skip when manual mode)
+        // ----------------------------------------------------------------
+        let detected: Awaited<ReturnType<typeof verifySlip>>;
+
+        if (verifySettings.mode === "manual") {
+          // Skip provider entirely — go straight to manual queue.
+          detected = { ok: false, reason: "manual_mode" };
+        } else {
+          // byok: read the club's api_key from club_billing_secrets (never joined).
+          const { data: secretRow } = await sb
+            .from("club_billing_secrets")
+            .select("api_key")
+            .eq("club_id", candidates[0].club_id)
+            .maybeSingle();
+
+          const verifyConfig = {
+            provider: verifySettings.provider,
+            apiKey: secretRow?.api_key ?? null,
+            branchId: verifySettings.branch_id,
+          };
+
+          detected = await verifySlip({ imageBuffer: buf }, verifyConfig);
+        }
+
+        // ----------------------------------------------------------------
+        // F. Pick the target bill
+        //    If verified + amount known → match by amount (±0.01 THB)
+        //    within the same club as the primary candidate.
         //    Otherwise fall back to most-recent candidate.
         // ----------------------------------------------------------------
         let target: CandidateBill = candidates[0];
 
         if (detected.ok && detected.amount != null) {
-          const amountMatch = candidates.find(
+          // Restrict amount-match search to the same club used for verification.
+          const sameClubCandidates = candidates.filter(
+            (c) => c.club_id === candidates[0].club_id,
+          );
+          const amountMatch = sameClubCandidates.find(
             (c) =>
               c.bill_amount != null &&
               Math.abs(Number(c.bill_amount) - detected.amount!) <= 0.01,
@@ -205,7 +245,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         const club = resolveClub(target.clubs);
 
         // ----------------------------------------------------------------
-        // F. Upload slip image to private bucket
+        // G. Upload slip image to private bucket
         //    Path: <club_id>/<club_player_id>/<timestamp>.png
         //    Keep path even if upload errors — still record the slip row.
         // ----------------------------------------------------------------
@@ -232,7 +272,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
 
         // ----------------------------------------------------------------
-        // G. Decide: auto-verify or queue for manual review
+        // H. Decide: auto-verify or queue for manual review
         // ----------------------------------------------------------------
         const decision = matchSlipToBill({
           detected,
@@ -242,7 +282,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         });
 
         // ----------------------------------------------------------------
-        // H. Insert slip record
+        // I. Insert slip record
         // ----------------------------------------------------------------
         const { error: slipError } = await sb.from("club_payment_slips").insert({
           club_id: target.club_id,
@@ -261,7 +301,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
 
         // ----------------------------------------------------------------
-        // I. Confirm payment or queue for review
+        // J. Confirm payment or queue for review
         // ----------------------------------------------------------------
         if (decision.result === "verified") {
           // Guard: .is("paid_at", null) prevents double-confirm races.
@@ -295,7 +335,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }
 
         // ----------------------------------------------------------------
-        // J. Audit log
+        // K. Audit log
         // ----------------------------------------------------------------
         const { error: auditError } = await sb.from("club_audit_logs").insert({
           club_id: target.club_id,
@@ -305,7 +345,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             decision.result === "verified"
               ? "slip_auto_verified"
               : "slip_pending_review",
-          detail: `reason ${decision.reason}; detected ${detected.amount ?? "-"} / bill ${target.bill_amount}`,
+          detail: `mode ${verifySettings.mode}; reason ${decision.reason}; detected ${detected.amount ?? "-"} / bill ${target.bill_amount}`,
         });
 
         if (auditError) {

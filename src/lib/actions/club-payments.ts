@@ -7,6 +7,11 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 import { isValidPromptPayId } from "@/lib/club/promptpay";
+import {
+  BillingVerifyModeSchema,
+  SlipProviderSchema,
+  parseBillingVerifySettings,
+} from "@/lib/club/billing-verify-settings";
 
 const PaymentConfigSchema = z.object({
   promptpay_id: z.string().trim().max(40).nullable().optional(),
@@ -127,6 +132,141 @@ export async function removeClubPromptPayQrAction(clubId: string) {
   await sb.storage.from("club-qr").remove([`${clubId}/promptpay`]); // best-effort
   const { error } = await sb.from("clubs").update({ promptpay_qr_image: null }).eq("id", clubId);
   if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Billing verify settings
+// ---------------------------------------------------------------------------
+
+const BillingVerifySettingsInputSchema = z.object({
+  mode: BillingVerifyModeSchema,
+  provider: SlipProviderSchema.nullable().optional(),
+  branchId: z.string().trim().max(64).nullable().optional(),
+  /**
+   * API key — only present when the owner is setting/rotating the key.
+   * Omitting it means "keep existing key unchanged".
+   * Sending an empty string is treated as omitted (no-op for the key).
+   */
+  apiKey: z.string().trim().max(512).nullable().optional(),
+});
+
+export type BillingVerifySettingsInput = z.infer<typeof BillingVerifySettingsInputSchema>;
+
+/**
+ * Owner / co-admin sets the per-club slip-verification mode.
+ *
+ * - mode=manual : clears any stored api_key (row deleted from club_billing_secrets)
+ *                 and resets provider/branch_id to null.
+ * - mode=byok   : must supply provider; slipok must supply branchId;
+ *                 if apiKey is provided it is upserted into club_billing_secrets;
+ *                 if apiKey is absent the existing key is kept (no-op for the key).
+ *                 If byok is set for the first time and no apiKey is supplied → error.
+ *
+ * The api_key value is NEVER returned to the client or written to audit logs.
+ */
+export async function updateClubBillingVerifySettingsAction(
+  clubId: string,
+  input: BillingVerifySettingsInput,
+) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const parsed = BillingVerifySettingsInputSchema.safeParse(input);
+  if (!parsed.success) return { error: t("club.billingVerifyInvalidData") };
+
+  const { mode, provider, branchId, apiKey } = parsed.data;
+  const trimmedKey = apiKey?.trim() || null;
+
+  // ---- mode-specific validation ----
+  if (mode === "byok") {
+    if (!provider) return { error: t("club.billingVerifyByokNeedsProvider") };
+    if (provider === "slipok" && !branchId) {
+      return { error: t("club.billingVerifySlipOkNeedsBranch") };
+    }
+
+    // Check whether we already have a key stored.
+    const { data: existingSecret } = await sb
+      .from("club_billing_secrets")
+      .select("club_id")
+      .eq("club_id", clubId)
+      .maybeSingle();
+
+    const hasExistingKey = existingSecret !== null;
+
+    if (!trimmedKey && !hasExistingKey) {
+      // First-time byok setup with no key supplied → cannot proceed.
+      return { error: t("club.billingVerifyByokNeedsKey") };
+    }
+
+    // Upsert key only when a new one is provided.
+    if (trimmedKey) {
+      const { error: secretError } = await sb
+        .from("club_billing_secrets")
+        .upsert(
+          { club_id: clubId, api_key: trimmedKey, updated_at: new Date().toISOString() },
+          { onConflict: "club_id" },
+        );
+      if (secretError) return { error: t("club.billingVerifySaveFailed") };
+    }
+  } else {
+    // mode === "manual": delete any stored key (don't leave stale credentials).
+    await sb.from("club_billing_secrets").delete().eq("club_id", clubId);
+  }
+
+  // ---- Compute key_set mirror flag ----
+  // Re-query to get the authoritative state after any upsert/delete above.
+  const { data: secretAfter } = await sb
+    .from("club_billing_secrets")
+    .select("club_id")
+    .eq("club_id", clubId)
+    .maybeSingle();
+  const keySet = secretAfter !== null;
+
+  // ---- Read current settings then merge patch ----
+  const { data: clubRow } = await sb
+    .from("clubs")
+    .select("billing_verify_settings")
+    .eq("id", clubId)
+    .maybeSingle();
+
+  const current = parseBillingVerifySettings(
+    (clubRow as { billing_verify_settings?: unknown } | null)?.billing_verify_settings ?? null,
+  );
+
+  const next = {
+    ...current,
+    mode,
+    provider: mode === "byok" ? (provider ?? null) : null,
+    branch_id: mode === "byok" && provider === "slipok" ? (branchId ?? null) : null,
+    key_set: keySet,
+  };
+
+  const { error: updateError } = await sb
+    .from("clubs")
+    .update({ billing_verify_settings: next })
+    .eq("id", clubId);
+
+  if (updateError) return { error: t("club.billingVerifySaveFailed") };
+
+  // ---- Audit log — never log the api_key value ----
+  const keyStatus = trimmedKey ? "set" : mode === "manual" ? "cleared" : "unchanged";
+  await sb.from("club_audit_logs").insert({
+    club_id: clubId,
+    actor_id: session.profileId,
+    actor_name: null,
+    event_type: "billing_verify_config_changed",
+    detail: `mode ${mode}; provider ${provider ?? "none"}; key ${keyStatus}`,
+  });
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true };
