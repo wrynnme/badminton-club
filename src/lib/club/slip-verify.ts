@@ -53,28 +53,115 @@ export async function verifySlip(input: {
     return { ok: false, reason: "not_configured" };
   }
 
-  // Clean swappable seam — add real implementation per provider below.
-  switch (provider) {
-    case "easyslip": {
-      // TODO: implement provider call (fetch + API key)
-      // POST https://api.easyslip.com/api/v1/verify
-      // Authorization: Bearer <apiKey>
-      // body: { image: input.imageBuffer?.toString("base64") }
-      return { ok: false, reason: "not_configured" };
-    }
+  // Only image-based verification is wired today (the webhook always sends the
+  // slip image bytes). A payload-only call has nothing to send.
+  const image = input.imageBuffer;
+  if (!image) return { ok: false, reason: "invalid" };
 
-    case "slipok": {
-      // TODO: implement provider call (fetch + API key)
-      // POST https://api.slipok.com/api/line/apikey/<apiKey>/verify
-      // body: FormData with "files" field containing the image buffer
-      return { ok: false, reason: "not_configured" };
+  try {
+    switch (provider) {
+      case "easyslip":
+        return await callEasySlip(image, apiKey);
+      case "slipok":
+        return await callSlipOk(image, apiKey);
+      default:
+        console.error("[SLIP-VERIFY] Unknown provider:", provider);
+        return { ok: false, reason: "not_configured" };
     }
-
-    default: {
-      console.error("[SLIP-VERIFY] Unknown provider:", provider);
-      return { ok: false, reason: "not_configured" };
-    }
+  } catch (err) {
+    console.error("[SLIP-VERIFY] provider call failed:", err);
+    return { ok: false, reason: "provider_error" };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Provider adapters — normalise each provider's response to SlipVerifyResult.
+// ---------------------------------------------------------------------------
+
+type EasySlipData = {
+  transRef?: string;
+  amount?: { amount?: number };
+  receiver?: {
+    account?: {
+      name?: { th?: string; en?: string };
+      proxy?: { value?: string };
+      bank?: { account?: string };
+    };
+  };
+};
+
+/**
+ * EasySlip — POST https://developer.easyslip.com/api/v1/verify
+ * Auth: `Authorization: Bearer <key>` · multipart/form-data field `file`.
+ * Success: `{ status: 200, data: { transRef, amount: { amount }, receiver: { account: { name: { th, en }, proxy, bank } } } }`.
+ */
+async function callEasySlip(image: Buffer, apiKey: string): Promise<SlipVerifyResult> {
+  const fd = new FormData();
+  fd.append("file", new Blob([new Uint8Array(image)], { type: "image/jpeg" }), "slip.jpg");
+  const res = await fetch("https://developer.easyslip.com/api/v1/verify", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: fd,
+  });
+  const json: unknown = await res.json().catch(() => null);
+  const body = json as { status?: number; data?: EasySlipData } | null;
+  if (!res.ok || !body || body.status !== 200 || !body.data) {
+    return { ok: false, reason: "invalid", raw: json };
+  }
+  const acct = body.data.receiver?.account;
+  return {
+    ok: true,
+    amount: typeof body.data.amount?.amount === "number" ? body.data.amount.amount : undefined,
+    receiverName: acct?.name?.th ?? acct?.name?.en,
+    receiverId: acct?.proxy?.value ?? acct?.bank?.account,
+    transRef: body.data.transRef,
+    raw: json,
+  };
+}
+
+type SlipOkData = {
+  amount?: number;
+  transRef?: string;
+  receiver?: {
+    displayName?: string;
+    name?: string;
+    proxy?: { value?: string };
+    account?: { value?: string };
+  };
+};
+
+/**
+ * SlipOK — POST https://api.slipok.com/api/line/apikey/<branchId>
+ * Auth: header `x-authorization: <key>` · multipart/form-data field `files`.
+ * Needs `SLIP_VERIFY_SLIPOK_BRANCH_ID` (the branch id lives in the URL path).
+ * Success: `{ success: true, data: { amount, transRef, receiver: { displayName, name, proxy, account } } }`.
+ */
+async function callSlipOk(image: Buffer, apiKey: string): Promise<SlipVerifyResult> {
+  const branchId = process.env.SLIP_VERIFY_SLIPOK_BRANCH_ID;
+  if (!branchId) {
+    console.error("[SLIP-VERIFY] SlipOK needs SLIP_VERIFY_SLIPOK_BRANCH_ID");
+    return { ok: false, reason: "not_configured" };
+  }
+  const fd = new FormData();
+  fd.append("files", new Blob([new Uint8Array(image)], { type: "image/jpeg" }), "slip.jpg");
+  const res = await fetch(`https://api.slipok.com/api/line/apikey/${branchId}`, {
+    method: "POST",
+    headers: { "x-authorization": apiKey },
+    body: fd,
+  });
+  const json: unknown = await res.json().catch(() => null);
+  const body = json as { success?: boolean; data?: SlipOkData } | null;
+  if (!res.ok || !body?.success || !body.data) {
+    return { ok: false, reason: "invalid", raw: json };
+  }
+  return {
+    ok: true,
+    amount: typeof body.data.amount === "number" ? body.data.amount : undefined,
+    receiverName: body.data.receiver?.displayName ?? body.data.receiver?.name,
+    receiverId: body.data.receiver?.proxy?.value ?? body.data.receiver?.account?.value,
+    transRef: body.data.transRef,
+    raw: json,
+  };
 }
 
 // ---------------------------------------------------------------------------
