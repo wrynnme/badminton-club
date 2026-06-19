@@ -10,7 +10,7 @@ import { isValidPromptPayId } from "@/lib/club/promptpay";
 import {
   BillingVerifyModeSchema,
   SlipProviderSchema,
-  parseBillingVerifySettings,
+  ClubBillingVerifySettingsSchema,
 } from "@/lib/club/billing-verify-settings";
 
 const PaymentConfigSchema = z.object({
@@ -187,29 +187,17 @@ export async function updateClubBillingVerifySettingsAction(
   const { mode, provider, branchId, apiKey } = parsed.data;
   const trimmedKey = apiKey?.trim() || null;
 
-  // ---- mode-specific validation ----
+  // ---- mode-specific validation + secret write; derive key_set locally ----
+  let keySet: boolean;
+
   if (mode === "byok") {
     if (!provider) return { error: t("club.billingVerifyByokNeedsProvider") };
     if (provider === "slipok" && !branchId) {
       return { error: t("club.billingVerifySlipOkNeedsBranch") };
     }
 
-    // Check whether we already have a key stored.
-    const { data: existingSecret } = await sb
-      .from("club_billing_secrets")
-      .select("club_id")
-      .eq("club_id", clubId)
-      .maybeSingle();
-
-    const hasExistingKey = existingSecret !== null;
-
-    if (!trimmedKey && !hasExistingKey) {
-      // First-time byok setup with no key supplied → cannot proceed.
-      return { error: t("club.billingVerifyByokNeedsKey") };
-    }
-
-    // Upsert key only when a new one is provided.
     if (trimmedKey) {
+      // Set / rotate the key.
       const { error: secretError } = await sb
         .from("club_billing_secrets")
         .upsert(
@@ -217,39 +205,31 @@ export async function updateClubBillingVerifySettingsAction(
           { onConflict: "club_id" },
         );
       if (secretError) return { error: t("club.billingVerifySaveFailed") };
+    } else {
+      // No new key supplied — an existing one must already be stored.
+      const { data: existingSecret } = await sb
+        .from("club_billing_secrets")
+        .select("club_id")
+        .eq("club_id", clubId)
+        .maybeSingle();
+      if (!existingSecret) return { error: t("club.billingVerifyByokNeedsKey") };
     }
+    keySet = true;
   } else {
     // mode === "manual": delete any stored key (don't leave stale credentials).
     await sb.from("club_billing_secrets").delete().eq("club_id", clubId);
+    keySet = false;
   }
 
-  // ---- Compute key_set mirror flag ----
-  // Re-query to get the authoritative state after any upsert/delete above.
-  const { data: secretAfter } = await sb
-    .from("club_billing_secrets")
-    .select("club_id")
-    .eq("club_id", clubId)
-    .maybeSingle();
-  const keySet = secretAfter !== null;
-
-  // ---- Read current settings then merge patch ----
-  const { data: clubRow } = await sb
-    .from("clubs")
-    .select("billing_verify_settings")
-    .eq("id", clubId)
-    .maybeSingle();
-
-  const current = parseBillingVerifySettings(
-    (clubRow as { billing_verify_settings?: unknown } | null)?.billing_verify_settings ?? null,
-  );
-
-  const next = {
-    ...current,
+  // ---- Build + validate the full settings object ----
+  // All four fields are set here, so there is nothing to merge from the
+  // existing row; parse() enforces the schema before the write.
+  const next = ClubBillingVerifySettingsSchema.parse({
     mode,
     provider: mode === "byok" ? (provider ?? null) : null,
     branch_id: mode === "byok" && provider === "slipok" ? (branchId ?? null) : null,
     key_set: keySet,
-  };
+  });
 
   const { error: updateError } = await sb
     .from("clubs")

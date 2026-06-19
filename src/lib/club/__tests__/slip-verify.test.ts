@@ -171,6 +171,22 @@ describe("matchSlipToBill", () => {
     });
     expect(result).toEqual({ result: "manual", reason: "amount_mismatch" });
   });
+
+  it("clubPromptpayName too short (< 3 chars) + amount matches → manual (receiver_mismatch, not verified)", () => {
+    // A single-character club name like "A" would substring-match any receiver
+    // name. The length floor must prevent this false-positive auto-verify.
+    const result = matchSlipToBill({
+      detected: {
+        ok: true,
+        amount: 330,
+        receiverName: "Somchai Jaidee",  // completely unrelated receiver
+      },
+      billAmount: BASE_BILL,
+      clubPromptpayId: null,
+      clubPromptpayName: "A",  // too short — length floor blocks substring match
+    });
+    expect(result).toEqual({ result: "manual", reason: "receiver_mismatch" });
+  });
 });
 
 // ---------------------------------------------------------------------------

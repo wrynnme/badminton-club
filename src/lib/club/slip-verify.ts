@@ -236,11 +236,17 @@ export function matchSlipToBill(input: {
     }
 
     // 3b. Case-insensitive substring match on receiver name.
+    //     Length floor: both strings must be >= 3 chars (trimmed) before
+    //     substring matching. A very short clubPromptpayName (e.g. "A")
+    //     would match almost any receiver name — false-positive auto-verify.
+    //     When either side is too short, receiverOk stays false → manual.
     if (!receiverOk && hasReceiverName && clubPromptpayName) {
-      const detectedLower = detected.receiverName!.toLowerCase();
-      const clubLower = clubPromptpayName.toLowerCase();
-      receiverOk =
-        detectedLower.includes(clubLower) || clubLower.includes(detectedLower);
+      const detectedLower = detected.receiverName!.trim().toLowerCase();
+      const clubLower = clubPromptpayName.trim().toLowerCase();
+      if (clubLower.length >= 3 && detectedLower.length >= 3) {
+        receiverOk =
+          detectedLower.includes(clubLower) || clubLower.includes(detectedLower);
+      }
     }
 
     if (!receiverOk) {

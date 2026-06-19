@@ -188,22 +188,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         // ----------------------------------------------------------------
         // D. Fast-path: resolve target club from candidates[0]
         //    Parse its billing_verify_settings to determine verify mode.
-        //    Multi-club loop is deferred to a future phase — for now we
-        //    use the most-recent bill's club as the verification context.
+        //
+        //    Multi-club safety: if the player has pending bills across more
+        //    than one club we cannot safely auto-verify — we don't know which
+        //    club the slip was intended for, and picking candidates[0] risks
+        //    marking the wrong club's bill as paid (mis-attribution).
+        //    Solution: detect multi-club situation here and force manual review.
+        //    A full multi-club resolver is deferred to a future phase.
         // ----------------------------------------------------------------
+        const distinctClubIds = new Set(candidates.map((c) => c.club_id));
+        const multiClub = distinctClubIds.size > 1;
+
         const primaryClub = resolveClub(candidates[0].clubs);
         const verifySettings = parseBillingVerifySettings(
           primaryClub?.billing_verify_settings ?? null,
         );
 
         // ----------------------------------------------------------------
-        // E. Verify slip (or skip when manual mode)
+        // E. Verify slip (or skip when manual/multi-club)
         // ----------------------------------------------------------------
         let detected: Awaited<ReturnType<typeof verifySlip>>;
 
-        if (verifySettings.mode === "manual") {
+        if (verifySettings.mode === "manual" || multiClub) {
           // Skip provider entirely — go straight to manual queue.
-          detected = { ok: false, reason: "manual_mode" };
+          // multi_club_manual: player has bills in >1 club, cannot auto-attribute.
+          // manual_mode: club owner has opted out of auto-verify.
+          detected = {
+            ok: false,
+            reason: multiClub ? "multi_club_manual" : "manual_mode",
+          };
         } else {
           // byok: read the club's api_key from club_billing_secrets (never joined).
           const { data: secretRow } = await sb

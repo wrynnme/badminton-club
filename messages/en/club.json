@@ -732,6 +732,8 @@
     "verifySaveBtn": "Save",
     "verifySaveTip": "Save slip verification settings for this club",
     "verifySaved": "Settings saved",
+    "verifyProviderPlaceholder": "— Select —",
+    "verifyBranchPlaceholder": "e.g. 12345",
     "verifyByokNeedsProvider": "Select a provider first",
     "verifyByokNeedsKey": "Enter an API key (none configured yet)",
     "verifySlipOkNeedsBranch": "Enter Branch ID for SlipOK"

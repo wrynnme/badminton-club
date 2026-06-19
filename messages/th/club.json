@@ -732,6 +732,8 @@
     "verifySaveBtn": "บันทึก",
     "verifySaveTip": "บันทึกการตั้งค่ายืนยันสลิปของก๊วนนี้",
     "verifySaved": "บันทึกการตั้งค่าแล้ว",
+    "verifyProviderPlaceholder": "— เลือก —",
+    "verifyBranchPlaceholder": "เช่น 12345",
     "verifyByokNeedsProvider": "เลือกผู้ให้บริการก่อน",
     "verifyByokNeedsKey": "กรอก API key (ยังไม่ได้ตั้งค่า)",
     "verifySlipOkNeedsBranch": "กรอก Branch ID สำหรับ SlipOK"

@@ -138,15 +138,12 @@ export function ClubSlipVerifyConfig({
                   <Label className="text-xs">{t("verifyModeLabel")}</Label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     {(["manual", "byok"] as const).map((m) => (
-                      <button
+                      <Button
                         key={m}
                         type="button"
+                        variant={field.state.value === m ? "default" : "outline"}
                         onClick={() => field.handleChange(m)}
-                        className={`rounded-lg border px-3 py-2.5 text-left text-sm transition-colors ${
-                          field.state.value === m
-                            ? "border-primary bg-primary/5 text-primary"
-                            : "border-border bg-background text-muted-foreground hover:border-muted-foreground/40"
-                        }`}
+                        className="h-auto flex-col items-start gap-0.5 px-3 py-2.5 text-left whitespace-normal"
                       >
                         <span className="block font-medium">
                           {t(m === "manual" ? "verifyModeManual" : "verifyModeByok")}
@@ -154,7 +151,7 @@ export function ClubSlipVerifyConfig({
                         <span className="mt-0.5 block text-[11px] leading-snug opacity-75">
                           {t(m === "manual" ? "verifyModeManualDesc" : "verifyModeByokDesc")}
                         </span>
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -178,7 +175,7 @@ export function ClubSlipVerifyConfig({
                             }
                           >
                             <SelectTrigger className="h-8 text-sm">
-                              <SelectValue placeholder="— เลือก —" />
+                              <SelectValue placeholder={t("verifyProviderPlaceholder")} />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="easyslip">EasySlip</SelectItem>
@@ -223,7 +220,7 @@ export function ClubSlipVerifyConfig({
                                   value={field.state.value}
                                   onChange={(e) => field.handleChange(e.target.value)}
                                   onBlur={field.handleBlur}
-                                  placeholder="e.g. 12345"
+                                  placeholder={t("verifyBranchPlaceholder")}
                                   className="h-8 text-sm"
                                 />
                               </div>
