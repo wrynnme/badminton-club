@@ -10,14 +10,15 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
-### 2026-06-19 — ก๊วน: Auto-billing via LINE — Phase 1+2 (push + webhook รับสลิป/verify) — ✅ tsc/vitest/build/smoke PASS · ⏳ live-test ลูปจริงรอ LINE bot
+### 2026-06-19 — ก๊วน: Auto-billing via LINE — Phase 1+2+3 (push + webhook + review queue) — ✅ ship-check PASS (Phase 3 live-smoke) · ⏳ live-test ลูป LINE จริงรอ bot
 
 ฟีเจอร์ใหญ่ใหม่ (Hybrid: บอท push บิล → ผู้เล่นส่งสลิป → verify อัตโนมัติ + fallback เจ้าของยืนยัน; แผนเต็มใน `~/.claude/plans/immutable-sparking-boole.md`). **Phase 1 (ส่งบิล) + Phase 2 (webhook รับสลิป+verify)** เสร็จ code+gate; Phase 3 (review queue ให้เจ้าของยืนยัน) ยังไม่ทำ — fallback ใช้ paid-toggle เดิม.
 - **DB (applied prod, additive):** migration `20260619000100_club_billing` — `club_players` +bill_amount/paid_method/bill_pushed_at; ตารางใหม่ `club_payment_slips` + `club_audit_logs` (RLS on, service-role); private bucket `payment-slips` (PII). ยืนยัน schema ลงครบผ่าน execute_sql.
 - **โค้ด (delegate 3 wave):** `line-club.ts` (push/reply/getContent/verifyLineSignature) · `slip-verify.ts` (adapter stub + pure `matchSlipToBill` Hybrid) · `club-billing.ts` `pushClubBillsAction` (QR ฝังยอด→public bucket→Flex บิล→push→stamp+audit) · UI ปุ่ม+badge ใน collector · page derive `lineReachableIds` (ไม่ ship line_user_id) · i18n `club.payment.*` +6 keys.
 - **Phase 2 webhook** `src/app/api/line/webhook/route.ts`: verify `x-line-signature` (HMAC) **ก่อน** parse → `after()` ตอบ 200 เร็ว → image event → หา bill ค้าง (line_user_id→club_players unpaid) → `getMessageContent` → `verifySlip` → `matchSlipToBill` → **verified** ติ๊กจ่ายอัตโนมัติ (race guard `.is(paid_at,null)`) + push ✅ / **manual** push "รอเจ้าของตรวจ" → audit. auth = HMAC อย่างเดียว (ไม่มี session). **local smoke:** GET 200 `{ok:true}` · POST ไม่มี/sig ผิด → 401 ✓.
 - **Gate:** tsc 0 · vitest **671** (+46: matchSlipToBill 12 + verifyLineSignature 5 + fixture) · next build OK (route `ƒ /api/line/webhook`) · i18n parity 45/45 · `public-view.ts` null 3 ฟิลด์ billing.
-- **⏳ ยังไม่ live-test ลูปสลิปจริง** (รอ prereq นอกโค้ด): LINE Login+Messaging provider เดียวกัน · ผู้เล่นแอดเพื่อนบอท · env `LINE_MESSAGING_CHANNEL_SECRET` + `SLIP_VERIFY_*` · เปิด webhook URL ใน LINE console · สมัคร slip-verify provider. โค้ด push+webhook พร้อมทำงานทันทีที่ตั้ง bot+verify เสร็จ.
+- **Phase 3 review queue** `club-slip-review.tsx` + `confirmSlipAction`/`rejectSlipAction`: สลิป manual โผล่ใน cost tab (thumbnail signed URL) → ยืนยัน=paid(manual)+slip verified / ปฏิเสธ=failed → audit. **live-smoke PASS** (seed สลิป manual → เปิด cost tab เห็นการ์ด+ยอด → กดยืนยัน → DB: `paid_at`+method=manual + slip=verified + audit=1 · console 0 err · การ์ดหายหลัง refresh · teardown net-zero).
+- **⏳ ยังไม่ live-test ลูป push/verify จริง** (รอ prereq นอกโค้ด): LINE Login+Messaging provider เดียวกัน · ผู้เล่นแอดเพื่อนบอท · env `LINE_MESSAGING_CHANNEL_SECRET` + `SLIP_VERIFY_*` · เปิด webhook URL ใน LINE console · สมัคร slip-verify provider. โค้ด push+webhook+review พร้อมทำงานทันทีที่ตั้ง bot+verify เสร็จ.
 
 ### 2026-06-18 — ก๊วน: สลิปเรียกเก็บเงินรายคน (QR ส่ง LINE) + collapse default flip — ✅ ship-check PASS (live-smoke จับ+แก้ QR-blank bug)
 

@@ -707,7 +707,17 @@
     "pushResult": "ส่งบิลแล้ว {pushed} คน · ไม่มี LINE {noLine} · ส่งไม่สำเร็จ {failed}",
     "pushing": "กำลังส่งบิล…",
     "billPushed": "ส่งบิลแล้ว",
-    "noLine": "ไม่มี LINE"
+    "noLine": "ไม่มี LINE",
+    "reviewTitle": "สลิปรอตรวจสอบ ({n})",
+    "reviewConfirm": "ยืนยัน",
+    "reviewReject": "ปฏิเสธ",
+    "reviewConfirmTip": "ยืนยันว่าจ่ายแล้ว → ติ๊กจ่าย (วิธี: ยืนยันเอง)",
+    "reviewRejectTip": "ปฏิเสธสลิปนี้ — ผู้เล่นยังค้างจ่าย",
+    "reviewDetected": "ตรวจพบ {amount}",
+    "reviewBill": "บิล {amount}",
+    "reviewConfirmed": "ยืนยันการจ่ายแล้ว",
+    "reviewRejected": "ปฏิเสธสลิปแล้ว",
+    "reviewNoImage": "ดูรูปไม่ได้"
   },
   "slip": {
     "sectionTitle": "ส่งสลิปเรียกเก็บเงิน",

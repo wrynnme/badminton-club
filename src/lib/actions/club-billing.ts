@@ -280,6 +280,110 @@ export async function pushClubBillsAction(
 }
 
 // ---------------------------------------------------------------------------
+// confirmSlipAction
+// ---------------------------------------------------------------------------
+
+/**
+ * Manager manually confirms a payment slip that the auto-verifier routed to
+ * review (verify_status = 'manual').  Marks the player paid and resolves the
+ * slip to 'verified'.
+ */
+export async function confirmSlipAction(input: {
+  clubId: string;
+  slipId: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  // 1. Fetch the slip — must belong to this club.
+  const { data: slip } = await sb
+    .from("club_payment_slips")
+    .select("id, club_id, club_player_id")
+    .eq("id", input.slipId)
+    .eq("club_id", input.clubId)
+    .maybeSingle();
+
+  if (!slip) {
+    return { error: t("club.invalidData") };
+  }
+
+  // 2. Mark player paid (guard against double-pay via .is("paid_at", null)).
+  await sb
+    .from("club_players")
+    .update({ paid_at: new Date().toISOString(), paid_method: "manual" })
+    .eq("id", slip.club_player_id)
+    .eq("club_id", input.clubId)
+    .is("paid_at", null);
+
+  // 3. Resolve the slip.
+  await sb
+    .from("club_payment_slips")
+    .update({ verify_status: "verified" })
+    .eq("id", input.slipId);
+
+  // 4. Audit.
+  await sb.from("club_audit_logs").insert({
+    club_id: input.clubId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "slip_manual_confirmed",
+    detail: `slip ${input.slipId}`,
+  });
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// rejectSlipAction
+// ---------------------------------------------------------------------------
+
+/**
+ * Manager rejects a payment slip — marks it 'failed' and leaves the player
+ * UNPAID (paid_at / paid_method are NOT touched).
+ */
+export async function rejectSlipAction(input: {
+  clubId: string;
+  slipId: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  // 1. Mark the slip failed (scoped to this club for safety).
+  await sb
+    .from("club_payment_slips")
+    .update({ verify_status: "failed" })
+    .eq("id", input.slipId)
+    .eq("club_id", input.clubId);
+
+  // 2. Audit.
+  await sb.from("club_audit_logs").insert({
+    club_id: input.clubId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "slip_rejected",
+    detail: `slip ${input.slipId}`,
+  });
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
 // Flex bubble builder (pure — no side effects)
 // ---------------------------------------------------------------------------
 
