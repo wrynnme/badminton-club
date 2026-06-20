@@ -76,6 +76,7 @@ Trust but verify. Read the actual diff/changes before reporting done. Subagent s
 1. Update `spec.md` — current state, decisions made, what's next
 2. Update data contracts if any interface changed
 3. Never claim "done" without updating `spec.md` first
+4. **User-facing change?** (ฟีเจอร์ใหม่ / แก้บั๊กที่ผู้ใช้สังเกตเห็น) → เพิ่ม entry ใน `src/lib/changelog.ts` (**source หลัก** ของหน้า `/whats-new`) **และ mirror ใน `CHANGELOG.md`** (root). ใช้วันที่ release · ภาษาคนอ่าน (ไม่ใช่ commit message/ศัพท์เทคนิค) · จัดกลุ่ม `✨ new` / `🔧 improved` / `🐞 fixed` · รุ่นใหม่บนสุด. **ข้ามได้** สำหรับงานภายในที่ผู้ใช้ไม่เห็น (refactor, CI/lockfile, test, RLS/security hardening, docs, i18n plumbing).
 
 ## Bug tracking (`bug.md`)
 
