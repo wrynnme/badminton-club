@@ -1,1 +1,8 @@
-{}
+{
+  "whatsNewTitle": "What's New",
+  "whatsNewSubtitle": "Latest updates from the team — written in plain language",
+  "changelogNew": "New",
+  "changelogImproved": "Improved",
+  "changelogFixed": "Fixed",
+  "changelogFooter": "Changelog starts from 2026-06-19 — earlier versions in git history"
+}

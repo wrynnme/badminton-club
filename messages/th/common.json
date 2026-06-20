@@ -1,1 +1,8 @@
-{}
+{
+  "whatsNewTitle": "มีอะไรใหม่",
+  "whatsNewSubtitle": "อัปเดตล่าสุดจากทีมพัฒนา — เขียนเป็นภาษาคนให้อ่านเข้าใจง่าย",
+  "changelogNew": "ใหม่",
+  "changelogImproved": "ปรับปรุง",
+  "changelogFixed": "แก้ไข",
+  "changelogFooter": "บันทึกเริ่มจาก 2026-06-19 — รุ่นก่อนหน้าดูจากประวัติ git"
+}
