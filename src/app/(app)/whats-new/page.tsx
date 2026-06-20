@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { Sparkles, Wrench, Bug } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CHANGELOG, type ChangelogGroupType } from "@/lib/changelog";
+import { CHANGELOG, CURRENT_VERSION, type ChangelogGroupType } from "@/lib/changelog";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 
 export const metadata = {
@@ -45,7 +45,12 @@ export default async function WhatsNewPage() {
     <div className="mx-auto max-w-2xl space-y-8 py-4">
       {/* Header */}
       <div className="space-y-1">
-        <h1 className="text-2xl font-bold tracking-tight">{t("whatsNewTitle")}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-bold tracking-tight">{t("whatsNewTitle")}</h1>
+          <Badge variant="secondary" className="font-mono text-xs">
+            v{CURRENT_VERSION}
+          </Badge>
+        </div>
         <p className="text-sm text-muted-foreground">{t("whatsNewSubtitle")}</p>
       </div>
 
@@ -72,10 +77,15 @@ export default async function WhatsNewPage() {
                 <div className="h-2 w-2 rounded-full bg-primary" />
               </div>
 
-              {/* Date label */}
-              <p className="mb-3 text-sm font-semibold text-muted-foreground">
-                {dateLabel}
-              </p>
+              {/* Version + date label */}
+              <div className="mb-3 flex items-center gap-2">
+                <Badge variant="outline" className="font-mono text-xs">
+                  v{entry.version}
+                </Badge>
+                <span className="text-sm font-semibold text-muted-foreground">
+                  {dateLabel}
+                </span>
+              </div>
 
               {/* Groups */}
               <Card>

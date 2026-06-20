@@ -1,8 +1,8 @@
 {
   "whatsNewTitle": "What's New",
-  "whatsNewSubtitle": "Latest updates from the team — written in plain language",
+  "whatsNewSubtitle": "Latest updates from the team",
   "changelogNew": "New",
   "changelogImproved": "Improved",
   "changelogFixed": "Fixed",
-  "changelogFooter": "Changelog starts from 2026-06-19 — earlier versions in git history"
+  "changelogFooter": "Changelog starts from v0.2.0 (2026-06-12) — earlier versions in git history"
 }

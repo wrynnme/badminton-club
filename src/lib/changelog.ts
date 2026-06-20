@@ -6,18 +6,23 @@ export type ChangelogGroup = {
 };
 
 export type ChangelogEntry = {
+  version: string; // semver, e.g. "0.9.0"
   date: string; // "YYYY-MM-DD"
   groups: ChangelogGroup[];
 };
 
 /**
- * Single source of truth for the What's New page.
- * Items are written in Thai (intentionally kept Thai — same convention as
- * audit_logs.description and LINE notification bodies in this project).
- * Newest entry first.
+ * Single source of truth for the What's New page AND the app version.
+ * - Current app version = CHANGELOG[0].version (exported as CURRENT_VERSION).
+ *   Keep package.json "version" in sync with it.
+ * - Versioning: bump MINOR for a release with new features, PATCH for a
+ *   fix-only release. Newest entry first.
+ * - Items are written in Thai (intentionally kept Thai — same convention as
+ *   audit_logs.description and LINE notification bodies in this project).
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.9.0",
     date: "2026-06-21",
     groups: [
       {
@@ -26,26 +31,27 @@ export const CHANGELOG: ChangelogEntry[] = [
           "ตั้งค่ายืนยันสลิปจ่ายเงินได้รายก๊วน — แต่ละก๊วนเลือกเองได้ว่าจะตรวจสลิปแบบไหน",
           "ยืนยันเอง (ค่าเริ่มต้น) — ผู้เล่นส่งสลิป แล้วเจ้าของก๊วนกดยืนยัน",
           "ใช้กุญแจของก๊วนเอง — สมัครบริการตรวจสลิป (SlipOK / EasySlip) แล้วใส่กุญแจในหน้าตั้งค่า → ระบบตรวจและยืนยันให้อัตโนมัติ",
-          "กุญแจเก็บแบบปลอดภัย ไม่แสดงค่าจริงในหน้าเว็บ (โชว์แค่ว่า \"ตั้งแล้ว\")",
+          'กุญแจเก็บแบบปลอดภัย ไม่แสดงค่าจริงในหน้าเว็บ (โชว์แค่ว่า "ตั้งแล้ว")',
           "ล็อกอินอัตโนมัติเมื่อเปิดผ่านแอป LINE — เปิดเว็บในแอป LINE แล้วเข้าสู่ระบบเป็นบัญชี LINE นั้นทันที ไม่ต้องกดปุ่มล็อกอิน (ถ้าเปิดนอก LINE ใช้ปุ่มล็อกอินเดิมตามปกติ)",
         ],
       },
       {
         type: "improved",
         items: [
-          "ยกเลิก \"คีย์กลาง\" ตรวจสลิปแบบเดิม เปลี่ยนเป็นกุญแจของแต่ละก๊วน — ตรวจแม่นยำขึ้นเพราะผูกกับบัญชีรับเงินของก๊วนเอง",
+          'ยกเลิก "คีย์กลาง" ตรวจสลิปแบบเดิม เปลี่ยนเป็นกุญแจของแต่ละก๊วน — ตรวจแม่นยำขึ้นเพราะผูกกับบัญชีรับเงินของก๊วนเอง',
         ],
       },
     ],
   },
   {
+    version: "0.8.0",
     date: "2026-06-19",
     groups: [
       {
         type: "new",
         items: [
           "เก็บเงินก๊วนผ่าน LINE อัตโนมัติ — เจ้าของกดปุ่มเดียว บอท LINE ส่งบิล (พร้อม QR พร้อมเพย์ที่ฝังยอดไว้แล้ว) ให้ผู้เล่นที่ผูก LINE ทุกคนที่ยังไม่จ่าย",
-          "ผู้เล่นส่งสลิปกลับในแชต → ระบบตรวจแล้วติ๊ก \"จ่ายแล้ว\" ให้อัตโนมัติ",
+          'ผู้เล่นส่งสลิปกลับในแชต → ระบบตรวจแล้วติ๊ก "จ่ายแล้ว" ให้อัตโนมัติ',
           "สลิปที่ตรวจไม่ชัด → เข้าคิวให้เจ้าของกดยืนยัน/ปฏิเสธเอง",
           "ผู้เล่นที่ไม่มี LINE → ใช้สลิป QR แบบแชร์เหมือนเดิม",
         ],
@@ -53,6 +59,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
   },
   {
+    version: "0.7.0",
     date: "2026-06-18",
     groups: [
       {
@@ -67,6 +74,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
   },
   {
+    version: "0.6.0",
     date: "2026-06-17",
     groups: [
       {
@@ -79,6 +87,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
   },
   {
+    version: "0.5.0",
     date: "2026-06-15",
     groups: [
       {
@@ -90,6 +99,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
   },
   {
+    version: "0.4.0",
     date: "2026-06-14",
     groups: [
       {
@@ -109,6 +119,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
   },
   {
+    version: "0.3.0",
     date: "2026-06-13",
     groups: [
       {
@@ -120,6 +131,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
   },
   {
+    version: "0.2.0",
     date: "2026-06-12",
     groups: [
       {
@@ -131,3 +143,6 @@ export const CHANGELOG: ChangelogEntry[] = [
     ],
   },
 ];
+
+/** Current app version — derived from the newest changelog entry. */
+export const CURRENT_VERSION = CHANGELOG[0].version;
