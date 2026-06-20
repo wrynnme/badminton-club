@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server";
 import { getLocale } from "next-intl/server";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { Sparkles, Wrench, Bug } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +31,6 @@ function groupBadgeVariant(type: ChangelogGroupType): "default" | "secondary" | 
 
 export default async function WhatsNewPage() {
   const t = await getTranslations("common");
-  const tNav = await getTranslations("nav");
   const locale = await getLocale();
   const dateFnsLocale = dateFnsLocaleOf(locale);
 
@@ -63,7 +62,7 @@ export default async function WhatsNewPage() {
         />
 
         {CHANGELOG.map((entry) => {
-          const dateLabel = format(new Date(entry.date), "d MMMM yyyy", {
+          const dateLabel = format(parseISO(entry.date), "d MMMM yyyy", {
             locale: dateFnsLocale,
           });
 

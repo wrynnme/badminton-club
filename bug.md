@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-21 — แอป: ระบบ changelog + หน้า "มีอะไรใหม่" + เลข version — ✅ ship-check PASS
+
+หน้า `/whats-new` (server component render จาก `src/lib/changelog.ts` = single source) + `CHANGELOG.md` mirror + เลข version semver (`CURRENT_VERSION = CHANGELOG[0].version`, sync `package.json` 0.9.0) + ลิงก์เมนู (user-menu/mobile-nav) + กฎ CLAUDE.md ข้อ 4 (bump version เมื่อ feature เสร็จ).
+- **code-review (1 finder, diff content/UI):** P2×1 (dead var `tNav`) + P3×1 (`new Date("YYYY-MM-DD")` parse UTC → timezone ติดลบโชว์วันก่อน) → **แก้ทั้ง 2** (ลบ `tNav` · ใช้ `parseISO`). i18n parity 7 keys th+en · version sync ok.
+- **Gate:** tsc 0 · vitest 695 · next build OK · i18n parity ✓.
+- **live-smoke PASS:** โหลด `/whats-new` จริง → badge v0.9.0 ข้างหัวข้อ + 8 รุ่น (v0.9.0→v0.2.0) + วันที่ถูก (parseISO) + subtitle ตัดคำ "เขียนเป็นภาษาคน" แล้ว · **console 0 error** (1 warning = LIFF init นอก endpoint บน localhost, pre-existing ไม่เกี่ยว) · net-zero (หน้า static สาธารณะ ไม่แตะ DB).
+- ยังอยู่ develop (นำหน้า master 4 commit) — ยังไม่ขึ้น prod.
+
 ### 2026-06-19 — ก๊วน: ตั้งค่ายืนยันสลิปรายก๊วน (manual + BYOK) — ✅ ship-check PASS (live-smoke byok+manual)
 
 ตัด env กลาง `SLIP_VERIFY_*` → ตั้งค่ายืนยันสลิป**รายก๊วน** 2 โหมด: manual (default ทุกก๊วน) / byok (ก๊วนสมัคร provider+key เอง). PR #3 → develop. migration `20260619000200_club_billing_verify_config` **applied prod** (column `clubs.billing_verify_settings` + ตาราง `club_billing_secrets` RLS-locked service-role).
