@@ -85,7 +85,12 @@
     "bulkDeleteSuccess": "Deleted {count} player(s)",
     "bulkDeletePartialFail": "Deleted {deleted} · failed {failed}",
     "invalidPromptPay": "Invalid PromptPay number / national ID",
-    "invalidQrImage": "Invalid QR image file"
+    "invalidQrImage": "Invalid QR image file",
+    "billingVerifyInvalidData": "Invalid slip verification settings",
+    "billingVerifyByokNeedsProvider": "BYOK mode requires a provider (easyslip or slipok)",
+    "billingVerifySlipOkNeedsBranch": "SlipOK requires a Branch ID",
+    "billingVerifyByokNeedsKey": "BYOK mode requires an API Key (no existing key on file)",
+    "billingVerifySaveFailed": "Failed to save slip verification settings"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",

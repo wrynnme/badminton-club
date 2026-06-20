@@ -26,6 +26,7 @@ const baseClub: Club = {
   promptpay_id: "0812345678",
   promptpay_name: "เจ้าของก๊วน",
   promptpay_qr_image: "https://example.com/qr.png",
+  billing_verify_settings: { mode: "manual" },
 };
 
 const basePlayer: ClubPlayer = {

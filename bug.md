@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-19 — ก๊วน: ตั้งค่ายืนยันสลิปรายก๊วน (manual + BYOK) — ✅ ship-check PASS (live-smoke byok+manual)
+
+ตัด env กลาง `SLIP_VERIFY_*` → ตั้งค่ายืนยันสลิป**รายก๊วน** 2 โหมด: manual (default ทุกก๊วน) / byok (ก๊วนสมัคร provider+key เอง). PR #3 → develop. migration `20260619000200_club_billing_verify_config` **applied prod** (column `clubs.billing_verify_settings` + ตาราง `club_billing_secrets` RLS-locked service-role).
+- **code-review (high, 3 finder):** P1×1 (webhook: ผู้เล่นบิลหลายก๊วน → auto-confirm ผิดก๊วน) **แก้** (multiClub → บังคับ manual ไม่ verify) · receiver-name substring ไม่มี length floor — byok ทำให้ reachable **harden** (ต้อง ≥3 ตัวอักษร) · 2 convention (raw `<button>` → shadcn Button · hardcoded string → i18n) **แก้** · cleanup **simplify** (ตัด clubs-read ทั้งก้อน เพราะ next set ครบ 4 field, query 4→2, validate ผ่าน `Schema.parse`). P3 (key_set race, audit actor_name null) เลื่อน.
+- **Gate:** tsc 0 · vitest **695** (+1 receiver length-floor) · next build OK · i18n parity (17 `club.payment` + 5 `actions` + 2 placeholder, th/en).
+- **live-smoke PASS:** seed ก๊วน+owner cookie → cost tab → byok+SlipOK branch 99999 + key → บันทึก → DB `{mode:byok,provider:slipok,branch_id:"99999",key_set:true}` + `club_billing_secrets.api_key` ตรง + UI badge "• Auto" + masked placeholder · สลับ manual → `{mode:manual,key_set:false}` + secret ลบ (0 แถว) · console 0 err · **teardown net-zero 0/0/0 (orchestrator verify เอง)**.
+- **⏳ ก่อนใช้จริง:** byok ต้องสมัคร SlipOK/EasySlip + ใส่ key ในหน้าตั้งค่าก๊วน (ไม่ต้อง env กลาง). PR #3 ยังไม่ merge.
+
 ### 2026-06-19 — ก๊วน: Auto-billing via LINE — Phase 1+2+3 (push + webhook + review queue) — ✅ ship-check PASS (Phase 3 live-smoke) · ⏳ live-test ลูป LINE จริงรอ bot
 
 ฟีเจอร์ใหญ่ใหม่ (Hybrid: บอท push บิล → ผู้เล่นส่งสลิป → verify อัตโนมัติ + fallback เจ้าของยืนยัน; แผนเต็มใน `~/.claude/plans/immutable-sparking-boole.md`). **Phase 1 (ส่งบิล) + Phase 2 (webhook รับสลิป+verify)** เสร็จ code+gate; Phase 3 (review queue ให้เจ้าของยืนยัน) ยังไม่ทำ — fallback ใช้ paid-toggle เดิม.
@@ -20,6 +28,11 @@ Dated entries below are the historical test-run / fix log (kept per the bug-trac
 - **Phase 3 review queue** `club-slip-review.tsx` + `confirmSlipAction`/`rejectSlipAction`: สลิป manual โผล่ใน cost tab (thumbnail signed URL) → ยืนยัน=paid(manual)+slip verified / ปฏิเสธ=failed → audit. **live-smoke PASS** (seed สลิป manual → เปิด cost tab เห็นการ์ด+ยอด → กดยืนยัน → DB: `paid_at`+method=manual + slip=verified + audit=1 · console 0 err · การ์ดหายหลัง refresh · teardown net-zero).
 - **Slip-verify provider adapters (2026-06-19):** `slip-verify.ts` implement จริงทั้ง **EasySlip** (Bearer + multipart `file`, `developer.easyslip.com/api/v1/verify`, อ่าน `data.amount.amount`) + **SlipOK** (`x-authorization` + multipart `files`, `api.slipok.com/api/line/apikey/<branchId>` — env `SLIP_VERIFY_SLIPOK_BRANCH_ID`, อ่าน `data.amount`); สลับด้วย `SLIP_VERIFY_PROVIDER`; normalize → `SlipVerifyResult`; ไม่ตั้ง env = `not_configured`→manual. +.env.example. tsc 0 · vitest 671. **ยังไม่ live-test กับ API จริง** (รอ key + รูปสลิปตัวอย่าง).
 - **⏳ ยังไม่ live-test ลูป push/verify จริง** (รอ prereq นอกโค้ด): LINE Login+Messaging provider เดียวกัน · ผู้เล่นแอดเพื่อนบอท · env `LINE_MESSAGING_CHANNEL_SECRET` + `SLIP_VERIFY_*` · เปิด webhook URL ใน LINE console · สมัคร slip-verify provider. โค้ด push+webhook+review พร้อมทำงานทันทีที่ตั้ง bot+verify เสร็จ.
+
+### 2026-06-19 — auth: LINE Browser auto-login (LIFF) — ✅ ship-check PASS (PR #2, commit 8895a69)
+
+`LiffAutoLogin` เปิดในแอป LINE → auto mint `bc_session` ผ่าน `POST /api/auth/liff` (verify LIFF ID token กับ LINE `oauth2/v2.1/verify`); guest→LINE สลับ identity. Review (3 finder + verify): **0 P0/P1**. แก้ 1 P2 ตอน ship: guard ใน `liff-auto-login.tsx` ตั้ง sessionStorage flag ก่อนลองแล้วไม่ล้าง → transient fail (init/network/5xx) ปิด auto-login ทั้ง tab → แก้เป็นล้าง flag เมื่อ fail ชั่วคราว (retry ได้) + ตัด `ran` useRef ซ้ำซ้อน. Gates: tsc 0 · vitest 654/654 · `next build` OK · **live-smoke** (Playwright): หน้า `/` 0 console error, LiffAutoLogin init+bail สวยในเบราว์เซอร์ปกติ (warn benign เรื่อง endpoint localhost), ปุ่ม login เดิมครบ; negative API: no-body→400, no-idToken→400, token ปลอม→401 ไม่มี `Set-Cookie` (กันปลอม session). **ยังไม่ live-test ในแอป LINE จริง** (รอ deploy + ตั้ง LIFF Endpoint=`kuanbad.vercel.app` + scope openid/profile). Branch fix: rebase LIFF onto `origin/develop` ตัด billing Phase 1 ที่เคยปนใน PR ออก.
+- **Design decision (ไม่ใช่บั๊ก, เหมือนปุ่ม LINE login ปกติ):** guest ที่มีข้อมูลแล้วเปิดในไลน์ = สลับเป็น LINE identity โดยไม่ย้ายข้อมูล; account-merge เป็น follow-up ถ้าต้องการ.
 
 ### 2026-06-18 — ก๊วน: สลิปเรียกเก็บเงินรายคน (QR ส่ง LINE) + collapse default flip — ✅ ship-check PASS (live-smoke จับ+แก้ QR-blank bug)
 

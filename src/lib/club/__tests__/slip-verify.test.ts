@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createHmac } from "crypto";
-import { matchSlipToBill } from "../slip-verify";
+import { matchSlipToBill, verifySlip } from "../slip-verify";
 import { verifyLineSignature } from "../../notification/line-club";
 
 // ---------------------------------------------------------------------------
@@ -171,6 +171,22 @@ describe("matchSlipToBill", () => {
     });
     expect(result).toEqual({ result: "manual", reason: "amount_mismatch" });
   });
+
+  it("clubPromptpayName too short (< 3 chars) + amount matches → manual (receiver_mismatch, not verified)", () => {
+    // A single-character club name like "A" would substring-match any receiver
+    // name. The length floor must prevent this false-positive auto-verify.
+    const result = matchSlipToBill({
+      detected: {
+        ok: true,
+        amount: 330,
+        receiverName: "Somchai Jaidee",  // completely unrelated receiver
+      },
+      billAmount: BASE_BILL,
+      clubPromptpayId: null,
+      clubPromptpayName: "A",  // too short — length floor blocks substring match
+    });
+    expect(result).toEqual({ result: "manual", reason: "receiver_mismatch" });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -221,5 +237,100 @@ describe("verifyLineSignature", () => {
   it("returns false for a tampered body", () => {
     const sig = makeSignature(RAW_BODY, TEST_SECRET);
     expect(verifyLineSignature('{"events":[{"tampered":true}]}', sig)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// verifySlip — config-driven (no env reads)
+// ---------------------------------------------------------------------------
+
+describe("verifySlip — config-driven", () => {
+  it("provider=null, apiKey=null → not_configured", async () => {
+    const result = await verifySlip(
+      { imageBuffer: Buffer.from("fake") },
+      { provider: null, apiKey: null },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("not_configured");
+  });
+
+  it("provider set but apiKey=null → not_configured", async () => {
+    const result = await verifySlip(
+      { imageBuffer: Buffer.from("fake") },
+      { provider: "easyslip", apiKey: null },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("not_configured");
+  });
+
+  it("apiKey set but provider=null → not_configured", async () => {
+    const result = await verifySlip(
+      { imageBuffer: Buffer.from("fake") },
+      { provider: null, apiKey: "some-key" },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("not_configured");
+  });
+
+  it("no imageBuffer (payload-only path) → invalid", async () => {
+    const result = await verifySlip(
+      { payload: "some-payload" },
+      { provider: "easyslip", apiKey: "some-key" },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("invalid");
+  });
+
+  it("slipok with branchId=null → not_configured (no network call)", async () => {
+    // fetch should never be called when branchId is absent
+    const fetchSpy = vi.spyOn(global, "fetch");
+    const result = await verifySlip(
+      { imageBuffer: Buffer.from("fake") },
+      { provider: "slipok", apiKey: "some-key", branchId: null },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("not_configured");
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it("easyslip provider error (fetch throws) → provider_error", async () => {
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockRejectedValueOnce(new Error("network down"));
+    const result = await verifySlip(
+      { imageBuffer: Buffer.from("fake") },
+      { provider: "easyslip", apiKey: "some-key" },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("provider_error");
+    fetchSpy.mockRestore();
+  });
+
+  it("slipok provider error (fetch throws) → provider_error", async () => {
+    const fetchSpy = vi
+      .spyOn(global, "fetch")
+      .mockRejectedValueOnce(new Error("network down"));
+    const result = await verifySlip(
+      { imageBuffer: Buffer.from("fake") },
+      { provider: "slipok", apiKey: "some-key", branchId: "99" },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBe("provider_error");
+    fetchSpy.mockRestore();
+  });
+
+  it("slipok: fetch URL includes branchId", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: false }), { status: 200 }),
+    );
+    await verifySlip(
+      { imageBuffer: Buffer.from("fake") },
+      { provider: "slipok", apiKey: "some-key", branchId: "branch-42" },
+    );
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const calledUrl = fetchSpy.mock.calls[0][0] as string;
+    expect(calledUrl).toContain("branch-42");
+    fetchSpy.mockRestore();
   });
 });

@@ -1,17 +1,17 @@
 /**
  * slip-verify.ts — provider-agnostic slip-verification adapter.
  *
- * `verifySlip` is the outbound adapter seam. Swap providers by setting
- *   SLIP_VERIFY_PROVIDER = "easyslip" | "slipok"
- *   SLIP_VERIFY_API_KEY  = <provider key>
+ * `verifySlip(input, config)` is the outbound adapter seam. Provider selection is
+ * driven by the per-club `SlipVerifyConfig` passed by the caller — no env vars are
+ * read here. Swap providers by updating `clubs.billing_verify_settings` + the
+ * corresponding `club_billing_secrets` row via `updateClubBillingVerifySettingsAction`.
  *
  * `matchSlipToBill` is a pure, side-effect-free decision function that maps a
  * SlipVerifyResult + bill parameters to a final verification outcome. It is
  * fully testable without network access.
  *
- * Required env vars (when a real provider is configured):
- *   SLIP_VERIFY_PROVIDER — "easyslip" | "slipok"
- *   SLIP_VERIFY_API_KEY  — provider API key
+ * Deprecated env vars (no longer read by this module):
+ *   SLIP_VERIFY_PROVIDER, SLIP_VERIFY_API_KEY, SLIP_VERIFY_SLIPOK_BRANCH_ID
  */
 
 // ---------------------------------------------------------------------------
@@ -25,7 +25,17 @@ export type SlipVerifyResult = {
   receiverName?: string;
   transRef?: string;
   raw?: unknown;         // raw provider response
-  reason?: string;       // when !ok: "not_configured" | "provider_error" | "invalid"
+  reason?: string;       // when !ok: "not_configured" | "provider_error" | "invalid" | "manual_mode"
+};
+
+/**
+ * Per-call config derived from `clubs.billing_verify_settings` + `club_billing_secrets`.
+ * The webhook resolves this before calling verifySlip — no env reads inside.
+ */
+export type SlipVerifyConfig = {
+  provider: "easyslip" | "slipok" | null;
+  apiKey: string | null;
+  branchId?: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -33,21 +43,21 @@ export type SlipVerifyResult = {
 // ---------------------------------------------------------------------------
 
 /**
- * Verify a payment slip against the configured provider.
+ * Verify a payment slip against the club's configured provider.
  *
- * Input: either an `imageBuffer` (raw image bytes) or a `payload` string
- * (some providers accept base64 or a pre-processed payload).
+ * Input: either an `imageBuffer` (raw image bytes) or a `payload` string.
+ * Config: caller resolves provider/apiKey/branchId from club_billing_secrets — never
+ *         read from env.
  *
- * When no provider is configured both env vars are absent — returns
- * `{ ok: false, reason: "not_configured" }` immediately so callers can
- * fall through to `matchSlipToBill` which routes that to `"manual"`.
+ * When provider or apiKey is absent, returns `{ ok: false, reason: "not_configured" }`
+ * immediately so callers can fall through to `matchSlipToBill` which routes that to
+ * `"manual"`.
  */
-export async function verifySlip(input: {
-  imageBuffer?: Buffer;
-  payload?: string;
-}): Promise<SlipVerifyResult> {
-  const provider = process.env.SLIP_VERIFY_PROVIDER;
-  const apiKey = process.env.SLIP_VERIFY_API_KEY;
+export async function verifySlip(
+  input: { imageBuffer?: Buffer; payload?: string },
+  config: SlipVerifyConfig,
+): Promise<SlipVerifyResult> {
+  const { provider, apiKey } = config;
 
   if (!provider || !apiKey) {
     return { ok: false, reason: "not_configured" };
@@ -63,7 +73,7 @@ export async function verifySlip(input: {
       case "easyslip":
         return await callEasySlip(image, apiKey);
       case "slipok":
-        return await callSlipOk(image, apiKey);
+        return await callSlipOk(image, apiKey, config.branchId ?? null);
       default:
         console.error("[SLIP-VERIFY] Unknown provider:", provider);
         return { ok: false, reason: "not_configured" };
@@ -133,13 +143,16 @@ type SlipOkData = {
 /**
  * SlipOK — POST https://api.slipok.com/api/line/apikey/<branchId>
  * Auth: header `x-authorization: <key>` · multipart/form-data field `files`.
- * Needs `SLIP_VERIFY_SLIPOK_BRANCH_ID` (the branch id lives in the URL path).
+ * branchId is passed explicitly (no env read); returns not_configured when absent.
  * Success: `{ success: true, data: { amount, transRef, receiver: { displayName, name, proxy, account } } }`.
  */
-async function callSlipOk(image: Buffer, apiKey: string): Promise<SlipVerifyResult> {
-  const branchId = process.env.SLIP_VERIFY_SLIPOK_BRANCH_ID;
+async function callSlipOk(
+  image: Buffer,
+  apiKey: string,
+  branchId: string | null,
+): Promise<SlipVerifyResult> {
   if (!branchId) {
-    console.error("[SLIP-VERIFY] SlipOK needs SLIP_VERIFY_SLIPOK_BRANCH_ID");
+    console.error("[SLIP-VERIFY] SlipOK requires branchId — not configured for this club");
     return { ok: false, reason: "not_configured" };
   }
   const fd = new FormData();
@@ -223,11 +236,17 @@ export function matchSlipToBill(input: {
     }
 
     // 3b. Case-insensitive substring match on receiver name.
+    //     Length floor: both strings must be >= 3 chars (trimmed) before
+    //     substring matching. A very short clubPromptpayName (e.g. "A")
+    //     would match almost any receiver name — false-positive auto-verify.
+    //     When either side is too short, receiverOk stays false → manual.
     if (!receiverOk && hasReceiverName && clubPromptpayName) {
-      const detectedLower = detected.receiverName!.toLowerCase();
-      const clubLower = clubPromptpayName.toLowerCase();
-      receiverOk =
-        detectedLower.includes(clubLower) || clubLower.includes(detectedLower);
+      const detectedLower = detected.receiverName!.trim().toLowerCase();
+      const clubLower = clubPromptpayName.trim().toLowerCase();
+      if (clubLower.length >= 3 && detectedLower.length >= 3) {
+        receiverOk =
+          detectedLower.includes(clubLower) || clubLower.includes(detectedLower);
+      }
     }
 
     if (!receiverOk) {
