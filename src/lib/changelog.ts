@@ -1,0 +1,148 @@
+export type ChangelogGroupType = "new" | "improved" | "fixed";
+
+export type ChangelogGroup = {
+  type: ChangelogGroupType;
+  items: string[];
+};
+
+export type ChangelogEntry = {
+  version: string; // semver, e.g. "0.9.0"
+  date: string; // "YYYY-MM-DD"
+  groups: ChangelogGroup[];
+};
+
+/**
+ * Single source of truth for the What's New page AND the app version.
+ * - Current app version = CHANGELOG[0].version (exported as CURRENT_VERSION).
+ *   Keep package.json "version" in sync with it.
+ * - Versioning: bump MINOR for a release with new features, PATCH for a
+ *   fix-only release. Newest entry first.
+ * - Items are written in Thai (intentionally kept Thai — same convention as
+ *   audit_logs.description and LINE notification bodies in this project).
+ */
+export const CHANGELOG: ChangelogEntry[] = [
+  {
+    version: "0.9.0",
+    date: "2026-06-21",
+    groups: [
+      {
+        type: "new",
+        items: [
+          "ตั้งค่ายืนยันสลิปจ่ายเงินได้รายก๊วน — แต่ละก๊วนเลือกเองได้ว่าจะตรวจสลิปแบบไหน",
+          "ยืนยันเอง (ค่าเริ่มต้น) — ผู้เล่นส่งสลิป แล้วเจ้าของก๊วนกดยืนยัน",
+          "ใช้กุญแจของก๊วนเอง — สมัครบริการตรวจสลิป (SlipOK / EasySlip) แล้วใส่กุญแจในหน้าตั้งค่า → ระบบตรวจและยืนยันให้อัตโนมัติ",
+          'กุญแจเก็บแบบปลอดภัย ไม่แสดงค่าจริงในหน้าเว็บ (โชว์แค่ว่า "ตั้งแล้ว")',
+          "ล็อกอินอัตโนมัติเมื่อเปิดผ่านแอป LINE — เปิดเว็บในแอป LINE แล้วเข้าสู่ระบบเป็นบัญชี LINE นั้นทันที ไม่ต้องกดปุ่มล็อกอิน (ถ้าเปิดนอก LINE ใช้ปุ่มล็อกอินเดิมตามปกติ)",
+        ],
+      },
+      {
+        type: "improved",
+        items: [
+          'ยกเลิก "คีย์กลาง" ตรวจสลิปแบบเดิม เปลี่ยนเป็นกุญแจของแต่ละก๊วน — ตรวจแม่นยำขึ้นเพราะผูกกับบัญชีรับเงินของก๊วนเอง',
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.8.0",
+    date: "2026-06-19",
+    groups: [
+      {
+        type: "new",
+        items: [
+          "เก็บเงินก๊วนผ่าน LINE อัตโนมัติ — เจ้าของกดปุ่มเดียว บอท LINE ส่งบิล (พร้อม QR พร้อมเพย์ที่ฝังยอดไว้แล้ว) ให้ผู้เล่นที่ผูก LINE ทุกคนที่ยังไม่จ่าย",
+          'ผู้เล่นส่งสลิปกลับในแชต → ระบบตรวจแล้วติ๊ก "จ่ายแล้ว" ให้อัตโนมัติ',
+          "สลิปที่ตรวจไม่ชัด → เข้าคิวให้เจ้าของกดยืนยัน/ปฏิเสธเอง",
+          "ผู้เล่นที่ไม่มี LINE → ใช้สลิป QR แบบแชร์เหมือนเดิม",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.7.0",
+    date: "2026-06-18",
+    groups: [
+      {
+        type: "new",
+        items: [
+          "เก็บเงินก๊วนด้วย QR พร้อมเพย์รายคน — สร้าง QR ฝังยอดต่อผู้เล่น + เช็คสถานะจ่ายแล้ว/ยังไม่จ่าย",
+          "แชร์สลิปเรียกเก็บเงินรายคนเข้า LINE ได้ (สลิปการ์ด + QR ฝังยอด)",
+          "กรอกคะแนนได้หลายเซ็ตในแมตช์ที่กำลังแข่ง และเลือกผู้ชนะเอง",
+          'แสดงเวลาที่ใช้เล่นในแท็บ "จบแล้ว"',
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.6.0",
+    date: "2026-06-17",
+    groups: [
+      {
+        type: "new",
+        items: [
+          "สร้างแมตช์อัตโนมัติได้แม้ผู้เล่นยังไม่ครบคน (partial match) + แก้ผู้เล่นที่ค้างได้",
+          "หน้าสรุปรางวัลทัวร์นาเมนต์ — ดึงแชมป์อัตโนมัติจากสายน็อคเอ้า + เทมเพลตให้เจ้าของแก้เอง",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.5.0",
+    date: "2026-06-15",
+    groups: [
+      {
+        type: "new",
+        items: [
+          "ตารางคิวก๊วนอัปเดตแบบเรียลไทม์ — เห็นการเปลี่ยนแปลงทันทีไม่ต้องกดรีเฟรช",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.4.0",
+    date: "2026-06-14",
+    groups: [
+      {
+        type: "new",
+        items: [
+          "ระดับฝีมือรายก๊วน + จับคู่แมตช์อัตโนมัติตามฝีมือให้สูสี",
+          'หน้า "ก๊วนของฉัน" และ "ทัวร์นาเมนต์ของฉัน" หารายการของตัวเองง่ายขึ้น',
+          "จัดหน้าตั้งค่าใหม่ — แยกหน้าโปรไฟล์และพรีเซ็ตให้หาง่ายขึ้น",
+        ],
+      },
+      {
+        type: "improved",
+        items: [
+          "เพิ่มความปลอดภัย — ล็อกการเข้าถึงข้อมูลก๊วนและทัวร์นาเมนต์จากคนนอก",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.3.0",
+    date: "2026-06-13",
+    groups: [
+      {
+        type: "new",
+        items: [
+          "นำเข้ารายชื่อผู้เล่นจากข้อความสมัครใน LINE — รองรับ 7 รูปแบบ + เลือกหลายคนพร้อมกัน",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.2.0",
+    date: "2026-06-12",
+    groups: [
+      {
+        type: "new",
+        items: [
+          "รองรับ 2 ภาษา (ไทย/อังกฤษ) ทั้งระบบ — สลับได้จากเมนูบัญชี",
+        ],
+      },
+    ],
+  },
+];
+
+/** Current app version — derived from the newest changelog entry. */
+export const CURRENT_VERSION = CHANGELOG[0].version;

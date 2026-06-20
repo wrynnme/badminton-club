@@ -1584,3 +1584,34 @@ Two complementary loading layers added on top of the existing route-level `loadi
 - `src/lib/hooks/use-tab-sync.ts` — `onChange` now wraps `router.replace` in `useTransition` and pairs it with manual `progress.start()` / `progress.stop()` calls via `useProgress()` from `@bprogress/next`. A `startedRef` ref pairs each `start()` with exactly one `stop()` when the transition's `isPending` flips back to `false`. This is needed because `router.replace({scroll:false})` to the same path is treated as shallow by the package's auto-tracker and otherwise would not trigger the bar; pairing it with React transition state ensures the bar shows for the full duration of the new tab's lazy-mount and Suspense resolution.
 
 **Effect**: any nav click — sidebar link, tab switch, share-page link — shows the top bar; routes with their own `loading.tsx` (7 existing files in `(app)/`/`(public)/`) keep their skeletons; routes without a closer fallback get the root spinner.
+
+---
+
+## What's New Page (2026-06-21)
+
+หน้าสาธารณะ `/whats-new` แสดง changelog ที่มนุษย์อ่านได้ (ภาษาไทย) ให้เจ้าของก๊วนและผู้ใช้ทุกคนเห็นว่าระบบมีอะไรอัปเดต
+
+### Data module
+
+- `src/lib/changelog.ts` — single source of truth; export `CHANGELOG: ChangelogEntry[]` (เรียงรุ่นใหม่บนสุด); types `ChangelogGroupType = "new" | "improved" | "fixed"`, `ChangelogEntry = { date, groups: { type, items }[] }`
+- items เป็น **ข้อความไทย** (ถือเป็น data เหมือน audit_logs / LINE notifications — intentionally kept Thai)
+
+### Page
+
+- `src/app/(app)/whats-new/page.tsx` — server component (async); อยู่ใน `(app)` route group → ได้ SiteHeader อัตโนมัติ; **ไม่ต้อง auth gate** (ทุกคนดูได้)
+- Layout: timeline + Card; vertical line + dot per entry; date format ผ่าน `date-fns` + `dateFnsLocaleOf(locale)` (locale จาก `getLocale()` server); กลุ่ม icon = Sparkles / Wrench / Bug; Badge ต่อกลุ่ม
+- `max-w-2xl` จัดกลาง
+
+### Navigation
+
+- `user-menu.tsx` — เพิ่ม "มีอะไรใหม่" เป็น item สุดท้ายก่อน divider (icon: `Sparkles`, `t("nav.whatsNew")`) — เห็นเมื่อ logged-in
+- `mobile-nav.tsx` — เพิ่มลิงก์ "มีอะไรใหม่" ใต้ "ทัวร์นาเมนต์" (เห็นทั้ง logged-in และ anonymous)
+
+### i18n
+
+- `nav.whatsNew` — th: `"มีอะไรใหม่"` / en: `"What's New"`
+- `common.whatsNewTitle`, `common.whatsNewSubtitle`, `common.changelogNew`, `common.changelogImproved`, `common.changelogFixed`, `common.changelogFooter` — th + en ครบ
+
+### วิธีเพิ่ม entry ใหม่
+
+เพิ่ม object ที่ต้น `CHANGELOG` array ใน `src/lib/changelog.ts` — หน้าเว็บอัปเดตทันทีโดยไม่ต้องแก้ไฟล์อื่น

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { User, Users, Trophy, Settings, LogOut, ChevronDown } from "lucide-react";
+import { User, Users, Trophy, Settings, LogOut, ChevronDown, Sparkles } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,7 @@ export function UserMenu({
     { href: "/clubs/mine", label: t("myClubs"), icon: Users },
     { href: "/tournaments/mine", label: t("myTournaments"), icon: Trophy },
     { href: "/settings", label: t("settings"), icon: Settings },
+    { href: "/whats-new", label: t("whatsNew"), icon: Sparkles },
   ];
 
   return (
