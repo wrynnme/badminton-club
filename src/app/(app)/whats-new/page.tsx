@@ -67,7 +67,7 @@ export default async function WhatsNewPage() {
           });
 
           return (
-            <div key={entry.date} className="relative pl-10">
+            <div key={entry.version} className="relative pl-10">
               {/* Timeline dot */}
               <div
                 className="absolute left-0 top-1.5 h-6 w-6 rounded-full border-2 border-primary bg-background flex items-center justify-center"

@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-22 — แอป: หน้า "มีอะไรใหม่" React duplicate-key — ✅ FIXED + ship-check PASS
+
+**[P2] Encountered two children with the same key, `2026-06-21`** — Context: หน้า `/whats-new` (`src/app/(app)/whats-new/page.tsx`). Repro: เปิดหน้า → console error สีแดง (3 รุ่น release วันเดียวกัน: v0.10.0/v0.9.1/v0.9.0). Cause: `CHANGELOG.map` ใช้ `key={entry.date}` แต่วันที่ซ้ำได้เมื่อหลายรุ่นออกวันเดียวกัน. Fix: เปลี่ยนเป็น `key={entry.version}` (semver unique ต่อ entry). Files: `whats-new/page.tsx` (1 บรรทัด).
+- **ship-check:** code-review (scope = diff 1 บรรทัด, ตรวจ invariant เอง) — ยืนยัน 10 versions ไม่ซ้ำ · consumer CHANGELOG มีที่เดียว · ไม่เหลือ `key={entry.date}`. **/simplify: N/A** (key swap). i18n: N/A (ไม่แตะ messages/ ไม่เพิ่ม t()).
+- **Gate:** tsc 0 · vitest **725/725** (26 files) · next build OK.
+- **live-smoke PASS:** โหลด `/whats-new` (production-built) → 10 รุ่นครบ (v0.10.0→v0.2.0, 3 รุ่นวันที่ 21 มิ.ย. แสดงแยกการ์ดครบ) · **console 0 error 0 warning** (duplicate-key หายสนิท) · net-zero (หน้าสาธารณะ ไม่แตะ DB).
+- ยังอยู่ working tree (ยังไม่ commit).
+
 ### 2026-06-22 — ก๊วน: โหมด fair_winner_fallback (PR #4) — ship-check รอบ 1 — ✅ แก้ครบ
 
 ship-check บน PR #4 (feat/club-fair-winner-fallback). **code-review (2 finder, high) เจอ 4 บั๊ก + 1 P3 → แก้ครบ:**
