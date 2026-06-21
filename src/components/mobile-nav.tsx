@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Menu, Sparkles } from "lucide-react";
+import { Menu } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -46,10 +46,6 @@ export function MobileNav({
         <Link href="/tournaments" className={item}>
           {t("tournaments")}
         </Link>
-        <Link href="/whats-new" className={`${item} gap-2`}>
-          <Sparkles className="h-4 w-4 text-muted-foreground" />
-          {t("whatsNew")}
-        </Link>
         {loggedIn && !isGuest && (
           <>
             <Link href="/clubs/mine" className={item}>
@@ -93,6 +89,10 @@ export function MobileNav({
             {t("login")}
           </Link>
         )}
+        <div className="my-1 border-t" />
+        <Link href="/whats-new" className={item}>
+          {t("whatsNew")}
+        </Link>
       </PopoverContent>
     </Popover>
   );
