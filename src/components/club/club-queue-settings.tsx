@@ -238,7 +238,9 @@ export function ClubQueueSettings({
                 {(v: string) =>
                   v === "fair_queue"
                     ? t("rotationFairQueue")
-                    : t("rotationWinnerStays")
+                    : v === "winner_stays"
+                      ? t("rotationWinnerStays")
+                      : t("rotationFairWinnerFallback")
                 }
               </SelectValue>
             </SelectTrigger>
@@ -248,6 +250,9 @@ export function ClubQueueSettings({
               </SelectItem>
               <SelectItem value="winner_stays">
                 {t("rotationWinnerStaysFull")}
+              </SelectItem>
+              <SelectItem value="fair_winner_fallback">
+                {t("rotationFairWinnerFallbackFull")}
               </SelectItem>
             </SelectContent>
           </Select>

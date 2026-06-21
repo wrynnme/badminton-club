@@ -6,6 +6,9 @@ import {
   isClubMatchFull,
   planWinnerStays,
   resolveCourtStay,
+  keepsWinner,
+  benchSufficientForFresh,
+  allPlayersOf,
   type QueuePlayer,
   type MatchSide,
   type CompletedMatchRow,
@@ -836,5 +839,113 @@ describe("planWinnerStays — multi-court winner_stays", () => {
       reservableCourts: new Set(["1", "2"]),
     });
     expect([...plan.reservedIds].sort()).toEqual(["p5", "p6"]);
+  });
+});
+
+describe("keepsWinner", () => {
+  it("true for winner_stays + fair_winner_fallback, false for fair_queue", () => {
+    expect(keepsWinner("winner_stays")).toBe(true);
+    expect(keepsWinner("fair_winner_fallback")).toBe(true);
+    expect(keepsWinner("fair_queue")).toBe(false);
+  });
+});
+
+describe("allPlayersOf", () => {
+  it("returns all 4 players of a doubles match (both sides)", () => {
+    expect(allPlayersOf(done("1", "a", ["a", "b"], ["c", "d"])).sort()).toEqual(["a", "b", "c", "d"]);
+  });
+  it("drops nulls (singles / partial slots)", () => {
+    expect(allPlayersOf(done("1", "a", ["a", null], ["b", null])).sort()).toEqual(["a", "b"]);
+  });
+});
+
+describe("benchSufficientForFresh", () => {
+  const mk = (xs: string[]) => xs.map((id) => player(id));
+  it("true when bench >= 2*ppt (doubles: 4 fresh)", () => {
+    expect(benchSufficientForFresh(mk(["i", "j", "k", "l"]), new Set(), 2)).toBe(true);
+  });
+  it("true at exactly the 2*ppt boundary", () => {
+    const pool = mk(["a", "b", "c", "d", "i", "j", "k", "l"]);
+    expect(benchSufficientForFresh(pool, new Set(["a", "b", "c", "d"]), 2)).toBe(true); // bench = 4
+  });
+  it("false at 2*ppt - 1 (bench = 3)", () => {
+    const pool = mk(["a", "b", "c", "d", "i", "j", "k"]);
+    expect(benchSufficientForFresh(pool, new Set(["a", "b", "c", "d"]), 2)).toBe(false);
+  });
+  it("excludes just-played from the bench count", () => {
+    const pool = mk(["a", "b", "i", "j", "k", "l"]); // 2 just-played, 4 bench
+    expect(benchSufficientForFresh(pool, new Set(["a", "b"]), 2)).toBe(true);
+  });
+  it("empty justPlayed → whole pool is bench", () => {
+    expect(benchSufficientForFresh(mk(["a", "b", "c", "d"]), new Set(), 2)).toBe(true);
+    expect(benchSufficientForFresh(mk(["a", "b", "c"]), new Set(), 2)).toBe(false);
+  });
+  it("singles: bench >= 2 true, bench = 1 false", () => {
+    expect(benchSufficientForFresh(mk(["a", "b"]), new Set(), 1)).toBe(true);
+    expect(benchSufficientForFresh(mk(["a"]), new Set(), 1)).toBe(false);
+  });
+});
+
+describe("buildNextMatch — fair_winner_fallback", () => {
+  const fwf = (o: Partial<ClubQueueSettings> = {}) =>
+    settings({ rotation_mode: "fair_winner_fallback", queue_mode: "rest_longest", ...o });
+
+  it("FAIR (no stayingSide): draws longest-rested, just-played sink to the back", () => {
+    const just = "2026-06-06T10:30:00.000Z";
+    const pool = [
+      player("a", { last_finished_at: just }),
+      player("b", { last_finished_at: just }),
+      player("c", { last_finished_at: just }),
+      player("d", { last_finished_at: just }),
+      player("i"),
+      player("j"),
+      player("k"),
+      player("l"),
+    ];
+    const m = buildNextMatch(pool, fwf())!;
+    expect(ids(m)).toEqual(["i", "j", "k", "l"]); // the four fresh players, not the just-played
+  });
+
+  it("FALLBACK (stayingSide passed): keeps the winner on side A", () => {
+    const staying: MatchSide = { player1: "w1", player2: "w2" };
+    const pool = [
+      player("x", { last_finished_at: "2026-06-06T10:00:00.000Z" }),
+      player("y", { last_finished_at: "2026-06-06T10:10:00.000Z" }),
+    ];
+    const m = buildNextMatch(pool, fwf(), staying)!;
+    expect(m.sideA).toEqual(staying);
+    expect([m.sideB.player1, m.sideB.player2].sort()).toEqual(["x", "y"]);
+  });
+
+  it("FALLBACK singles: champion stays vs one opponent", () => {
+    const stay: MatchSide = { player1: "champ", player2: null };
+    const m = buildNextMatch([player("a")], fwf({ players_per_team: 1 }), stay)!;
+    expect(m.sideA).toEqual(stay);
+    expect(m.sideB.player1).toBe("a");
+    expect(m.sideB.player2).toBeNull();
+  });
+
+  it("FALLBACK + locked pair: staying side kept, opponents respect the lock", () => {
+    const staying: MatchSide = { player1: "w1", player2: "w2" };
+    const pool = [player("a"), player("b"), player("c"), player("d")];
+    const m = buildNextMatch(pool, fwf({ queue_mode: "fifo" }), staying, [["a", "b"]])!;
+    expect(m.sideA).toEqual(staying);
+    expect([m.sideB.player1, m.sideB.player2].sort()).toEqual(["a", "b"]);
+  });
+});
+
+describe("buildPartialMatch — fair_winner_fallback", () => {
+  it("keeps staying side on A, fills B partially", () => {
+    const s = settings({ rotation_mode: "fair_winner_fallback", queue_mode: "fifo" });
+    const r = buildPartialMatch([player("x", { position: 1 })], s, { player1: "w1", player2: "w2" });
+    expect(r).toEqual({ a1: "w1", a2: "w2", b1: "x", b2: null });
+  });
+});
+
+describe("parseQueueSettings — fair_winner_fallback", () => {
+  it("round-trips the new rotation_mode", () => {
+    expect(parseQueueSettings({ rotation_mode: "fair_winner_fallback" }).rotation_mode).toBe(
+      "fair_winner_fallback",
+    );
   });
 });

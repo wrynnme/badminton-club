@@ -15,7 +15,7 @@ import { z } from "zod";
  *  shuttle_price    price per shuttle (numeric ≥ 0)
  *  court_count      1–20 — used to generate courts array ["1".."N"]
  *  players_per_team 1 = เดี่ยว, 2 = คู่
- *  rotation_mode    fair_queue | winner_stays
+ *  rotation_mode    fair_queue | winner_stays | fair_winner_fallback
  *  queue_mode       rest_longest | fifo | level_match | smart
  *  co_admin_ids     profile UUIDs to add as club_admins on apply
  *  regulars         seed club_players on apply (D4 decision: name + optional link)
@@ -30,7 +30,7 @@ export const ClubPresetConfigSchema = z.object({
   shuttle_price: z.number().min(0).default(0),
   court_count: z.number().int().min(1).max(20).default(1),
   players_per_team: z.union([z.literal(1), z.literal(2)]).default(2),
-  rotation_mode: z.enum(["fair_queue", "winner_stays"]).default("fair_queue"),
+  rotation_mode: z.enum(["fair_queue", "winner_stays", "fair_winner_fallback"]).default("fair_queue"),
   queue_mode: z.enum(["rest_longest", "fifo", "level_match", "smart"]).default("rest_longest"),
   co_admin_ids: z.array(z.string()).default([]),
   regulars: z

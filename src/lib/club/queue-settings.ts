@@ -11,6 +11,8 @@ import { z } from "zod";
  *  players_per_team     1 = เดี่ยว, 2 = คู่
  *  rotation_mode        fair_queue   = ทุกคนหมุนตามคิว
  *                       winner_stays = ผู้ชนะอยู่ต่อ (เปลี่ยนเฉพาะฝั่งแพ้)
+ *                       fair_winner_fallback = หมุนเวียนทั่วถึง (ทุกคนสลับลง) แต่ถ้า
+ *                       คนพักไม่พอตั้งแมตช์ใหม่ → ผู้ชนะอยู่ต่อ (winner_stays_max ไม่มีผล)
  *  queue_mode           rest_longest = คนพักนานสุดก่อน (default, แนะนำ)
  *                       fifo         = เข้าก่อนออกก่อน (position/joined_at)
  *                       level_match  = จับคู่ระดับใกล้กัน (ต้อง skill_level_enabled)
@@ -33,7 +35,7 @@ import { z } from "zod";
 export const ClubQueueSettingsSchema = z.object({
   court_count: z.number().int().min(1).max(20).default(1),
   players_per_team: z.union([z.literal(1), z.literal(2)]).default(2),
-  rotation_mode: z.enum(["fair_queue", "winner_stays"]).default("fair_queue"),
+  rotation_mode: z.enum(["fair_queue", "winner_stays", "fair_winner_fallback"]).default("fair_queue"),
   queue_mode: z.enum(["rest_longest", "fifo", "level_match", "smart"]).default("rest_longest"),
   skill_level_enabled: z.boolean().default(false),
   game_time_limit_min: z.number().int().min(0).max(120).default(0),
