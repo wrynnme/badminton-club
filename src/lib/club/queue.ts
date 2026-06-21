@@ -35,6 +35,16 @@ function byId(a: QueuePlayer, b: QueuePlayer): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
+/**
+ * Rotation modes where a passed `stayingSide` keeps the winner on court.
+ * `winner_stays` always; `fair_winner_fallback` only when the caller decides the
+ * bench is too short and hands a stayingSide (see buildNextClubMatchAction).
+ * `fair_queue` is absent → it ignores any stayingSide (both sides from the pool).
+ */
+export function keepsWinner(mode: ClubQueueSettings["rotation_mode"]): boolean {
+  return mode === "winner_stays" || mode === "fair_winner_fallback";
+}
+
 /** FIFO: position asc (nulls last), then joined_at asc. */
 function cmpFifo(a: QueuePlayer, b: QueuePlayer): number {
   const pa = a.position ?? Number.POSITIVE_INFINITY;
@@ -293,7 +303,7 @@ export function buildNextMatch(
       return partner == null || poolIds.has(partner);
     });
 
-    if (settings.rotation_mode === "winner_stays" && stayingSide) {
+    if (keepsWinner(settings.rotation_mode) && stayingSide) {
       const stay = new Set(
         [stayingSide.player1, stayingSide.player2].filter((x): x is string => x != null),
       );
@@ -321,7 +331,7 @@ export function buildNextMatch(
     return { sideA: sides[0], sideB: sides[1] };
   }
 
-  if (settings.rotation_mode === "winner_stays" && stayingSide) {
+  if (keepsWinner(settings.rotation_mode) && stayingSide) {
     if (pool.length < ppt) return null;
     if (useBalanced) {
       const picked = pickBalancedMatch(pool, ppt, settings);
@@ -375,7 +385,7 @@ export function buildPartialMatch(
   const ppt = settings.players_per_team;
   const ordered = orderPool(pool, settings);
   if (ordered.length === 0) return null;
-  if (settings.rotation_mode === "winner_stays" && stayingSide) {
+  if (keepsWinner(settings.rotation_mode) && stayingSide) {
     return {
       a1: stayingSide.player1,
       a2: stayingSide.player2,
@@ -454,6 +464,50 @@ function winnerIdsOf(m: CompletedMatchRow): string[] {
   // Dedup here so callers don't have to: a malformed row with the same player in
   // both slots must not break the streak-length comparison in resolveCourtStay.
   return [...new Set(ids.filter((id): id is string => id != null))];
+}
+
+/** All player ids of a completed match (both sides, deduped, nulls dropped). */
+export function allPlayersOf(m: CompletedMatchRow): string[] {
+  return [
+    ...new Set(
+      [m.side_a_player1, m.side_a_player2, m.side_b_player1, m.side_b_player2].filter(
+        (id): id is string => id != null,
+      ),
+    ),
+  ];
+}
+
+/**
+ * Player ids of the most-recent completed match on EACH court (deduped union) =
+ * "who just played anywhere". Used to size the bench for fair_winner_fallback so a
+ * player who just finished on ANOTHER court isn't mistaken for a rested/waiting one.
+ * `rows` must be newest-first (ended_at desc); the first row seen per court is its latest.
+ */
+export function playersInLatestPerCourt(rows: CompletedMatchRow[]): Set<string> {
+  const seenCourt = new Set<string>();
+  const ids = new Set<string>();
+  for (const r of rows) {
+    if (r.court == null || seenCourt.has(r.court)) continue;
+    seenCourt.add(r.court);
+    for (const id of allPlayersOf(r)) ids.add(id);
+  }
+  return ids;
+}
+
+/**
+ * fair_winner_fallback decision: is the bench big enough to seat a WHOLE fresh match
+ * without reusing anyone who just played? `bench` = eligible pool players who are NOT
+ * in `justPlayedIds` (the players of this court's just-finished match). A full match
+ * needs `2 * playersPerTeam`. True → fair rotation (winner leaves too); false → the
+ * caller keeps the winner on court (fallback). Pure, testable.
+ */
+export function benchSufficientForFresh(
+  pool: QueuePlayer[],
+  justPlayedIds: Set<string>,
+  playersPerTeam: number,
+): boolean {
+  const bench = pool.filter((p) => !justPlayedIds.has(p.id));
+  return bench.length >= playersPerTeam * 2;
 }
 
 /**

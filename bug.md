@@ -10,6 +10,25 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-22 — แอป: หน้า "มีอะไรใหม่" React duplicate-key — ✅ FIXED + ship-check PASS
+
+**[P2] Encountered two children with the same key, `2026-06-21`** — Context: หน้า `/whats-new` (`src/app/(app)/whats-new/page.tsx`). Repro: เปิดหน้า → console error สีแดง (3 รุ่น release วันเดียวกัน: v0.10.0/v0.9.1/v0.9.0). Cause: `CHANGELOG.map` ใช้ `key={entry.date}` แต่วันที่ซ้ำได้เมื่อหลายรุ่นออกวันเดียวกัน. Fix: เปลี่ยนเป็น `key={entry.version}` (semver unique ต่อ entry). Files: `whats-new/page.tsx` (1 บรรทัด).
+- **ship-check:** code-review (scope = diff 1 บรรทัด, ตรวจ invariant เอง) — ยืนยัน 10 versions ไม่ซ้ำ · consumer CHANGELOG มีที่เดียว · ไม่เหลือ `key={entry.date}`. **/simplify: N/A** (key swap). i18n: N/A (ไม่แตะ messages/ ไม่เพิ่ม t()).
+- **Gate:** tsc 0 · vitest **725/725** (26 files) · next build OK.
+- **live-smoke PASS:** โหลด `/whats-new` (production-built) → 10 รุ่นครบ (v0.10.0→v0.2.0, 3 รุ่นวันที่ 21 มิ.ย. แสดงแยกการ์ดครบ) · **console 0 error 0 warning** (duplicate-key หายสนิท) · net-zero (หน้าสาธารณะ ไม่แตะ DB).
+- ยังอยู่ working tree (ยังไม่ commit).
+
+### 2026-06-22 — ก๊วน: โหมด fair_winner_fallback (PR #4) — ship-check รอบ 1 — ✅ แก้ครบ
+
+ship-check บน PR #4 (feat/club-fair-winner-fallback). **code-review (2 finder, high) เจอ 4 บั๊ก + 1 P3 → แก้ครบ:**
+- **[P1] FAIR ข้าม reservation** (`buildNextClubMatchAction`): เดิม FAIR ไม่ reserve ผู้ชนะสนามอื่น → ดึงมาเป็นคู่ต่อสู้ → สนามอื่นเสียสิทธิ์อยู่ต่อ (regression คลาส cs:s2-644). **แก้:** รัน `planWinnerStays` เสมอ + ตัด `reservedIds` ออก pool ทุกเคส (FAIR/FALLBACK); สลับเฉพาะการ "อุ้มผู้ชนะสนามนี้".
+- **[P1] bench นับเกิน** (`benchSufficientForFresh`): เดิมหักแค่ผู้เล่นสนามนี้ → คนเพิ่งเล่นจบสนามอื่นถูกนับเป็น bench. **แก้:** helper ใหม่ `playersInLatestPerCourt(rows)` (union ผู้เล่นแมตช์ล่าสุดทุกสนาม) → bench = pool − คนเพิ่งเล่นทุกสนาม.
+- **[P2] cap=0 รั่ว**: เดิมส่ง `winnerStaysMax:0` เข้า planWinnerStays → ปิด cap ของสนามอื่นด้วย. **แก้:** planWinnerStays ใช้ `settings.winner_stays_max` (สนามอื่น cap ปกติ); fallback ของสนามนี้ bypass cap แยกผ่าน `resolveCourtStay(thisCourtRows, 0, eligibleIds)`.
+- **[P2] tie row บังเงา**: query กรอง `winner_side != null` → แมตช์ล่าสุดที่จบแบบไม่ระบุผลทำให้หยิบแมตช์เก่ามาเป็น "เพิ่งเล่น". **แก้:** เอา filter ออก (resolveCourtStay คืน null กับ tie อยู่แล้ว — ถูกกว่าเดิม).
+- **[P3]** `rotationModeDesc` อัปเดตให้ครอบโหมดที่ 3 (th+en).
+- เหลือ review สะอาด: enum parity ✓ · i18n parity ✓ · version 0.10.0 ✓ · guard/locked/singles ✓. **/simplify: []** (สะอาด). **Gate:** tsc 0 · vitest **725/725** (+เทสต์ helper ใหม่) · next build OK.
+- ⏳ **live-smoke (browser) ไม่ได้รัน** — prereq (seed prod DB + อ่าน SESSION_SECRET mint cookie) ถูก sandbox auto-classifier บล็อก (มี DB เดียว, เจอซ้ำ 3 รอบ session นี้). ชดเชยด้วย unit coverage ของ pure helper ที่ครอบเคส multi-court โดยตรง; ผู้ใช้ตรวจในเบราว์เซอร์ที่ login เองได้ (dev :3000).
+
 ### 2026-06-21 — ก๊วน: รวม panel "เก็บเงิน" + "ส่งสลิปเรียกเก็บเงิน" — ✅ DONE
 
 UI consolidation (ตามคำขอ user): ยุบการ์ด `ClubSlipShare` ("ส่งสลิปเรียกเก็บเงิน") เข้า `ClubPaymentCollector` ("เก็บเงิน") = panel เดียว. ชิ้นส่วนสลิป (SlipCard/SlipDialog/SlipQr + helper จับภาพ) ย้ายไป `src/components/club/club-slip-card.tsx` (ใหม่); `club-slip-share.tsx` ลบ. ปุ่ม "ส่งสลิป" ต่อคนในใบเสร็จ + ปุ่ม batch "ดาวน์โหลดสลิปทั้งหมด" ที่แถบสรุป (ข้าง "เรียกเก็บผ่าน LINE"). ตัด selection checkbox UI (ส่งรายคน + batch=ทุกคน payable แทน). ลบ dead i18n keys `club.slip.{sectionTitle,sectionHint,selectAll,selectedCount}` (th+en parity ✓). SlipQr raster + pre-render blob + warm react-qr-code คงเดิม. **Gate:** tsc 0 · vitest 706/706 · next build OK · i18n parity ✓. ⏳ ยังไม่ live-smoke (modern-screenshot capture path ต้องทดสอบบน browser จริงตามที่ p1-18b2 เตือน) · ยังไม่ commit.
