@@ -739,14 +739,10 @@
     "verifySlipOkNeedsBranch": "Enter Branch ID for SlipOK"
   },
   "slip": {
-    "sectionTitle": "Send payment slips",
-    "sectionHint": "Select players and send each person a slip with their QR via LINE",
-    "selectAll": "Select all",
-    "selectedCount": "{n} selected",
     "sendSlip": "Send slip",
     "shareButton": "Share",
     "downloadButton": "Download PNG",
-    "downloadAllButton": "Download all selected",
+    "downloadAllButton": "Download all slips",
     "generating": "Generating image…",
     "dialogTitle": "Slip for {name}",
     "footerNote": "PromptPay · {name}",
