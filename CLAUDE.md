@@ -136,7 +136,7 @@ Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`
 - **CSV exports** (2026-06-12): generators in `csv.ts`/`cost-csv.ts` stay pure — they take a labels object built by the client caller from `t()` (`tournament.csv.*` / `club.costCsv.*`). **Import-template header lines stay canonical English ids (`team,id_player,...`) in BOTH locales** — the parser in `csv-import-dialog.tsx` requires them; only sample data rows are localized.
 - **Dates** (2026-06-12): all date-fns `format()` calls pass `{ locale: dateFnsLocaleOf(locale) }` (`src/i18n/date-fns-locale.ts`); locale from `getLocale()` (server) / `useLocale()` (client). Numbers keep bare `toLocaleString()` (th/en grouping identical). `permissions.ts` helpers throw the internal code `permission_check_failed` only (never rendered as UI text) — not a translation surface.
 
-## Tournament System (Phase 0–12 done; Phase 13 competition mode planned — see `spec.md`)
+## Tournament System (Phase 0–13 done; competition mode shipped & live on prod — see `spec.md`)
 
 ### Architecture
 

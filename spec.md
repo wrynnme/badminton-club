@@ -1030,7 +1030,7 @@ Tests: 269/269 vitest pass; tsc clean.
 
 ### Phase 13 — Competition mode (multi-class, team-aware grouping)
 
-**Context.** `tournaments.mode = "competition"` is currently dormant — every new tournament is hard-coded to `"sports_day"` and no code path branches on `mode`. Real Thai pair tournaments (see วีนฉ่ำ Excel reference) require structure the current `sports_day` flow cannot express: classes (NB/BG/N/S/P-), per-class capacity, team-aware group assignment, and per-class brackets — all sharing one tournament's courts + queue. This Phase opens the `competition` mode and adds the missing primitives.
+**Context.** ✅ **SHIPPED & LIVE ON PROD (Slices 1–8, 2026-06-02→04; follow-ups T1–T5 by 2026-06-08) — see "Implementation status" + "✅ Phase 13 COMPLETE" below.** `tournaments.mode = "competition"` is now selectable at create time (Slice 8 mode selector) and code paths branch on `mode` throughout; the original `sports_day`-only behavior described in the rest of this design is the *pre-Phase-13 state* it replaced. (No real tournament has used competition mode yet — verified only via throwaway live-smoke during development.) The gap this Phase closed: real Thai pair tournaments (see วีนฉ่ำ Excel reference) require structure the `sports_day` flow cannot express: classes (NB/BG/N/S/P-), per-class capacity, team-aware group assignment, and per-class brackets — all sharing one tournament's courts + queue. This Phase opened the `competition` mode and added the missing primitives.
 
 **Architectural rule** (per user): *class is event-scoped, not player/pair attribute.* A player's "class" is whatever event they joined; pairs are linked to a class only for that tournament. Player/team master data is not touched.
 
