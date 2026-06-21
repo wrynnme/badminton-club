@@ -281,7 +281,7 @@
     "playersPerTeamSingle": "เดี่ยว",
     "playersPerTeamDouble": "คู่",
     "rotationModeLabel": "รูปแบบการหมุน",
-    "rotationModeDesc": "หมุนทุกคน = ทุกคนสลับลงเล่น / ผู้ชนะอยู่ต่อ = ทีมที่ชนะได้เล่นต่อ",
+    "rotationModeDesc": "หมุนทุกคน = ทุกคนสลับลงเล่น / ผู้ชนะอยู่ต่อ = ทีมที่ชนะได้เล่นต่อ / หมุนเวียนทั่วถึง = สลับลงเท่าๆ กัน แต่คนไม่พอผู้ชนะอยู่ต่อ",
     "rotationFairQueue": "หมุนทุกคน",
     "rotationWinnerStays": "ผู้ชนะอยู่ต่อ",
     "rotationFairQueueFull": "หมุนทุกคน (ทุกคนสลับลงเล่น)",

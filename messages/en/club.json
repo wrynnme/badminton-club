@@ -281,7 +281,7 @@
     "playersPerTeamSingle": "Singles",
     "playersPerTeamDouble": "Doubles",
     "rotationModeLabel": "Rotation mode",
-    "rotationModeDesc": "Fair Queue = everyone rotates, Winner Stays = winner remains",
+    "rotationModeDesc": "Fair Queue = everyone rotates, Winner Stays = winner remains, Fair + winner fallback = everyone rotates but winner stays when the bench is short",
     "rotationFairQueue": "Fair Queue",
     "rotationWinnerStays": "Winner Stays",
     "rotationFairQueueFull": "Fair Queue (everyone rotates)",

@@ -13,9 +13,10 @@ import {
   buildPartialMatch,
   isClubMatchFull,
   planWinnerStays,
+  resolveCourtStay,
   keepsWinner,
   benchSufficientForFresh,
-  allPlayersOf,
+  playersInLatestPerCourt,
   type QueuePlayer,
   type MatchSide,
 } from "@/lib/club/queue";
@@ -200,7 +201,9 @@ export async function buildNextClubMatchAction(
   // building one court RESERVES the other free courts' winners — i.e. excludes them
   // from this court's opponent pool. Without that, building court 1 would draw court 2's
   // winners as opponents, and court 2 would lose its winner on the next build (the old
-  // bug: winners only stayed on the first-built court).
+  // bug: winners only stayed on the first-built court). No winner_side filter — a
+  // most-recent no-winner/tie finish must still count as "just played"; resolveCourtStay
+  // returns no stayer for a tie-headed court on its own.
   if (keepsWinner(settings.rotation_mode)) {
     const { data: recentMatches } = await sb
       .from("club_matches")
@@ -209,56 +212,56 @@ export async function buildNextClubMatchAction(
       )
       .eq("club_id", clubId)
       .eq("status", "completed")
-      .not("winner_side", "is", null)
       .order("ended_at", { ascending: false })
       .limit(100);
 
-    // fair_winner_fallback is FAIR by default — everyone who just played rotates out and
-    // the longest-rested come in. It only keeps the winner when the bench can't seat a
-    // WHOLE fresh match (fewer than 2×ppt players who didn't just play). winner_stays
-    // always keeps the winner.
-    let keepThisCourtsWinner = true;
-    let cap = settings.winner_stays_max;
+    const eligibleIds = new Set(eligiblePlayers.map((p) => p.id));
+    // Courts that already hold a pending/in_progress match won't get a winner-stays
+    // build right now, so their winners must NOT be reserved (they'd never be drawn).
+    const courtsWithActive = new Set(
+      (activeMatches ?? []).map((m) => m.court).filter((c): c is string => c != null),
+    );
+
+    // ALWAYS plan reservation (both modes) so building this court can't steal another
+    // free court's winner. The cap stays the configured value — never globally overridden.
+    const plan = planWinnerStays(recentMatches ?? [], {
+      currentCourt: courtName,
+      courtsWithActiveMatch: courtsWithActive,
+      winnerStaysMax: settings.winner_stays_max,
+      eligibleIds,
+      // Only reserve winners for courts that still exist in the club's config — a
+      // removed/renamed court's stale completed rows must not strand players. When the
+      // club has no named courts (free-text fallback), reserve any free court.
+      reservableCourts: courts.length > 0 ? new Set(courts) : undefined,
+    });
+    stayingSide = plan.stayingSide ?? undefined;
+
+    // fair_winner_fallback is FAIR by default — this court's winner rotates out too and
+    // the longest-rested come in. It only KEEPS this court's winner when the bench can't
+    // seat a WHOLE fresh match: bench = players who didn't just play on ANY court (so a
+    // player who just finished elsewhere isn't mistaken for rested). winner_stays always
+    // keeps the winner (and respects its cap via plan.stayingSide above).
     if (settings.rotation_mode === "fair_winner_fallback") {
-      const lastOnCourt = (recentMatches ?? []).find((m) => m.court === courtName);
-      const justPlayedIds = new Set(lastOnCourt ? allPlayersOf(lastOnCourt) : []);
-      if (benchSufficientForFresh(pool, justPlayedIds, settings.players_per_team)) {
-        keepThisCourtsWinner = false; // FAIR: winner rotates out too; no reservation
+      const justPlayedAnywhere = playersInLatestPerCourt(recentMatches ?? []);
+      if (benchSufficientForFresh(pool, justPlayedAnywhere, settings.players_per_team)) {
+        stayingSide = undefined; // FAIR — drop this court's stayer (others stay reserved)
       } else {
-        cap = 0; // FALLBACK forced by shortage — the cap must not strand it
+        // FALLBACK: the shortage itself is the throttle, so this court's winner stays
+        // regardless of winner_stays_max (cap=0). Other courts' reservation in `plan`
+        // keeps the configured cap — the cap is only bypassed for THIS court's stay.
+        const thisCourtRows = (recentMatches ?? []).filter((m) => m.court === courtName);
+        stayingSide = resolveCourtStay(thisCourtRows, 0, eligibleIds)?.stayingSide ?? undefined;
       }
     }
 
-    if (keepThisCourtsWinner) {
-      const eligibleIds = new Set(eligiblePlayers.map((p) => p.id));
-      // Courts that already hold a pending/in_progress match won't get a winner-stays
-      // build right now, so their winners must NOT be reserved (they'd never be drawn).
-      const courtsWithActive = new Set(
-        (activeMatches ?? []).map((m) => m.court).filter((c): c is string => c != null),
-      );
-
-      const plan = planWinnerStays(recentMatches ?? [], {
-        currentCourt: courtName,
-        courtsWithActiveMatch: courtsWithActive,
-        winnerStaysMax: cap,
-        eligibleIds,
-        // Only reserve winners for courts that still exist in the club's config — a
-        // removed/renamed court's stale completed rows must not strand players. When the
-        // club has no named courts (free-text fallback), reserve any free court.
-        reservableCourts: courts.length > 0 ? new Set(courts) : undefined,
-      });
-
-      stayingSide = plan.stayingSide ?? undefined;
-
-      // Remove this court's stayers (they become sideA) AND other free courts' reserved
-      // winners (held for their own court) from this court's opponent pool.
-      const exclude = new Set<string>(plan.reservedIds);
-      if (stayingSide) {
-        if (stayingSide.player1) exclude.add(stayingSide.player1);
-        if (stayingSide.player2) exclude.add(stayingSide.player2);
-      }
-      if (exclude.size > 0) pool = pool.filter((p) => !exclude.has(p.id));
+    // Remove this court's stayer (becomes sideA) AND other free courts' reserved winners
+    // (held for their own court) from this court's opponent pool.
+    const exclude = new Set<string>(plan.reservedIds);
+    if (stayingSide) {
+      if (stayingSide.player1) exclude.add(stayingSide.player1);
+      if (stayingSide.player2) exclude.add(stayingSide.player2);
     }
+    if (exclude.size > 0) pool = pool.filter((p) => !exclude.has(p.id));
   }
 
   // Load active locked pairs (teammate locks honored by the queue, doubles only).

@@ -478,6 +478,23 @@ export function allPlayersOf(m: CompletedMatchRow): string[] {
 }
 
 /**
+ * Player ids of the most-recent completed match on EACH court (deduped union) =
+ * "who just played anywhere". Used to size the bench for fair_winner_fallback so a
+ * player who just finished on ANOTHER court isn't mistaken for a rested/waiting one.
+ * `rows` must be newest-first (ended_at desc); the first row seen per court is its latest.
+ */
+export function playersInLatestPerCourt(rows: CompletedMatchRow[]): Set<string> {
+  const seenCourt = new Set<string>();
+  const ids = new Set<string>();
+  for (const r of rows) {
+    if (r.court == null || seenCourt.has(r.court)) continue;
+    seenCourt.add(r.court);
+    for (const id of allPlayersOf(r)) ids.add(id);
+  }
+  return ids;
+}
+
+/**
  * fair_winner_fallback decision: is the bench big enough to seat a WHOLE fresh match
  * without reusing anyone who just played? `bench` = eligible pool players who are NOT
  * in `justPlayedIds` (the players of this court's just-finished match). A full match

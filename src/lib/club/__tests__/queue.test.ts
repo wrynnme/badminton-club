@@ -9,6 +9,7 @@ import {
   keepsWinner,
   benchSufficientForFresh,
   allPlayersOf,
+  playersInLatestPerCourt,
   type QueuePlayer,
   type MatchSide,
   type CompletedMatchRow,
@@ -947,5 +948,22 @@ describe("parseQueueSettings — fair_winner_fallback", () => {
     expect(parseQueueSettings({ rotation_mode: "fair_winner_fallback" }).rotation_mode).toBe(
       "fair_winner_fallback",
     );
+  });
+});
+
+describe("playersInLatestPerCourt", () => {
+  it("unions the LATEST match per court (newest-first), ignoring older rows on the same court", () => {
+    const rows = [
+      done("1", "a", ["a", "b"], ["c", "d"]), // court 1 latest
+      done("2", "a", ["e", "f"], ["g", "h"]), // court 2 latest
+      done("1", "a", ["x", "y"], ["z", "w"]), // court 1 OLDER — must be ignored
+    ];
+    expect([...playersInLatestPerCourt(rows)].sort()).toEqual([
+      "a", "b", "c", "d", "e", "f", "g", "h",
+    ]);
+  });
+
+  it("empty rows → empty set", () => {
+    expect(playersInLatestPerCourt([]).size).toBe(0);
   });
 });
