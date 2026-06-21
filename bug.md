@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-21 — ก๊วน: รวม panel "เก็บเงิน" + "ส่งสลิปเรียกเก็บเงิน" — ✅ DONE
+
+UI consolidation (ตามคำขอ user): ยุบการ์ด `ClubSlipShare` ("ส่งสลิปเรียกเก็บเงิน") เข้า `ClubPaymentCollector` ("เก็บเงิน") = panel เดียว. ชิ้นส่วนสลิป (SlipCard/SlipDialog/SlipQr + helper จับภาพ) ย้ายไป `src/components/club/club-slip-card.tsx` (ใหม่); `club-slip-share.tsx` ลบ. ปุ่ม "ส่งสลิป" ต่อคนในใบเสร็จ + ปุ่ม batch "ดาวน์โหลดสลิปทั้งหมด" ที่แถบสรุป (ข้าง "เรียกเก็บผ่าน LINE"). ตัด selection checkbox UI (ส่งรายคน + batch=ทุกคน payable แทน). ลบ dead i18n keys `club.slip.{sectionTitle,sectionHint,selectAll,selectedCount}` (th+en parity ✓). SlipQr raster + pre-render blob + warm react-qr-code คงเดิม. **Gate:** tsc 0 · vitest 706/706 · next build OK · i18n parity ✓. ⏳ ยังไม่ live-smoke (modern-screenshot capture path ต้องทดสอบบน browser จริงตามที่ p1-18b2 เตือน) · ยังไม่ commit.
+
+### 2026-06-21 — ก๊วน: winner_stays อยู่ต่อแค่สนามแรก (หลายสนาม) — ✅ FIXED
+
+**[P1] ผู้ชนะอยู่ต่อแค่สนามที่สร้างคิวก่อน** — Context: ก๊วน `rotation_mode=winner_stays` + หลายสนาม. Repro: 2 สนามจบทั้งคู่ → กด "สร้างแมตช์ถัดไป" สนาม 1 ก่อน → ระบบดึงผู้ชนะของสนาม 2 มาเป็นคู่ต่อสู้ของสนาม 1 → พอสร้างคิวสนาม 2 ผู้ชนะสนาม 2 ไม่ว่างแล้ว → สนาม 2 ไม่ได้อยู่ต่อ. Cause: `buildNextClubMatchAction` หา staying winner แค่ `.eq("court", courtName)` แต่ pool คู่ต่อสู้ดึงผู้เล่นว่างทุกคน (รวมผู้ชนะสนามอื่นที่เพิ่งจบ). Fix: pure helpers `resolveCourtStay` + `planWinnerStays` ใน `queue.ts` — query completed matches ทุกสนาม (limit 100) + เพิ่ม `court` ใน activeMatches select → reserve ผู้ชนะของสนามอื่นที่ยังว่าง (ไม่มี active match) ออกจาก pool ก่อนเลือกคู่ต่อสู้ → ผู้ชนะทุกสนามถูกสงวนให้อยู่ต่อสนามตัวเอง. Files: `src/lib/club/queue.ts` (+helpers), `src/lib/actions/club-matches.ts` (winner_stays block). +12 vitest. tsc 0 · vitest 706/706.
+
 ### 2026-06-21 — แอป: ระบบ changelog + หน้า "มีอะไรใหม่" + เลข version — ✅ ship-check PASS
 
 หน้า `/whats-new` (server component render จาก `src/lib/changelog.ts` = single source) + `CHANGELOG.md` mirror + เลข version semver (`CURRENT_VERSION = CHANGELOG[0].version`, sync `package.json` 0.9.0) + ลิงก์เมนู (user-menu/mobile-nav) + กฎ CLAUDE.md ข้อ 4 (bump version เมื่อ feature เสร็จ).

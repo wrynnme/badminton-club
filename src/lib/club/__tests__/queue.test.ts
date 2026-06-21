@@ -4,8 +4,11 @@ import {
   buildPartialMatch,
   deriveWinnerSide,
   isClubMatchFull,
+  planWinnerStays,
+  resolveCourtStay,
   type QueuePlayer,
   type MatchSide,
+  type CompletedMatchRow,
 } from "@/lib/club/queue";
 import {
   parseQueueSettings,
@@ -676,5 +679,131 @@ describe("buildPartialMatch", () => {
       { player1: "w1", player2: "w2" },
     );
     expect(r).toEqual({ a1: "w1", a2: "w2", b1: "x", b2: null });
+  });
+});
+
+// Helper: a completed match row (DB-shaped) for the winner_stays planners.
+function done(
+  court: string,
+  winner: "a" | "b",
+  a: [string, string | null],
+  b: [string, string | null],
+): CompletedMatchRow {
+  return {
+    court,
+    side_a_player1: a[0],
+    side_a_player2: a[1],
+    side_b_player1: b[0],
+    side_b_player2: b[1],
+    winner_side: winner,
+  };
+}
+const elig = (...ids: string[]) => new Set(ids);
+
+describe("resolveCourtStay", () => {
+  it("latest winners stay when eligible and cap unlimited (0)", () => {
+    const r = resolveCourtStay([done("1", "a", ["w1", "w2"], ["l1", "l2"])], 0, elig("w1", "w2", "l1", "l2"));
+    expect(r).not.toBeNull();
+    expect(r!.stayingSide).toEqual({ player1: "w1", player2: "w2" });
+    expect([...r!.winnerIds].sort()).toEqual(["w1", "w2"]);
+  });
+
+  it("null when a winner is no longer eligible", () => {
+    expect(resolveCourtStay([done("1", "a", ["w1", "w2"], ["l1", "l2"])], 0, elig("w1", "l1", "l2"))).toBeNull();
+  });
+
+  it("respects winner_stays_max cap (streak === max → null)", () => {
+    const rows = [
+      done("1", "a", ["w1", "w2"], ["x1", "x2"]),
+      done("1", "a", ["w1", "w2"], ["y1", "y2"]),
+    ];
+    expect(resolveCourtStay(rows, 2, elig("w1", "w2"))).toBeNull();
+  });
+
+  it("stays while streak below cap", () => {
+    expect(resolveCourtStay([done("1", "a", ["w1", "w2"], ["x1", "x2"])], 2, elig("w1", "w2"))).not.toBeNull();
+  });
+
+  it("singles staying side has null player2", () => {
+    const r = resolveCourtStay([done("1", "b", ["la", null], ["champ", null])], 0, elig("champ", "la"));
+    expect(r!.stayingSide).toEqual({ player1: "champ", player2: null });
+  });
+
+  it("empty history → null", () => {
+    expect(resolveCourtStay([], 0, elig())).toBeNull();
+  });
+});
+
+describe("planWinnerStays — multi-court winner_stays", () => {
+  // The core regression: building court 1 must reserve court 2's just-finished winners
+  // so it can't draw them as opponents — otherwise court 2 loses its winner_stays.
+  it("reserves other free courts' winners; current court returns stayingSide", () => {
+    const rows = [
+      done("2", "a", ["p5", "p6"], ["p7", "p8"]),
+      done("1", "a", ["p1", "p2"], ["p3", "p4"]),
+    ];
+    const plan = planWinnerStays(rows, {
+      currentCourt: "1",
+      courtsWithActiveMatch: new Set(),
+      winnerStaysMax: 0,
+      eligibleIds: elig("p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"),
+    });
+    expect(plan.stayingSide).toEqual({ player1: "p1", player2: "p2" });
+    expect([...plan.reservedIds].sort()).toEqual(["p5", "p6"]);
+  });
+
+  it("does NOT reserve winners of a court that already has an active match", () => {
+    const rows = [
+      done("2", "a", ["p5", "p6"], ["p7", "p8"]),
+      done("1", "a", ["p1", "p2"], ["p3", "p4"]),
+    ];
+    const plan = planWinnerStays(rows, {
+      currentCourt: "1",
+      courtsWithActiveMatch: new Set(["2"]),
+      winnerStaysMax: 0,
+      eligibleIds: elig("p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"),
+    });
+    expect(plan.reservedIds.size).toBe(0);
+  });
+
+  it("single court → nothing reserved", () => {
+    const plan = planWinnerStays([done("1", "a", ["p1", "p2"], ["p3", "p4"])], {
+      currentCourt: "1",
+      courtsWithActiveMatch: new Set(),
+      winnerStaysMax: 0,
+      eligibleIds: elig("p1", "p2", "p3", "p4"),
+    });
+    expect(plan.stayingSide).toEqual({ player1: "p1", player2: "p2" });
+    expect(plan.reservedIds.size).toBe(0);
+  });
+
+  it("a capped-out other court is not reserved", () => {
+    const rows = [
+      done("2", "a", ["p5", "p6"], ["x1", "x2"]),
+      done("2", "a", ["p5", "p6"], ["y1", "y2"]),
+      done("1", "a", ["p1", "p2"], ["p3", "p4"]),
+    ];
+    const plan = planWinnerStays(rows, {
+      currentCourt: "1",
+      courtsWithActiveMatch: new Set(),
+      winnerStaysMax: 2,
+      eligibleIds: elig("p1", "p2", "p3", "p4", "p5", "p6"),
+    });
+    expect(plan.reservedIds.size).toBe(0);
+    expect(plan.stayingSide).toEqual({ player1: "p1", player2: "p2" });
+  });
+
+  it("ineligible other-court winners are not reserved", () => {
+    const rows = [
+      done("2", "a", ["p5", "p6"], ["p7", "p8"]),
+      done("1", "a", ["p1", "p2"], ["p3", "p4"]),
+    ];
+    const plan = planWinnerStays(rows, {
+      currentCourt: "1",
+      courtsWithActiveMatch: new Set(),
+      winnerStaysMax: 0,
+      eligibleIds: elig("p1", "p2", "p3", "p4"),
+    });
+    expect(plan.reservedIds.size).toBe(0);
   });
 });

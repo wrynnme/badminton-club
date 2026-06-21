@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 import {
   ChevronDown,
   Check,
+  Download,
   ImageUp,
   Loader2,
   Maximize2,
@@ -52,7 +53,24 @@ import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import { GeneratedQr } from "@/components/club/generated-qr";
 import { ClubSlipVerifyConfig } from "@/components/club/club-slip-verify-config";
+import {
+  SlipCard,
+  SlipDialog,
+  renderSlipBlob,
+  shareOrDownload,
+  sanitizeFilename,
+} from "@/components/club/club-slip-card";
 import type { ClubBillingVerifySettings } from "@/lib/club/billing-verify-settings";
+
+type CostRow = {
+  playerId: string;
+  court: number;
+  shuttle: number;
+  expense: number;
+  discount: number;
+  total: number;
+  games: number;
+};
 
 const baht = (n: number) => `฿${n.toLocaleString()}`;
 
@@ -72,7 +90,15 @@ type Props = {
 
 export function ClubPaymentCollector({ clubId, club, players, matches, expenses, qrLogoUrl, lineReachableIds, billingVerifySettings }: Props) {
   const t = useTranslations("club.payment");
+  const tSlip = useTranslations("club.slip");
+  const locale = useLocale();
   const [pushing, startPush] = useTransition();
+
+  // Warm the react-qr-code chunk so the first off-screen batch capture (and the
+  // first per-player slip dialog) isn't raced by its lazy ssr:false import.
+  useEffect(() => {
+    void import("react-qr-code");
+  }, []);
 
   const reachable = new Set(lineReachableIds);
   const billPushedAtById = new Map(players.map((p) => [p.id, p.bill_pushed_at]));
@@ -105,7 +131,46 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
   const qrImage = club.promptpay_qr_image || null;
   const ppConfigured = ppNumber || !!qrImage;
 
+  // Batch slip download — render every payable player's slip card off-screen → PNG,
+  // one at a time (the QR/font capture needs the node mounted before domToBlob).
+  const [batchPending, startBatch] = useTransition();
+  const [batchGenerating, setBatchGenerating] = useState(false);
+  const batchBusy = batchPending || batchGenerating;
+  const batchContainerRef = useRef<HTMLDivElement>(null);
+  const [batchPlayer, setBatchPlayer] = useState<string | null>(null);
+
+  function downloadAllSlips() {
+    if (payable.length === 0) return;
+    setBatchGenerating(true);
+    startBatch(async () => {
+      for (const row of payable) {
+        const playerName = nameById.get(row.playerId) ?? row.playerId;
+        setBatchPlayer(row.playerId);
+        // Let React commit the new batchPlayer before capturing the node.
+        await new Promise<void>((resolve) => setTimeout(resolve, 120));
+        const node = batchContainerRef.current?.firstElementChild as HTMLElement | null;
+        if (!node) continue;
+        try {
+          const blob = await renderSlipBlob(node);
+          const filename = `slip-${sanitizeFilename(club.name)}-${sanitizeFilename(playerName)}.png`;
+          const shareText = tSlip("shareText", { club: club.name, amount: row.total.toLocaleString() });
+          const title = tSlip("dialogTitle", { name: playerName });
+          await shareOrDownload(blob, filename, shareText, title, true);
+        } catch {
+          toast.error(tSlip("shareError"));
+        }
+      }
+      setBatchPlayer(null);
+      setBatchGenerating(false);
+    });
+  }
+
+  const currentBatchRow: CostRow | null = batchPlayer
+    ? payable.find((r) => r.playerId === batchPlayer) ?? null
+    : null;
+
   return (
+    <>
     <Card>
       <CardContent className="space-y-4 pt-4">
         <h2 className="font-semibold text-base flex items-center gap-2">
@@ -148,7 +213,7 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                 </span>
                 {paidCount > 0 && <ResetPaidButton clubId={clubId} onReset={() => setPaidIds(new Set())} />}
               </div>
-              <div className="pt-1">
+              <div className="pt-1 flex flex-wrap gap-2">
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -176,6 +241,26 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                   </TooltipTrigger>
                   <TooltipContent>{t("pushLineTip")}</TooltipContent>
                 </Tooltip>
+
+                {/* Batch: download every payable player's slip image (for non-LINE players) */}
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1.5 text-xs"
+                        disabled={batchBusy || payable.length === 0 || !ppConfigured}
+                        onClick={downloadAllSlips}
+                      />
+                    }
+                  >
+                    {batchBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                    {batchBusy ? tSlip("generating") : tSlip("downloadAllButton")}
+                  </TooltipTrigger>
+                  <TooltipContent>{ppConfigured ? tSlip("downloadAllButton") : tSlip("noPromptpay")}</TooltipContent>
+                </Tooltip>
               </div>
             </div>
 
@@ -185,13 +270,16 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                 <PlayerReceipt
                   key={row.playerId}
                   clubId={clubId}
+                  club={club}
                   row={row}
                   name={nameById.get(row.playerId) ?? row.playerId}
                   paid={paidIds.has(row.playerId)}
+                  ppNumber={ppNumber}
                   promptpayId={ppNumber ? club.promptpay_id! : null}
                   qrImage={ppNumber ? null : qrImage}
                   qrLogoUrl={qrLogoUrl}
                   promptpayName={club.promptpay_name}
+                  locale={locale}
                   lineReachable={reachable.has(row.playerId)}
                   billPushedAt={billPushedAtById.get(row.playerId) ?? null}
                   onToggle={(nowPaid) =>
@@ -209,6 +297,27 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
         )}
       </CardContent>
     </Card>
+
+    {/* Off-screen batch capture container — one slip card rendered at a time */}
+    {batchPlayer && currentBatchRow && (
+      <div
+        ref={batchContainerRef}
+        aria-hidden="true"
+        style={{ position: "fixed", top: -9999, left: -9999, pointerEvents: "none", zIndex: -1 }}
+      >
+        <SlipCard
+          key={batchPlayer}
+          club={club}
+          row={currentBatchRow}
+          playerName={nameById.get(batchPlayer) ?? batchPlayer}
+          ppNumber={ppNumber}
+          qrImage={ppNumber ? null : qrImage}
+          qrLogoUrl={qrLogoUrl}
+          locale={locale}
+        />
+      </div>
+    )}
+    </>
   );
 }
 
@@ -392,35 +501,44 @@ function PromptPayConfig({
 
 function PlayerReceipt({
   clubId,
+  club,
   row,
   name,
   paid,
+  ppNumber,
   promptpayId,
   qrImage,
   qrLogoUrl,
   promptpayName,
+  locale,
   lineReachable,
   billPushedAt,
   onToggle,
 }: {
   clubId: string;
-  row: { playerId: string; court: number; shuttle: number; expense: number; discount: number; total: number; games: number };
+  club: Club;
+  row: CostRow;
   name: string;
   paid: boolean;
+  ppNumber: boolean;
   promptpayId: string | null;
   qrImage: string | null;
   qrLogoUrl: string | null;
   promptpayName: string | null;
+  locale: string;
   lineReachable: boolean;
   billPushedAt: string | null;
   onToggle: (nowPaid: boolean) => void;
 }) {
   const t = useTranslations("club.payment");
+  const tSlip = useTranslations("club.slip");
   const [open, setOpen] = useState(false);
   const [zoom, setZoom] = useState(false);
+  const [slipOpen, setSlipOpen] = useState(false);
   const [pending, start] = useTransition();
 
   const payload = promptpayId ? buildPromptPayPayload(promptpayId, row.total) : "";
+  const canSlip = !!payload || !!qrImage;
 
   function toggle() {
     const nowPaid = !paid;
@@ -543,8 +661,42 @@ function PlayerReceipt({
                 </TooltipTrigger>
                 <TooltipContent>{paid ? t("unmarkTip") : t("markPaidTip")}</TooltipContent>
               </Tooltip>
+
+              {/* Send this player's slip image via LINE / download */}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!canSlip}
+                      onClick={() => setSlipOpen(true)}
+                      className="w-full h-9 gap-1.5 text-sm"
+                    />
+                  }
+                >
+                  <Send className="h-4 w-4" />
+                  {tSlip("sendSlip")}
+                </TooltipTrigger>
+                <TooltipContent>{canSlip ? tSlip("shareButton") : tSlip("noPromptpay")}</TooltipContent>
+              </Tooltip>
             </div>
           </div>
+
+          {canSlip && (
+            <SlipDialog
+              open={slipOpen}
+              onOpenChange={setSlipOpen}
+              club={club}
+              row={row}
+              playerName={name}
+              ppNumber={ppNumber}
+              qrImage={qrImage}
+              qrLogoUrl={qrLogoUrl}
+              locale={locale}
+            />
+          )}
 
           {(payload || qrImage) && (
             <Dialog open={zoom} onOpenChange={setZoom}>

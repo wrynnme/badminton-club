@@ -1,16 +1,13 @@
 "use client";
 
-import { forwardRef, useEffect, useRef, useState, useTransition } from "react";
+import { forwardRef, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { useLocale } from "next-intl";
 import { format } from "date-fns";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { toast } from "sonner";
 import { domToBlob } from "modern-screenshot";
-import { Download, ImageDown, Loader2, QrCode, Send } from "lucide-react";
+import { ImageDown, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -22,17 +19,20 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { computeClubCostRows } from "@/lib/club/cost-summary";
-import { buildPromptPayPayload, isValidPromptPayId } from "@/lib/club/promptpay";
+import { buildPromptPayPayload } from "@/lib/club/promptpay";
 import QRCode from "qrcode";
-import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
-import type { ClubExpense } from "@/lib/actions/club-cost";
+import type { Club } from "@/lib/types";
 
-// ─── helpers ───────────────────────────────────────────────────────────────────
+/**
+ * Shared slip-card pieces — the styled per-player receipt card that gets captured
+ * to a PNG and shared to LINE / downloaded. Extracted from the old standalone
+ * `club-slip-share.tsx` so the unified ClubPaymentCollector can reuse them both
+ * per-player (SlipDialog) and in a batch loop (SlipCard + renderSlipBlob).
+ */
 
 const baht = (n: number) => `฿${n.toLocaleString()}`;
 
-function sanitizeFilename(s: string): string {
+export function sanitizeFilename(s: string): string {
   return s.replace(/[^\w฀-๿-]/g, "_");
 }
 
@@ -53,14 +53,14 @@ async function waitForAssets(node: HTMLElement, timeoutMs = 2500): Promise<void>
   }
 }
 
-async function renderSlipBlob(node: HTMLElement): Promise<Blob> {
+export async function renderSlipBlob(node: HTMLElement): Promise<Blob> {
   await document.fonts.ready; // ensure Anuphan/Chakra are loaded
   await waitForAssets(node); // ensure the dynamic QR svg + images have rendered
   await domToBlob(node, { scale: 3, backgroundColor: "#ffffff" }); // warm-up (fonts/SVG)
   return domToBlob(node, { scale: 3, backgroundColor: "#ffffff" });
 }
 
-async function shareOrDownload(
+export async function shareOrDownload(
   blob: Blob,
   filename: string,
   shareText: string,
@@ -88,18 +88,6 @@ async function shareOrDownload(
   a.click();
   URL.revokeObjectURL(url);
 }
-
-// ─── Props ─────────────────────────────────────────────────────────────────────
-
-type Props = {
-  club: Club;
-  players: ClubPlayer[];
-  matches: ClubMatch[];
-  expenses: ClubExpense[];
-  qrLogoUrl: string | null;
-};
-
-// ─── SlipCard (capture target) ─────────────────────────────────────────────────
 
 // QR rendered as a raster <img> (PNG data URL) instead of inline <svg>. modern-
 // screenshot's foreignObject capture renders react-qr-code's inline <svg> BLANK,
@@ -160,7 +148,7 @@ function SlipQr({ value, size, logoUrl }: { value: string; size: number; logoUrl
   );
 }
 
-type SlipCardProps = {
+export type SlipCardProps = {
   club: Club;
   row: {
     playerId: string;
@@ -178,7 +166,7 @@ type SlipCardProps = {
   locale: string;
 };
 
-const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipCard(
+export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipCard(
   { club, row, playerName, ppNumber, qrImage, qrLogoUrl, locale },
   ref,
 ) {
@@ -424,9 +412,7 @@ const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipCard(
   );
 });
 
-// ─── SlipDialog ────────────────────────────────────────────────────────────────
-
-function SlipDialog({
+export function SlipDialog({
   open,
   onOpenChange,
   club,
@@ -567,273 +553,5 @@ function SlipDialog({
         </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ─── Main export ───────────────────────────────────────────────────────────────
-
-export function ClubSlipShare({
-  club,
-  players,
-  matches,
-  expenses,
-  qrLogoUrl,
-}: Props) {
-  const t = useTranslations("club.slip");
-  const locale = useLocale();
-
-  const { rows } = computeClubCostRows({ club, players, matches, expenses });
-  const nameById = new Map(players.map((p) => [p.id, p.display_name]));
-  const paidById = new Map(players.map((p) => [p.id, !!p.paid_at]));
-  const payable = rows.filter((r) => r.total > 0);
-
-  const ppNumber = !!club.promptpay_id && isValidPromptPayId(club.promptpay_id);
-  const qrImage = club.promptpay_qr_image || null;
-  const ppConfigured = ppNumber || !!qrImage;
-
-  // Default selection: unpaid payable players
-  const [selected, setSelected] = useState<Set<string>>(
-    () =>
-      new Set(
-        payable
-          .filter((r) => !paidById.get(r.playerId))
-          .map((r) => r.playerId),
-      ),
-  );
-
-  // Per-player dialog open state
-  const [dialogOpen, setDialogOpen] = useState<string | null>(null);
-
-  // Batch download state
-  const [batchPending, startBatch] = useTransition();
-  const [batchGenerating, setBatchGenerating] = useState(false);
-  const batchBusy = batchPending || batchGenerating;
-
-  // Hidden container for off-screen batch renders
-  const batchContainerRef = useRef<HTMLDivElement>(null);
-  const [batchPlayer, setBatchPlayer] = useState<string | null>(null);
-
-  // Warm the react-qr-code chunk so the first off-screen batch capture (and the
-  // first dialog open) isn't raced by its lazy ssr:false import.
-  useEffect(() => {
-    void import("react-qr-code");
-  }, []);
-
-  if (payable.length === 0) {
-    return null;
-  }
-
-  const allSelected = payable.every((r) => selected.has(r.playerId));
-  const selectedCount = payable.filter((r) => selected.has(r.playerId)).length;
-
-  function toggleAll() {
-    if (allSelected) {
-      setSelected(new Set());
-    } else {
-      setSelected(new Set(payable.map((r) => r.playerId)));
-    }
-  }
-
-  function toggleOne(playerId: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(playerId)) next.delete(playerId);
-      else next.add(playerId);
-      return next;
-    });
-  }
-
-  async function downloadBatch() {
-    const selectedRows = payable.filter((r) => selected.has(r.playerId));
-    if (selectedRows.length === 0) return;
-    setBatchGenerating(true);
-
-    startBatch(async () => {
-      for (const row of selectedRows) {
-        const playerName = nameById.get(row.playerId) ?? row.playerId;
-        // Render the hidden slip card for this player
-        setBatchPlayer(row.playerId);
-        // Allow React to commit the new batchPlayer state before capturing
-        await new Promise<void>((resolve) => setTimeout(resolve, 120));
-        const node = batchContainerRef.current?.firstElementChild as HTMLElement | null;
-        if (!node) continue;
-        try {
-          const blob = await renderSlipBlob(node);
-          const filename = `slip-${sanitizeFilename(club.name)}-${sanitizeFilename(playerName)}.png`;
-          const shareText = t("shareText", {
-            club: club.name,
-            amount: row.total.toLocaleString(),
-          });
-          const title = t("dialogTitle", { name: playerName });
-          await shareOrDownload(blob, filename, shareText, title, true);
-        } catch {
-          toast.error(t("shareError"));
-        }
-      }
-      setBatchPlayer(null);
-      setBatchGenerating(false);
-    });
-  }
-
-  const currentBatchRow = batchPlayer
-    ? payable.find((r) => r.playerId === batchPlayer)
-    : null;
-
-  return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <QrCode className="h-4 w-4 shrink-0" />
-            {t("sectionTitle")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">{t("sectionHint")}</p>
-
-          {/* Select all row */}
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="slip-select-all"
-              checked={allSelected}
-              onCheckedChange={toggleAll}
-            />
-            <label
-              htmlFor="slip-select-all"
-              className="text-sm cursor-pointer select-none"
-            >
-              {t("selectAll")}
-            </label>
-            <span className="ml-auto text-xs text-muted-foreground">
-              {t("selectedCount", { n: selectedCount })}
-            </span>
-          </div>
-
-          {/* Player rows */}
-          <div className="space-y-1.5">
-            {payable.map((row) => {
-              const playerName = nameById.get(row.playerId) ?? row.playerId;
-              const isSelected = selected.has(row.playerId);
-              const rowId = `slip-player-${row.playerId}`;
-
-              return (
-                <div
-                  key={row.playerId}
-                  className="flex items-center gap-2.5 rounded-lg border px-3 py-2"
-                >
-                  <Checkbox
-                    id={rowId}
-                    checked={isSelected}
-                    onCheckedChange={() => toggleOne(row.playerId)}
-                  />
-                  <label
-                    htmlFor={rowId}
-                    className="flex-1 min-w-0 truncate text-sm cursor-pointer select-none"
-                  >
-                    {playerName}
-                  </label>
-                  <span className="text-sm font-semibold tabular-nums text-muted-foreground">
-                    {baht(row.total)}
-                  </span>
-
-                  {/* Per-row send slip button */}
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          disabled={!ppConfigured}
-                          onClick={() => setDialogOpen(row.playerId)}
-                          className="h-7 gap-1 text-xs shrink-0"
-                        />
-                      }
-                    >
-                      <Send className="h-3.5 w-3.5" />
-                      {t("sendSlip")}
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {ppConfigured
-                        ? t("shareButton")
-                        : t("noPromptpay")}
-                    </TooltipContent>
-                  </Tooltip>
-
-                  {/* Dialog for this player */}
-                  <SlipDialog
-                    open={dialogOpen === row.playerId}
-                    onOpenChange={(o) => setDialogOpen(o ? row.playerId : null)}
-                    club={club}
-                    row={row}
-                    playerName={playerName}
-                    ppNumber={ppNumber}
-                    qrImage={ppNumber ? null : qrImage}
-                    qrLogoUrl={qrLogoUrl}
-                    locale={locale}
-                  />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Batch download footer */}
-          <div className="pt-1 flex justify-end">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={batchBusy || selectedCount === 0 || !ppConfigured}
-                    onClick={downloadBatch}
-                    className="gap-1.5 text-sm"
-                  />
-                }
-              >
-                {batchBusy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4" />
-                )}
-                {batchBusy ? t("generating") : t("downloadAllButton")}
-              </TooltipTrigger>
-              <TooltipContent>
-                {ppConfigured
-                  ? t("downloadAllButton")
-                  : t("noPromptpay")}
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Off-screen batch capture container */}
-      {batchPlayer && currentBatchRow && (
-        <div
-          ref={batchContainerRef}
-          aria-hidden="true"
-          style={{
-            position: "fixed",
-            top: -9999,
-            left: -9999,
-            pointerEvents: "none",
-            zIndex: -1,
-          }}
-        >
-          <SlipCard
-            key={batchPlayer}
-            club={club}
-            row={currentBatchRow}
-            playerName={nameById.get(batchPlayer) ?? batchPlayer}
-            ppNumber={ppNumber}
-            qrImage={ppNumber ? null : qrImage}
-            qrLogoUrl={qrLogoUrl}
-            locale={locale}
-          />
-        </div>
-      )}
-    </>
   );
 }

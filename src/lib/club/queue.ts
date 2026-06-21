@@ -430,3 +430,115 @@ export function deriveWinnerSide(
   if (scoreB > scoreA) return "b";
   return null;
 }
+
+// ─── winner_stays planning (multi-court aware) ──────────────────────────────────
+
+/** A completed club_match row (DB-shaped) used to decide who stays on each court. */
+export type CompletedMatchRow = {
+  court: string;
+  side_a_player1: string | null;
+  side_a_player2: string | null;
+  side_b_player1: string | null;
+  side_b_player2: string | null;
+  winner_side: string | null;
+};
+
+/** Player ids of the winning side of one completed match (empty = no/invalid winner). */
+function winnerIdsOf(m: CompletedMatchRow): string[] {
+  const ids =
+    m.winner_side === "a"
+      ? [m.side_a_player1, m.side_a_player2]
+      : m.winner_side === "b"
+        ? [m.side_b_player1, m.side_b_player2]
+        : [];
+  return ids.filter((id): id is string => id != null);
+}
+
+/**
+ * winner_stays for ONE court: given that court's completed matches newest-first,
+ * decide whether the latest winners stay. They stay only when (a) the cap allows
+ * (0 = unlimited, else the consecutive same-winner streak is below it) and (b) every
+ * winner is still eligible (in `eligibleIds` — not in another active match / passes the
+ * check-in gate). Pure — DB-row shaped input, no side effects.
+ *
+ * Returns the staying side (sideA, slot identity preserved) + the winner ids, or null.
+ */
+export function resolveCourtStay(
+  courtMatchesNewestFirst: CompletedMatchRow[],
+  winnerStaysMax: number,
+  eligibleIds: Set<string>,
+): { stayingSide: MatchSide; winnerIds: string[] } | null {
+  const last = courtMatchesNewestFirst[0];
+  if (!last) return null;
+  const winnerIds = winnerIdsOf(last);
+  if (winnerIds.length === 0) return null;
+
+  // Consecutive streak: how many latest matches (newest→older) the SAME winner set won.
+  const sortedWinner = [...winnerIds].sort();
+  let streak = 0;
+  for (const m of courtMatchesNewestFirst) {
+    const cur = [...winnerIdsOf(m)].sort();
+    if (cur.length === sortedWinner.length && cur.every((id, i) => id === sortedWinner[i])) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+
+  const capOk = winnerStaysMax === 0 || streak < winnerStaysMax;
+  const allEligible = winnerIds.every((id) => eligibleIds.has(id));
+  if (!capOk || !allEligible) return null;
+
+  const p1 = last.winner_side === "a" ? last.side_a_player1 : last.side_b_player1;
+  const p2 = last.winner_side === "a" ? last.side_a_player2 : last.side_b_player2;
+  if (p1 == null) return null; // a completed winner always has player1; defensive
+  return { stayingSide: { player1: p1, player2: p2 ?? null }, winnerIds };
+}
+
+/**
+ * Plan winner_stays across ALL courts when building the next match for ONE court.
+ *
+ * The fix for "winners only stayed on the first-built court": building a court draws
+ * opponents from every free player, which includes OTHER free courts' just-finished
+ * winners. Those winners must be RESERVED for their own court instead. So this returns:
+ *  - `stayingSide`  — the current court's winners that keep playing (become sideA), or null.
+ *  - `reservedIds`  — winners of OTHER free courts (no active match yet) that will stay
+ *                     on their own court; the caller removes them from this court's pool.
+ *
+ * Courts that already hold a pending/in_progress match are skipped for reservation
+ * (no winner_stays build will happen there now, so their winners shouldn't be held back).
+ * Pure — no DB, no side effects.
+ */
+export function planWinnerStays(
+  allCompletedNewestFirst: CompletedMatchRow[],
+  opts: {
+    currentCourt: string;
+    courtsWithActiveMatch: Set<string>;
+    winnerStaysMax: number;
+    eligibleIds: Set<string>;
+  },
+): { stayingSide: MatchSide | null; reservedIds: Set<string> } {
+  // Group by court, preserving the newest-first order within each court.
+  const byCourt = new Map<string, CompletedMatchRow[]>();
+  for (const m of allCompletedNewestFirst) {
+    if (m.court == null) continue;
+    const arr = byCourt.get(m.court);
+    if (arr) arr.push(m);
+    else byCourt.set(m.court, [m]);
+  }
+
+  const reservedIds = new Set<string>();
+  let stayingSide: MatchSide | null = null;
+
+  for (const [court, matches] of byCourt) {
+    const stay = resolveCourtStay(matches, opts.winnerStaysMax, opts.eligibleIds);
+    if (!stay) continue;
+    if (court === opts.currentCourt) {
+      stayingSide = stay.stayingSide;
+    } else if (!opts.courtsWithActiveMatch.has(court)) {
+      for (const id of stay.winnerIds) reservedIds.add(id);
+    }
+  }
+
+  return { stayingSide, reservedIds };
+}
