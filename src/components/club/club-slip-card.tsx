@@ -22,6 +22,7 @@ import {
 import { buildPromptPayPayload } from "@/lib/club/promptpay";
 import QRCode from "qrcode";
 import type { Club } from "@/lib/types";
+import type { ClubCostRow } from "@/lib/club/cost-summary";
 
 /**
  * Shared slip-card pieces — the styled per-player receipt card that gets captured
@@ -30,7 +31,7 @@ import type { Club } from "@/lib/types";
  * per-player (SlipDialog) and in a batch loop (SlipCard + renderSlipBlob).
  */
 
-const baht = (n: number) => `฿${n.toLocaleString()}`;
+export const baht = (n: number) => `฿${n.toLocaleString()}`;
 
 export function sanitizeFilename(s: string): string {
   return s.replace(/[^\w฀-๿-]/g, "_");
@@ -148,17 +149,27 @@ function SlipQr({ value, size, logoUrl }: { value: string; size: number; logoUrl
   );
 }
 
+/**
+ * Filename + share text + dialog title for a player's slip — single-sourced so the
+ * per-player dialog and the batch download loop can't diverge. `t` = a `club.slip`
+ * translator (from `useTranslations("club.slip")`).
+ */
+export function buildSlipMeta(
+  t: (key: string, values?: Record<string, string | number>) => string,
+  club: Club,
+  playerName: string,
+  total: number,
+): { filename: string; shareText: string; title: string } {
+  return {
+    filename: `slip-${sanitizeFilename(club.name)}-${sanitizeFilename(playerName)}.png`,
+    shareText: t("shareText", { club: club.name, amount: total.toLocaleString() }),
+    title: t("dialogTitle", { name: playerName }),
+  };
+}
+
 export type SlipCardProps = {
   club: Club;
-  row: {
-    playerId: string;
-    court: number;
-    shuttle: number;
-    expense: number;
-    discount: number;
-    total: number;
-    games: number;
-  };
+  row: ClubCostRow;
   playerName: string;
   ppNumber: boolean;
   qrImage: string | null;
@@ -437,12 +448,7 @@ export function SlipDialog({
   const cardRef = useRef<HTMLDivElement>(null);
   const [blob, setBlob] = useState<Blob | null>(null);
 
-  const filename = `slip-${sanitizeFilename(club.name)}-${sanitizeFilename(playerName)}.png`;
-  const shareText = t("shareText", {
-    club: club.name,
-    amount: row.total.toLocaleString(),
-  });
-  const title = t("dialogTitle", { name: playerName });
+  const { filename, shareText, title } = buildSlipMeta(t, club, playerName, row.total);
 
   // While no blob is ready the buttons show a generating state and stay disabled.
   const busy = !blob;

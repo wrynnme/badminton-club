@@ -435,7 +435,7 @@ export function deriveWinnerSide(
 
 /** A completed club_match row (DB-shaped) used to decide who stays on each court. */
 export type CompletedMatchRow = {
-  court: string;
+  court: string | null;
   side_a_player1: string | null;
   side_a_player2: string | null;
   side_b_player1: string | null;
@@ -443,7 +443,7 @@ export type CompletedMatchRow = {
   winner_side: string | null;
 };
 
-/** Player ids of the winning side of one completed match (empty = no/invalid winner). */
+/** Player ids of the winning side of one completed match, deduped (empty = no/invalid winner). */
 function winnerIdsOf(m: CompletedMatchRow): string[] {
   const ids =
     m.winner_side === "a"
@@ -451,7 +451,9 @@ function winnerIdsOf(m: CompletedMatchRow): string[] {
       : m.winner_side === "b"
         ? [m.side_b_player1, m.side_b_player2]
         : [];
-  return ids.filter((id): id is string => id != null);
+  // Dedup here so callers don't have to: a malformed row with the same player in
+  // both slots must not break the streak-length comparison in resolveCourtStay.
+  return [...new Set(ids.filter((id): id is string => id != null))];
 }
 
 /**
@@ -470,14 +472,14 @@ export function resolveCourtStay(
 ): { stayingSide: MatchSide; winnerIds: string[] } | null {
   const last = courtMatchesNewestFirst[0];
   if (!last) return null;
-  const winnerIds = winnerIdsOf(last);
+  const winnerIds = winnerIdsOf(last); // already deduped
   if (winnerIds.length === 0) return null;
 
   // Consecutive streak: how many latest matches (newest→older) the SAME winner set won.
   const sortedWinner = [...winnerIds].sort();
   let streak = 0;
   for (const m of courtMatchesNewestFirst) {
-    const cur = [...winnerIdsOf(m)].sort();
+    const cur = winnerIdsOf(m).sort();
     if (cur.length === sortedWinner.length && cur.every((id, i) => id === sortedWinner[i])) {
       streak++;
     } else {
@@ -507,6 +509,10 @@ export function resolveCourtStay(
  *
  * Courts that already hold a pending/in_progress match are skipped for reservation
  * (no winner_stays build will happen there now, so their winners shouldn't be held back).
+ * `reservableCourts`, when provided, limits reservation to courts that still exist in the
+ * club's configured court list — so a removed/renamed court's stale completed rows don't
+ * reserve (and strand) players on a court that can never be built again. Omit to reserve
+ * any free court (used when a club has no named courts configured).
  * Pure — no DB, no side effects.
  */
 export function planWinnerStays(
@@ -516,6 +522,7 @@ export function planWinnerStays(
     courtsWithActiveMatch: Set<string>;
     winnerStaysMax: number;
     eligibleIds: Set<string>;
+    reservableCourts?: Set<string>;
   },
 ): { stayingSide: MatchSide | null; reservedIds: Set<string> } {
   // Group by court, preserving the newest-first order within each court.
@@ -535,7 +542,10 @@ export function planWinnerStays(
     if (!stay) continue;
     if (court === opts.currentCourt) {
       stayingSide = stay.stayingSide;
-    } else if (!opts.courtsWithActiveMatch.has(court)) {
+    } else if (
+      !opts.courtsWithActiveMatch.has(court) &&
+      (opts.reservableCourts == null || opts.reservableCourts.has(court))
+    ) {
       for (const id of stay.winnerIds) reservedIds.add(id);
     }
   }

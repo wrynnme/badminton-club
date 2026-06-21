@@ -222,6 +222,10 @@ export async function buildNextClubMatchAction(
       courtsWithActiveMatch: courtsWithActive,
       winnerStaysMax: settings.winner_stays_max,
       eligibleIds,
+      // Only reserve winners for courts that still exist in the club's config — a
+      // removed/renamed court's stale completed rows must not strand players. When the
+      // club has no named courts (free-text fallback), reserve any free court.
+      reservableCourts: courts.length > 0 ? new Set(courts) : undefined,
     });
 
     stayingSide = plan.stayingSide ?? undefined;

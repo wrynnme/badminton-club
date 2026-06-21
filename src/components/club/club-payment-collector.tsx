@@ -54,25 +54,15 @@ import type { ClubExpense } from "@/lib/actions/club-cost";
 import { GeneratedQr } from "@/components/club/generated-qr";
 import { ClubSlipVerifyConfig } from "@/components/club/club-slip-verify-config";
 import {
+  baht,
+  buildSlipMeta,
   SlipCard,
   SlipDialog,
   renderSlipBlob,
   shareOrDownload,
-  sanitizeFilename,
 } from "@/components/club/club-slip-card";
 import type { ClubBillingVerifySettings } from "@/lib/club/billing-verify-settings";
-
-type CostRow = {
-  playerId: string;
-  court: number;
-  shuttle: number;
-  expense: number;
-  discount: number;
-  total: number;
-  games: number;
-};
-
-const baht = (n: number) => `฿${n.toLocaleString()}`;
+import type { ClubCostRow } from "@/lib/club/cost-summary";
 
 type Props = {
   clubId: string;
@@ -137,7 +127,7 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
   const [batchGenerating, setBatchGenerating] = useState(false);
   const batchBusy = batchPending || batchGenerating;
   const batchContainerRef = useRef<HTMLDivElement>(null);
-  const [batchPlayer, setBatchPlayer] = useState<string | null>(null);
+  const [batchRow, setBatchRow] = useState<ClubCostRow | null>(null);
 
   function downloadAllSlips() {
     if (payable.length === 0) return;
@@ -145,29 +135,23 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
     startBatch(async () => {
       for (const row of payable) {
         const playerName = nameById.get(row.playerId) ?? row.playerId;
-        setBatchPlayer(row.playerId);
-        // Let React commit the new batchPlayer before capturing the node.
+        setBatchRow(row); // mount the off-screen SlipCard for this player
+        // Let React commit the new batch row before capturing the node.
         await new Promise<void>((resolve) => setTimeout(resolve, 120));
         const node = batchContainerRef.current?.firstElementChild as HTMLElement | null;
         if (!node) continue;
         try {
           const blob = await renderSlipBlob(node);
-          const filename = `slip-${sanitizeFilename(club.name)}-${sanitizeFilename(playerName)}.png`;
-          const shareText = tSlip("shareText", { club: club.name, amount: row.total.toLocaleString() });
-          const title = tSlip("dialogTitle", { name: playerName });
+          const { filename, shareText, title } = buildSlipMeta(tSlip, club, playerName, row.total);
           await shareOrDownload(blob, filename, shareText, title, true);
         } catch {
           toast.error(tSlip("shareError"));
         }
       }
-      setBatchPlayer(null);
+      setBatchRow(null);
       setBatchGenerating(false);
     });
   }
-
-  const currentBatchRow: CostRow | null = batchPlayer
-    ? payable.find((r) => r.playerId === batchPlayer) ?? null
-    : null;
 
   return (
     <>
@@ -299,17 +283,17 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
     </Card>
 
     {/* Off-screen batch capture container — one slip card rendered at a time */}
-    {batchPlayer && currentBatchRow && (
+    {batchRow && (
       <div
         ref={batchContainerRef}
         aria-hidden="true"
         style={{ position: "fixed", top: -9999, left: -9999, pointerEvents: "none", zIndex: -1 }}
       >
         <SlipCard
-          key={batchPlayer}
+          key={batchRow.playerId}
           club={club}
-          row={currentBatchRow}
-          playerName={nameById.get(batchPlayer) ?? batchPlayer}
+          row={batchRow}
+          playerName={nameById.get(batchRow.playerId) ?? batchRow.playerId}
           ppNumber={ppNumber}
           qrImage={ppNumber ? null : qrImage}
           qrLogoUrl={qrLogoUrl}
@@ -517,7 +501,7 @@ function PlayerReceipt({
 }: {
   clubId: string;
   club: Club;
-  row: CostRow;
+  row: ClubCostRow;
   name: string;
   paid: boolean;
   ppNumber: boolean;

@@ -806,4 +806,35 @@ describe("planWinnerStays — multi-court winner_stays", () => {
     });
     expect(plan.reservedIds.size).toBe(0);
   });
+
+  it("does NOT reserve a court missing from reservableCourts (removed/phantom court)", () => {
+    const rows = [
+      done("2", "a", ["p5", "p6"], ["p7", "p8"]),
+      done("1", "a", ["p1", "p2"], ["p3", "p4"]),
+    ];
+    const plan = planWinnerStays(rows, {
+      currentCourt: "1",
+      courtsWithActiveMatch: new Set(),
+      winnerStaysMax: 0,
+      eligibleIds: elig("p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"),
+      reservableCourts: new Set(["1"]), // court "2" no longer in club config
+    });
+    expect(plan.stayingSide).toEqual({ player1: "p1", player2: "p2" });
+    expect(plan.reservedIds.size).toBe(0);
+  });
+
+  it("reserves an other court that IS still in reservableCourts", () => {
+    const rows = [
+      done("2", "a", ["p5", "p6"], ["p7", "p8"]),
+      done("1", "a", ["p1", "p2"], ["p3", "p4"]),
+    ];
+    const plan = planWinnerStays(rows, {
+      currentCourt: "1",
+      courtsWithActiveMatch: new Set(),
+      winnerStaysMax: 0,
+      eligibleIds: elig("p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"),
+      reservableCourts: new Set(["1", "2"]),
+    });
+    expect([...plan.reservedIds].sort()).toEqual(["p5", "p6"]);
+  });
 });
