@@ -88,7 +88,7 @@ type FormValues = {
   shuttle_price: number;
   court_count: number;
   players_per_team: "1" | "2";
-  rotation_mode: "fair_queue" | "winner_stays";
+  rotation_mode: "fair_queue" | "winner_stays" | "fair_winner_fallback";
   queue_mode: "rest_longest" | "fifo" | "level_match" | "smart";
 };
 
@@ -287,7 +287,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
     shuttle_price: z.number().min(0, t("validationFeeMin")),
     court_count: z.number().int().min(1, t("validationCourtMin")).max(20, t("validationCourtMax")),
     players_per_team: z.enum(["1", "2"]),
-    rotation_mode: z.enum(["fair_queue", "winner_stays"]),
+    rotation_mode: z.enum(["fair_queue", "winner_stays", "fair_winner_fallback"]),
     queue_mode: z.enum(["rest_longest", "fifo", "level_match", "smart"]),
   });
 
@@ -665,7 +665,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                     value={field.state.value}
                     onValueChange={(v) => {
                       if (v)
-                        field.handleChange(v as "fair_queue" | "winner_stays");
+                        field.handleChange(v as "fair_queue" | "winner_stays" | "fair_winner_fallback");
                     }}
                   >
                     <SelectTrigger id={`${field.name}-trigger`} className="w-full">
@@ -673,7 +673,9 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                         {(v: string) =>
                           v === "fair_queue"
                             ? t("rotationFairQueue")
-                            : t("rotationWinnerStays")
+                            : v === "winner_stays"
+                              ? t("rotationWinnerStays")
+                              : t("rotationFairWinnerFallback")
                         }
                       </SelectValue>
                     </SelectTrigger>
@@ -683,6 +685,9 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                       </SelectItem>
                       <SelectItem value="winner_stays">
                         {t("rotationWinnerStays")}
+                      </SelectItem>
+                      <SelectItem value="fair_winner_fallback">
+                        {t("rotationFairWinnerFallback")}
                       </SelectItem>
                     </SelectContent>
                   </Select>
