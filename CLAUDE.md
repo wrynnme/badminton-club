@@ -1,5 +1,6 @@
 @AGENTS.md
 @.claude/agent-operating-rules.md
+@MEMORY.md
 
 # Project Operating Rules
 
@@ -57,6 +58,47 @@ Trust but verify. Read the actual diff/changes before reporting done. Subagent s
 - **No fabrication**: ห้ามแต่ง file paths / function names / library versions — verify ผ่าน `Read` / `grep` / `Explore` ก่อน
 - **Fail fast**: error ไม่ครบ input → return `needs_clarification` ห้าม guess (Universal rule A1.3 บังคับอยู่แล้ว — ย้ำไว้)
 - **spec.md update**: หลังทำเสร็จทุก task ต้อง update `spec.md` (ดู `## After completing any task`)
+
+## Reversibility, dissent & learning (extends `@.claude/agent-operating-rules.md`)
+
+กฎชุดนี้ **เสริม** universal rules — เติมเฉพาะที่ยังไม่ระบุชัด ไม่ทับของเดิม.
+
+### R0 / R1 / R2 — classify by reversibility before acting
+
+ใช้คู่กับ Gates (Section B). ก่อนลงมือ จัดระดับว่าย้อนกลับได้แค่ไหน แล้วเลือกว่าจะถามหรือทำเลย:
+
+- **R0 (irreversible)** — STOP, ขอ user ยืนยันก่อน. ครอบ Gate 3 (prod deploy) + Gate 4 (DROP / DELETE without WHERE / force-push) + override "Destructive DB".
+- **R1 (costly to reverse)** — ทำได้ แต่บอกก่อนว่าจะทำอะไรและทำไม (เช่น schema migration, rename ข้าม module, แก้ data contract ใน `spec.md`).
+- **R2 (easily reversed)** — ทำเลย ไม่ต้องขอ (เช่น single-file edit ≤30 บรรทัด, แก้ copy/label, เพิ่ม test). **ห้ามถาม permission กับงาน R2** — ทำแล้วค่อยรายงาน.
+
+### DISSENT — argue before you commit
+
+ก่อน major change (R0/R1) ต้อง surface ความกังวลก่อน อย่าทำตามโมเมนตัม:
+
+- **Blast radius** ถ้าพังคืออะไร? (กระทบ prod `kuanbad.vercel.app` / ข้อมูลผู้เล่น / LINE flow / live tournament?)
+- **สมมติฐาน** ที่เรากำลังตั้งคืออะไร?
+- **Reversibility path** คืออะไร? (R0/R1/R2)
+- เรามองข้ามอะไรไปเพราะรีบทำ?
+
+### SCOPE DRIFT — flag scope creep
+
+Track stated goal vs actual execution. แจ้งเตือน (ไม่ทำเงียบๆ) เมื่อ:
+
+- "อีกนิดเดียว" สะสมไปเรื่อยๆ
+- nice-to-have ถูกปฏิบัติเหมือน must-have
+- โจทย์คือ "แก้บั๊ก X" แต่กลายเป็น "refactor ทั้งโมดูล"
+
+เชื่อมกับ A1 "STAY IN YOUR LANE" — เกินขอบเขต → flag + ถาม.
+
+### LEARNING CAPTURE — log AI's own failures to `MEMORY.md`
+
+เมื่อเจอ pattern failure / operational mistake **ของตัว agent เอง** (ไม่ใช่บั๊กของโค้ด — บั๊กโค้ดไป `bug.md`):
+
+1. Log ลง `MEMORY.md`
+2. 3 ฟิลด์: **what happened / root cause / correct behavior**
+3. correct behavior ต้องเป็น "คำสั่งที่ทำตามได้" ไม่ใช่ความรู้สึก
+
+ตัวอย่าง trigger: ถาม permission กับ edit ที่เป็น R2 · บอก "done" โดยไม่ได้รัน `npm run typecheck` / build · เดา file path · wire write side ของ pipeline แต่ลืม read side.
 
 ---
 
