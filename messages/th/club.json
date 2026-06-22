@@ -311,10 +311,10 @@
     "balanceLockedPairsDesc": "ให้คู่ที่ล็อกไว้ถูกพิจารณาระดับฝีมือเทียบกับฝ่ายตรงข้ามด้วย (ปิด = ล็อกแล้วข้ามการจัดสมดุล)",
     "timeLimitLabel": "จำกัดเวลา/เกม (นาที)",
     "timeLimitDesc": "แสดงเป็น hint สำหรับ referee (0 = ไม่จำกัด)",
-    "notReadyLabel": "เมื่อไม่พร้อม",
-    "notReadyDesc": "ทำอะไรเมื่อผู้เล่นไม่พร้อมเล่น",
+    "notReadyLabel": "เมื่อยังไม่เช็คอิน",
+    "notReadyDesc": "จะทำอย่างไรกับคนที่ยังไม่เช็คอิน (มีผลเมื่อเริ่มมีคนเช็คอินแล้ว)",
     "notReadyRequeue": "ต่อท้ายคิว",
-    "notReadySkip": "ข้าม",
+    "notReadySkip": "ไม่เลือก",
     "realtimeEnabledLabel": "อัปเดตสด (Realtime)",
     "realtimeEnabledDesc": "เปิด = คิวและรายชื่ออัปเดตเองข้ามอุปกรณ์โดยไม่ต้องรีเฟรช"
   },

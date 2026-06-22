@@ -163,15 +163,20 @@ export async function buildNextClubMatchAction(
     if (m.side_b_player2) activePlayers.add(m.side_b_player2);
   }
 
-  // Check-in gate: if at least one player is checked in, only checked-in players
-  // are pool-eligible. Clubs that don't use check-in (nobody is checked in) use
-  // all players so existing behavior is preserved.
+  // Check-in = readiness. When at least one player is checked in, check-in is
+  // "in use" and not_ready_action decides what to do with not-ready (not-checked-in)
+  // players: "skip" excludes them from the pool (the long-standing default behavior);
+  // "requeue" keeps them but the queue sorts them to the tail (drafted only when ready
+  // players run short — see QueuePlayer.notReady). When nobody is checked in, check-in
+  // isn't in use → everyone is eligible regardless of the setting.
   const anyCheckedIn = allPlayers.some((p) => p.checked_in_at != null);
+  const isNotReady = (p: (typeof allPlayers)[number]) =>
+    anyCheckedIn && p.checked_in_at == null;
 
   // Build pool-eligible set: not in active match + (check-in gate if applicable).
   const eligiblePlayers = allPlayers.filter((p) => {
     if (activePlayers.has(p.id)) return false;
-    if (anyCheckedIn && p.checked_in_at == null) return false;
+    if (isNotReady(p) && settings.not_ready_action === "skip") return false;
     return true;
   });
 
@@ -190,6 +195,8 @@ export async function buildNextClubMatchAction(
       level,
       games_played: p.games_played,
       last_finished_at: p.last_finished_at,
+      // requeue policy keeps not-checked-in players in the pool but at the tail.
+      notReady: isNotReady(p),
     };
   };
 
@@ -215,7 +222,12 @@ export async function buildNextClubMatchAction(
       .order("ended_at", { ascending: false })
       .limit(100);
 
-    const eligibleIds = new Set(eligiblePlayers.map((p) => p.id));
+    // Only READY players can be winner-stayers / be reserved for their court. Under
+    // `requeue`, eligiblePlayers includes not-ready (not-checked-in) players — they must
+    // NOT be force-kept on court ahead of ready waiters, so exclude them here.
+    const eligibleIds = new Set(
+      eligiblePlayers.filter((p) => !isNotReady(p)).map((p) => p.id),
+    );
     // Courts that already hold a pending/in_progress match won't get a winner-stays
     // build right now, so their winners must NOT be reserved (they'd never be drawn).
     const courtsWithActive = new Set(
@@ -243,7 +255,11 @@ export async function buildNextClubMatchAction(
     // keeps the winner (and respects its cap via plan.stayingSide above).
     if (settings.rotation_mode === "fair_winner_fallback") {
       const justPlayedAnywhere = playersInLatestPerCourt(recentMatches ?? []);
-      if (benchSufficientForFresh(pool, justPlayedAnywhere, settings.players_per_team)) {
+      // Bench counts READY players only — not-ready (requeue) players must not make the
+      // bench look big enough to seat a whole fresh match (else the ready winner gets
+      // rotated out in favor of not-checked-in draftees).
+      const readyBench = pool.filter((p) => !p.notReady);
+      if (benchSufficientForFresh(readyBench, justPlayedAnywhere, settings.players_per_team)) {
         stayingSide = undefined; // FAIR — drop this court's stayer (others stay reserved)
       } else {
         // FALLBACK: the shortage itself is the throttle, so this court's winner stays

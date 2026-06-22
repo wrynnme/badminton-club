@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-22 — ก๊วน: wire `not_ready_action` (check-in-based) — ✅ DONE (A3 closed)
+
+A3 backlog closed by wiring (user เปลี่ยนใจจาก "ถอด" → "ทำให้ทำงาน"). `not_ready_action` ไม่มี primitive "ไม่พร้อม" ให้ทำงาน → เลือกผูกกับ **เช็คอิน** (ready = เช็คอินแล้ว) แทนการเพิ่ม column (ไม่ต้อง migration).
+- **Logic:** เมื่อมีคนเช็คอินอย่างน้อย 1 (check-in in use) → คนที่ `checked_in_at == null` = not ready. `skip` = ตัดออกจาก pool (พฤติกรรมเดิม); `requeue` = เก็บไว้แต่ mark `QueuePlayer.notReady` → sort ไปท้ายสุด ลงเฉพาะเมื่อคนเช็คอินไม่พอ. ไม่มีคนเช็คอินเลย = setting ไม่มีผล (ทุกคน eligible เหมือนเดิม).
+- **Files:** `queue.ts` (field `notReady?` + `readyRank` ใส่เป็น primary key ใน cmpFifo/cmpRestLongest/byNearest → ครอบทุกโหมด fair/winner_stays/balanced/partial), `club-matches.ts` `buildNextClubMatchAction` (eligibility filter ตาม `not_ready_action` + map `notReady`), `queue-settings.ts` (**default เปลี่ยน `requeue`→`skip`** เพื่อคงพฤติกรรมเดิม + doc), `club-queue-settings.tsx` (Select กลับมา), i18n th+en (ข้อความสื่อ "เช็คอิน"). **ไม่ต้อง migration.**
+- **Tests:** +4 vitest (ready-first: rest_longest / requeue-fill-when-short / fifo-tail / level_match).
+- **Gate:** tsc 0 · vitest **729/729** · spec.md อัปเดต 4 จุด (field list 12, A3 DONE, settings list, "Not built" note).
+
 ### 2026-06-22 — แอป: หน้า "มีอะไรใหม่" React duplicate-key — ✅ FIXED + ship-check PASS
 
 **[P2] Encountered two children with the same key, `2026-06-21`** — Context: หน้า `/whats-new` (`src/app/(app)/whats-new/page.tsx`). Repro: เปิดหน้า → console error สีแดง (3 รุ่น release วันเดียวกัน: v0.10.0/v0.9.1/v0.9.0). Cause: `CHANGELOG.map` ใช้ `key={entry.date}` แต่วันที่ซ้ำได้เมื่อหลายรุ่นออกวันเดียวกัน. Fix: เปลี่ยนเป็น `key={entry.version}` (semver unique ต่อ entry). Files: `whats-new/page.tsx` (1 บรรทัด).
