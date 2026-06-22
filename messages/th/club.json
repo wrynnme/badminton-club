@@ -574,11 +574,11 @@
     "playerCountCard": "{joined}/{max} คน"
   },
   "lineImport": {
-    "triggerButton": "นำเข้าจาก LINE",
-    "triggerTooltip": "วางข้อความลงชื่อจาก LINE แล้วระบบจะอ่านรายชื่อให้อัตโนมัติ",
-    "dialogTitle": "นำเข้ารายชื่อจาก LINE",
+    "triggerButton": "นำเข้าจากข้อความ",
+    "triggerTooltip": "วางข้อความลงชื่อ แล้วระบบจะอ่านรายชื่อให้อัตโนมัติ",
+    "dialogTitle": "นำเข้ารายชื่อจากข้อความ",
     "step1Label": "วางข้อความ",
-    "textareaPlaceholder": "วางข้อความ \"ลงชื่อ\" จาก LINE ที่นี่...",
+    "textareaPlaceholder": "วางข้อความ \"ลงชื่อ\" ที่นี่...",
     "parseButton": "อ่านรายชื่อ",
     "parsing": "กำลังอ่าน...",
     "emptyResult": "ไม่พบรายชื่อในข้อความนี้",

@@ -574,11 +574,11 @@
     "playerCountCard": "{joined}/{max} players"
   },
   "lineImport": {
-    "triggerButton": "Import from LINE",
-    "triggerTooltip": "Paste a LINE sign-up message and the system will extract the player list automatically",
-    "dialogTitle": "Import players from LINE",
+    "triggerButton": "Import from message",
+    "triggerTooltip": "Paste a sign-up message and the system will extract the player list automatically",
+    "dialogTitle": "Import players from message",
     "step1Label": "Paste message",
-    "textareaPlaceholder": "Paste the LINE sign-up message here...",
+    "textareaPlaceholder": "Paste the sign-up message here...",
     "parseButton": "Read names",
     "parsing": "Reading...",
     "emptyResult": "No names found in this message",
