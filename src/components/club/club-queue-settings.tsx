@@ -397,7 +397,7 @@ export function ClubQueueSettings({
           onChange={(v) => update("game_time_limit_min", v)}
         />
 
-        {/* Not ready action */}
+        {/* Not ready action — check-in is the readiness signal */}
         <div className="flex items-center justify-between gap-3 py-1.5">
           <div className="space-y-0.5 leading-tight min-w-0">
             <Label htmlFor="qs-not-ready" className="text-sm font-medium">
@@ -424,8 +424,8 @@ export function ClubQueueSettings({
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="requeue">{t("notReadyRequeue")}</SelectItem>
               <SelectItem value="skip">{t("notReadySkip")}</SelectItem>
+              <SelectItem value="requeue">{t("notReadyRequeue")}</SelectItem>
             </SelectContent>
           </Select>
         </div>

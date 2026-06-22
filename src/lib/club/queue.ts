@@ -22,6 +22,13 @@ export type QueuePlayer = {
   games_played: number;
   /** ISO timestamp a player last finished a game; null = never played (= longest rest) */
   last_finished_at: string | null;
+  /**
+   * Not-ready = not checked in, kept in the pool only under the `requeue`
+   * not_ready_action policy. Such players sort BEHIND every ready player in all
+   * ordering paths, so they're drafted only when ready players run short.
+   * Absent / false = ready. (`skip` policy filters them out before this point.)
+   */
+  notReady?: boolean;
 };
 
 export type MatchSide = { player1: string; player2: string | null };
@@ -35,6 +42,9 @@ function byId(a: QueuePlayer, b: QueuePlayer): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
+/** `requeue` policy: not-ready players sort to the tail, behind every ready player. */
+const readyRank = (p: QueuePlayer): number => (p.notReady ? 1 : 0);
+
 /**
  * Rotation modes where a passed `stayingSide` keeps the winner on court.
  * `winner_stays` always; `fair_winner_fallback` only when the caller decides the
@@ -45,8 +55,9 @@ export function keepsWinner(mode: ClubQueueSettings["rotation_mode"]): boolean {
   return mode === "winner_stays" || mode === "fair_winner_fallback";
 }
 
-/** FIFO: position asc (nulls last), then joined_at asc. */
+/** FIFO: ready first, then position asc (nulls last), then joined_at asc. */
 function cmpFifo(a: QueuePlayer, b: QueuePlayer): number {
+  if (readyRank(a) !== readyRank(b)) return readyRank(a) - readyRank(b);
   const pa = a.position ?? Number.POSITIVE_INFINITY;
   const pb = b.position ?? Number.POSITIVE_INFINITY;
   if (pa !== pb) return pa - pb;
@@ -56,8 +67,9 @@ function cmpFifo(a: QueuePlayer, b: QueuePlayer): number {
   return byId(a, b);
 }
 
-/** Longest rest first: last_finished_at asc (null = never played = front), then fewer games, then FIFO. */
+/** Longest rest first: ready first, then last_finished_at asc (null = never played = front), then fewer games, then FIFO. */
 function cmpRestLongest(a: QueuePlayer, b: QueuePlayer): number {
+  if (readyRank(a) !== readyRank(b)) return readyRank(a) - readyRank(b);
   const ta = ts(a.last_finished_at);
   const tb = ts(b.last_finished_at);
   if (ta !== tb) return ta - tb;
@@ -99,8 +111,9 @@ function pickBalancedMatch(
   const anchor = rested[0];
   const candidates = rested.slice(1);
 
-  // Sort comparator: nearest level to anchor first, rest_longest as tiebreak
+  // Sort comparator: ready first, then nearest level to anchor, rest_longest as tiebreak
   const byNearest = (a: QueuePlayer, b: QueuePlayer) => {
+    if (readyRank(a) !== readyRank(b)) return readyRank(a) - readyRank(b);
     const da = Math.abs(lvl(a) - lvl(anchor));
     const db = Math.abs(lvl(b) - lvl(anchor));
     if (da !== db) return da - db;

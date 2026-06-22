@@ -8,6 +8,7 @@ import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 import {
   parseQueueSettings,
 } from "@/lib/club/queue-settings";
+import { resolveClubCourts } from "@/lib/club/courts";
 import {
   buildNextMatch,
   buildPartialMatch,
@@ -163,15 +164,20 @@ export async function buildNextClubMatchAction(
     if (m.side_b_player2) activePlayers.add(m.side_b_player2);
   }
 
-  // Check-in gate: if at least one player is checked in, only checked-in players
-  // are pool-eligible. Clubs that don't use check-in (nobody is checked in) use
-  // all players so existing behavior is preserved.
+  // Check-in = readiness. When at least one player is checked in, check-in is
+  // "in use" and not_ready_action decides what to do with not-ready (not-checked-in)
+  // players: "skip" excludes them from the pool (the long-standing default behavior);
+  // "requeue" keeps them but the queue sorts them to the tail (drafted only when ready
+  // players run short — see QueuePlayer.notReady). When nobody is checked in, check-in
+  // isn't in use → everyone is eligible regardless of the setting.
   const anyCheckedIn = allPlayers.some((p) => p.checked_in_at != null);
+  const isNotReady = (p: (typeof allPlayers)[number]) =>
+    anyCheckedIn && p.checked_in_at == null;
 
   // Build pool-eligible set: not in active match + (check-in gate if applicable).
   const eligiblePlayers = allPlayers.filter((p) => {
     if (activePlayers.has(p.id)) return false;
-    if (anyCheckedIn && p.checked_in_at == null) return false;
+    if (isNotReady(p) && settings.not_ready_action === "skip") return false;
     return true;
   });
 
@@ -190,6 +196,8 @@ export async function buildNextClubMatchAction(
       level,
       games_played: p.games_played,
       last_finished_at: p.last_finished_at,
+      // requeue policy keeps not-checked-in players in the pool but at the tail.
+      notReady: isNotReady(p),
     };
   };
 
@@ -215,7 +223,12 @@ export async function buildNextClubMatchAction(
       .order("ended_at", { ascending: false })
       .limit(100);
 
-    const eligibleIds = new Set(eligiblePlayers.map((p) => p.id));
+    // Only READY players can be winner-stayers / be reserved for their court. Under
+    // `requeue`, eligiblePlayers includes not-ready (not-checked-in) players — they must
+    // NOT be force-kept on court ahead of ready waiters, so exclude them here.
+    const eligibleIds = new Set(
+      eligiblePlayers.filter((p) => !isNotReady(p)).map((p) => p.id),
+    );
     // Courts that already hold a pending/in_progress match won't get a winner-stays
     // build right now, so their winners must NOT be reserved (they'd never be drawn).
     const courtsWithActive = new Set(
@@ -243,7 +256,11 @@ export async function buildNextClubMatchAction(
     // keeps the winner (and respects its cap via plan.stayingSide above).
     if (settings.rotation_mode === "fair_winner_fallback") {
       const justPlayedAnywhere = playersInLatestPerCourt(recentMatches ?? []);
-      if (benchSufficientForFresh(pool, justPlayedAnywhere, settings.players_per_team)) {
+      // Bench counts READY players only — not-ready (requeue) players must not make the
+      // bench look big enough to seat a whole fresh match (else the ready winner gets
+      // rotated out in favor of not-checked-in draftees).
+      const readyBench = pool.filter((p) => !p.notReady);
+      if (benchSufficientForFresh(readyBench, justPlayedAnywhere, settings.players_per_team)) {
         stayingSide = undefined; // FAIR — drop this court's stayer (others stay reserved)
       } else {
         // FALLBACK: the shortage itself is the throttle, so this court's winner stays
@@ -336,6 +353,57 @@ export async function buildNextClubMatchAction(
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true, match: newMatch as ClubMatch };
+}
+
+/**
+ * A1 — build the next match for EVERY free court at once. A "free" court has no
+ * pending AND no in_progress match, so this never stacks a second pending onto a
+ * court that already has one queued. Builds sequentially via the proven per-court
+ * builder so each build sees the previous court's freshly-queued players
+ * (busy-player exclusion) and the winner-stays cross-court reservation stays
+ * correct. Stops early once the pool can't form another match (remaining courts
+ * can't either). Returns how many were built out of how many courts were free.
+ */
+export async function buildAllCourtsAction(
+  clubId: string,
+): Promise<{ ok: true; built: number; free: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
+
+  const { data: clubRow, error: clubFetchError } = await sb
+    .from("clubs")
+    .select("queue_settings, courts")
+    .eq("id", clubId)
+    .single();
+  if (clubFetchError || !clubRow) return { error: t("club.clubNotFound") };
+  const settings = parseQueueSettings(clubRow.queue_settings);
+  const courts = resolveClubCourts((clubRow.courts ?? []) as string[], settings.court_count);
+
+  // Free = no pending AND no in_progress match on that court (don't stack a 2nd pending).
+  const { data: activeMatches } = await sb
+    .from("club_matches")
+    .select("court")
+    .eq("club_id", clubId)
+    .in("status", ["pending", "in_progress"]);
+  const occupied = new Set(
+    (activeMatches ?? []).map((m) => m.court).filter((c): c is string => c != null),
+  );
+  const freeCourts = courts.filter((c) => !occupied.has(c));
+
+  let built = 0;
+  for (const court of freeCourts) {
+    const res = await buildNextClubMatchAction(clubId, court);
+    if ("ok" in res) built += 1;
+    // Stop at the first court that can't form a match — the common case is a drained
+    // pool (later courts can't form either). A rarer skill-gap/locked-pair block is
+    // also possible; the manager can still build that specific court via its own button.
+    else break;
+  }
+  return { ok: true, built, free: freeCourts.length };
 }
 
 /**

@@ -32,6 +32,7 @@ function player(id: string, o: Partial<QueuePlayer> = {}): QueuePlayer {
     level: o.level ?? null,
     games_played: o.games_played ?? 0,
     last_finished_at: o.last_finished_at ?? null,
+    notReady: o.notReady,
   };
 }
 
@@ -125,6 +126,59 @@ describe("buildNextMatch — rest_longest", () => {
     ];
     const m = buildNextMatch(pool, s)!;
     expect(m.sideA.player1).toBe("fewer");
+  });
+});
+
+describe("buildNextMatch — not_ready (requeue: ready-first ordering)", () => {
+  it("rest_longest: ready players are picked before a longer-rested not-ready player", () => {
+    const s = settings({ players_per_team: 1, queue_mode: "rest_longest" });
+    const pool = [
+      player("nr", { notReady: true, last_finished_at: null }), // longest rest but NOT ready
+      player("r1", { last_finished_at: "2026-06-06T11:00:00.000Z" }),
+      player("r2", { last_finished_at: "2026-06-06T11:05:00.000Z" }),
+    ];
+    const m = buildNextMatch(pool, s)!;
+    expect(ids(m)).toEqual(["r1", "r2"]);
+    expect(ids(m)).not.toContain("nr");
+  });
+
+  it("requeue: a not-ready player fills in only when ready players run short", () => {
+    const s = settings({ players_per_team: 1, queue_mode: "rest_longest" });
+    const pool = [
+      player("r1", { last_finished_at: "2026-06-06T11:00:00.000Z" }), // only one ready
+      player("nr1", { notReady: true, last_finished_at: null }), // longest-rested not-ready
+      player("nr2", { notReady: true, last_finished_at: "2026-06-06T10:00:00.000Z" }),
+    ];
+    const m = buildNextMatch(pool, s)!;
+    // ready first (r1), then the longest-rested not-ready (nr1); nr2 left behind
+    expect(ids(m)).toEqual(["nr1", "r1"]);
+  });
+
+  it("fifo: not-ready sorts to the tail regardless of position", () => {
+    const s = settings({ players_per_team: 1, queue_mode: "fifo" });
+    const pool = [
+      player("nr", { notReady: true, position: 1 }), // lowest position but not ready
+      player("r", { position: 5 }),
+    ];
+    const m = buildNextMatch(pool, s)!;
+    expect(m.sideA.player1).toBe("r"); // ready first despite higher position
+    expect(m.sideB.player1).toBe("nr");
+  });
+
+  it("level_match: a ready player beats a closer-level not-ready one", () => {
+    const s = settings({
+      players_per_team: 1,
+      queue_mode: "level_match",
+      skill_level_enabled: true,
+    });
+    const pool = [
+      player("anchor", { level: 5, last_finished_at: null }), // ready, longest rest → anchor
+      player("nrClose", { level: 5, notReady: true, last_finished_at: null }), // perfect level but not ready
+      player("rFar", { level: 1, last_finished_at: "2026-06-06T11:00:00.000Z" }), // ready, far level
+    ];
+    const m = buildNextMatch(pool, s)!;
+    // ready-first beats level proximity → rFar chosen over nrClose
+    expect(ids(m)).toEqual(["anchor", "rFar"]);
   });
 });
 

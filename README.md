@@ -2,11 +2,13 @@
 
 ระบบจัดก๊วนตีแบด + จัดการทัวร์นาเมนต์กีฬาสี
 
-**Stack**: Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1 · Supabase · LINE Login · Anuphan font
+**Stack**: Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1 · Supabase (Postgres + RLS) · LINE Login + Guest · next-intl (TH/EN, cookie-based) · @bprogress/next (nav progress) · @dnd-kit · Anuphan font
 
-**Deployed**:
-- Production: https://kuanbad.vercel.app (main branch)
-- Dev/Test: https://kuanbad-dev.vercel.app (develop branch — auto-update on push)
+**เวอร์ชันล่าสุด**: v0.12.0 — หน้า "มีอะไรใหม่" ที่ `/whats-new` (source เดียว: `src/lib/changelog.ts`, mirror ที่ `CHANGELOG.md`)
+
+**Deployed** (กลยุทธ์ branch: feature → `develop` [CI gate] → `master` [prod]):
+- Production: https://kuanbad.vercel.app (**master** branch)
+- Dev/Test: https://kuanbad-dev.vercel.app (**develop** branch — auto-update on push)
 
 ---
 
@@ -45,6 +47,33 @@ npm run dev
 ```bash
 npx skills add supabase/agent-skills   # ติดตั้งครั้งเดียวต่อเครื่อง
 ```
+
+---
+
+## ก๊วนแบด (Club System)
+
+ก๊วนตีแบดรายวัน — ลงชื่อ/เช็คอิน → จัดคิวแมตช์อัตโนมัติ → บันทึกผล → หารค่าใช้จ่าย → เก็บเงิน
+
+### Rotation queue (จัดคิวอัตโนมัติ)
+
+- **โหมดหมุนคิว** (`rotation_mode`): `fair_queue` (ทุกคนหมุนตามคิว) · `winner_stays` (ผู้ชนะอยู่ต่อ, จำกัดด้วย `winner_stays_max`) · `fair_winner_fallback` (หมุนเวียนทั่วถึง — fair เป็นหลัก แต่ถ้าคนพักไม่พอ ผู้ชนะอยู่ต่อ)
+- **โหมดเลือกคู่** (`queue_mode`): `rest_longest` (พักนานสุดก่อน) · `fifo` · `level_match` (จับคู่ระดับใกล้กัน) · `smart`
+- เดี่ยว/คู่ (`players_per_team` 1|2) · **หลายสนาม** (ผู้ชนะอยู่ต่อสนามตัวเองครบทุกสนาม) · ล็อคคู่ (`club_locked_pairs`)
+- ปุ่ม **"ทุกสนาม"** สร้างแมตช์ให้ทุกสนามว่างพร้อมกัน · drag จัดลำดับคิว · partial match (จองสนามก่อนผู้เล่นครบ)
+- **เช็คอิน = สัญญาณความพร้อม** → `not_ready_action`: `skip` (ตัดคนยังไม่เช็คอินออก, default) | `requeue` (ดึงได้แต่ต่อท้ายคิว)
+- **จับเวลาต่อเกม** (`game_time_limit_min`) — แมตช์ที่เล่นเกินเวลา timer เปลี่ยนเป็นแดง + ป้าย "เกินเวลา"
+- ระดับฝีมือรายก๊วน (per-club levels, copy-on-write จากชุดกลาง) · realtime broadcast (คิวอัปเดตข้ามอุปกรณ์)
+
+### ค่าใช้จ่าย + เก็บเงิน
+
+- หารค่าสนาม + ค่าลูก + ค่าใช้จ่ายอื่น เป็นรายคน
+- **QR พร้อมเพย์รายคน** (ฝังยอด) + ติ๊ก "จ่ายแล้ว" · ส่ง/ดาวน์โหลดสลิปการ์ด
+- **เก็บเงินผ่าน LINE**: บอทส่งบิล (QR ฝังยอด) → ผู้เล่นส่งสลิปกลับ → ตรวจ + ติ๊กจ่ายอัตโนมัติ
+- ตรวจสลิปรายก๊วน 2 โหมด: `manual` (เจ้าของยืนยันเอง) | `byok` (ใส่ key SlipOK/EasySlip → auto-verify)
+
+### อื่นๆ
+
+- Reserve / waiting list (สำรอง) · co-admin · **preset ก๊วน** (เทมเพลตสร้างก๊วนใหม่) · นำเข้ารายชื่อจากข้อความสมัคร (LINE)
 
 ---
 
@@ -192,17 +221,19 @@ src/
 - ✅ Perf pass (2026-05-21) — 14 FK covering indexes via `add_fk_indexes` migration; parallelized page fetches (`/tournaments/[id]`, `/t/[token]`, `/t/[token]/tv`); co-admin can now edit Settings tab
 - ✅ Per-court referee view (2026-05-24) — `/t/[token]/court/[n]` phone-first page showing in_progress + top 2 pending per court
 - ✅ Entity stats drill-down (2026-05-24, Phases A–D) — admin + public stat pages for pair / player / team / division (`/tournaments/[id]/stats/...` + `/t/[token]/stats/...`); clickable names everywhere via `EntityLink`; navigation progress bar (`@bprogress/next`); root-level `LoadingSpinner` Suspense fallback
-- [ ] Phase 12 — `require_checkin` flag + check-in flow
-- [ ] Phase 13 — Competition mode (multi-class NB/BG/N/S/P-)
+- ✅ Phase 12 — `require_checkin` flag + per-player/bulk check-in flow (atomic `start_match_atomic` RPC)
+- ✅ Phase 13 — Competition mode (`mode=competition`, multi-class NB/BG/N/S/P-, per-class group/knockout, team-aware grouping, one-way upgrade)
 
-### ก๊วนแบด
+### ก๊วนแบด (Club)
 
-- ✅ Co-admin
-- ✅ Player check-in
-- ✅ Itemized expenses
-- [ ] Waiting list
-- [ ] LINE notification
+- ✅ Rotation queue (fair_queue / winner_stays / fair_winner_fallback) · multi-court · locked pairs · build-all-courts
+- ✅ Check-in + `not_ready_action` · game-time over-time indicator
+- ✅ Per-club skill levels + level-based matchmaking
+- ✅ Reserve / waiting list (สำรอง) · co-admin · preset · import from message · realtime
+- ✅ Itemized expenses + per-player PromptPay QR
+- ✅ LINE billing (push bill + slip auto-verify: manual / BYOK)
 - [ ] Recurring session
+- [ ] Wheelspin / สุ่มรางวัล (deferred)
 
 ---
 

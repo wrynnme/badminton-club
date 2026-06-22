@@ -19,7 +19,10 @@ import { z } from "zod";
  *                       smart        = ถ่วงน้ำหนักหลายปัจจัย (v1 = rest_longest + level tiebreak)
  *  skill_level_enabled  ใช้ระดับฝีมือใน level_match / smart + ตอนลงชื่อ
  *  game_time_limit_min  จำกัดเวลา/เกม (0 = ไม่จำกัด) — UI hint สำหรับ referee
- *  not_ready_action     requeue = ต่อท้ายคิว, skip = ข้าม เมื่อผู้เล่นไม่พร้อม
+ *  not_ready_action     ใช้ "เช็คอิน" เป็นตัวบอกความพร้อม (ready = เช็คอินแล้ว). จะทำ
+ *                       อย่างไรกับคนที่ยังไม่เช็คอินตอนจัดแมตช์ — `skip` ตัดออกจาก pool
+ *                       (default · = พฤติกรรมเดิม) | `requeue` ยังดึงได้แต่ต่อท้ายคิว
+ *                       (ลงเฉพาะเมื่อคนเช็คอินไม่พอ). มีผลเฉพาะตอนมีคนเช็คอินแล้วอย่างน้อย 1 คน
  *  winner_stays_max     winner_stays: ชนะติดกันได้กี่เกมก่อนบังคับพัก (0 = ไม่จำกัด)
  *  max_skill_gap        ระยะห่างระดับสูงสุดที่ยอมรับระหว่างผู้เล่นในแมตช์เดียวกัน
  *                       (0 = ไม่จำกัด — พฤติกรรมเดิม); ใช้กับ level_match / smart
@@ -39,7 +42,7 @@ export const ClubQueueSettingsSchema = z.object({
   queue_mode: z.enum(["rest_longest", "fifo", "level_match", "smart"]).default("rest_longest"),
   skill_level_enabled: z.boolean().default(false),
   game_time_limit_min: z.number().int().min(0).max(120).default(0),
-  not_ready_action: z.enum(["requeue", "skip"]).default("requeue"),
+  not_ready_action: z.enum(["requeue", "skip"]).default("skip"),
   winner_stays_max: z.number().int().min(0).max(20).default(2),
   max_skill_gap: z.number().min(0).max(20).default(0),
   balance_strictness: z.enum(["loose", "balanced", "strict"]).default("balanced"),

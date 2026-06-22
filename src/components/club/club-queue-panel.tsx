@@ -62,6 +62,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   buildNextClubMatchAction,
+  buildAllCourtsAction,
   startClubMatchAction,
   finishClubMatchAction,
   cancelClubMatchAction,
@@ -158,19 +159,50 @@ function slotsFromMatch(m: ClubMatch) {
 
 // ─── Elapsed ticker — updates every second for a single in_progress match ────
 
-function ElapsedTicker({ startedAt }: { startedAt: string }) {
+function ElapsedTicker({
+  startedAt,
+  limitMin = 0,
+  overLabel,
+}: {
+  startedAt: string;
+  /** game_time_limit_min; 0 = no limit (no over-time indicator). */
+  limitMin?: number;
+  /** translated "over time" badge text, shown once the limit is passed. */
+  overLabel?: string;
+}) {
   const [display, setDisplay] = useState("0:00");
+  const [over, setOver] = useState(false);
 
   useEffect(() => {
-    setDisplay(formatElapsed(startedAt));
-    const id = setInterval(() => {
+    const tick = () => {
       setDisplay(formatElapsed(startedAt));
-    }, 1000);
+      if (limitMin > 0) {
+        const elapsedSec = (Date.now() - new Date(startedAt).getTime()) / 1000;
+        setOver(elapsedSec > limitMin * 60);
+      } else {
+        setOver(false);
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [startedAt]);
+  }, [startedAt, limitMin]);
 
   return (
-    <span className="text-xs tabular-nums text-muted-foreground">{display}</span>
+    <span
+      className={
+        over
+          ? "inline-flex items-center gap-1 text-xs tabular-nums font-medium text-destructive"
+          : "text-xs tabular-nums text-muted-foreground"
+      }
+    >
+      {display}
+      {over && overLabel && (
+        <span className="rounded bg-destructive/15 px-1 py-0.5 text-[10px] font-medium text-destructive">
+          {overLabel}
+        </span>
+      )}
+    </span>
   );
 }
 
@@ -633,12 +665,15 @@ function InProgressRow({
   courts,
   canManage,
   onRefresh,
+  gameTimeLimitMin,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
   courts: string[];
   canManage: boolean;
   onRefresh: () => void;
+  /** game_time_limit_min from queue settings (0 = no over-time indicator). */
+  gameTimeLimitMin: number;
 }) {
   const t = useTranslations("club.queuePanel");
   const [finishOpen, setFinishOpen] = useState(false);
@@ -714,7 +749,11 @@ function InProgressRow({
           {sideA} <span className="text-muted-foreground">vs</span> {sideB}
         </span>
         {match.started_at && (
-          <ElapsedTicker startedAt={match.started_at} />
+          <ElapsedTicker
+            startedAt={match.started_at}
+            limitMin={gameTimeLimitMin}
+            overLabel={t("overTime")}
+          />
         )}
         <ShuttleCounter match={match} canManage={canManage} onRefresh={onRefresh} />
         {canManage && (
@@ -989,6 +1028,53 @@ function BuildButton({
         }
       />
       <TooltipContent>{t("buildCourtTooltip", { court })}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+// ─── Build all free courts at once (A1) ───────────────────────────────────────
+
+function BuildAllButton({
+  clubId,
+  onRefresh,
+}: {
+  clubId: string;
+  onRefresh: () => void;
+}) {
+  const t = useTranslations("club.queuePanel");
+  const [busy, transition] = useTransition();
+
+  function handleBuildAll() {
+    transition(async () => {
+      const res = await buildAllCourtsAction(clubId);
+      if ("error" in res) {
+        toast.error(res.error);
+      } else if (res.built > 0) {
+        toast.success(t("toastBuiltAll", { count: res.built }));
+        onRefresh();
+      } else {
+        toast.info(t("toastNoneBuilt"));
+      }
+    });
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            size="sm"
+            variant="default"
+            className="h-8 text-xs gap-1"
+            disabled={busy}
+            onClick={handleBuildAll}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t("buildAllButton")}
+          </Button>
+        }
+      />
+      <TooltipContent>{t("buildAllTooltip")}</TooltipContent>
     </Tooltip>
   );
 }
@@ -1559,6 +1645,9 @@ export function ClubQueuePanel({
               </p>
             )}
             <div className="flex flex-wrap gap-2">
+              {courts.length >= 2 && (
+                <BuildAllButton clubId={clubId} onRefresh={onRefresh} />
+              )}
               {courts.map((c) => (
                 <BuildButton
                   key={c}
@@ -1657,6 +1746,7 @@ export function ClubQueuePanel({
                   courts={courts}
                   canManage={canManage}
                   onRefresh={onRefresh}
+                  gameTimeLimitMin={settings.game_time_limit_min}
                 />
               ))
             )}
