@@ -8,6 +8,7 @@ import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 import {
   parseQueueSettings,
 } from "@/lib/club/queue-settings";
+import { resolveClubCourts } from "@/lib/club/courts";
 import {
   buildNextMatch,
   buildPartialMatch,
@@ -352,6 +353,57 @@ export async function buildNextClubMatchAction(
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true, match: newMatch as ClubMatch };
+}
+
+/**
+ * A1 — build the next match for EVERY free court at once. A "free" court has no
+ * pending AND no in_progress match, so this never stacks a second pending onto a
+ * court that already has one queued. Builds sequentially via the proven per-court
+ * builder so each build sees the previous court's freshly-queued players
+ * (busy-player exclusion) and the winner-stays cross-court reservation stays
+ * correct. Stops early once the pool can't form another match (remaining courts
+ * can't either). Returns how many were built out of how many courts were free.
+ */
+export async function buildAllCourtsAction(
+  clubId: string,
+): Promise<{ ok: true; built: number; free: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
+
+  const { data: clubRow, error: clubFetchError } = await sb
+    .from("clubs")
+    .select("queue_settings, courts")
+    .eq("id", clubId)
+    .single();
+  if (clubFetchError || !clubRow) return { error: t("club.clubNotFound") };
+  const settings = parseQueueSettings(clubRow.queue_settings);
+  const courts = resolveClubCourts((clubRow.courts ?? []) as string[], settings.court_count);
+
+  // Free = no pending AND no in_progress match on that court (don't stack a 2nd pending).
+  const { data: activeMatches } = await sb
+    .from("club_matches")
+    .select("court")
+    .eq("club_id", clubId)
+    .in("status", ["pending", "in_progress"]);
+  const occupied = new Set(
+    (activeMatches ?? []).map((m) => m.court).filter((c): c is string => c != null),
+  );
+  const freeCourts = courts.filter((c) => !occupied.has(c));
+
+  let built = 0;
+  for (const court of freeCourts) {
+    const res = await buildNextClubMatchAction(clubId, court);
+    if ("ok" in res) built += 1;
+    // Stop at the first court that can't form a match — the common case is a drained
+    // pool (later courts can't form either). A rarer skill-gap/locked-pair block is
+    // also possible; the manager can still build that specific court via its own button.
+    else break;
+  }
+  return { ok: true, built, free: freeCourts.length };
 }
 
 /**

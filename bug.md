@@ -10,6 +10,15 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-23 — ก๊วน: A1 build-all-courts + A4 game_time_limit over-time — ✅ DONE (v0.12.0)
+
+ปิด A backlog 2 ตัวสุดท้าย.
+- **A1 `buildAllCourtsAction(clubId)`** (`club-matches.ts`): สร้างแมตช์ถัดไปให้ทุกสนามว่าง (no pending/in_progress) พร้อมกัน — loop per-court `buildNextClubMatchAction` (reuse winner-stays/partial/locks/not_ready ครบ), break เมื่อผู้เล่นหมด, คืน `{built, free}`. UI: `BuildAllButton` ("ทุกสนาม") ในแถว build ของแท็บรอแข่ง (โชว์เมื่อ ≥2 สนาม). **หมายเหตุ:** loop ทำให้ revalidate ซ้ำ N ครั้ง (ยอมรับได้ — เลือก reuse builder ที่ intricate แทน refactor; correctness > redundant revalidate).
+- **A4 over-time indicator** (`club-queue-panel.tsx`): `ElapsedTicker` รับ `limitMin` + `overLabel` — เมื่อ elapsed > `game_time_limit_min`×60 → timer แดง + badge "เกินเวลา". thread `settings.game_time_limit_min` → `InProgressRow` → `ElapsedTicker`. ไม่บังคับจบ (กีฬาบังคับไม่ได้) — สัญญาณเตือน referee. `game_time_limit_min` เดิม inert hint → ตอนนี้ถูกอ่านแล้ว.
+- **i18n:** +5 keys `club.queuePanel.{buildAllButton,buildAllTooltip,toastBuiltAll,toastNoneBuilt,overTime}` (th+en parity ✓). ไม่ต้อง migration.
+- **Gate:** tsc 0 · vitest 729/729 · JSON valid · i18n parity ✓. version 0.11.0→0.12.0.
+- **ship-check (2026-06-23):** code-review (2 finder, 0 P0/P1; 2 LOW acceptable — break-on-skill-lock heuristic, partial-match counted in `built`; comment ปรับให้ตรง). **next build OK.** **live-smoke PASS** (Playwright, owner cookie throwaway, net-zero): seed club + 4 ผู้เล่น singles + 2 สนาม → **A1** กด "ทุกสนาม" → สร้าง 2 แมตช์ (สนาม 1+2, ผู้เล่นครบ 4 ไม่ซ้ำ) ✓ · **A4** set in_progress + backdate 2 นาที (ลิมิต 1) → timer "2:51" + badge "เกินเวลา" ✓ · console 0 error · teardown 0 row ทุกตาราง. **commit รอ user.**
+
 ### 2026-06-22 — ก๊วน: wire `not_ready_action` (check-in-based) — ✅ DONE (A3 closed)
 
 A3 backlog closed by wiring (user เปลี่ยนใจจาก "ถอด" → "ทำให้ทำงาน"). `not_ready_action` ไม่มี primitive "ไม่พร้อม" ให้ทำงาน → เลือกผูกกับ **เช็คอิน** (ready = เช็คอินแล้ว) แทนการเพิ่ม column (ไม่ต้อง migration).
