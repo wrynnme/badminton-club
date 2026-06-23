@@ -2,9 +2,9 @@
 
 ระบบจัดก๊วนตีแบด + จัดการทัวร์นาเมนต์กีฬาสี
 
-**Stack**: Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1 · Supabase (Postgres + RLS) · LINE Login + Guest · next-intl (TH/EN, cookie-based) · @bprogress/next (nav progress) · @dnd-kit · Anuphan font
+**Stack**: Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1 · Supabase (Postgres + RLS) · LINE Login · next-intl (TH/EN, cookie-based) · @bprogress/next (nav progress) · @dnd-kit · Anuphan font
 
-**เวอร์ชันล่าสุด**: v0.12.0 — หน้า "มีอะไรใหม่" ที่ `/whats-new` (source เดียว: `src/lib/changelog.ts`, mirror ที่ `CHANGELOG.md`)
+**เวอร์ชันล่าสุด**: v0.14.0 — หน้า "มีอะไรใหม่" ที่ `/whats-new` (source เดียว: `src/lib/changelog.ts`, mirror ที่ `CHANGELOG.md`)
 
 **Deployed** (กลยุทธ์ branch: feature → `develop` [CI gate] → `master` [prod]):
 - Production: https://kuanbad.vercel.app (**master** branch)
@@ -67,6 +67,7 @@ npx skills add supabase/agent-skills   # ติดตั้งครั้งเ
 ### ค่าใช้จ่าย + เก็บเงิน
 
 - หารค่าสนาม + ค่าลูก + ค่าใช้จ่ายอื่น เป็นรายคน
+- **ค่าสนาม** หารแบบเท่ากัน หรือ `by_time` (ตามเวลาที่อยู่จริง) · **ค่าลูก** หารแบบ เท่ากัน / ต่อแมตช์ / ต่อคน / **ตามชั่วโมง** (ใส่จำนวนลูกต่อชั่วโมง → หารเฉพาะคนที่อยู่ชั่วโมงนั้น — คนเล่นชั่วโมงเดียวไม่โดนหารลูกชั่วโมงที่ไม่ได้เล่น)
 - **QR พร้อมเพย์รายคน** (ฝังยอด) + ติ๊ก "จ่ายแล้ว" · ส่ง/ดาวน์โหลดสลิปการ์ด
 - **เก็บเงินผ่าน LINE**: บอทส่งบิล (QR ฝังยอด) → ผู้เล่นส่งสลิปกลับ → ตรวจ + ติ๊กจ่ายอัตโนมัติ
 - ตรวจสลิปรายก๊วน 2 โหมด: `manual` (เจ้าของยืนยันเอง) | `byok` (ใส่ key SlipOK/EasySlip → auto-verify)
@@ -158,7 +159,7 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 src/
 ├── app/
 │   ├── (app)/
-│   │   ├── page.tsx                        # Login (LINE / Guest)
+│   │   ├── page.tsx                        # Login (LINE)
 │   │   ├── clubs/                          # ก๊วนแบด
 │   │   └── tournaments/
 │   │       ├── page.tsx                    # Tournament list
@@ -167,7 +168,7 @@ src/
 │   ├── (public)/
 │   │   ├── t/[token]/page.tsx              # Public share page (no auth)
 │   │   └── t/[token]/tv/page.tsx           # TV display mode
-│   └── api/auth/                           # LINE OAuth + guest + logout
+│   └── api/auth/                           # LINE OAuth + logout
 ├── components/tournament/
 │   ├── tournament-tabs.tsx             # Tab wrapper (client) — settings tab gated by canEdit
 │   ├── team-manager.tsx                # Teams + members
