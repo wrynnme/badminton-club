@@ -1,50 +1,28 @@
 import { getTranslations } from "next-intl/server";
 import { Users } from "lucide-react";
+import { buildHourlyShuttleSlots } from "@/lib/club/cost-summary";
 import type { Club, ClubPlayer } from "@/lib/types";
 
-function toMin(t: string): number {
-  const [h, m] = t.slice(0, 5).split(":").map(Number);
-  return (h || 0) * 60 + (m || 0);
-}
-
-function fmt(min: number): string {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
 /**
- * Per-hour attendance: how many players are present in each 1-hour slot of the
- * session, using each player's effective window (override or full club window).
- * Pure / server-renderable.
+ * Per-hour attendance: how many players cover each 1-hour slot of the session.
+ * Slots + headcount come from `buildHourlyShuttleSlots` — the SAME shared presence
+ * source the by_time shuttle split divides among — so this grid and the cost split
+ * agree (including cross-midnight sessions). Pure / server-renderable.
  */
 export async function HourlyHeadcount({ club, players }: { club: Club; players: ClubPlayer[] }) {
   const t = await getTranslations("club.hourly");
-  const s0 = toMin(club.start_time);
-  const s1 = toMin(club.end_time);
-  if (s1 <= s0 || players.length === 0) return null;
-
-  const slots: { start: number; end: number; count: number }[] = [];
-  for (let slotStart = s0; slotStart < s1; slotStart += 60) {
-    const end = Math.min(slotStart + 60, s1);
-    const count = players.filter((p) => {
-      const ps = p.start_time ? toMin(p.start_time) : s0;
-      const pe = p.end_time ? toMin(p.end_time) : s1;
-      return ps <= slotStart && pe >= end;
-    }).length;
-    slots.push({ start: slotStart, end, count });
-  }
+  if (players.length === 0) return null;
+  const slots = buildHourlyShuttleSlots(club, players);
+  if (slots.length === 0) return null;
 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
       {slots.map((s) => (
         <div
-          key={s.start}
+          key={s.label}
           className="rounded-lg border bg-card px-3 py-2.5 flex flex-col gap-0.5"
         >
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {fmt(s.start)}–{fmt(s.end)}
-          </span>
+          <span className="text-xs text-muted-foreground tabular-nums">{s.label}</span>
           <span className="flex items-center gap-1.5 text-lg font-semibold tabular-nums">
             <Users className="h-4 w-4 text-muted-foreground shrink-0" />
             {t("people", { count: s.count })}

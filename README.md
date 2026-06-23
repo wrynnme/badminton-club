@@ -237,6 +237,17 @@ src/
 
 ---
 
+## Testing
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm test            # vitest (unit — pure logic: queue / scoring / bracket / divisions …)
+npm run e2e         # @playwright/test — club happy path + A1/A4 (e2e/)
+```
+
+- **E2E** (`e2e/`) รัน **net-zero against prod** (โปรเจกต์มี Supabase เดียว): `global-setup` seed ก๊วน throwaway (marker `SMOKE_E2E_`) + mint `bc_session` cookie จาก `SESSION_SECRET`; `global-teardown` ลบทิ้งหมด. ต้องมี `.env.local` + dev server (auto-start/reuse :3000) · ครั้งแรก: `npx playwright install chromium`.
+- **local-only** — ไม่อยู่ใน CI (CI = typecheck + vitest + build เท่านั้น; ยิง prod จาก CI ไม่ทำ).
+
 ## กฏการพัฒนา
 
 - Forms: TanStack Form (`useForm` + `form.Field` + `form.Subscribe`)

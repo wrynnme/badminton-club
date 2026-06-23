@@ -32,6 +32,9 @@ export type Club = {
   court_split: CourtSplit;
   shuttle_split: ShuttleSplit;
   shuttle_price: number; // price per shuttle — drives cost for all shuttle_split modes
+  // Per-hour shuttle COUNT, one entry per 1-hour session slot (slot order from
+  // sessionHourSlots(start_time,end_time)). Used only when shuttle_split="by_time".
+  shuttle_hourly: number[];
   court_gap_policy: GapPolicy;
   // Rotation-queue config (raw jsonb; parse via parseQueueSettings in queue-settings.ts)
   queue_settings: Record<string, unknown>;
@@ -61,7 +64,7 @@ export type Level = {
 };
 
 export type CourtSplit = "even" | "by_time";
-export type ShuttleSplit = "even" | "per_match" | "per_player";
+export type ShuttleSplit = "even" | "per_match" | "per_player" | "by_time";
 export type GapPolicy = "spread" | "owner" | "ignore";
 
 export type ClubPlayer = {

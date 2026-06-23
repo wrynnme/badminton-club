@@ -1,10 +1,11 @@
 // Club cost split — pure, testable. Two independent buckets:
 //   court_fee    → split "even" | "by_time" (per-segment fair share by presence)
 //   shuttle (price × shuttles_used per match) → split "even" | "per_match" | "per_player"
+//                | "by_time" (per-hour count split among players present that hour)
 // See spec.md "ระบบคิดเงินก๊วน (Club cost split)".
 
 export type CourtSplit = "even" | "by_time";
-export type ShuttleSplit = "even" | "per_match" | "per_player";
+export type ShuttleSplit = "even" | "per_match" | "per_player" | "by_time";
 export type GapPolicy = "spread" | "owner" | "ignore";
 
 export type SplitPlayer = {
@@ -33,10 +34,13 @@ export type SplitInput = {
   gapPolicy?: GapPolicy;
   /** Required only when gapPolicy === "owner". */
   ownerId?: string;
-  /** Price per shuttle — used only when shuttleSplit="per_match". */
+  /** Price per shuttle — used by every priced shuttle mode (per_match / per_player / by_time). */
   shuttlePrice?: number;
-  /** Matches played — used only when shuttleSplit="per_match". */
+  /** Matches played — used only when shuttleSplit="per_match" / "per_player". */
   matches?: SplitMatch[];
+  /** Shuttle COUNT per 1-hour session slot (slot order = sessionHourSlots). Used only
+   *  when shuttleSplit="by_time"; entries beyond the slot count are ignored, missing = 0. */
+  shuttleHourly?: number[];
 };
 
 export type SplitRow = {
@@ -76,6 +80,65 @@ export function clampedSessionMinutes(
   const ps = Math.max(place(start), s0);
   const pe = Math.min(place(end), s1);
   return Math.max(0, pe - ps);
+}
+
+/**
+ * Split a (possibly cross-midnight) session window into consecutive 1-hour slots,
+ * returned in minutes ON the session timeline (cross-midnight end is +1440, so an
+ * early-morning slot reads > 1440 — caller does `% 1440` to display HH:MM). The
+ * final slot is short when the window isn't a whole number of hours. Shared by the
+ * by_time shuttle split and the per-hour shuttle-count input so slot order lines up.
+ */
+export function sessionHourSlots(
+  sessionStart: string,
+  sessionEnd: string,
+): { start: number; end: number }[] {
+  const s0 = toMin(sessionStart);
+  let s1 = toMin(sessionEnd);
+  if (s1 < s0) s1 += 1440; // cross-midnight: end is next day
+  const slots: { start: number; end: number }[] = [];
+  for (let st = s0; st < s1; st += 60) {
+    slots.push({ start: st, end: Math.min(st + 60, s1) });
+  }
+  return slots;
+}
+
+/**
+ * For each 1-hour session slot, the ids of players present for the WHOLE slot
+ * (clamped windows, cross-midnight aware) — plus `attendedIds` (anyone whose
+ * clamped window is non-empty, even if they cover no full slot). The ONE source of
+ * "who is in each hour", shared by the by_time shuttle COST split, the per-hour
+ * shuttle-count input headcount, and the by_time usage column — so all three agree.
+ * No empty-slot fallback here; the cost split layers its own on top.
+ */
+export function hourlySlotPresence(
+  sessionStart: string,
+  sessionEnd: string,
+  players: { id: string; start: string; end: string }[],
+): { slots: { start: number; end: number; presentIds: string[] }[]; attendedIds: string[] } {
+  const slots = sessionHourSlots(sessionStart, sessionEnd);
+  if (slots.length === 0) return { slots: [], attendedIds: [] };
+  const s0 = toMin(sessionStart);
+  let s1 = toMin(sessionEnd);
+  const crossesMidnight = s1 < s0;
+  if (crossesMidnight) s1 += 1440;
+  const place = (t: string) => {
+    const m = toMin(t);
+    return crossesMidnight && m < s0 ? m + 1440 : m;
+  };
+  const win = players.map((p) => ({
+    id: p.id,
+    ps: Math.max(place(p.start), s0),
+    pe: Math.min(place(p.end), s1),
+  }));
+  return {
+    slots: slots.map(({ start, end }) => ({
+      start,
+      end,
+      presentIds: win.filter((w) => w.ps <= start && w.pe >= end).map((w) => w.id),
+    })),
+    attendedIds: win.filter((w) => w.pe > w.ps).map((w) => w.id),
+  };
 }
 
 /**
@@ -182,12 +245,34 @@ function computeShuttle(input: SplitInput): Map<string, number> {
   const n = players.length;
   if (n === 0) return out;
 
-  // Shuttle cost is per-shuttle (shuttlePrice) and derived from each match's
-  // shuttles_used. Both modes need a price + matches — without the rotation queue
-  // (no matches recorded) shuttle cost is 0.
+  // Shuttle cost is per-shuttle (shuttlePrice). even/per_match/per_player derive the
+  // count from each match's shuttles_used; by_time uses an explicit per-hour count.
+  // Without a price (or any shuttles) the shuttle cost is 0.
   const price = input.shuttlePrice ?? 0;
   if (price <= 0) return out;
   const matches = input.matches ?? [];
+
+  if (shuttleSplit === "by_time") {
+    // Per-hour count split among the players present for the WHOLE slot (same
+    // presence rule as the HourlyHeadcount grid, so the on-screen headcount equals
+    // the number of payers). A funded slot with nobody present falls back to all
+    // session attendees (then all players) so the bill is never left uncollected.
+    const { slots, attendedIds } = hourlySlotPresence(input.sessionStart, input.sessionEnd, players);
+    if (slots.length === 0) return out;
+    const hourly = input.shuttleHourly ?? [];
+    const allIds = players.map((p) => p.id);
+
+    for (let i = 0; i < slots.length; i++) {
+      const count = Math.max(0, hourly[i] ?? 0);
+      if (count <= 0) continue;
+      const cost = count * price;
+      const present = slots[i].presentIds;
+      const payers = present.length > 0 ? present : attendedIds.length > 0 ? attendedIds : allIds;
+      const each = cost / payers.length;
+      for (const id of payers) out.set(id, (out.get(id) ?? 0) + each);
+    }
+    return out;
+  }
 
   if (shuttleSplit === "even") {
     // Σ shuttles across all matches × price, split EQUALLY among every player

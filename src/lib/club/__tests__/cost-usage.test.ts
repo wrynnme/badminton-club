@@ -116,3 +116,74 @@ describe("computeClubCostRows", () => {
     expect(totalShuttlesUsed).toBe(0); // no matches
   });
 });
+
+describe("computePlayerUsage — by_time (per-hour shuttle credit)", () => {
+  // 18:00–20:00, 6 shuttles/hour. A plays both hours, B only hour 1.
+  const club = {
+    start_time: "18:00",
+    end_time: "20:00",
+    shuttle_split: "by_time",
+    shuttle_hourly: [6, 6],
+  } as Club;
+  const players = [
+    { id: "A", start_time: null, end_time: null }, // full 2h
+    { id: "B", start_time: "18:00", end_time: "19:00" }, // hour 1 only
+  ] as ClubPlayer[];
+
+  it("credits each present player the slot's hourly count (NOT match-derived)", () => {
+    const usage = computePlayerUsage({ club, players, matches: [] });
+    expect(usage.get("A")).toEqual({ hours: 2, shuttles: 12 }); // 6 + 6
+    expect(usage.get("B")).toEqual({ hours: 1, shuttles: 6 }); // hour 1 only
+  });
+
+  it("ignores rotation-queue matches entirely in by_time mode", () => {
+    const usage = computePlayerUsage({
+      club,
+      players,
+      matches: [
+        {
+          status: "completed",
+          side_a_player1: "A",
+          side_a_player2: "B",
+          side_b_player1: null,
+          side_b_player2: null,
+          shuttles_used: 99,
+        } as ClubMatch,
+      ],
+    });
+    expect(usage.get("A")?.shuttles).toBe(12); // hourly, not 99 from the match
+  });
+});
+
+describe("computeClubCostRows — by_time usage + total reconcile", () => {
+  const club = {
+    owner_id: "owner",
+    court_fee: 0,
+    court_split: "even",
+    shuttle_split: "by_time",
+    shuttle_price: 10,
+    shuttle_hourly: [6, 6],
+    start_time: "18:00",
+    end_time: "20:00",
+    court_gap_policy: "spread",
+  } as Club;
+  const players = [
+    { id: "A", profile_id: null, start_time: null, end_time: null, games_played: 0, discount: 0 },
+    { id: "B", profile_id: null, start_time: "18:00", end_time: "19:00", games_played: 0, discount: 0 },
+  ] as ClubPlayer[];
+
+  it("shuttles-used column reflects hourly counts; footer total = Σ shuttle_hourly", () => {
+    const { rows, totalShuttlesUsed } = computeClubCostRows({
+      club,
+      players,
+      matches: [], // no queue — the by_time use case
+      expenses: [],
+    });
+    const byId = Object.fromEntries(rows.map((r) => [r.playerId, r]));
+    // usage (full-credit): A both hours = 12, B hour 1 = 6
+    expect(byId.A).toMatchObject({ shuttles: 12, shuttle: 90 }); // cost: hr1 60/2=30 + hr2 60/1=60
+    expect(byId.B).toMatchObject({ shuttles: 6, shuttle: 30 }); // cost: hr1 60/2=30
+    // footer = physical Σ hourly (once each), NOT the over-counting per-row sum
+    expect(totalShuttlesUsed).toBe(12);
+  });
+});

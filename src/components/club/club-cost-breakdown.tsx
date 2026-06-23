@@ -162,6 +162,7 @@ export function ClubCostBreakdown({
     even: t("splitEven"),
     per_match: t("splitPerShuttle"),
     per_player: t("splitPerMatch"),
+    by_time: t("splitByHour"),
   };
 
   const GAP_LABEL: Record<string, string> = {

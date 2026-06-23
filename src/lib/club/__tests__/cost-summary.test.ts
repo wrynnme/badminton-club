@@ -9,6 +9,7 @@ const baseClub: SummaryInput["club"] = {
   court_split: "even",
   shuttle_split: "even",
   shuttle_price: 10,
+  shuttle_hourly: [],
   start_time: "19:00",
   end_time: "21:00",
   court_gap_policy: "spread",

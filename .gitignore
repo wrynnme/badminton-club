@@ -58,3 +58,10 @@ supabase/.temp/
 
 # playwright-mcp smoke artifacts (snapshots / console logs)
 .playwright-mcp/
+
+# @playwright/test E2E suite — auth state holds a minted session cookie; reports are run artifacts
+/e2e/.auth/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
