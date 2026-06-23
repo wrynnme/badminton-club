@@ -22,6 +22,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.14.0",
+    date: "2026-06-24",
+    groups: [
+      {
+        type: "improved",
+        items: [
+          'เข้าสู่ระบบด้วย LINE เท่านั้น — เอาตัวเลือก "เล่นเป็น guest" ออกจากหน้าเข้าสู่ระบบ (ยังดูก๊วน/ทัวร์ได้ผ่านลิงก์สาธารณะโดยไม่ต้องล็อกอิน และเจ้าของก๊วนยังเพิ่มผู้เล่นแบบ guest เข้าก๊วนได้เหมือนเดิม)',
+        ],
+      },
+    ],
+  },
+  {
     version: "0.13.0",
     date: "2026-06-23",
     groups: [
