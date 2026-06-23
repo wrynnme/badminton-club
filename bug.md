@@ -10,6 +10,13 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-23 — ก๊วน: หารค่าลูก "ตามชั่วโมง" (shuttle_split=by_time) — ✅ DONE (v0.13.0)
+
+แก้ปัญหา (user-reported): mode `even` หารลูกทั้งหมดให้ทุกคนเท่ากัน → คนเล่นชั่วโมงเดียวโดนหารลูกของชั่วโมงที่ไม่ได้เล่น. เพิ่ม mode `by_time`: กรอกลูก/ชม. (`clubs.shuttle_hourly int[]`) → แต่ละ slot 1 ชม. = `count × price` หารเฉพาะคนอยู่ครบ slot (present rule = `HourlyHeadcount`) + fallback เกลี่ยผู้มาเล่นทั้งหมดถ้า slot มีลูกแต่ไม่มีใครครบ (กันเงินหาย). ไม่ใช้ queue/matches.
+- **Files:** migration `20260623000100_club_shuttle_hourly` (applied prod ✓) · `cost-split.ts` (+`sessionHourSlots`, by_time branch) · `cost-summary.ts` (+`buildHourlyShuttleSlots`, pass `shuttleHourly`) · `club-cost.ts` (zod +by_time +shuttle_hourly) · `club-cost-manager.tsx` (ปุ่ม "ตามชั่วโมง" + grid กรอกลูก/ชม.) · page wiring · `public-view.ts` (redact `[]`) · types · i18n th/en +7 keys.
+- **Gate:** tsc 0 · vitest **744/744** (+15: 8 by_time cost + 4 sessionHourSlots + 3 by_time usage) · i18n key-check + parity OK · `next build` OK (ทุก route).
+- **/ship-check (2026-06-24):** code-review (3 finder + verify) ยืนยัน **สูตรเงินถูก 100%** (cross-midnight/div-zero/ceil/precedence/partial-hour ผ่าน) เจอ 2 display finding → แก้: (#1) `SHUTTLE_SPLIT_LABEL` ไม่มี `by_time` → โชว์ raw string; (#2) คอลัมน์ "ลูกที่ใช้" = 0 ข้างค่าลูก>0 → ทำให้ usage column + footer สะท้อนลูกรายชั่วโมง (`computePlayerUsage`/`totalShuttlesUsed` by_time). simplify → migrate `HourlyHeadcount` ใช้ `buildHourlyShuttleSlots` ร่วม (ลบโค้ดซ้ำ + ปิด divergence cross-midnight). **Live browser smoke PASS (net-zero):** seed 3 ผู้เล่น (A เต็ม/B ชม.แรก/C ชม.สอง) → ตั้ง by_time + ลูก [6,6] @฿10 → DB persist `shuttle_hourly=[6,6]` → ตารางสรุป A=฿60(12ลูก)/B=฿30(6)/C=฿30(6)/รวม฿120 ถูกเป๊ะ · teardown 0 row. **Smoke จับบั๊ก i18n เพิ่ม 1 ตัว** (ก่อนหน้านี้ tsc/vitest/build ไม่เจอ): `club-cost-breakdown.tsx` ใช้ `useTranslations("club.costBreakdown")` คนละ namespace → `splitByHour` หาย → MISSING_MESSAGE runtime. Fix: เพิ่ม `splitByHour` ใน `costBreakdown` ทั้ง th/en. reload สะอาด console 0 error.
+
 ### 2026-06-23 — infra: permanent E2E suite (@playwright/test) — ✅ DONE
 
 ปิด gap "ไม่มี E2E suite ถาวร". rerunnable `@playwright/test` suite ใน `e2e/` (`npm run e2e`).

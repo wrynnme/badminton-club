@@ -10,8 +10,10 @@ import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 const CostConfigSchema = z.object({
   court_fee: z.coerce.number().min(0).max(1_000_000),
   court_split: z.enum(["even", "by_time"]),
-  shuttle_split: z.enum(["even", "per_match", "per_player"]),
+  shuttle_split: z.enum(["even", "per_match", "per_player", "by_time"]),
   shuttle_price: z.coerce.number().min(0).max(100_000),
+  // Per-hour shuttle count (shuttle_split="by_time"); one entry per session hour-slot.
+  shuttle_hourly: z.array(z.coerce.number().int().min(0).max(999)).max(48).default([]),
   court_gap_policy: z.enum(["spread", "owner", "ignore"]),
 });
 

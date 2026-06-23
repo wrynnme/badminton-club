@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { computeClubSplit, computeExpenseShares, type SplitInput } from "@/lib/club/cost-split";
+import {
+  computeClubSplit,
+  computeExpenseShares,
+  sessionHourSlots,
+  type SplitInput,
+} from "@/lib/club/cost-split";
 
 // Anchor fixture from spec.md worked example: session 18:00–21:00,
 // A(18–20), B(19–21), C(18–21); court 720, shuttle 300; games 8/10/15.
@@ -434,6 +439,135 @@ describe("computeClubSplit — shuttle per_player (full, no division)", () => {
   it("no matches → 0", () => {
     const r = byId(computeClubSplit(pp({ matches: [] })));
     expect(r.A.shuttle).toBe(0);
+  });
+});
+
+describe("computeClubSplit — shuttle by_time (per-hour count)", () => {
+  // Session 18:00–20:00 (two 1-hour slots). A plays both hours; B only hour 1;
+  // C only hour 2. The headline fairness case the feature was built for.
+  const A2 = { id: "A", start: "18:00", end: "20:00", games: 0 };
+  const B1 = { id: "B", start: "18:00", end: "19:00", games: 0 };
+  const C1 = { id: "C", start: "19:00", end: "20:00", games: 0 };
+  function bt(overrides: Partial<SplitInput> = {}): SplitInput {
+    return {
+      players: [A2, B1, C1],
+      courtFee: 0,
+      courtSplit: "even",
+      shuttleSplit: "by_time",
+      shuttlePrice: 10,
+      sessionStart: "18:00",
+      sessionEnd: "20:00",
+      shuttleHourly: [6, 6], // 6 shuttles hour 1, 6 hour 2 (12 total × ฿10 = ฿120)
+      ...overrides,
+    };
+  }
+
+  it("splits each hour among only the players present that whole hour", () => {
+    const r = byId(computeClubSplit(bt()));
+    // hour 1 (฿60) ÷ {A,B} = 30; hour 2 (฿60) ÷ {A,C} = 30
+    expect(r.A.shuttle).toBe(60); // both hours
+    expect(r.B.shuttle).toBe(30); // hour 1 only — NOT charged for hour 2
+    expect(r.C.shuttle).toBe(30); // hour 2 only — NOT charged for hour 1
+    // whole bill collected, nothing lost
+    expect(r.A.shuttle + r.B.shuttle + r.C.shuttle).toBe(120);
+  });
+
+  it("unequal per-hour counts allocate independently", () => {
+    const r = byId(computeClubSplit(bt({ shuttleHourly: [8, 4] })));
+    expect(r.A.shuttle).toBe(60); // 80/2 + 40/2 = 40 + 20
+    expect(r.B.shuttle).toBe(40); // hour 1 only: 80/2
+    expect(r.C.shuttle).toBe(20); // hour 2 only: 40/2
+  });
+
+  it("price 0 → no shuttle cost", () => {
+    const r = byId(computeClubSplit(bt({ shuttlePrice: 0 })));
+    expect([r.A.shuttle, r.B.shuttle, r.C.shuttle]).toEqual([0, 0, 0]);
+  });
+
+  it("empty / missing per-hour counts → 0", () => {
+    expect(byId(computeClubSplit(bt({ shuttleHourly: [] }))).A.shuttle).toBe(0);
+    expect(byId(computeClubSplit(bt({ shuttleHourly: undefined }))).A.shuttle).toBe(0);
+  });
+
+  it("a slot with 0 shuttles is skipped (only the funded hour is charged)", () => {
+    const r = byId(computeClubSplit(bt({ shuttleHourly: [6, 0] })));
+    expect(r.A.shuttle).toBe(30); // hour 1 only
+    expect(r.B.shuttle).toBe(30);
+    expect(r.C.shuttle).toBe(0); // hour 2 had no shuttles
+  });
+
+  it("ceils each share up to a whole baht", () => {
+    // hour 1: 5 shuttles × ฿10 = ฿50 ÷ {A,B} = 25; hour 2: 0
+    const r = byId(computeClubSplit(bt({ shuttleHourly: [5, 0] })));
+    expect(r.A.shuttle).toBe(25);
+    // 50 ÷ 2 = 25 exact; use a 3-payer odd split for the ceil check
+    const r2 = byId(
+      computeClubSplit(
+        bt({
+          players: [A2, { id: "B", start: "18:00", end: "20:00", games: 0 }, { id: "C", start: "18:00", end: "20:00", games: 0 }],
+          shuttleHourly: [5, 0],
+        }),
+      ),
+    );
+    // ฿50 ÷ 3 = 16.67 → ceil 17 each
+    expect([r2.A.shuttle, r2.B.shuttle, r2.C.shuttle]).toEqual([17, 17, 17]);
+  });
+
+  it("funded hour with nobody present falls back to all attendees (no lost cost)", () => {
+    // Everyone arrives 18:30, so nobody covers the full 18:00–19:00 slot.
+    const late = [
+      { id: "A", start: "18:30", end: "20:00", games: 0 },
+      { id: "B", start: "18:30", end: "20:00", games: 0 },
+    ];
+    const r = byId(computeClubSplit(bt({ players: late, shuttleHourly: [6, 6] })));
+    // hour 1 (฿60) → fallback ÷ {A,B} = 30 each; hour 2 (฿60) ÷ {A,B} = 30 each
+    expect(r.A.shuttle).toBe(60);
+    expect(r.B.shuttle).toBe(60);
+    expect(r.A.shuttle + r.B.shuttle).toBe(120); // nothing lost
+  });
+
+  it("counts beyond the slot count are ignored; a partial last hour still counts", () => {
+    // 18:00–19:30 → slots [18:00–19:00, 19:00–19:30]; a 3rd count is ignored.
+    const r = byId(
+      computeClubSplit(
+        bt({
+          players: [{ id: "A", start: "18:00", end: "19:30", games: 0 }],
+          sessionEnd: "19:30",
+          shuttleHourly: [6, 6, 99],
+        }),
+      ),
+    );
+    expect(r.A.shuttle).toBe(120); // (6+6) × 10, sole payer; the 99 is dropped
+  });
+});
+
+describe("sessionHourSlots", () => {
+  it("splits a whole-hour window into 1-hour slots", () => {
+    expect(sessionHourSlots("18:00", "21:00")).toEqual([
+      { start: 1080, end: 1140 },
+      { start: 1140, end: 1200 },
+      { start: 1200, end: 1260 },
+    ]);
+  });
+
+  it("keeps a short final slot for a non-whole-hour window", () => {
+    expect(sessionHourSlots("18:00", "19:30")).toEqual([
+      { start: 1080, end: 1140 },
+      { start: 1140, end: 1170 },
+    ]);
+  });
+
+  it("handles a cross-midnight window (end shifted +1440)", () => {
+    expect(sessionHourSlots("21:00", "01:00")).toEqual([
+      { start: 1260, end: 1320 },
+      { start: 1320, end: 1380 },
+      { start: 1380, end: 1440 },
+      { start: 1440, end: 1500 },
+    ]);
+  });
+
+  it("zero-length window → no slots", () => {
+    expect(sessionHourSlots("18:00", "18:00")).toEqual([]);
   });
 });
 

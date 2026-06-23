@@ -11,6 +11,8 @@ import {
   clampedSessionMinutes,
   computeClubSplit,
   computeExpenseShares,
+  hourlySlotPresence,
+  sessionHourSlots,
   type SplitInput,
   type SplitRow,
 } from "@/lib/club/cost-split";
@@ -29,6 +31,7 @@ type ClubCostFields = Pick<
   | "court_split"
   | "shuttle_split"
   | "shuttle_price"
+  | "shuttle_hourly"
   | "start_time"
   | "end_time"
   | "court_gap_policy"
@@ -70,6 +73,7 @@ export function buildClubSplitInput(
     courtSplit: club.court_split,
     shuttleSplit: club.shuttle_split,
     shuttlePrice: club.shuttle_price,
+    shuttleHourly: club.shuttle_hourly,
     matches: splitMatches,
     sessionStart: club.start_time,
     sessionEnd: club.end_time,
@@ -156,6 +160,39 @@ export function computeClubCostSummary(input: {
   return { rows, expShareById, totalCourt, totalShuttle, totalExp, totalDiscount, grandTotal };
 }
 
+function fmtHHMM(min: number): string {
+  const v = ((min % 1440) + 1440) % 1440; // wrap cross-midnight back to clock time
+  const h = Math.floor(v / 60);
+  const m = v % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** One 1-hour session slot for the by_time shuttle input: an "HH:MM–HH:MM" label and
+ *  how many players cover the FULL slot. Presence comes from `hourlySlotPresence` —
+ *  the SAME source computeShuttle's by_time split divides among — so the headcount
+ *  shown next to each hour equals the number of payers. Slot order matches
+ *  club.shuttle_hourly indices. */
+export type HourlyShuttleSlot = { label: string; count: number };
+
+export function buildHourlyShuttleSlots(
+  club: Pick<Club, "start_time" | "end_time">,
+  players: Pick<ClubPlayer, "start_time" | "end_time">[],
+): HourlyShuttleSlot[] {
+  const { slots } = hourlySlotPresence(
+    club.start_time,
+    club.end_time,
+    players.map((p, i) => ({
+      id: String(i),
+      start: p.start_time ?? club.start_time,
+      end: p.end_time ?? club.end_time,
+    })),
+  );
+  return slots.map((s) => ({
+    label: `${fmtHHMM(s.start)}–${fmtHHMM(s.end)}`,
+    count: s.presentIds.length,
+  }));
+}
+
 /** Format decimal hours for display: 3.0 → "3", 2.5 → "2.5", 1.333… → "1.3". */
 export function formatHours(h: number): string {
   const r = Math.round(h * 10) / 10;
@@ -166,14 +203,16 @@ export function formatHours(h: number): string {
 export type PlayerUsage = { hours: number; shuttles: number };
 
 /**
- * Per-player presence hours + shuttles used, summed over the in_progress+completed
- * matches the player joined (same match filter the cost split uses, so the usage
- * columns line up with the cost columns). `hours` is decimal hours (minutes ÷ 60).
- * Shuttles credit the FULL match shuttle count to every participant — a usage count,
- * NOT a fair share (the per-player shuttle COST is the ค่าลูก column).
+ * Per-player presence hours + shuttles used. `hours` is decimal hours (minutes ÷ 60).
+ * Shuttle count credits the FULL count to every participant — a usage count, NOT a
+ * fair share (the per-player shuttle COST is the ค่าลูก column). Source matches the
+ * cost basis so the usage column lines up with the cost column:
+ *  - by_time → each present player credited the slot's hourly count (via
+ *    hourlySlotPresence — the SAME presence the by_time cost split uses);
+ *  - else → summed over the in_progress+completed matches the player joined.
  */
 export function computePlayerUsage(input: {
-  club: Pick<Club, "start_time" | "end_time">;
+  club: Pick<Club, "start_time" | "end_time" | "shuttle_split" | "shuttle_hourly">;
   players: Pick<ClubPlayer, "id" | "start_time" | "end_time">[];
   matches: Pick<
     ClubMatch,
@@ -190,6 +229,29 @@ export function computePlayerUsage(input: {
     );
     usage.set(p.id, { hours: mins / 60, shuttles: 0 });
   }
+
+  if (input.club.shuttle_split === "by_time") {
+    const hourly = input.club.shuttle_hourly ?? [];
+    const { slots } = hourlySlotPresence(
+      input.club.start_time,
+      input.club.end_time,
+      input.players.map((p) => ({
+        id: p.id,
+        start: p.start_time ?? input.club.start_time,
+        end: p.end_time ?? input.club.end_time,
+      })),
+    );
+    slots.forEach((s, i) => {
+      const count = Math.max(0, hourly[i] ?? 0);
+      if (count <= 0) return;
+      for (const id of s.presentIds) {
+        const u = usage.get(id);
+        if (u) u.shuttles += count;
+      }
+    });
+    return usage;
+  }
+
   for (const m of input.matches) {
     if (m.status !== "in_progress" && m.status !== "completed") continue;
     const ids = [m.side_a_player1, m.side_a_player2, m.side_b_player1, m.side_b_player2].filter(
@@ -239,9 +301,10 @@ export function computeClubCostRows(input: {
   totalExp: number;
   totalDiscount: number;
   grandTotal: number;
-  /** Physical total shuttles consumed (Σ shuttles_used over in_progress+completed
-   * matches — once per match). NOT the sum of the per-player `shuttles` column,
-   * which full-credits every participant and so over-counts. */
+  /** Physical total shuttles consumed, once each (NOT the per-player `shuttles`
+   * column, which full-credits every participant and over-counts). by_time →
+   * Σ shuttle_hourly over the real session slots; else → Σ shuttles_used over
+   * in_progress+completed matches. */
   totalShuttlesUsed: number;
 } {
   const summary = computeClubCostSummary(input);
@@ -266,9 +329,15 @@ export function computeClubCostRows(input: {
     };
   });
 
-  const totalShuttlesUsed = input.matches
-    .filter((m) => m.status === "in_progress" || m.status === "completed")
-    .reduce((s, m) => s + m.shuttles_used, 0);
+  const totalShuttlesUsed =
+    input.club.shuttle_split === "by_time"
+      ? sessionHourSlots(input.club.start_time, input.club.end_time).reduce(
+          (s, _slot, i) => s + Math.max(0, input.club.shuttle_hourly?.[i] ?? 0),
+          0,
+        )
+      : input.matches
+          .filter((m) => m.status === "in_progress" || m.status === "completed")
+          .reduce((s, m) => s + m.shuttles_used, 0);
 
   return {
     rows,

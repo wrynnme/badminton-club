@@ -35,6 +35,7 @@ export function toPublicClub(club: Club): Club {
     // sensitive — money / free-text (may carry prices)
     court_fee: 0,
     shuttle_price: 0,
+    shuttle_hourly: [],
     total_cost: 0,
     notes: null,
     shuttle_info: null,

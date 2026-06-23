@@ -19,6 +19,7 @@ const baseClub: Club = {
   court_split: "even",
   shuttle_split: "even",
   shuttle_price: 25,
+  shuttle_hourly: [3, 3],
   court_gap_policy: "spread",
   queue_settings: { players_per_team: 2, court_count: 3 },
   courts: ["1", "2", "3"],
@@ -56,6 +57,7 @@ describe("toPublicClub", () => {
     const pub = toPublicClub(baseClub);
     expect(pub.court_fee).toBe(0);
     expect(pub.shuttle_price).toBe(0);
+    expect(pub.shuttle_hourly).toEqual([]);
     expect(pub.total_cost).toBe(0);
     expect(pub.notes).toBeNull();
     expect(pub.shuttle_info).toBeNull();

@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ClubTabs } from "@/components/club/club-tabs";
 import { ClubDashboard } from "@/components/club/club-dashboard";
-import { computeClubCostSummary } from "@/lib/club/cost-summary";
+import { computeClubCostSummary, buildHourlyShuttleSlots } from "@/lib/club/cost-summary";
 import { AddGuestPlayer } from "@/components/club/add-guest-player";
 import { LineImportDialog } from "@/components/club/line-import-dialog";
 import { EditClubForm } from "@/components/club/edit-club-form";
@@ -373,8 +373,10 @@ export default async function ClubDetailPage({
                     court_split: club.court_split,
                     shuttle_split: club.shuttle_split,
                     shuttle_price: club.shuttle_price,
+                    shuttle_hourly: club.shuttle_hourly ?? [],
                     court_gap_policy: club.court_gap_policy,
                   }}
+                  hourlySlots={buildHourlyShuttleSlots(club, players)}
                 />
               )}
 

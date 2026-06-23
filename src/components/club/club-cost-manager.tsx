@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Save, Loader2, ChevronDown } from "lucide-react";
+import { Save, Loader2, ChevronDown, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
@@ -15,6 +15,7 @@ import {
 import { NumberInput } from "@/components/ui/number-input";
 import { Label } from "@/components/ui/label";
 import { updateClubCostConfigAction } from "@/lib/actions/club-cost";
+import type { HourlyShuttleSlot } from "@/lib/club/cost-summary";
 import type { CourtSplit, ShuttleSplit, GapPolicy } from "@/lib/types";
 
 type Props = {
@@ -24,11 +25,14 @@ type Props = {
     court_split: CourtSplit;
     shuttle_split: ShuttleSplit;
     shuttle_price: number;
+    shuttle_hourly: number[];
     court_gap_policy: GapPolicy;
   };
+  /** 1-hour session slots (label + headcount) for the by_time shuttle-count input. */
+  hourlySlots: HourlyShuttleSlot[];
 };
 
-export function ClubCostManager({ clubId, initial }: Props) {
+export function ClubCostManager({ clubId, initial, hourlySlots }: Props) {
   const t = useTranslations("club.costManager");
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -39,6 +43,16 @@ export function ClubCostManager({ clubId, initial }: Props) {
   const [shuttleSplit, setShuttleSplit] = useState<ShuttleSplit>(initial.shuttle_split);
   const [shuttlePrice, setShuttlePrice] = useState(initial.shuttle_price);
   const [gapPolicy, setGapPolicy] = useState<GapPolicy>(initial.court_gap_policy);
+  // Per-hour shuttle counts, indexed by slot. Held dense over hourlySlots so the
+  // total + save payload never hit a sparse-array NaN if the session window changes.
+  const [shuttleHourly, setShuttleHourly] = useState<number[]>(() =>
+    hourlySlots.map((_, i) => initial.shuttle_hourly[i] ?? 0),
+  );
+  const setHourlyAt = (i: number, v: number) =>
+    setShuttleHourly((prev) =>
+      hourlySlots.map((_, k) => (k === i ? Math.max(0, Math.floor(v || 0)) : prev[k] ?? 0)),
+    );
+  const hourlyTotal = hourlySlots.reduce((sum, _, i) => sum + (shuttleHourly[i] ?? 0), 0);
 
   function handleSave() {
     startTransition(async () => {
@@ -47,6 +61,10 @@ export function ClubCostManager({ clubId, initial }: Props) {
         court_split: courtSplit,
         shuttle_split: shuttleSplit,
         shuttle_price: shuttlePrice,
+        // Empty slots (invalid window) → keep stored counts rather than wiping them.
+        shuttle_hourly: hourlySlots.length
+          ? hourlySlots.map((_, i) => shuttleHourly[i] ?? 0)
+          : initial.shuttle_hourly,
         court_gap_policy: gapPolicy,
       });
       if (res && "error" in res) {
@@ -201,15 +219,74 @@ export function ClubCostManager({ clubId, initial }: Props) {
             >
               {t("splitPerMatch")}
             </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={shuttleSplit === "by_time" ? "default" : "outline"}
+              onClick={() => setShuttleSplit("by_time")}
+              className="h-7 text-xs"
+            >
+              {t("splitByHour")}
+            </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            {t("shuttleNote")}{" "}
-            {shuttleSplit === "even"
-              ? t("shuttleDescEven")
-              : shuttleSplit === "per_match"
-                ? t("shuttleDescPerShuttle")
-                : t("shuttleDescPerMatch")}
+            {shuttleSplit === "by_time" ? (
+              t("shuttleDescByHour")
+            ) : (
+              <>
+                {t("shuttleNote")}{" "}
+                {shuttleSplit === "even"
+                  ? t("shuttleDescEven")
+                  : shuttleSplit === "per_match"
+                    ? t("shuttleDescPerShuttle")
+                    : t("shuttleDescPerMatch")}
+              </>
+            )}
           </p>
+
+          {/* Per-hour shuttle counts — only when shuttle_split === "by_time" */}
+          {shuttleSplit === "by_time" && (
+            <div className="space-y-2 pl-3 border-l-2 border-muted">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-sm font-medium">{t("hourlyTitle")}</Label>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {t("hourlyTotal", { count: hourlyTotal })}
+                </span>
+              </div>
+              {hourlySlots.length === 0 ? (
+                <p className="text-xs text-muted-foreground">{t("hourlyNoSlots")}</p>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {hourlySlots.map((slot, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2"
+                    >
+                      <div className="flex min-w-0 flex-col">
+                        <span className="text-xs tabular-nums">{slot.label}</span>
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Users className="h-3 w-3 shrink-0" />
+                          {t("hourlyPeople", { count: slot.count })}
+                        </span>
+                      </div>
+                      <div className="relative ml-auto w-[88px] shrink-0">
+                        <NumberInput
+                          min={0}
+                          step={1}
+                          value={shuttleHourly[i] ?? 0}
+                          onValueChange={(v) => setHourlyAt(i, v)}
+                          className="pr-9 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                          {t("hourlyUnit")}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <Button
