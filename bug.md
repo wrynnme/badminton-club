@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-23 — infra: permanent E2E suite (@playwright/test) — ✅ DONE
+
+ปิด gap "ไม่มี E2E suite ถาวร". rerunnable `@playwright/test` suite ใน `e2e/` (`npm run e2e`).
+- **DB strategy (user-decided):** net-zero against prod (โปรเจกต์มี DB เดียว). `global-setup` seed throwaway club (`SMOKE_E2E_` marker + fixed UUID) + mint `bc_session` จาก `SESSION_SECRET` (env, runtime — เลี่ยง guard cookie-mint แบบ manual) → storageState; `global-teardown` ลบ 0 row. **local-only, ไม่เข้า CI** (CI ยิง prod = ไม่ดี).
+- **Files:** `playwright.config.ts` (webServer reuse :3000, workers 1, serial) · `e2e/helpers/{fixtures,env,auth,db}.ts` · `e2e/{global-setup,global-teardown}.ts` · `e2e/club-flow.spec.ts` (5 tests). `e2e/` exclude จาก tsconfig (Playwright esbuild เอง); `.gitignore` +e2e/.auth/test-results/playwright-report.
+- **Run result:** **5/5 PASS** (19.6s) — auth · A1 "ทุกสนาม"→2 แมตช์ · A4 backdate→"เกินเวลา" · finish→จบแล้ว · cost tab. **net-zero verified** (0 row, ไม่มี stray SMOKE_E2E_).
+- **Gate:** tsc 0 (e2e excluded) · vitest 729/729 · `npm ci --dry-run` clean (lockfile +@playwright/test). ไม่ใช่ user-facing → ไม่ bump version/changelog.
+
 ### 2026-06-23 — ก๊วน: A1 build-all-courts + A4 game_time_limit over-time — ✅ DONE (v0.12.0)
 
 ปิด A backlog 2 ตัวสุดท้าย.
