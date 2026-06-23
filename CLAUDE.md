@@ -108,7 +108,7 @@ Track stated goal vs actual execution. แจ้งเตือน (ไม่ท
 
 - Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1
 - Supabase (Postgres + RLS) — MCP connected via `.mcp.json`
-- Auth: LINE Login + Guest mode (HMAC-signed cookie, no Supabase Auth)
+- Auth: LINE Login only (HMAC-signed `bc_session` cookie, no Supabase Auth). Guest signup removed v0.14.0 (2026-06-24) — `isGuest` field + gates kept for legacy cookies; viewers use public links, owners add guest *players* to rosters.
 - i18n: `next-intl` 4.x, cookie-based TH/EN (no URL routing) — see `## Internationalization (i18n)`
 - Font: Google Font Anuphan (`thai` + `latin` subsets)
 - Navigation progress bar: `@bprogress/next` 3.x (3px top bar, `var(--primary)`, no spinner)
