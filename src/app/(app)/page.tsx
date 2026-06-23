@@ -1,8 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { getSession } from "@/lib/auth/session";
 import { getTranslations } from "next-intl/server";
 import Link from "next/link";
@@ -30,9 +27,7 @@ export default async function Home({
     token: tAuth("errors.token"),
     profile: tAuth("errors.profile"),
     db: tAuth("errors.db"),
-    name: tAuth("errors.name"),
     login_required: tAuth("errors.login_required"),
-    rate_limit: tAuth("errors.rate_limit"),
   };
 
   return (
@@ -69,21 +64,6 @@ export default async function Home({
               {tAuth("login.withLine")}
             </Button>
           </a>
-
-          <div className="flex items-center gap-2">
-            <Separator className="flex-1" />
-            <span className="text-xs text-muted-foreground">{tAuth("login.or")}</span>
-            <Separator className="flex-1" />
-          </div>
-
-          <form action="/api/auth/guest" method="post" className="space-y-2">
-            {redirectTo && <input type="hidden" name="redirectTo" value={redirectTo} />}
-            <Label htmlFor="name">{tAuth("login.guestLabel")}</Label>
-            <Input id="name" name="name" placeholder={tAuth("login.guestPlaceholder")} required minLength={2} />
-            <Button type="submit" variant="secondary" className="w-full">
-              {tAuth("login.guestSubmit")}
-            </Button>
-          </form>
         </CardContent>
       </Card>
     </div>
