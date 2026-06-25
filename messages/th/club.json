@@ -752,7 +752,8 @@
     "verifyBranchPlaceholder": "เช่น 12345",
     "verifyByokNeedsProvider": "เลือกผู้ให้บริการก่อน",
     "verifyByokNeedsKey": "กรอก API key (ยังไม่ได้ตั้งค่า)",
-    "verifySlipOkNeedsBranch": "กรอก Branch ID สำหรับ SlipOK"
+    "verifySlipOkNeedsBranch": "กรอก Branch ID สำหรับ SlipOK",
+    "bankTransfer": "โอนเข้าบัญชี"
   },
   "slip": {
     "sendSlip": "ส่งสลิป",
@@ -766,5 +767,37 @@
     "noPromptpay": "ตั้งค่าพร้อมเพย์ก่อนจึงจะส่งสลิปได้",
     "shareText": "ค่าก๊วน {club} · {amount} บาท",
     "shareError": "แชร์ไม่สำเร็จ ลองดาวน์โหลดแทน"
+  },
+  "receipt": {
+    "configTitle": "ปรับแต่งใบเสร็จ",
+    "footerLabel": "ข้อความท้ายบิล",
+    "footerPlaceholder": "เช่น ขอบคุณที่มาเล่นนะครับ 🙏",
+    "fieldsLabel": "รายการที่แสดงบนใบเสร็จ",
+    "fieldCourt": "ค่าคอร์ท",
+    "fieldShuttle": "ค่าลูก",
+    "fieldExpense": "ค่าใช้จ่ายอื่น",
+    "fieldDiscount": "ส่วนลด",
+    "fieldsHint": "ยอดรวมแสดงเสมอ",
+    "paymentLabel": "ช่องทางรับเงิน",
+    "paymentPromptpay": "พร้อมเพย์ (QR)",
+    "paymentBank": "โอนเข้าบัญชีธนาคาร",
+    "bankName": "ธนาคาร",
+    "bankNamePlaceholder": "เช่น ไทยพาณิชย์ (SCB)",
+    "bankAccountNo": "เลขที่บัญชี",
+    "bankAccountNoPlaceholder": "เช่น 123-4-56789-0",
+    "bankAccountName": "ชื่อบัญชี",
+    "bankAccountNamePlaceholder": "ชื่อเจ้าของบัญชี",
+    "bankIncomplete": "กรุณากรอกธนาคารและเลขที่บัญชีให้ครบ",
+    "logoLabel": "โลโก้ก๊วน",
+    "logoUpload": "อัปโหลดโลโก้",
+    "logoReplace": "เปลี่ยนโลโก้",
+    "logoRemove": "ลบ",
+    "logoHint": "แสดงแทนไอคอน 🏸 บนหัวบิล (ไฟล์ภาพ ≤ 1MB)",
+    "logoInvalid": "ไฟล์ภาพไม่ถูกต้อง (PNG/JPG/WebP ≤ 1MB)",
+    "saved": "บันทึกแล้ว",
+    "saveBtn": "บันทึก",
+    "saveTip": "บันทึกการปรับแต่งใบเสร็จ",
+    "previewLabel": "ตัวอย่าง",
+    "previewPlayer": "ชื่อผู้เล่น"
   }
 }

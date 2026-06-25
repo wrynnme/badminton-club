@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { buildPromptPayPayload } from "@/lib/club/promptpay";
+import { parseReceiptTemplate, hasBankReceiver } from "@/lib/club/receipt";
 import QRCode from "qrcode";
 import type { Club } from "@/lib/types";
 import type { ClubCostRow } from "@/lib/club/cost-summary";
@@ -194,10 +195,17 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
     // keep raw string
   }
 
+  // Receipt customization rides along on the `club` object (parsed here so every call
+  // site — dialog, batch loop, editor preview — gets the same derivation).
+  const tpl = parseReceiptTemplate(club.receipt_template);
+  const showPromptpay = tpl.payment_show.promptpay;
   const qrValue =
-    ppNumber && club.promptpay_id
+    showPromptpay && ppNumber && club.promptpay_id
       ? buildPromptPayPayload(club.promptpay_id, row.total)
       : "";
+  const ppImage = showPromptpay && !qrValue && qrImage ? qrImage : null;
+  const showBank = tpl.payment_show.bank && hasBankReceiver(tpl.bank);
+  const anyPayment = !!qrValue || !!ppImage || showBank;
 
   return (
     <div
@@ -221,13 +229,35 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
       >
         <div
           style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
             fontFamily: "Chakra Petch, Anuphan, sans-serif",
             fontSize: 18,
             fontWeight: 700,
             letterSpacing: 0.2,
           }}
         >
-          🏸 {club.name}
+          {club.receipt_logo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={club.receipt_logo_url}
+              alt=""
+              width={26}
+              height={26}
+              style={{
+                width: 26,
+                height: 26,
+                objectFit: "contain",
+                borderRadius: 6,
+                background: "#ffffff",
+                flexShrink: 0,
+              }}
+            />
+          ) : (
+            <span>🏸</span>
+          )}
+          <span>{club.name}</span>
         </div>
         <div style={{ fontSize: 13, marginTop: 4, opacity: 0.85 }}>
           {dateStr}
@@ -250,38 +280,42 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
 
         {/* Itemized rows */}
         <div style={{ fontSize: 13, color: "#6b7280" }}>
-          {/* Court */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              padding: "4px 0",
-            }}
-          >
-            <span>{tp("colCourt")}</span>
-            <span style={{ fontVariantNumeric: "tabular-nums" }}>
-              {baht(row.court)}
-            </span>
-          </div>
+          {/* Court — hide when owner toggled it off */}
+          {tpl.fields.court && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "4px 0",
+              }}
+            >
+              <span>{tp("colCourt")}</span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                {baht(row.court)}
+              </span>
+            </div>
+          )}
 
-          {/* Shuttle */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              padding: "4px 0",
-            }}
-          >
-            <span>
-              {tp("colShuttle")} ({tp("gamesSuffix", { n: row.games })})
-            </span>
-            <span style={{ fontVariantNumeric: "tabular-nums" }}>
-              {baht(row.shuttle)}
-            </span>
-          </div>
+          {/* Shuttle — hide when owner toggled it off */}
+          {tpl.fields.shuttle && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "4px 0",
+              }}
+            >
+              <span>
+                {tp("colShuttle")} ({tp("gamesSuffix", { n: row.games })})
+              </span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                {baht(row.shuttle)}
+              </span>
+            </div>
+          )}
 
-          {/* Expense — hide if zero */}
-          {row.expense > 0 && (
+          {/* Expense — hide if zero or toggled off */}
+          {tpl.fields.expense && row.expense > 0 && (
             <div
               style={{
                 display: "flex",
@@ -296,8 +330,8 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
             </div>
           )}
 
-          {/* Discount — show only if >0 */}
-          {row.discount > 0 && (
+          {/* Discount — show only if >0 and not toggled off */}
+          {tpl.fields.discount && row.discount > 0 && (
             <div
               style={{
                 display: "flex",
@@ -368,11 +402,11 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
         >
           {qrValue ? (
             <SlipQr value={qrValue} size={220} logoUrl={qrLogoUrl} />
-          ) : qrImage ? (
+          ) : ppImage ? (
             <>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={qrImage}
+                src={ppImage}
                 alt=""
                 width={220}
                 height={220}
@@ -384,7 +418,32 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
                 {t("qrImageHint", { amount: row.total.toLocaleString() })}
               </span>
             </>
-          ) : (
+          ) : null}
+
+          {/* Bank-account receiver (#12a) — plain text */}
+          {showBank && (
+            <div
+              style={{
+                textAlign: "center",
+                fontSize: 13,
+                color: "#374151",
+                lineHeight: 1.5,
+                padding: qrValue || ppImage ? "8px 4px 0" : "4px",
+              }}
+            >
+              <div style={{ fontWeight: 700, color: "#111827" }}>
+                {tp("bankTransfer")}
+              </div>
+              <div style={{ fontVariantNumeric: "tabular-nums" }}>
+                {tpl.bank.name} · {tpl.bank.account_no}
+              </div>
+              <div style={{ color: "#6b7280", fontSize: 12 }}>
+                {tpl.bank.account_name}
+              </div>
+            </div>
+          )}
+
+          {!anyPayment && (
             <div
               style={{
                 width: 220,
@@ -404,7 +463,7 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
       </div>
 
       {/* Footer */}
-      {(club.promptpay_name || club.promptpay_id) && (
+      {((showPromptpay && (club.promptpay_name || club.promptpay_id)) || tpl.footer_note) && (
         <div
           style={{
             padding: "0 20px 16px",
@@ -414,9 +473,18 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
             backgroundColor: "#ffffff",
           }}
         >
-          {t("footerNote", {
-            name: club.promptpay_name || club.promptpay_id || "",
-          })}
+          {showPromptpay && (club.promptpay_name || club.promptpay_id) && (
+            <div>
+              {t("footerNote", {
+                name: club.promptpay_name || club.promptpay_id || "",
+              })}
+            </div>
+          )}
+          {tpl.footer_note && (
+            <div style={{ marginTop: 3, color: "#6b7280", whiteSpace: "pre-wrap" }}>
+              {tpl.footer_note}
+            </div>
+          )}
         </div>
       )}
     </div>

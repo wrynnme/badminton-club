@@ -12,6 +12,7 @@ import {
   SlipProviderSchema,
   ClubBillingVerifySettingsSchema,
 } from "@/lib/club/billing-verify-settings";
+import { ReceiptTemplateSchema, hasBankReceiver, type ReceiptTemplate } from "@/lib/club/receipt";
 
 const PaymentConfigSchema = z.object({
   promptpay_id: z.string().trim().max(40).nullable().optional(),
@@ -269,6 +270,107 @@ export async function resetAllPaidAction(clubId: string) {
     .update({ paid_at: null })
     .eq("club_id", clubId)
     .not("paid_at", "is", null);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Receipt template (#11/#12) — owner/co-admin customizes the payment slip
+// ---------------------------------------------------------------------------
+
+/**
+ * Owner / co-admin saves the club's receipt customization. Full-replace write (mirrors
+ * `updatePrizeTemplateAction`): the editor sends the whole object, `safeParse` enforces
+ * the schema, the column is overwritten wholesale. No jsonb merge.
+ */
+export async function updateClubReceiptTemplateAction(clubId: string, template: ReceiptTemplate) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const parsed = ReceiptTemplateSchema.safeParse(template);
+  if (!parsed.success) return { error: t("club.invalidData") };
+
+  // Don't trust client-side validation: enabling the bank channel requires a usable
+  // receiver (bank name + account number), else the slip silently renders nothing.
+  if (parsed.data.payment_show.bank && !hasBankReceiver(parsed.data.bank)) {
+    return { error: t("club.invalidData") };
+  }
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const { error } = await sb
+    .from("clubs")
+    .update({ receipt_template: parsed.data })
+    .eq("id", clubId);
+  if (error) return { error: error.message };
+
+  await sb.from("club_audit_logs").insert({
+    club_id: clubId,
+    actor_id: session.profileId,
+    actor_name: null,
+    event_type: "receipt_template_updated",
+    detail: `footer ${parsed.data.footer_note ? "set" : "none"}; bank ${parsed.data.payment_show.bank ? "on" : "off"}; theme ${parsed.data.theme}`,
+  });
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true, template: parsed.data };
+}
+
+/**
+ * Owner / co-admin uploads the club receipt header logo (shown on the slip in place of
+ * the 🏸 emoji). Mirrors `uploadClubPromptPayQrAction` — same validation + `club-qr`
+ * bucket, fixed path `{clubId}/receipt-logo` + upsert so replacing never orphans.
+ */
+export async function uploadClubReceiptLogoAction(input: { clubId: string; dataUrl: string }) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const m = QR_DATA_URL_RE.exec(input.dataUrl ?? "");
+  if (!m) return { error: t("club.invalidQrImage") };
+  const contentType = m[1];
+  const buffer = Buffer.from(m[2], "base64");
+  if (buffer.byteLength === 0 || buffer.byteLength > MAX_QR_BYTES) {
+    return { error: t("club.invalidQrImage") };
+  }
+
+  const path = `${input.clubId}/receipt-logo`;
+  const up = await sb.storage.from("club-qr").upload(path, buffer, { contentType, upsert: true });
+  if (up.error) return { error: up.error.message };
+
+  const { data: pub } = sb.storage.from("club-qr").getPublicUrl(path);
+  const url = `${pub.publicUrl}?v=${Date.now()}`; // cache-bust on replace
+  const { error } = await sb.from("clubs").update({ receipt_logo_url: url }).eq("id", input.clubId);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true, url };
+}
+
+/** Owner / co-admin removes the uploaded receipt logo. */
+export async function removeClubReceiptLogoAction(clubId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  await sb.storage.from("club-qr").remove([`${clubId}/receipt-logo`]); // best-effort
+  const { error } = await sb.from("clubs").update({ receipt_logo_url: null }).eq("id", clubId);
   if (error) return { error: error.message };
 
   revalidatePath(`/clubs/${clubId}`);

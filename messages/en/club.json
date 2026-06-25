@@ -752,7 +752,8 @@
     "verifyBranchPlaceholder": "e.g. 12345",
     "verifyByokNeedsProvider": "Select a provider first",
     "verifyByokNeedsKey": "Enter an API key (none configured yet)",
-    "verifySlipOkNeedsBranch": "Enter Branch ID for SlipOK"
+    "verifySlipOkNeedsBranch": "Enter Branch ID for SlipOK",
+    "bankTransfer": "Bank transfer"
   },
   "slip": {
     "sendSlip": "Send slip",
@@ -766,5 +767,37 @@
     "noPromptpay": "Set up PromptPay first to send slips",
     "shareText": "Club fee {club} · {amount} ฿",
     "shareError": "Share failed — try downloading instead"
+  },
+  "receipt": {
+    "configTitle": "Customize receipt",
+    "footerLabel": "Footer note",
+    "footerPlaceholder": "e.g. Thanks for playing! 🙏",
+    "fieldsLabel": "Line items to show",
+    "fieldCourt": "Court fee",
+    "fieldShuttle": "Shuttle fee",
+    "fieldExpense": "Other expenses",
+    "fieldDiscount": "Discount",
+    "fieldsHint": "Total is always shown",
+    "paymentLabel": "Payment channels",
+    "paymentPromptpay": "PromptPay (QR)",
+    "paymentBank": "Bank transfer",
+    "bankName": "Bank",
+    "bankNamePlaceholder": "e.g. SCB",
+    "bankAccountNo": "Account number",
+    "bankAccountNoPlaceholder": "e.g. 123-4-56789-0",
+    "bankAccountName": "Account name",
+    "bankAccountNamePlaceholder": "Account holder name",
+    "bankIncomplete": "Please fill in both bank and account number",
+    "logoLabel": "Club logo",
+    "logoUpload": "Upload logo",
+    "logoReplace": "Replace logo",
+    "logoRemove": "Remove",
+    "logoHint": "Shown in place of the 🏸 icon on the header (image ≤ 1MB)",
+    "logoInvalid": "Invalid image file (PNG/JPG/WebP ≤ 1MB)",
+    "saved": "Saved",
+    "saveBtn": "Save",
+    "saveTip": "Save receipt customization",
+    "previewLabel": "Preview",
+    "previewPlayer": "Player name"
   }
 }
