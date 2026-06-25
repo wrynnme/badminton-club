@@ -26,7 +26,13 @@ import {
   uploadClubReceiptLogoAction,
   removeClubReceiptLogoAction,
 } from "@/lib/actions/club-payments";
-import { parseReceiptTemplate, type ReceiptTemplate } from "@/lib/club/receipt";
+import {
+  parseReceiptTemplate,
+  RECEIPT_THEME_KEYS,
+  RECEIPT_THEMES,
+  type ReceiptTemplate,
+  type ReceiptThemeKey,
+} from "@/lib/club/receipt";
 import { SlipCard } from "@/components/club/club-slip-card";
 import type { Club } from "@/lib/types";
 import type { ClubCostRow } from "@/lib/club/cost-summary";
@@ -57,6 +63,7 @@ type FormValues = {
   bank_name: string;
   bank_account_no: string;
   bank_account_name: string;
+  theme: ReceiptThemeKey;
 };
 
 /** Reconstruct the full ReceiptTemplate from flat form values, preserving v2-only
@@ -76,7 +83,7 @@ function buildTemplate(v: FormValues, base: ReceiptTemplate): ReceiptTemplate {
       account_name: v.bank_account_name,
     },
     payment_show: { promptpay: v.show_promptpay, bank: v.show_bank },
-    theme: base.theme,
+    theme: v.theme,
     bank_qr: base.bank_qr,
   };
 }
@@ -118,6 +125,7 @@ export function ReceiptTemplateEditor({
       bank_name: initial.bank.name,
       bank_account_no: initial.bank.account_no,
       bank_account_name: initial.bank.account_name,
+      theme: initial.theme,
     } satisfies FormValues,
     onSubmit: async ({ value }) => {
       if (value.show_bank && !(value.bank_name.trim() && value.bank_account_no.trim())) {
@@ -414,6 +422,39 @@ export function ReceiptTemplateEditor({
                   )}
                 </div>
               </div>
+
+              {/* Theme color */}
+              <form.Field name="theme">
+                {(field) => (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t("themeLabel")}</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {RECEIPT_THEME_KEYS.map((key) => {
+                        const selected = field.state.value === key;
+                        return (
+                          <Tooltip key={key}>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="icon"
+                                  aria-label={t(`theme_${key}`)}
+                                  aria-pressed={selected}
+                                  onClick={() => field.handleChange(key)}
+                                  className={`h-7 w-7 rounded-full p-0 ${selected ? "ring-2 ring-foreground ring-offset-2 ring-offset-background" : ""}`}
+                                  style={{ backgroundColor: RECEIPT_THEMES[key].headerBg }}
+                                />
+                              }
+                            />
+                            <TooltipContent>{t(`theme_${key}`)}</TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </form.Field>
 
               {/* Save */}
               <Tooltip>

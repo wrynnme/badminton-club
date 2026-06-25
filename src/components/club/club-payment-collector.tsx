@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/tooltip";
 import { computeClubCostRows } from "@/lib/club/cost-summary";
 import { buildPromptPayPayload, isValidPromptPayId } from "@/lib/club/promptpay";
-import { parseReceiptTemplate, hasBankReceiver, type ReceiptTemplate } from "@/lib/club/receipt";
+import { parseReceiptTemplate, hasBankReceiver, resolveReceiptTheme, type ReceiptTemplate } from "@/lib/club/receipt";
 import { ReceiptTemplateEditor } from "@/components/club/receipt-template-editor";
 import {
   updateClubPaymentConfigAction,
@@ -543,6 +543,7 @@ function PlayerReceipt({
 
   // Receipt customization (parsed once in the collector, passed down) gates the
   // breakdown rows + payment channels.
+  const theme = resolveReceiptTheme(tpl.theme);
   const showPromptpay = tpl.payment_show.promptpay;
   const showBank = tpl.payment_show.bank && hasBankReceiver(tpl.bank);
   const payload = showPromptpay && promptpayId ? buildPromptPayPayload(promptpayId, row.total) : "";
@@ -612,7 +613,7 @@ function PlayerReceipt({
             </div>
           )}
           <div className="flex justify-between border-t pt-2 mt-1 text-sm font-bold">
-            <span>{t("colTotal")}</span><span className="tabular-nums">{baht(row.total)}</span>
+            <span>{t("colTotal")}</span><span className="tabular-nums" style={{ color: theme.totalColor }}>{baht(row.total)}</span>
           </div>
 
           <div className="flex gap-3 items-center mt-3">

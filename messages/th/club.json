@@ -798,6 +798,13 @@
     "saveBtn": "บันทึก",
     "saveTip": "บันทึกการปรับแต่งใบเสร็จ",
     "previewLabel": "ตัวอย่าง",
-    "previewPlayer": "ชื่อผู้เล่น"
+    "previewPlayer": "ชื่อผู้เล่น",
+    "themeLabel": "ธีมสี",
+    "theme_green": "เขียว",
+    "theme_blue": "น้ำเงิน",
+    "theme_rose": "ชมพู",
+    "theme_slate": "เทา",
+    "theme_amber": "เหลือง",
+    "theme_violet": "ม่วง"
   }
 }
