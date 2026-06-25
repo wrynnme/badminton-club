@@ -41,6 +41,8 @@ import {
 } from "@/components/ui/tooltip";
 import { computeClubCostRows } from "@/lib/club/cost-summary";
 import { buildPromptPayPayload, isValidPromptPayId } from "@/lib/club/promptpay";
+import { parseReceiptTemplate, hasBankReceiver, type ReceiptTemplate } from "@/lib/club/receipt";
+import { ReceiptTemplateEditor } from "@/components/club/receipt-template-editor";
 import {
   updateClubPaymentConfigAction,
   toggleClubPlayerPaidAction,
@@ -120,6 +122,12 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
   const ppNumber = !!club.promptpay_id && isValidPromptPayId(club.promptpay_id);
   const qrImage = club.promptpay_qr_image || null;
   const ppConfigured = ppNumber || !!qrImage;
+  // A slip can be produced when any payment channel the receipt shows is configured
+  // (so bank-only clubs can still batch-download slips, not just PromptPay ones).
+  const receiptTpl = parseReceiptTemplate(club.receipt_template);
+  const slipConfigured =
+    (receiptTpl.payment_show.promptpay && ppConfigured) ||
+    (receiptTpl.payment_show.bank && hasBankReceiver(receiptTpl.bank));
 
   // Batch slip download — render every payable player's slip card off-screen → PNG,
   // one at a time (the QR/font capture needs the node mounted before domToBlob).
@@ -173,6 +181,15 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
         <ClubSlipVerifyConfig
           clubId={clubId}
           initial={billingVerifySettings}
+        />
+
+        <ReceiptTemplateEditor
+          clubId={clubId}
+          club={club}
+          ppNumber={ppNumber}
+          qrImage={ppNumber ? null : qrImage}
+          qrLogoUrl={qrLogoUrl}
+          locale={locale}
         />
 
         {payable.length === 0 ? (
@@ -235,7 +252,7 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                         size="sm"
                         variant="outline"
                         className="h-8 gap-1.5 text-xs"
-                        disabled={batchBusy || payable.length === 0 || !ppConfigured}
+                        disabled={batchBusy || payable.length === 0 || !slipConfigured}
                         onClick={downloadAllSlips}
                       />
                     }
@@ -243,7 +260,7 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                     {batchBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                     {batchBusy ? tSlip("generating") : tSlip("downloadAllButton")}
                   </TooltipTrigger>
-                  <TooltipContent>{ppConfigured ? tSlip("downloadAllButton") : tSlip("noPromptpay")}</TooltipContent>
+                  <TooltipContent>{slipConfigured ? tSlip("downloadAllButton") : tSlip("noPromptpay")}</TooltipContent>
                 </Tooltip>
               </div>
             </div>
@@ -255,6 +272,7 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                   key={row.playerId}
                   clubId={clubId}
                   club={club}
+                  receiptTpl={receiptTpl}
                   row={row}
                   name={nameById.get(row.playerId) ?? row.playerId}
                   paid={paidIds.has(row.playerId)}
@@ -486,6 +504,7 @@ function PromptPayConfig({
 function PlayerReceipt({
   clubId,
   club,
+  receiptTpl: tpl,
   row,
   name,
   paid,
@@ -501,6 +520,7 @@ function PlayerReceipt({
 }: {
   clubId: string;
   club: Club;
+  receiptTpl: ReceiptTemplate;
   row: ClubCostRow;
   name: string;
   paid: boolean;
@@ -521,8 +541,13 @@ function PlayerReceipt({
   const [slipOpen, setSlipOpen] = useState(false);
   const [pending, start] = useTransition();
 
-  const payload = promptpayId ? buildPromptPayPayload(promptpayId, row.total) : "";
-  const canSlip = !!payload || !!qrImage;
+  // Receipt customization (parsed once in the collector, passed down) gates the
+  // breakdown rows + payment channels.
+  const showPromptpay = tpl.payment_show.promptpay;
+  const showBank = tpl.payment_show.bank && hasBankReceiver(tpl.bank);
+  const payload = showPromptpay && promptpayId ? buildPromptPayPayload(promptpayId, row.total) : "";
+  const ppImage = showPromptpay ? qrImage : null;
+  const canSlip = !!payload || !!ppImage || showBank;
 
   function toggle() {
     const nowPaid = !paid;
@@ -566,16 +591,22 @@ function PlayerReceipt({
 
       {open && (
         <div className="border-t border-dashed px-3.5 pb-3.5 pt-1">
-          <div className="flex justify-between text-[13px] py-1 text-muted-foreground">
-            <span>{t("colCourt")}</span><span className="tabular-nums">{baht(row.court)}</span>
-          </div>
-          <div className="flex justify-between text-[13px] py-1 text-muted-foreground">
-            <span>{t("colShuttle")} ({t("gamesSuffix", { n: row.games })})</span><span className="tabular-nums">{baht(row.shuttle)}</span>
-          </div>
-          <div className="flex justify-between text-[13px] py-1 text-muted-foreground">
-            <span>{t("colExpense")}</span><span className="tabular-nums">{baht(row.expense)}</span>
-          </div>
-          {row.discount > 0 && (
+          {tpl.fields.court && (
+            <div className="flex justify-between text-[13px] py-1 text-muted-foreground">
+              <span>{t("colCourt")}</span><span className="tabular-nums">{baht(row.court)}</span>
+            </div>
+          )}
+          {tpl.fields.shuttle && (
+            <div className="flex justify-between text-[13px] py-1 text-muted-foreground">
+              <span>{t("colShuttle")} ({t("gamesSuffix", { n: row.games })})</span><span className="tabular-nums">{baht(row.shuttle)}</span>
+            </div>
+          )}
+          {tpl.fields.expense && (
+            <div className="flex justify-between text-[13px] py-1 text-muted-foreground">
+              <span>{t("colExpense")}</span><span className="tabular-nums">{baht(row.expense)}</span>
+            </div>
+          )}
+          {tpl.fields.discount && row.discount > 0 && (
             <div className="flex justify-between text-[13px] py-1 text-muted-foreground">
               <span>{t("colDiscount")}</span><span className="tabular-nums">-{baht(row.discount)}</span>
             </div>
@@ -598,7 +629,7 @@ function PlayerReceipt({
                   <Maximize2 className="h-3 w-3" />
                 </span>
               </button>
-            ) : qrImage ? (
+            ) : ppImage ? (
               <button
                 type="button"
                 onClick={() => setZoom(true)}
@@ -607,11 +638,19 @@ function PlayerReceipt({
                 className="relative shrink-0 cursor-zoom-in rounded-lg border bg-white p-1"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrImage} alt={t("uploadedQr")} className="h-[104px] w-[104px] object-contain" />
+                <img src={ppImage} alt={t("uploadedQr")} className="h-[104px] w-[104px] object-contain" />
                 <span className="absolute bottom-1 right-1 rounded-md bg-black/55 p-0.5 text-white">
                   <Maximize2 className="h-3 w-3" />
                 </span>
               </button>
+            ) : showBank ? (
+              <div className="rounded-lg border bg-muted/40 p-2.5 shrink-0 grid place-items-center h-[112px] w-[112px] text-center text-[11px]">
+                <div className="space-y-0.5">
+                  <div className="font-semibold text-foreground">{t("bankTransfer")}</div>
+                  <div className="tabular-nums">{tpl.bank.account_no}</div>
+                  <div className="text-muted-foreground">{tpl.bank.name}</div>
+                </div>
+              </div>
             ) : (
               <div className="rounded-lg border bg-muted/40 p-2 shrink-0 grid place-items-center h-[112px] w-[112px] text-center text-[11px] text-muted-foreground">
                 {t("noPromptpay")}
@@ -622,9 +661,13 @@ function PlayerReceipt({
                 <p className="text-xs text-muted-foreground">
                   {t("scanWith", { name: promptpayName || promptpayId || "" })}
                 </p>
-              ) : qrImage ? (
+              ) : ppImage ? (
                 <p className="text-xs text-amber-600 dark:text-amber-400">
                   {t("qrImageHint", { amount: row.total.toLocaleString() })}
+                </p>
+              ) : showBank ? (
+                <p className="text-xs text-muted-foreground">
+                  {tpl.bank.account_name}
                 </p>
               ) : null}
               <Tooltip>
@@ -668,6 +711,12 @@ function PlayerReceipt({
             </div>
           </div>
 
+          {tpl.footer_note && (
+            <p className="mt-3 text-center text-xs text-muted-foreground whitespace-pre-wrap">
+              {tpl.footer_note}
+            </p>
+          )}
+
           {canSlip && (
             <SlipDialog
               open={slipOpen}
@@ -682,7 +731,7 @@ function PlayerReceipt({
             />
           )}
 
-          {(payload || qrImage) && (
+          {(payload || ppImage) && (
             <Dialog open={zoom} onOpenChange={setZoom}>
               <DialogContent className="sm:max-w-xs">
                 <DialogHeader>
@@ -695,7 +744,7 @@ function PlayerReceipt({
                     </div>
                   ) : (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={qrImage!} alt={t("uploadedQr")} className="h-60 w-60 rounded-lg border bg-white object-contain p-2" />
+                    <img src={ppImage!} alt={t("uploadedQr")} className="h-60 w-60 rounded-lg border bg-white object-contain p-2" />
                   )}
                   <div className="text-3xl font-bold tabular-nums">{baht(row.total)}</div>
                   <p className="text-center text-xs text-muted-foreground">

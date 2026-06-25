@@ -51,6 +51,11 @@ export type Club = {
   // Per-club slip-verification config (raw jsonb; parse via parseBillingVerifySettings).
   // Default: { mode: "manual" } — no automatic verify until the owner opts in to byok.
   billing_verify_settings: Record<string, unknown>;
+  // Per-club receipt customization (#11/#12; raw jsonb, parse via parseReceiptTemplate
+  // in club/receipt.ts). Default {} → DEFAULT_RECEIPT_TEMPLATE (current slip layout,
+  // PromptPay only). receipt_logo_url = uploaded header logo (mirror promptpay_qr_image).
+  receipt_template: Record<string, unknown>;
+  receipt_logo_url: string | null;
 };
 
 // Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").

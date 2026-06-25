@@ -45,6 +45,10 @@ export function toPublicClub(club: Club): Club {
     promptpay_qr_image: null,
     // billing verify config — redact: mode reveals whether the club has byok keys set up
     billing_verify_settings: {},
+    // receipt customization — redact: receipt_template can carry bank-account details
+    // (name / account no), and the slip is a manager-only surface anyway
+    receipt_template: {},
+    receipt_logo_url: null,
   };
 }
 

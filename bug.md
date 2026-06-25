@@ -10,6 +10,13 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-25 — ก๊วน: ปรับแต่งใบเสร็จ + รับเงินเลขบัญชี (#11/#12 v1) — ✅ DONE (v0.15.0)
+
+ฟีเจอร์ใหม่: เจ้าของ/co-admin custom ใบเสร็จ (footer free-text · toggle ฟิลด์ court/shuttle/expense/discount · โลโก้ก๊วน) + รับเงินด้วยเลขบัญชีธนาคารแบบข้อความ (#12a). v2 (ธีมสี + bank QR) เลื่อนตามแผน phased.
+- **Files:** migration `20260625000100_add_club_receipt_template` (applied prod ✓, verified information_schema) · `lib/club/receipt.ts` (schema + tolerant parser + theme palette) · `actions/club-payments.ts` (+3 actions) · `receipt-template-editor.tsx` (TanStack Form + live SlipCard preview) · `club-slip-card.tsx` + `club-payment-collector.tsx` (config gating ทั้ง PNG + on-screen) · `public-view.ts` (redact bank) · types · i18n th/en +31 keys.
+- **Gate:** tsc 0 · vitest **760/760** (+16 parser tests + public-view redaction) · i18n key-check 30 keys 0 missing + parity OK · `next build` OK.
+- **/ship-check (2026-06-25):** code-review (3 finder + self-verify) — ไม่มี P0/P1; เจอ P2 จริง 1 (server เชื่อ client validation ของ bank) → แก้ (guard `payment_show.bank && !hasBankReceiver` ใน `updateClubReceiptTemplateAction`). refuted: logo cross-origin (เหมือน promptpay QR เดิมที่ capture ได้ใน prod). intentional: theme unwired (v2). simplify → parse `receiptTemplate` ครั้งเดียวใน collector ส่ง prop ลง PlayerReceipt (เลิก re-parse N+1). **Live browser smoke PASS (net-zero):** seed club+owner (marker SMOKE_RECEIPT_) → mint `bc_session` cookie → เปิดแท็บค่าใช้จ่าย → ตั้ง footer + uncheck ค่าคอร์ท + เปิด bank + กรอกบัญชี → Save → DB `receipt_template` persist ครบ (court:false, bank filled, theme/bank_qr preserved) → preview สะท้อนถูก (court row หาย, bank text แทน placeholder, footer โชว์) · console 0 error · teardown 0 row.
+
 ### 2026-06-23 — ก๊วน: หารค่าลูก "ตามชั่วโมง" (shuttle_split=by_time) — ✅ DONE (v0.13.0)
 
 แก้ปัญหา (user-reported): mode `even` หารลูกทั้งหมดให้ทุกคนเท่ากัน → คนเล่นชั่วโมงเดียวโดนหารลูกของชั่วโมงที่ไม่ได้เล่น. เพิ่ม mode `by_time`: กรอกลูก/ชม. (`clubs.shuttle_hourly int[]`) → แต่ละ slot 1 ชม. = `count × price` หารเฉพาะคนอยู่ครบ slot (present rule = `HourlyHeadcount`) + fallback เกลี่ยผู้มาเล่นทั้งหมดถ้า slot มีลูกแต่ไม่มีใครครบ (กันเงินหาย). ไม่ใช้ queue/matches.

@@ -28,6 +28,11 @@ const baseClub: Club = {
   promptpay_name: "เจ้าของก๊วน",
   promptpay_qr_image: "https://example.com/qr.png",
   billing_verify_settings: { mode: "manual" },
+  receipt_template: {
+    payment_show: { promptpay: false, bank: true },
+    bank: { name: "ธนาคารลับ", account_no: "1234567890", account_name: "เจ้าของก๊วน" },
+  },
+  receipt_logo_url: "https://example.com/logo.png",
 };
 
 const basePlayer: ClubPlayer = {
@@ -64,6 +69,9 @@ describe("toPublicClub", () => {
     expect(pub.promptpay_id).toBeNull();
     expect(pub.promptpay_name).toBeNull();
     expect(pub.promptpay_qr_image).toBeNull();
+    // receipt_template can hold bank-account details → must be redacted on the public view
+    expect(pub.receipt_template).toEqual({});
+    expect(pub.receipt_logo_url).toBeNull();
   });
 
   it("keeps safe identity + config fields", () => {
