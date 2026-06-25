@@ -10,6 +10,13 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-06-26 — ก๊วน: ธีมสีใบเสร็จ (#11 v2) — ✅ DONE (v0.16.0, develop)
+
+ต่อยอด v1: เจ้าของเลือกธีมสีใบเสร็จได้ 6 สี (palette). picker swatch ใน `receipt-template-editor.tsx` + wire `resolveReceiptTheme` เข้า header band + total ของ `SlipCard` และ total ของ on-screen `PlayerReceipt`. ลบ 2 รายการ stale ใน spec ด้วย (M4 drop `team_players.level` verified ผ่าน DB · guest rate-limit MOOT หลังถอด guest signup).
+- **Files:** `club-slip-card.tsx` (theme.headerBg/totalColor) · `club-payment-collector.tsx` (PlayerReceipt total) · `receipt-template-editor.tsx` (FormValues+picker, buildTemplate ใช้ v.theme) · i18n th/en +7 keys (themeLabel + 6 ชื่อสี) · changelog/version → 0.16.0.
+- **Gate:** tsc 0 · vitest 760/760 · `next build` OK · i18n 37 keys parity.
+- **/ship-check (2026-06-26):** code-review (2 finder: correctness + conventions/i18n) — **clean ทั้งคู่ ([])**, ไม่มี P0/P1/P2 (theme wiring ถูก, swatch เป็น shadcn Button+Tooltip, dynamic key `theme_*` ครบ 7 ทั้ง th/en). simplify — diff UI-only ไม่มี dup. **Live browser smoke PASS (net-zero):** seed club+owner → เปิด editor → เลือก "น้ำเงิน" → **preview header เปลี่ยนสด green `rgb(46,125,79)` → blue `rgb(29,78,216)`** → save → DB `theme:"blue"` persist · console 0 error · teardown 0 row. **Smoke bonus:** save แรกถูก bank-incomplete guard (v1 P2 fix) บล็อกถูกต้องตอน show_bank ติ๊ก+ธนาคารว่าง (จาก browser autofill) → ยืนยัน guard ทำงานจริง.
+
 ### 2026-06-25 — ก๊วน: ปรับแต่งใบเสร็จ + รับเงินเลขบัญชี (#11/#12 v1) — ✅ DONE (v0.15.0)
 
 ฟีเจอร์ใหม่: เจ้าของ/co-admin custom ใบเสร็จ (footer free-text · toggle ฟิลด์ court/shuttle/expense/discount · โลโก้ก๊วน) + รับเงินด้วยเลขบัญชีธนาคารแบบข้อความ (#12a). v2 (ธีมสี + bank QR) เลื่อนตามแผน phased.

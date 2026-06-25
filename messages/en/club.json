@@ -798,6 +798,13 @@
     "saveBtn": "Save",
     "saveTip": "Save receipt customization",
     "previewLabel": "Preview",
-    "previewPlayer": "Player name"
+    "previewPlayer": "Player name",
+    "themeLabel": "Theme color",
+    "theme_green": "Green",
+    "theme_blue": "Blue",
+    "theme_rose": "Rose",
+    "theme_slate": "Slate",
+    "theme_amber": "Amber",
+    "theme_violet": "Violet"
   }
 }

@@ -20,7 +20,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { buildPromptPayPayload } from "@/lib/club/promptpay";
-import { parseReceiptTemplate, hasBankReceiver } from "@/lib/club/receipt";
+import { parseReceiptTemplate, hasBankReceiver, resolveReceiptTheme } from "@/lib/club/receipt";
 import QRCode from "qrcode";
 import type { Club } from "@/lib/types";
 import type { ClubCostRow } from "@/lib/club/cost-summary";
@@ -198,6 +198,7 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
   // Receipt customization rides along on the `club` object (parsed here so every call
   // site — dialog, batch loop, editor preview — gets the same derivation).
   const tpl = parseReceiptTemplate(club.receipt_template);
+  const theme = resolveReceiptTheme(tpl.theme);
   const showPromptpay = tpl.payment_show.promptpay;
   const qrValue =
     showPromptpay && ppNumber && club.promptpay_id
@@ -222,7 +223,7 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
       {/* Header band */}
       <div
         style={{
-          backgroundColor: "#2e7d4f",
+          backgroundColor: theme.headerBg,
           padding: "16px 20px 14px",
           color: "#ffffff",
         }}
@@ -370,7 +371,7 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
             style={{
               fontSize: 24,
               fontWeight: 700,
-              color: "#2e7d4f",
+              color: theme.totalColor,
               fontVariantNumeric: "tabular-nums",
             }}
           >
