@@ -5,9 +5,8 @@
       "url": "https://mcp.supabase.com/mcp?project_ref=qdjtrcqbzdaahufbvwtu"
     },
     "shadcn": {
-      "command": "npx",
+      "command": "node_modules/.bin/shadcn",
       "args": [
-        "shadcn@latest",
         "mcp"
       ]
     },

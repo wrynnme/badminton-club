@@ -18,16 +18,28 @@ export async function StandingsSortKeyNote() {
   );
 }
 
-export async function StandingsTable({
+// Labels resolved server-side (next-intl) and passed into the presentational
+// view, so StandingsTableView renders without any async/server context — which
+// makes it unit-testable and Storybook-able. Mirrors the CSV labels pattern.
+export type StandingsTableLabels = {
+  unitTeam: string;
+  unitPair: string;
+  pointsTooltip: string;
+  viewMatchesAria: string;
+};
+
+// Presentational standings table — pure props, no i18n/async. Story this.
+export function StandingsTableView({
   matches,
   competitors,
   unit,
+  labels,
 }: {
   matches: Match[];
   competitors: Competitor[];
   unit: "team" | "pair";
+  labels: StandingsTableLabels;
 }) {
-  const t = await getTranslations("tournament");
   const rows = computeStandings(matches, unit, competitors.map((c) => c.id));
   const compById = new Map(competitors.map((c) => [c.id, c]));
 
@@ -36,7 +48,7 @@ export async function StandingsTable({
     <table className="w-full text-xs">
       <thead>
         <tr className="text-muted-foreground border-b">
-          <th className="text-left pb-1 font-normal">{unit === "team" ? t("standingsTable.unitTeam") : t("standingsTable.unitPair")}</th>
+          <th className="text-left pb-1 font-normal">{unit === "team" ? labels.unitTeam : labels.unitPair}</th>
           <th className="text-center pb-1 font-normal w-7">P</th>
           <th className="text-center pb-1 font-normal w-7">W</th>
           <th className="text-center pb-1 font-normal w-7">D</th>
@@ -51,11 +63,11 @@ export async function StandingsTable({
                   </span>
                 }
               />
-              <TooltipContent>{t("standingsTable.pointsTooltip")}</TooltipContent>
+              <TooltipContent>{labels.pointsTooltip}</TooltipContent>
             </Tooltip>
           </th>
           {/* my-matches-link: ดูแมตช์ header (pair only) — ลบ <th> นี้คู่กับ <td> ด้านล่างเพื่อถอด entry point */}
-          {unit === "pair" && <th className="w-6 pb-1 font-normal" aria-label={t("standingsTable.viewMatchesAria")} />}
+          {unit === "pair" && <th className="w-6 pb-1 font-normal" aria-label={labels.viewMatchesAria} />}
         </tr>
       </thead>
       <tbody>
@@ -84,7 +96,7 @@ export async function StandingsTable({
                 <td className="text-center">
                   <PairScheduleLink
                     pairId={c?.id}
-                    label={t("standingsTable.viewMatchesAria")}
+                    label={labels.viewMatchesAria}
                     className="inline-flex items-center justify-center text-muted-foreground hover:text-foreground align-middle"
                   >
                     <CalendarClock className="h-3.5 w-3.5" />
@@ -97,5 +109,32 @@ export async function StandingsTable({
       </tbody>
     </table>
     </>
+  );
+}
+
+// Async server wrapper — resolves the i18n labels then renders the view.
+// Call sites stay unchanged (same props as before the split).
+export async function StandingsTable({
+  matches,
+  competitors,
+  unit,
+}: {
+  matches: Match[];
+  competitors: Competitor[];
+  unit: "team" | "pair";
+}) {
+  const t = await getTranslations("tournament");
+  return (
+    <StandingsTableView
+      matches={matches}
+      competitors={competitors}
+      unit={unit}
+      labels={{
+        unitTeam: t("standingsTable.unitTeam"),
+        unitPair: t("standingsTable.unitPair"),
+        pointsTooltip: t("standingsTable.pointsTooltip"),
+        viewMatchesAria: t("standingsTable.viewMatchesAria"),
+      }}
+    />
   );
 }

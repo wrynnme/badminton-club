@@ -25,6 +25,11 @@ correct behavior ต้องเป็นคำสั่งที่ทำตา
 
 ## Log
 
+### แก้ `.storybook/main.ts` ขณะ dev server รัน แต่ลืม restart → ผู้ใช้เจอ error ที่ verify ไม่เจอ (2026-06-27)
+- **what**: เพิ่ม `viteFinal` alias (mock server action) ใน `.storybook/main.ts` *หลัง* Storybook dev server (:6006) รันอยู่แล้ว. vitest story test ผ่าน 23/23 เลยรายงานว่าเสร็จ — แต่ MatchRow บน dev server UI พังจริง (`Module "crypto" has been externalized` เพราะลาก real server action) ผู้ใช้เป็นคนเจอ error เอง
+- **root cause**: Vite/Storybook dev server โหลด `main.ts` (builder/framework/viteFinal config) ตอน start เท่านั้น — แก้ config ระหว่างรัน **ไม่ trigger HMR/reload** (ต่างจาก `preview.tsx`/stories ที่ HMR ได้). ผม verify ผ่าน vitest ซึ่งเป็น process แยกที่อ่าน config สดทุกครั้ง → ไม่สะท้อนสภาพ dev server ที่ค้าง config เก่า → false "เสร็จแล้ว"
+- **correct**: เมื่อแก้ `.storybook/main.ts` (addons / framework / `viteFinal` / builder) ขณะ dev server รัน → **restart dev server เสมอ** (kill เจาะจง PID storybook tree + start ใหม่). อย่า assume "vitest เขียว = dev server UI ok" สำหรับการเปลี่ยน config — vitest อ่าน config สด แต่ long-running dev server cache ของเก่า. `preview.tsx`/stories แก้สดได้ (HMR), `main.ts` ต้อง restart
+
 ### pkill กว้างเกินไปฆ่า process ที่ไม่เกี่ยว (2026-06-26)
 - **what**: user สั่ง "ปิด dev server" (แอปบน :3000). `kill $(lsof -ti tcp:3000)` ไม่ตายสนิท (next dev มี process tree + respawn) เลยใช้ `pkill -9 -f "next-server"` ซึ่ง match **ทุก** next-server → เผลอฆ่า claude-smart dashboard (PID 61147 บน :3001) ที่ไม่เกี่ยวไปด้วย
 - **root cause**: ใช้ name-pattern pkill ที่กว้าง ทั้งที่มีหลาย process ใช้ชื่อ binary เดียวกัน (`next-server`) — ไม่ได้จำกัดด้วย port/cwd/PID ที่เจาะจงเป้าหมาย
