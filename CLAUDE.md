@@ -10,6 +10,8 @@ Universal agent rules — envelope, hard prohibitions, human-in-the-loop gates (
 
 กฎด้านล่างคือ **project-specific** ที่ extend universal rules. ถ้าขัดแย้ง: project-specific ชนะ universal ในขอบเขต project นี้.
 
+> ภาพรวมวิธีทำงานทั้งหมด (orchestration · map ไฟล์ `.md` · reversibility R0/R1/R2 · worked example) สรุปไว้ที่ `docs/agents/working-model.md`.
+
 ## Delegation Rules (Claude Code)
 
 **Default: delegate. Don't do work yourself if a specialized agent fits.**
