@@ -10,6 +10,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BRAND_THEME_COLOR } from "@/lib/brand";
 import "./globals.css";
+import { cn } from "@/lib/utils";
 
 const anuphan = Anuphan({
   variable: "--font-sans",
@@ -59,7 +60,15 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${anuphan.variable} ${geistMono.variable} ${chakraPetch.variable} h-full antialiased${isDark ? " dark" : ""}`}
+      className={cn(
+        "h-full",
+        "antialiased",
+        anuphan.variable,
+        geistMono.variable,
+        chakraPetch.variable,
+        isDark ? " dark" : "",
+        "font-sans",
+      )}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background overflow-x-clip">
