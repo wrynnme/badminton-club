@@ -2,8 +2,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getSession } from "@/lib/auth/session";
 import { getTranslations } from "next-intl/server";
-import Link from "next/link";
 import { redirect } from "next/navigation";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default async function Home({
   searchParams,
@@ -31,9 +31,12 @@ export default async function Home({
   };
 
   return (
-    <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto pt-10">
+    <div className="grid md:grid-cols-2 items-start gap-6 max-w-3xl mx-auto pt-10">
       <div className="space-y-4">
-        <h1 className="text-3xl font-bold">🏸 {tHome("hero.title")}</h1>
+        <h1 className="text-3xl font-bold flex items-center gap-2">
+          <BrandLogo className="h-9 w-auto" />
+          {tHome("hero.title")}
+        </h1>
         <p className="text-muted-foreground">
           {tHome("hero.tagline")}
         </p>
@@ -42,9 +45,6 @@ export default async function Home({
           <li>{tHome("hero.featureBrowse")}</li>
           <li>{tHome("hero.featureLogin")}</li>
         </ul>
-        <Link href="/clubs">
-          <Button variant="outline">{tHome("hero.browseAll")}</Button>
-        </Link>
       </div>
 
       <Card>

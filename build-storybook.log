@@ -1,0 +1,101 @@
+
+> badminton-club@0.16.0 build-storybook /Users/x/Documents/badminton-club
+> storybook build --output-dir=/private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb
+
+
+[90m┌[39m  Building storybook v10.4.6
+[90m│[39m
+[32m◇[39m  Cleaning outputDir:
+[90m│[39m  [36m../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb[39m
+[90m│[39m
+[32m◇[39m  Loading presets
+[90m│[39m
+[32m◇[39m  Building manager..
+[90m│[39m
+[34m●[39m  Building preview..
+[90m│[39m
+[33m▲[39m  No story files found for the specified pattern: [34msrc/**/*.mdx[39m
+[90m│[39m
+[34m●[39m  Copying static files: [36mpublic[39m at
+[90m│[39m  [36m../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb[39m
+[90m│[39m  [43mVite[49m [36mvite v8.1.0 [32mbuilding client environment for production...[36m[39m
+[2Ktransforming...✓ 508 modules transformed.
+rendering chunks...
+computing gzip size...
+[90m│[39m  [43mVite[49m
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/iframe.html
+[90m│[39m  19.03 kB │ gzip:   5.30 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/iframe-DkSywQZI.css
+[90m│[39m  126.97 kB │ gzip:  20.10 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/react-CyVnxNJ4.js
+[90m│[39m  0.08 kB │ gzip:   0.10 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/chunk-242VQQM5-CBWsT91f.js
+[90m│[39m  0.22 kB │ gzip:   0.19 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/chunk-S2IHWCOG-BXVpv45N.js
+[90m│[39m  0.24 kB │ gzip:   0.17 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/formatter-L2YTDE3Q-CSoeTyE8.js
+[90m│[39m  0.27 kB │ gzip:   0.22 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/entity-link.stories-BW0euque.js
+[90m│[39m  1.32 kB │ gzip:   0.64 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/loading-spinner.stories-DZHYQaCo.js
+[90m│[39m  1.68 kB │ gzip:   0.80 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/fixtures-wBXeFbqb.js
+[90m│[39m  2.04 kB │ gzip:   1.02 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/preload-helper-BtWQueYT.js
+[90m│[39m  2.52 kB │ gzip:   1.31 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/lucide-react-DjktvPbx.js
+[90m│[39m  3.01 kB │ gzip:   1.52 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/entity-link-C-XjLygk.js
+[90m│[39m  3.25 kB │ gzip:   1.53 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/bracket-match-card.stories-Cf6rqpMn.js
+[90m│[39m  3.49 kB │ gzip:   1.40 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/chunk-3LY4VQVK-B-Tl6rqt.js
+[90m│[39m  4.04 kB │ gzip:   1.70 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/tv-match-card.stories-CwiMArg5.js
+[90m│[39m  6.72 kB │ gzip:   2.28 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/react-ByH6bCxA.js
+[90m│[39m  7.89 kB │ gzip:   3.03 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/standings-table.stories-DlD0aMB1.js
+[90m│[39m  8.64 kB │ gzip:   3.02 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/chunk-LITCR56V---VBXSwp.js
+[90m│[39m  21.96 kB │ gzip:   7.30 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/vite-inject-mocker-entry.js
+[90m│[39m  27.81 kB │ gzip:   9.63 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/matchers-JIUQ3HVY--Bh7OfyG.js
+[90m│[39m  28.76 kB │ gzip:   9.66 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/Color-KMSTOMOX-CJzTYZ6k.js
+[90m│[39m  30.97 kB │ gzip:  11.64 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/WithTooltip-7X4HQR7L-Chlu7u2R.js
+[90m│[39m  33.24 kB │ gzip:  11.67 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/match-row.stories-D90GT_i2.js
+[90m│[39m  40.82 kB │ gzip:  11.68 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/theming-BbYvq3M1.js
+[90m│[39m  55.35 kB │ gzip:  21.39 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/syntaxhighlighter-RTCFPKCB-WZtFt74j.js
+[90m│[39m  76.55 kB │ gzip:  27.56 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/DocsRenderer-JROSPFPF-CSiSkXFl.js
+[90m│[39m  184.72 kB │ gzip:  58.72 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/react-18-CELIMKXl.js
+[90m│[39m  204.29 kB │ gzip:  64.20 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/components-UVhSLCI0.js
+[90m│[39m  551.59 kB │ gzip: 175.38 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/axe-BcVEFAxe.js
+[90m│[39m  579.49 kB │ gzip: 158.46 kB
+[90m│[39m  ../../../../private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb/assets/iframe-DlgXR-hA.js
+[90m│[39m  1,540.69 kB │ gzip: 429.56 kB
+
+[90m│[39m
+[33m▲[39m  [43mVite[49m [33m[plugin builtin:vite-reporter]
+[90m│[39m  (!) Some chunks are larger than 500 kB after minification. Consider:
+[90m│[39m  - Using dynamic import() to code-split the application
+[90m│[39m  - Use build.rolldownOptions.output.codeSplitting to improve chunking:
+[90m│[39m  ]8;;https://rolldown.rs/reference/OutputOptions.codeSplittinghttps://rolldown.rs/reference/OutputOptions.codeSplitting]8;;
+[90m│[39m  - Adjust chunk size limit for this warning via
+[90m│[39m  build.chunkSizeWarningLimit.[39m
+[90m│[39m  [43mVite[49m [32m✓ built in 935ms[39m
+[90m│[39m
+[32m◇[39m  Output directory:
+[90m│[39m  /private/var/folders/31/mmzj1cb57mng2lv3cs2ydjx80000gn/T/chromatic--17008-n6wQDttOV4yb
+[90m│[39m
+[90m└[39m  Storybook build completed successfully
+

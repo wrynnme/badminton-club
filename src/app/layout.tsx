@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { cookies } from "next/headers";
 import { Anuphan, Chakra_Petch, Geist_Mono } from "next/font/google";
 import { Suspense } from "react";
@@ -8,7 +8,9 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ProgressProvider } from "@/components/providers/progress-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { BRAND_THEME_COLOR } from "@/lib/brand";
 import "./globals.css";
+import { cn } from "@/lib/utils";
 
 const anuphan = Anuphan({
   variable: "--font-sans",
@@ -31,8 +33,20 @@ const chakraPetch = Chakra_Petch({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://kuanbad.vercel.app"),
   title: "ก๊วนแบด",
   description: "หาก๊วนตีแบดง่ายๆ",
+  // icon.png / apple-icon.png / opengraph-image.png are auto-detected from src/app/.
+  openGraph: {
+    title: "ก๊วนแบด",
+    description: "หาก๊วนตีแบดง่ายๆ",
+    type: "website",
+  },
+};
+
+// Next 16: themeColor lives in the viewport export (not metadata). Navy = primary.
+export const viewport: Viewport = {
+  themeColor: BRAND_THEME_COLOR,
 };
 
 export default async function RootLayout({
@@ -46,7 +60,15 @@ export default async function RootLayout({
   return (
     <html
       lang={locale}
-      className={`${anuphan.variable} ${geistMono.variable} ${chakraPetch.variable} h-full antialiased${isDark ? " dark" : ""}`}
+      className={cn(
+        "h-full",
+        "antialiased",
+        anuphan.variable,
+        geistMono.variable,
+        chakraPetch.variable,
+        isDark ? " dark" : "",
+        "font-sans",
+      )}
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col bg-background overflow-x-clip">

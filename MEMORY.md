@@ -25,4 +25,7 @@ correct behavior ต้องเป็นคำสั่งที่ทำตา
 
 ## Log
 
-<!-- entry ใหม่อยู่บนสุด — ยังไม่มีรายการ ลบ comment นี้เมื่อเพิ่ม entry แรก -->
+### pkill กว้างเกินไปฆ่า process ที่ไม่เกี่ยว (2026-06-26)
+- **what**: user สั่ง "ปิด dev server" (แอปบน :3000). `kill $(lsof -ti tcp:3000)` ไม่ตายสนิท (next dev มี process tree + respawn) เลยใช้ `pkill -9 -f "next-server"` ซึ่ง match **ทุก** next-server → เผลอฆ่า claude-smart dashboard (PID 61147 บน :3001) ที่ไม่เกี่ยวไปด้วย
+- **root cause**: ใช้ name-pattern pkill ที่กว้าง ทั้งที่มีหลาย process ใช้ชื่อ binary เดียวกัน (`next-server`) — ไม่ได้จำกัดด้วย port/cwd/PID ที่เจาะจงเป้าหมาย
+- **correct**: ปิด process ตาม **เป้าที่เจาะจง** — kill ตาม PID ที่ฟัง port เป้าหมาย (`lsof -ti tcp:<port>`) หรือ stop background task ที่ harness จัดการ; ถ้าจำเป็นต้อง pattern-match ให้รวม cwd/พอร์ตเข้าไปด้วย (เช่น เช็ค `lsof` ของ PID ก่อนฆ่า) **ห้าม `pkill -f "<binary-name>"` ลอยๆ** เมื่อมี process ชื่อซ้ำกันหลายตัวในเครื่อง

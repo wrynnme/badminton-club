@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
+import { BrandLogo } from "@/components/brand-logo";
 import { getSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -16,7 +17,8 @@ export async function SiteHeader() {
     <header className="border-b">
       <div className="mx-auto max-w-5xl px-4 h-14 flex items-center justify-between">
         <Link href="/" className="font-bold text-lg flex items-center gap-2">
-          🏸 {t("brand")}
+          <BrandLogo className="h-7 w-auto" priority />
+          <span>{t("brand")}</span>
           <Badge variant="outline" className="text-xs font-mono font-normal hidden sm:inline-flex">
             v{process.env.NEXT_PUBLIC_APP_VERSION} ({process.env.NEXT_PUBLIC_GIT_COMMIT})
           </Badge>
