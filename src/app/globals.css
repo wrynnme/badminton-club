@@ -62,9 +62,8 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Base: green-tinted neutral · Theme: D2 "Court Energy" — court-green primary
-   (light oklch L0.52, dark L0.78) + vivid orange --brand for accents/glow only.
-   --accent stays a subtle neutral (shadcn hover/selected role) — NOT the brand orange. */
+/* Base: green-tinted neutral. Brand tokens: #00129F primary, #F18303 secondary.
+   --accent stays a subtle neutral (shadcn hover/selected role). */
 :root {
   --background: oklch(0.985 0.004 145);
   --foreground: oklch(0.18 0.02 150);
@@ -72,10 +71,10 @@
   --card-foreground: oklch(0.18 0.02 150);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.18 0.02 150);
-  --primary: oklch(0.42 0.18 264);
-  --primary-foreground: oklch(0.99 0.01 264);
-  --secondary: oklch(0.955 0.008 150);
-  --secondary-foreground: oklch(0.27 0.02 150);
+  --primary: #00129F;
+  --primary-foreground: #ffffff;
+  --secondary: #F18303;
+  --secondary-foreground: #111827;
   --muted: oklch(0.955 0.008 150);
   --muted-foreground: oklch(0.46 0.02 150);
   --accent: oklch(0.95 0.012 150);
@@ -83,21 +82,21 @@
   --destructive: oklch(0.55 0.22 27);
   --border: oklch(0.9 0.012 150);
   --input: oklch(0.9 0.012 150);
-  --ring: oklch(0.42 0.18 264);
-  --chart-1: oklch(0.42 0.18 264);
-  --chart-2: oklch(0.62 0.13 150);
-  --chart-3: oklch(0.7 0.1 150);
-  --chart-4: oklch(0.6 0.16 32);
+  --ring: #00129F;
+  --chart-1: #00129F;
+  --chart-2: oklch(0.55 0.14 264);
+  --chart-3: oklch(0.68 0.1 264);
+  --chart-4: #F18303;
   --chart-5: oklch(0.46 0.02 150);
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0.004 145);
   --sidebar-foreground: oklch(0.18 0.02 150);
-  --sidebar-primary: oklch(0.42 0.18 264);
-  --sidebar-primary-foreground: oklch(0.99 0.01 264);
+  --sidebar-primary: #00129F;
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: oklch(0.95 0.012 150);
   --sidebar-accent-foreground: oklch(0.27 0.02 150);
   --sidebar-border: oklch(0.9 0.012 150);
-  --sidebar-ring: oklch(0.42 0.18 264);
+  --sidebar-ring: #00129F;
 
   /* semantic — canonical status + result colors (theme-aware, no dark: needed at call sites) */
   --success: oklch(0.5 0.14 150);
@@ -108,7 +107,7 @@
      most-distinct green that stays in sRGB gamut + AA on card AND on the W-result pill
      (bg-winner/15 text-winner → 5.1:1). See result-display.ts. */
   --winner: oklch(0.47 0.15 142);
-  --brand: oklch(0.62 0.2 32);
+  --brand: #F18303;
 
   /* division palette (1 = top tier) — registered as colors so bg-div-N/14 etc. work */
   --div-1: oklch(0.5 0.18 150);
@@ -129,43 +128,43 @@
 }
 
 .dark {
-  --background: oklch(0.16 0.02 158);
-  --foreground: oklch(0.97 0.01 150);
-  --card: oklch(0.21 0.025 158);
-  --card-foreground: oklch(0.97 0.01 150);
-  --popover: oklch(0.21 0.025 158);
-  --popover-foreground: oklch(0.97 0.01 150);
-  --primary: oklch(0.70 0.15 264);
-  --primary-foreground: oklch(0.18 0.04 264);
-  --secondary: oklch(0.26 0.025 158);
-  --secondary-foreground: oklch(0.97 0.01 150);
-  --muted: oklch(0.26 0.025 158);
-  --muted-foreground: oklch(0.72 0.025 150);
-  --accent: oklch(0.28 0.03 158);
-  --accent-foreground: oklch(0.97 0.01 150);
+  --background: oklch(0.14 0.018 265);
+  --foreground: oklch(0.97 0.006 265);
+  --card: oklch(0.19 0.02 265);
+  --card-foreground: oklch(0.97 0.006 265);
+  --popover: oklch(0.19 0.02 265);
+  --popover-foreground: oklch(0.97 0.006 265);
+  --primary: #00129F;
+  --primary-foreground: #ffffff;
+  --secondary: #F18303;
+  --secondary-foreground: #111827;
+  --muted: oklch(0.25 0.018 265);
+  --muted-foreground: oklch(0.72 0.012 265);
+  --accent: oklch(0.28 0.022 265);
+  --accent-foreground: oklch(0.97 0.006 265);
   --destructive: oklch(0.7 0.19 25);
-  --border: oklch(0.34 0.03 158);
-  --input: oklch(0.34 0.03 158);
-  --ring: oklch(0.70 0.15 264);
-  --chart-1: oklch(0.70 0.15 264);
-  --chart-2: oklch(0.7 0.15 150);
-  --chart-3: oklch(0.64 0.1 150);
-  --chart-4: oklch(0.74 0.19 40);
-  --chart-5: oklch(0.72 0.025 150);
-  --sidebar: oklch(0.21 0.025 158);
-  --sidebar-foreground: oklch(0.97 0.01 150);
-  --sidebar-primary: oklch(0.70 0.15 264);
-  --sidebar-primary-foreground: oklch(0.18 0.04 264);
-  --sidebar-accent: oklch(0.28 0.03 158);
-  --sidebar-accent-foreground: oklch(0.97 0.01 150);
-  --sidebar-border: oklch(0.34 0.03 158);
-  --sidebar-ring: oklch(0.70 0.15 264);
+  --border: oklch(0.34 0.018 265);
+  --input: oklch(0.34 0.018 265);
+  --ring: #00129F;
+  --chart-1: #00129F;
+  --chart-2: oklch(0.62 0.14 264);
+  --chart-3: oklch(0.55 0.1 264);
+  --chart-4: #F18303;
+  --chart-5: oklch(0.72 0.012 265);
+  --sidebar: oklch(0.19 0.02 265);
+  --sidebar-foreground: oklch(0.97 0.006 265);
+  --sidebar-primary: #00129F;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: oklch(0.28 0.022 265);
+  --sidebar-accent-foreground: oklch(0.97 0.006 265);
+  --sidebar-border: oklch(0.34 0.018 265);
+  --sidebar-ring: #00129F;
 
   --success: oklch(0.78 0.2 148);
   --warning: oklch(0.8 0.16 80);
   --live: oklch(0.82 0.24 145);
   --winner: oklch(0.84 0.2 140);
-  --brand: oklch(0.74 0.19 40);
+  --brand: #F18303;
 
   --div-1: oklch(0.8 0.2 150);
   --div-2: oklch(0.76 0.15 232);
@@ -176,7 +175,7 @@
   --div-7: oklch(0.78 0.18 350);
   --div-8: oklch(0.76 0.14 275);
 
-  --shadow-color: 158 50% 2%;
+  --shadow-color: 265 50% 2%;
   --e-1: 0 1px 2px hsl(var(--shadow-color) / 0.3);
   --e-2: 0 2px 6px -1px hsl(var(--shadow-color) / 0.4), 0 1px 2px hsl(var(--shadow-color) / 0.3);
   --e-3: 0 8px 24px -6px hsl(var(--shadow-color) / 0.55), 0 2px 6px hsl(var(--shadow-color) / 0.4);
