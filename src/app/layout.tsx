@@ -23,9 +23,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Display font for headings / scoreboard numerals via the `font-heading`
-// utility (maps to --font-heading in globals.css @theme). Already applied to
-// CardTitle + DialogTitle; phase 2 extends it to scoreboard numerals.
+// Display font for scoreboard numerals via the `font-display` utility
+// (maps to --font-display in globals.css). Note: --font-heading was repointed
+// to --font-sans (Anuphan), so Chakra Petch now only drives font-display.
 const chakraPetch = Chakra_Petch({
   variable: "--font-chakra",
   subsets: ["thai", "latin"],
@@ -66,7 +66,7 @@ export default async function RootLayout({
         anuphan.variable,
         geistMono.variable,
         chakraPetch.variable,
-        isDark ? " dark" : "",
+        isDark && "dark",
         "font-sans",
       )}
       suppressHydrationWarning
