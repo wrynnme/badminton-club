@@ -213,6 +213,7 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
       ref={ref}
       style={{
         width: 360,
+        flexShrink: 0,
         fontFamily: "Anuphan, sans-serif",
         backgroundColor: "#ffffff",
         borderRadius: 16,
