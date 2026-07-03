@@ -198,7 +198,7 @@ export function ReceiptTemplateEditor({
         </CollapsibleTrigger>
 
         <CollapsibleContent>
-          <div className="grid gap-4 px-3 pb-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 px-3 pb-3 md:grid-cols-2">
             {/* ── Form ── */}
             <form
               className="space-y-4"
