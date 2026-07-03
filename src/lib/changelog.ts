@@ -22,6 +22,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.16.2",
+    date: "2026-07-04",
+    groups: [
+      {
+        type: "improved",
+        items: [
+          'โลโก้เว็บอัปเกรดเป็นไฟล์เวกเตอร์ (SVG) — คมชัดทุกขนาดจอ สีน้ำเงินสดขึ้นตรงกับธีมปัจจุบัน และโหลดเร็วขึ้น (ไฟล์เล็กลงกว่า 100 เท่า)',
+        ],
+      },
+    ],
+  },
+  {
     version: "0.16.1",
     date: "2026-07-03",
     groups: [
