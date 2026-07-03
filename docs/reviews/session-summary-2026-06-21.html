@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>สรุปงาน — ระบบยืนยันสลิปรายก๊วน + Deploy ขึ้นจริง</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1714; --card:#16211d; --card2:#1c2a25; --line:#2a3a33;
+    --ink:#e8f0ec; --muted:#9fb3aa; --dim:#71867d;
+    --green:#3ddc91; --green-dim:#1f7a55; --amber:#ffcb6b; --red:#ff7a85;
+    --blue:#7bc6ff; --pill:#22332c;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:'Anuphan',system-ui,sans-serif; background:var(--bg); color:var(--ink);
+    line-height:1.7; -webkit-font-smoothing:antialiased; padding:0 16px 80px;
+  }
+  .wrap{max-width:860px; margin:0 auto}
+  code,.mono{font-family:'JetBrains Mono',monospace; font-size:.86em}
+
+  /* header */
+  header{padding:56px 0 28px; border-bottom:1px solid var(--line); margin-bottom:36px}
+  .eyebrow{color:var(--green); font-weight:600; letter-spacing:.06em; font-size:.82rem; text-transform:uppercase}
+  h1{font-size:2.05rem; font-weight:700; line-height:1.25; margin:10px 0 14px; letter-spacing:-.01em}
+  .sub{color:var(--muted); font-size:1.05rem; max-width:64ch}
+  .meta{margin-top:18px; display:flex; gap:10px; flex-wrap:wrap; font-size:.85rem; color:var(--dim)}
+  .meta span{background:var(--card); border:1px solid var(--line); padding:4px 12px; border-radius:999px}
+
+  /* tldr */
+  .tldr{background:linear-gradient(135deg,var(--card2),var(--card)); border:1px solid var(--green-dim);
+    border-radius:16px; padding:22px 24px; margin-bottom:42px}
+  .tldr h2{font-size:.82rem; text-transform:uppercase; letter-spacing:.08em; color:var(--green); margin-bottom:8px}
+  .tldr p{font-size:1.06rem}
+
+  /* section */
+  section{margin-bottom:40px}
+  h2.sec{font-size:1.3rem; font-weight:700; margin-bottom:18px; display:flex; align-items:center; gap:10px}
+  h2.sec .n{display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px;
+    background:var(--pill); border:1px solid var(--green-dim); color:var(--green); border-radius:9px;
+    font-size:.95rem; font-weight:700; flex:none}
+
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px 22px; margin-bottom:14px}
+  .card h3{font-size:1.05rem; font-weight:600; margin-bottom:8px}
+  .card p{color:var(--muted); font-size:.98rem}
+  .card p + p{margin-top:8px}
+  ul{list-style:none; margin-top:10px}
+  ul li{position:relative; padding-left:24px; color:var(--muted); margin-bottom:7px; font-size:.97rem}
+  ul li::before{content:''; position:absolute; left:6px; top:.7em; width:6px; height:6px;
+    background:var(--green); border-radius:50%}
+  strong{color:var(--ink); font-weight:600}
+
+  .pill{display:inline-block; font-size:.78rem; font-weight:600; padding:2px 10px; border-radius:999px;
+    border:1px solid; vertical-align:middle}
+  .ok{color:var(--green); border-color:var(--green-dim); background:var(--pill)}
+  .warn{color:var(--amber); border-color:#6b5a2a; background:#2a2415}
+  .info{color:var(--blue); border-color:#2a4a66; background:#142532}
+
+  /* table */
+  table{width:100%; border-collapse:collapse; margin-top:6px; font-size:.95rem}
+  th,td{text-align:left; padding:11px 14px; border-bottom:1px solid var(--line)}
+  th{color:var(--dim); font-weight:600; font-size:.82rem; text-transform:uppercase; letter-spacing:.04em}
+  td:first-child{font-weight:500}
+  tr:last-child td{border-bottom:none}
+
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin-top:6px}
+  .stat{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px 18px; text-align:center}
+  .stat .v{font-size:1.5rem; font-weight:700; color:var(--green); font-family:'JetBrains Mono',monospace}
+  .stat .l{color:var(--dim); font-size:.82rem; margin-top:2px}
+
+  .callout{border-left:3px solid var(--amber); background:#211d12; border-radius:0 10px 10px 0;
+    padding:14px 18px; margin-top:10px}
+  .callout.blue{border-color:var(--blue); background:#13212c}
+  .callout h4{font-size:.95rem; margin-bottom:6px; color:var(--ink)}
+  .callout p, .callout li{font-size:.92rem; color:var(--muted)}
+
+  footer{margin-top:50px; padding-top:24px; border-top:1px solid var(--line); color:var(--dim); font-size:.85rem; text-align:center}
+  .sha{color:var(--green); background:var(--pill); padding:1px 7px; border-radius:6px; border:1px solid var(--green-dim)}
+  a{color:var(--blue); text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">สรุปงาน • ก๊วนแบด (kuanbad)</div>
+  <h1>ระบบยืนยันสลิปจ่ายเงินรายก๊วน<br>+ ขึ้น production จริง</h1>
+  <p class="sub">เพิ่มฟีเจอร์ให้แต่ละก๊วนเลือกได้เองว่าจะตรวจสลิปจ่ายเงินแบบไหน — ปิด 3 PR, ตรวจคุณภาพครบ, แล้ว deploy ขึ้นใช้งานจริง</p>
+  <div class="meta">
+    <span>📅 19–21 มิ.ย. 2026</span>
+    <span>🔀 PR #1, #2, #3 — merged ครบ</span>
+    <span>🚀 deploy: kuanbad.vercel.app</span>
+  </div>
+</header>
+
+<div class="tldr">
+  <h2>สรุปสั้นที่สุด</h2>
+  <p>เดิมระบบตรวจสลิปจ่ายเงินใช้ “คีย์กลาง” อันเดียวทั้งเว็บ — รอบนี้เปลี่ยนเป็น <strong>ตั้งค่าได้รายก๊วน</strong>: ก๊วนไหนอยากให้ตรวจสลิปอัตโนมัติก็ไปสมัครบริการ (SlipOK/EasySlip) มาเอง แล้วใส่กุญแจของตัวเอง ก๊วนที่ไม่อยากยุ่งก็ใช้แบบ “เจ้าของกดยืนยันเอง” (ค่าเริ่มต้น) งานนี้ผ่านการตรวจคุณภาพครบทุกด่าน ทดสอบบนเบราว์เซอร์จริง แล้ว <strong>ขึ้น production เรียบร้อย</strong> พร้อมงาน LINE auto-login (LIFF) ที่ค้างไว้ด้วย</p>
+</div>
+
+<!-- 1 -->
+<section>
+  <h2 class="sec"><span class="n">1</span> เก็บงานเดิมเข้าที่ก่อน</h2>
+  <div class="card">
+    <h3>Merge PR #1 (เก็บเงินก๊วนผ่าน LINE) <span class="pill ok">เสร็จ</span></h3>
+    <p>รวมงาน “บอท LINE ส่งบิล + รับสลิป + คิวให้เจ้าของยืนยัน” (Phase 1–3) เข้าสาย develop แล้วดันขึ้น master (production) — เป็นฐานให้งานใหม่ต่อยอด</p>
+  </div>
+</section>
+
+<!-- 2 -->
+<section>
+  <h2 class="sec"><span class="n">2</span> ฟีเจอร์ใหม่ — ตั้งค่ายืนยันสลิปรายก๊วน</h2>
+  <div class="card">
+    <h3>ทำไมต้องเปลี่ยน</h3>
+    <p>ของเดิมใช้กุญแจตรวจสลิปกลางตัวเดียว ซึ่งมักผูกกับ “บัญชีรับเงิน” บัญชีเดียว — แต่ละก๊วนรับเงินคนละพร้อมเพย์ การตรวจข้ามก๊วนเลยเชื่อถือไม่ได้ จึงเปลี่ยนให้ <strong>แต่ละก๊วนถือกุญแจของตัวเอง</strong></p>
+  </div>
+  <div class="card">
+    <h3>ใช้งานยังไง — 2 โหมดต่อก๊วน</h3>
+    <ul>
+      <li><strong>ยืนยันเอง (ค่าเริ่มต้นทุกก๊วน)</strong> — ผู้เล่นส่งสลิป → เข้าคิวให้เจ้าของก๊วนกดยืนยันเอง ฟรี ไม่ต้องตั้งอะไร</li>
+      <li><strong>ใช้กุญแจของก๊วนเอง (BYOK)</strong> — ก๊วนสมัคร SlipOK หรือ EasySlip แล้วใส่กุญแจ → ระบบตรวจสลิป + ยืนยันให้อัตโนมัติ</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>ความปลอดภัยของกุญแจ <span class="pill ok">ตรวจแล้ว</span></h3>
+    <ul>
+      <li>กุญแจเก็บใน <strong>ตารางแยกเฉพาะ</strong> ที่ฝั่งผู้ใช้เข้าไม่ถึง — ไม่เคยถูกส่งไปหน้าเว็บ ไม่ถูกบันทึกใน log</li>
+      <li>หน้าตั้งค่าโชว์กุญแจเป็น <span class="mono">••••••••</span> เท่านั้น (รู้แค่ว่า “ตั้งแล้ว”) จะเปลี่ยนต้องพิมพ์ใหม่</li>
+      <li>เปลี่ยนกลับเป็นโหมดยืนยันเอง → กุญแจถูกลบทิ้งทันที ไม่เก็บค้าง</li>
+    </ul>
+  </div>
+  <div class="callout blue">
+    <h4>เบื้องหลังที่ลงมือทำ</h4>
+    <p>เพิ่มคอลัมน์ตั้งค่า + ตารางเก็บกุญแจในฐานข้อมูล, แก้ตัวตรวจสลิปให้รับค่ารายก๊วนแทนอ่านจาก env กลาง, แก้ webhook ให้เลือกโหมดตามก๊วน, ทำหน้าตั้งค่า (เมนูเลือกโหมด + ฟอร์มกรอกกุญแจ) พร้อมรองรับ 2 ภาษา (ไทย/อังกฤษ) — แบ่งงานให้ทีม agent ทำขนานกัน</p>
+  </div>
+</section>
+
+<!-- 3 -->
+<section>
+  <h2 class="sec"><span class="n">3</span> ตรวจคุณภาพก่อนปล่อย (ship-check)</h2>
+  <div class="card">
+    <h3>หาบั๊ก → แก้ → ทำให้สะอาด → ทดสอบจริง</h3>
+    <ul>
+      <li><strong>เจอจุดสำคัญ 1 จุด</strong> — ถ้าผู้เล่นมีบิลค้างหลายก๊วนพร้อมกัน สลิปอาจถูกยืนยันผิดก๊วน → <strong>แก้แล้ว</strong> (บังคับเข้าโหมดยืนยันเองเมื่อมีหลายก๊วน ไม่ตัดสินเองให้พลาด)</li>
+      <li><strong>กันความผิดพลาด</strong> — เพิ่มเงื่อนไขชื่อผู้รับต้องยาวพอ กันสลิปผิดบัญชีหลุดผ่าน</li>
+      <li><strong>เก็บความเรียบร้อย</strong> — ปรับปุ่ม/ข้อความให้ตรงมาตรฐานโปรเจกต์ + ลดการอ่านฐานข้อมูลซ้ำซ้อนในการบันทึกค่า</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3>ทดสอบบนเบราว์เซอร์จริง <span class="pill ok">ผ่าน</span></h3>
+    <p>จำลองเจ้าของก๊วนเข้าหน้าตั้งค่าจริง → เลือกโหมดใช้กุญแจเอง + ใส่กุญแจ → บันทึก → ตรวจฐานข้อมูลว่าเก็บถูก → สลับกลับโหมดยืนยันเอง → กุญแจถูกลบ → <strong>ไม่มี error</strong> และ <strong>ลบข้อมูลทดสอบออกหมด ไม่เหลือค้างใน production</strong></p>
+  </div>
+</section>
+
+<!-- 4 -->
+<section>
+  <h2 class="sec"><span class="n">4</span> แก้ปัญหา CI ตอนจะรวมโค้ด</h2>
+  <div class="card">
+    <h3>ระบบตรวจอัตโนมัติขึ้นแดง — แต่ไม่ใช่ความผิดของฟีเจอร์</h3>
+    <p>ตอนจะรวมโค้ด ระบบ CI ติดที่ขั้นติดตั้งไลบรารี เพราะไฟล์ล็อกเวอร์ชัน (lockfile) เพี้ยนจากการที่งาน LINE auto-login รวมเข้า develop ก่อนหน้า — แก้ด้วยการดึง develop ล่าสุดมารวม + สร้างไฟล์ล็อกใหม่ให้ครบ → <strong>CI กลับมาเขียว</strong></p>
+  </div>
+</section>
+
+<!-- 5 -->
+<section>
+  <h2 class="sec"><span class="n">5</span> ปิด PR + ขึ้น production</h2>
+  <div class="card">
+    <table>
+      <tr><th>รายการ</th><th>สถานะ</th></tr>
+      <tr><td>PR #1 — เก็บเงินก๊วนผ่าน LINE</td><td><span class="pill ok">merged</span></td></tr>
+      <tr><td>PR #2 — LINE auto-login (LIFF)</td><td><span class="pill ok">merged</span></td></tr>
+      <tr><td>PR #3 — ยืนยันสลิปรายก๊วน</td><td><span class="pill ok">merged</span></td></tr>
+      <tr><td>develop → master (production)</td><td><span class="pill ok">deployed</span></td></tr>
+      <tr><td>ฐานข้อมูล production (เพิ่มตาราง/คอลัมน์)</td><td><span class="pill ok">อัปเดตแล้ว</span></td></tr>
+    </table>
+    <p style="margin-top:12px">ทุกสาย (develop / master ทั้ง local และ remote) ตรงกันที่ <span class="sha">e73157e</span> · ลบ branch ที่ใช้เสร็จแล้วทิ้งเรียบร้อย</p>
+  </div>
+</section>
+
+<!-- 6 -->
+<section>
+  <h2 class="sec"><span class="n">6</span> ตั้งค่า Vercel + redeploy</h2>
+  <div class="card">
+    <table>
+      <tr><th>ค่าที่ตั้ง (Production)</th><th>สถานะ</th></tr>
+      <tr><td><code>NEXT_PUBLIC_LIFF_ID</code> (เปิด LINE auto-login)</td><td><span class="pill ok">เพิ่มแล้ว</span></td></tr>
+      <tr><td><code>LINE_MESSAGING_CHANNEL_SECRET</code> (รับสลิปในแชต)</td><td><span class="pill ok">มีอยู่แล้ว</span></td></tr>
+    </table>
+    <p style="margin-top:12px">เนื่องจากค่า LIFF ต้องฝังตอน build ใหม่ จึง <strong>สั่ง redeploy production</strong> ให้รับค่าใหม่ → LINE auto-login จะทำงานหลัง deploy รอบนี้ขึ้น (โดเมน <a href="https://kuanbad.vercel.app">kuanbad.vercel.app</a>)</p>
+  </div>
+</section>
+
+<!-- gates -->
+<section>
+  <h2 class="sec"><span class="n">✓</span> ผลตรวจรวม</h2>
+  <div class="grid">
+    <div class="stat"><div class="v">0</div><div class="l">type error</div></div>
+    <div class="stat"><div class="v">695</div><div class="l">unit test ผ่าน</div></div>
+    <div class="stat"><div class="v">✓</div><div class="l">build + CI เขียว</div></div>
+    <div class="stat"><div class="v">✓</div><div class="l">ทดสอบเบราว์เซอร์</div></div>
+  </div>
+</section>
+
+<!-- remaining -->
+<section>
+  <h2 class="sec"><span class="n">!</span> เหลือทำนอกโค้ด (ฝั่ง LINE Console)</h2>
+  <div class="callout">
+    <h4>ให้ครบวงจร ต้องตั้งค่าใน LINE เพิ่ม</h4>
+    <ul>
+      <li><strong>รับสลิปในแชตอัตโนมัติ</strong> — เปิด webhook URL ใน LINE ชี้มา <code>kuanbad.vercel.app/api/line/webhook</code> + ให้ผู้เล่นแอดบอทเป็นเพื่อน</li>
+      <li><strong>LINE auto-login</strong> — สร้าง/ตรวจ LIFF app ให้ endpoint ชี้มาโดเมน production</li>
+      <li><strong>ตรวจสลิปอัตโนมัติ (BYOK)</strong> — แต่ละก๊วนสมัคร SlipOK/EasySlip เอง แล้วใส่กุญแจในหน้าตั้งค่าก๊วน</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  สร้างโดย Claude Code · ก๊วนแบด (kuanbad) · production @ <span class="sha">e73157e</span>
+</footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,208 @@
+[00:38:52.522] [INFO] This command is running via an AI agent: claude-code_2-1-193_agent. Proceeding with agentic installation flow.
+[00:38:54.288] [INFO] Initializing Storybook
+[00:38:54.292] [DEBUG] Getting package.json info for /Users/x/Documents/badminton-club/package.json...
+[00:38:54.292] [INFO] Package manager: npm
+[00:38:54.293] [DEBUG] Getting CLI versions from NPM for storybook...
+[00:38:54.293] [DEBUG] Executing command: npm info storybook version
+[00:38:54.882] [INFO] Adding Storybook version 10.4.6 to your project
+[00:38:54.883] [DEBUG] Executing command: npm config get min-release-age --workspaces=false --include-workspace-root
+[00:38:54.996] [DEBUG] Using cached package.json for /Users/x/Documents/badminton-club/package.json...
+[00:38:54.996] [DEBUG] Project type detected: nextjs
+[00:38:54.997] [DEBUG] Using cached package.json for /Users/x/Documents/badminton-club/package.json...
+[00:38:55.001] [INFO] Framework detected: nextjs-vite
+[00:38:55.002] [DEBUG] Getting installed version for vitest...
+[00:38:55.002] [DEBUG] Executing command: npm ls --json --depth=99 2>/dev/null
+[00:38:55.560] [DEBUG] Executing command: npm ls --json --depth=0 2>/dev/null
+[00:38:55.957] [DEBUG] Error finding installations for vitest: ExecaError: Command failed with exit code 1: npm ls --json '--depth=0' '2>/dev/null'
+
+{
+  "version": "0.16.0",
+  "name": "badminton-club"
+}
+[00:38:55.957] [DEBUG] No installations found for vitest
+[00:38:55.957] [DEBUG] Getting installed version for msw...
+[00:38:55.957] [DEBUG] Executing command: npm ls --json --depth=99 2>/dev/null
+[00:38:56.490] [DEBUG] Executing command: npm ls --json --depth=0 2>/dev/null
+[00:38:56.916] [DEBUG] Error finding installations for msw: ExecaError: Command failed with exit code 1: npm ls --json '--depth=0' '2>/dev/null'
+
+{
+  "version": "0.16.0",
+  "name": "badminton-club"
+}
+[00:38:56.916] [DEBUG] No installations found for msw
+[00:38:56.929] [INFO] Storybook collects completely anonymous usage telemetry. We use it to shape Storybook's roadmap and prioritize features. You can learn more, including how to opt out, at https://storybook.js.org/telemetry
+[00:38:57.703] [DEBUG] Using cached package.json for /Users/x/Documents/badminton-club/package.json...
+[00:38:57.703] [DEBUG] Using cached package.json for /Users/x/Documents/badminton-club/package.json...
+[00:38:57.703] [DEBUG] Using cached package.json for /Users/x/Documents/badminton-club/package.json...
+[00:38:57.704] [DEBUG] Using cached version for storybook...
+[00:38:57.704] [DEBUG] Getting CLI versions from NPM for @storybook/nextjs-vite...
+[00:38:57.704] [DEBUG] Executing command: npm info @storybook/nextjs-vite version
+[00:38:57.710] [DEBUG] Getting CLI versions from NPM for @chromatic-com/storybook...
+[00:38:57.710] [DEBUG] Executing command: npm info @chromatic-com/storybook version
+[00:38:57.714] [DEBUG] Getting CLI versions from NPM for @storybook/addon-vitest...
+[00:38:57.714] [DEBUG] Executing command: npm info @storybook/addon-vitest version
+[00:38:57.719] [DEBUG] Getting CLI versions from NPM for @storybook/addon-a11y...
+[00:38:57.719] [DEBUG] Executing command: npm info @storybook/addon-a11y version
+[00:38:57.721] [DEBUG] Getting CLI versions from NPM for @storybook/addon-docs...
+[00:38:57.721] [DEBUG] Executing command: npm info @storybook/addon-docs version
+[00:38:57.724] [DEBUG] Getting CLI versions from NPM for @storybook/addon-mcp...
+[00:38:57.724] [DEBUG] Executing command: npm info @storybook/addon-mcp version
+[00:38:57.731] [DEBUG] Getting CLI versions from NPM for vite...
+[00:38:57.731] [DEBUG] Executing command: npm info vite version
+[00:38:59.888] [INFO] - Configuring main.ts
+[00:38:59.889] [INFO] - Configuring preview.ts
+[00:38:59.890] [INFO] - Adding Storybook command to package.json
+[00:38:59.890] [DEBUG] Getting package.json info for /Users/x/Documents/badminton-club/package.json...
+[00:38:59.890] [DEBUG] Using cached package.json for /Users/x/Documents/badminton-club/package.json...
+[00:38:59.890] [DEBUG] Using cached package.json for /Users/x/Documents/badminton-club/package.json...
+[00:38:59.890] [INFO] - Copying framework templates
+[00:38:59.903] [DEBUG] Executing command: npm config get registry --workspaces=false --include-workspace-root
+[00:39:00.540] [INFO] Storybook configuration generated
+[00:39:00.540] [DEBUG] Using cached package.json for /Users/x/Documents/badminton-club/package.json...
+[00:39:00.540] [DEBUG] Using cached installed version for vitest...
+[00:39:00.541] [DEBUG] Getting installed version for @vitest/coverage-v8...
+[00:39:00.541] [DEBUG] Executing command: npm ls --json --depth=99 2>/dev/null
+[00:39:01.044] [DEBUG] Executing command: npm ls --json --depth=0 2>/dev/null
+[00:39:01.513] [DEBUG] Error finding installations for @vitest/coverage-v8: ExecaError: Command failed with exit code 1: npm ls --json '--depth=0' '2>/dev/null'
+
+{
+  "version": "0.16.0",
+  "name": "badminton-club"
+}
+[00:39:01.513] [DEBUG] No installations found for @vitest/coverage-v8
+[00:39:01.513] [DEBUG] Getting installed version for @vitest/coverage-istanbul...
+[00:39:01.513] [DEBUG] Executing command: npm ls --json --depth=99 2>/dev/null
+[00:39:02.010] [DEBUG] Executing command: npm ls --json --depth=0 2>/dev/null
+[00:39:02.495] [DEBUG] Error finding installations for @vitest/coverage-istanbul: ExecaError: Command failed with exit code 1: npm ls --json '--depth=0' '2>/dev/null'
+
+{
+  "version": "0.16.0",
+  "name": "badminton-club"
+}
+[00:39:02.495] [DEBUG] No installations found for @vitest/coverage-istanbul
+[00:39:02.496] [INFO] Adding devDependencies:
+- storybook@^10.4.6
+- @storybook/nextjs-vite@^10.4.6
+- @chromatic-com/storybook@^5.2.1
+- @storybook/addon-vitest@^10.4.6
+- @storybook/addon-a11y@^10.4.6
+- @storybook/addon-docs@^10.4.6
+- @storybook/addon-mcp@^0.6.0
+- vite@^8.1.0
+- playwright
+- @vitest/browser-playwright@^4.1.7
+- @vitest/coverage-v8@^4.1.7
+[00:39:02.497] [DEBUG] Using cached package.json for /Users/x/Documents/badminton-club/package.json...
+[00:39:02.497] [DEBUG] Using cached version for storybook...
+[00:39:02.497] [DEBUG] Using cached version for @storybook/nextjs-vite...
+[00:39:02.497] [DEBUG] Using cached version for @chromatic-com/storybook...
+[00:39:02.497] [DEBUG] Using cached version for @storybook/addon-vitest...
+[00:39:02.497] [DEBUG] Using cached version for @storybook/addon-a11y...
+[00:39:02.497] [DEBUG] Using cached version for @storybook/addon-docs...
+[00:39:02.497] [DEBUG] Using cached version for @storybook/addon-mcp...
+[00:39:02.497] [DEBUG] Using cached version for vite...
+[00:39:02.497] [DEBUG] Getting CLI versions from NPM for playwright...
+[00:39:02.497] [DEBUG] Executing command: npm info playwright version
+[00:39:03.672] [DEBUG] Getting CLI versions from NPM for @vitest/browser-playwright...
+[00:39:03.672] [DEBUG] Executing command: npm info @vitest/browser-playwright version
+[00:39:04.133] [DEBUG] Getting CLI versions from NPM for @vitest/coverage-v8...
+[00:39:04.133] [DEBUG] Executing command: npm info @vitest/coverage-v8 version
+[00:39:04.548] [DEBUG] Using cached package.json for /Users/x/Documents/badminton-club/package.json...
+[00:39:04.548] [INFO] Dependencies added to package.json
+[00:39:04.548] [INFO] Installing dependencies...
+[00:39:04.548] [INFO] Installing dependencies...
+[00:39:04.548] [DEBUG] Executing command: npm install
+[00:39:23.004] [INFO] Installing dependencies...: 
+added 118 packages, changed 6 packages, and audited 786 packages in 18s
+
+[00:39:23.004] [INFO] Installing dependencies...: added 118 packages, chang
+[00:39:23.005] [INFO] Installing dependencies...: 
+186 packages are looking for funding
+  run `npm fund` for details
+
+[00:39:23.005] [INFO] Installing dependencies...: 186 packages are looking 
+[00:39:23.029] [INFO] Installing dependencies...: 
+2 moderate severity vulnerabilities
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+
+[00:39:23.029] [INFO] Installing dependencies...: 2 moderate severity vulne
+[00:39:23.049] [INFO] Dependencies installed
+[00:39:23.049] [INFO] Dependencies installed
+[00:39:23.051] [INFO] Configuring @chromatic-com/storybook...
+[00:39:23.052] [INFO] @chromatic-com/storybook configured
+
+[00:39:23.052] [INFO] Configuring @storybook/addon-vitest...
+[00:39:23.052] [DEBUG] Using cached package.json for /Users/x/Documents/badminton-club/package.json...
+[00:39:23.052] [DEBUG] Getting installed version for vitest...
+[00:39:23.052] [DEBUG] Executing command: npm ls --json --depth=99 2>/dev/null
+[00:39:23.700] [DEBUG] Executing command: npm ls --json --depth=0 2>/dev/null
+[00:39:24.060] [DEBUG] Error finding installations for vitest: ExecaError: Command failed with exit code 1: npm ls --json '--depth=0' '2>/dev/null'
+
+{
+  "version": "0.16.0",
+  "name": "badminton-club"
+}
+[00:39:24.060] [DEBUG] No installations found for vitest
+[00:39:24.060] [DEBUG] Vitest version specifier: 4.1.7
+[00:39:24.168] [DEBUG] Using cached installed version for vitest...
+[00:39:24.168] [DEBUG] Getting installed version for msw...
+[00:39:24.168] [DEBUG] Executing command: npm ls --json --depth=99 2>/dev/null
+[00:39:24.671] [DEBUG] Executing command: npm ls --json --depth=0 2>/dev/null
+[00:39:25.013] [DEBUG] Error finding installations for msw: ExecaError: Command failed with exit code 1: npm ls --json '--depth=0' '2>/dev/null'
+
+{
+  "version": "0.16.0",
+  "name": "badminton-club"
+}
+[00:39:25.013] [DEBUG] No installations found for msw
+[00:39:25.025] [INFO] Updating your Vitest config file:
+[00:39:25.025] [INFO]   /Users/x/Documents/badminton-club/vitest.config.ts
+[00:39:25.031] [INFO] Setting up a11y addon for @storybook/addon-vitest
+[00:39:25.031] [INFO] Setting up a11y addon for @storybook/addon-vitest
+[00:39:25.032] [DEBUG] Executing command: npx storybook@10.4.6 automigrate addon-a11y-addon-test --loglevel silent --yes --skip-doctor --package-manager npm --skip-install
+[00:39:35.701] [INFO] a11y addon setup successfully
+[00:39:35.701] [INFO] a11y addon setup successfully
+[00:39:35.701] [INFO] @storybook/addon-vitest setup completed successfully
+[00:39:35.702] [INFO] @storybook/addon-vitest is now configured and you're ready to run your tests!
+Here are a couple of tips to get you started:
+
+• You can run tests with "npx vitest --project=storybook"
+• Vitest IDE extension shows all stories as tests in your editor!
+
+Check the documentation for more information about its features and options at:
+https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
+[00:39:35.705] [INFO] @storybook/addon-vitest configured
+
+[00:39:35.706] [INFO] Configuring @storybook/addon-a11y...
+[00:39:35.706] [DEBUG] Executing command: npx storybook@10.4.6 automigrate addon-a11y-addon-test --loglevel silent --skip-doctor --yes --package-manager npm --config-dir .storybook
+[00:39:40.079] [INFO] @storybook/addon-a11y configured
+
+[00:39:40.080] [INFO] Configuring @storybook/addon-docs...
+[00:39:40.081] [INFO] @storybook/addon-docs configured
+
+[00:39:40.081] [INFO] Configuring @storybook/addon-mcp...
+[00:39:40.082] [INFO] @storybook/addon-mcp configured
+
+[00:39:40.082] [INFO] Addons configured successfully
+[00:39:40.082] [INFO] ✅ @chromatic-com/storybook
+[00:39:40.082] [INFO] ✅ @storybook/addon-vitest
+[00:39:40.082] [INFO] ✅ @storybook/addon-a11y
+[00:39:40.082] [INFO] ✅ @storybook/addon-docs
+[00:39:40.082] [INFO] ✅ @storybook/addon-mcp
+[00:39:40.082] [INFO] Installing Playwright browser binaries (press "c" to abort)
+[00:39:40.082] [INFO] Installing Playwright browser binaries (press "c" to abort)
+[00:39:40.083] [DEBUG] Executing command: npx playwright install chromium --with-deps
+[00:39:40.884] [INFO] Playwright browser binaries installed successfully
+[00:39:40.884] [INFO] Playwright browser binaries installed successfully
+[00:39:42.178] [INFO] [38;2;255;71;133mStorybook is installed but is not entirely set up yet.
+To finish setting up, now run `npx storybook ai setup` and follow its instructions precisely.[39m
+[00:39:42.180] [INFO] To run Storybook, run npm run storybook. CTRL+C to stop.
+[00:39:42.181] [INFO] Official documentation reference: https://storybook.js.org/llms.txt
+[00:39:42.181] [INFO] To finalize setting up with AI, paste this prompt to your AI agent:
+
+[38;2;255;71;133mRun `npx storybook ai setup` and follow its instructions precisely.[39m
+[00:39:42.689] [INFO] 

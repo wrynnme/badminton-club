@@ -10,6 +10,17 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-03 — ship-check PR#7 (deps safe batch, ff03a07) — ✅ clean
+
+Dependency-only PR (ไม่มี app code diff) — bump 7 แพ็กเกจ: `@types/node` 20→22.20.0 (major, dev) · `lucide-react` 1.14→1.22 · `react-hook-form` 7.75→7.80 · `tailwindcss`+`@tailwindcss/postcss` 4→4.3.2 · `@line/liff` 2.29.0→2.29.1 · `@playwright/test` 1.61.0→1.61.1.
+- **Gate:** tsc 0 · vitest 760/760 · `next build` OK (BUILD_ID `WXM94uvuwaOoz7GuNiGA-`) · node_modules verified in-sync กับ lockfile ใหม่ (installed versions ตรง range ไม่ stale) · lockfile healthy (react/react-dom/next single-version, ไม่มี invalid/UNMET; มีแค่ `@emnapi`/`@napi-rs` WASM optional-deps extraneous ปกติ).
+- **Review:** ไม่มี app-code = ไม่มี logic finding; bump ทุกตัว semver-safe, major `@types/node` คุ้มด้วย tsc 0. simplify ข้าม (ไม่มีโค้ดแอป).
+- **Live browser smoke PASS (net-zero, public):** home (login card ฝัง) render — logo + navy #1447E6 primary + lucide icons + tailwind 4.3.2 CSS + `@line/liff` 2.29.1 init ครบ runtime · console 0 error (1 warning LIFF-endpoint บน localhost = คาดไว้).
+
+### 2026-07-01 — Codex verification after rules/font-token cleanup
+
+- Clean run: `npm run typecheck` passed; locale key parity across `messages/th` and `messages/en` passed; `npm run build` passed after rerun with network access for `next/font` Google Fonts fetch. No new bugs found.
+
 ### 2026-06-26 — ก๊วน: ธีมสีใบเสร็จ (#11 v2) — ✅ DONE (v0.16.0, develop)
 
 ต่อยอด v1: เจ้าของเลือกธีมสีใบเสร็จได้ 6 สี (palette). picker swatch ใน `receipt-template-editor.tsx` + wire `resolveReceiptTheme` เข้า header band + total ของ `SlipCard` และ total ของ on-screen `PlayerReceipt`. ลบ 2 รายการ stale ใน spec ด้วย (M4 drop `team_players.level` verified ผ่าน DB · guest rate-limit MOOT หลังถอด guest signup).
