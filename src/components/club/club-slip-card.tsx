@@ -214,6 +214,7 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
       style={{
         width: 360,
         flexShrink: 0,
+        marginInline: "auto",
         fontFamily: "Anuphan, sans-serif",
         backgroundColor: "#ffffff",
         borderRadius: 16,
@@ -566,8 +567,12 @@ export function SlipDialog({
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
-        {/* Preview — centred, horizontally scrollable on very small screens */}
-        <div className="flex justify-center overflow-x-auto py-2">
+        {/* Preview — centred via the card's mx-auto, horizontally scrollable on
+            very small screens. No justify-center here: on an overflowing flex
+            scroll container it pushes half the overflow past the unreachable
+            start edge (scrollLeft can't go below 0), clipping the slip's left
+            side. Auto margins collapse to 0 on overflow, keeping edges reachable. */}
+        <div className="flex overflow-x-auto py-2">
           <SlipCard
             ref={cardRef}
             club={club}
