@@ -54,7 +54,7 @@ export function TournamentLiveWrapper({
   return (
     <>
       {live && (
-        <div className="fixed top-3 right-3 z-50">
+        <div className="hidden sm:block fixed top-3 right-3 z-50">
           <Badge variant="default" className="text-xs gap-1.5 bg-green-600 hover:bg-green-600">
             <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
             LIVE

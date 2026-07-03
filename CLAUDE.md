@@ -6,9 +6,9 @@
 
 ## Rules
 
-Universal agent rules — envelope, hard prohibitions, human-in-the-loop gates (7 gates), handoff contract, observability, security, anti-hallucination, loop prevention, cost discipline, testing/deployment — ถูกโหลด auto จาก `@.claude/agent-operating-rules.md`.
+Shared repo rules live in `@AGENTS.md`. Universal Claude-agent mechanics — JSON envelope, gates, handoff contract, observability, security, anti-hallucination, loop prevention, cost discipline, testing/deployment — are loaded from `@.claude/agent-operating-rules.md`.
 
-กฎด้านล่างคือ **project-specific** ที่ extend universal rules. ถ้าขัดแย้ง: project-specific ชนะ universal ในขอบเขต project นี้.
+This file now contains Claude Code-specific delegation rules plus deep project context. Do not duplicate shared workflow/security/i18n/component rules here; update `AGENTS.md` instead.
 
 ## Delegation Rules (Claude Code)
 
@@ -51,54 +51,9 @@ Subagent has no conversation history. Prompt must be self-contained: goal, file 
 
 Trust but verify. Read the actual diff/changes before reporting done. Subagent summary describes intent, not result.
 
-## Project-specific overrides
+## Shared project rules
 
-- **Destructive DB**: ห้าม `DROP` / `DELETE without WHERE` ทุกกรณี เว้นมี explicit user approval (ไม่ใช่แค่ Gate 4 acknowledgment — ต้อง user พิมพ์ยืนยันใน conversation)
-- **Deploy**: production deploy ต้อง QA + Security sign-off (Gate 3 บังคับ)
-- **No fabrication**: ห้ามแต่ง file paths / function names / library versions — verify ผ่าน `Read` / `grep` / `Explore` ก่อน
-- **Fail fast**: error ไม่ครบ input → return `needs_clarification` ห้าม guess (Universal rule A1.3 บังคับอยู่แล้ว — ย้ำไว้)
-- **spec.md update**: หลังทำเสร็จทุก task ต้อง update `spec.md` (ดู `## After completing any task`)
-
-## Reversibility, dissent & learning (extends `@.claude/agent-operating-rules.md`)
-
-กฎชุดนี้ **เสริม** universal rules — เติมเฉพาะที่ยังไม่ระบุชัด ไม่ทับของเดิม.
-
-### R0 / R1 / R2 — classify by reversibility before acting
-
-ใช้คู่กับ Gates (Section B). ก่อนลงมือ จัดระดับว่าย้อนกลับได้แค่ไหน แล้วเลือกว่าจะถามหรือทำเลย:
-
-- **R0 (irreversible)** — STOP, ขอ user ยืนยันก่อน. ครอบ Gate 3 (prod deploy) + Gate 4 (DROP / DELETE without WHERE / force-push) + override "Destructive DB".
-- **R1 (costly to reverse)** — ทำได้ แต่บอกก่อนว่าจะทำอะไรและทำไม (เช่น schema migration, rename ข้าม module, แก้ data contract ใน `spec.md`).
-- **R2 (easily reversed)** — ทำเลย ไม่ต้องขอ (เช่น single-file edit ≤30 บรรทัด, แก้ copy/label, เพิ่ม test). **ห้ามถาม permission กับงาน R2** — ทำแล้วค่อยรายงาน.
-
-### DISSENT — argue before you commit
-
-ก่อน major change (R0/R1) ต้อง surface ความกังวลก่อน อย่าทำตามโมเมนตัม:
-
-- **Blast radius** ถ้าพังคืออะไร? (กระทบ prod `kuanbad.vercel.app` / ข้อมูลผู้เล่น / LINE flow / live tournament?)
-- **สมมติฐาน** ที่เรากำลังตั้งคืออะไร?
-- **Reversibility path** คืออะไร? (R0/R1/R2)
-- เรามองข้ามอะไรไปเพราะรีบทำ?
-
-### SCOPE DRIFT — flag scope creep
-
-Track stated goal vs actual execution. แจ้งเตือน (ไม่ทำเงียบๆ) เมื่อ:
-
-- "อีกนิดเดียว" สะสมไปเรื่อยๆ
-- nice-to-have ถูกปฏิบัติเหมือน must-have
-- โจทย์คือ "แก้บั๊ก X" แต่กลายเป็น "refactor ทั้งโมดูล"
-
-เชื่อมกับ A1 "STAY IN YOUR LANE" — เกินขอบเขต → flag + ถาม.
-
-### LEARNING CAPTURE — log AI's own failures to `MEMORY.md`
-
-เมื่อเจอ pattern failure / operational mistake **ของตัว agent เอง** (ไม่ใช่บั๊กของโค้ด — บั๊กโค้ดไป `bug.md`):
-
-1. Log ลง `MEMORY.md`
-2. 3 ฟิลด์: **what happened / root cause / correct behavior**
-3. correct behavior ต้องเป็น "คำสั่งที่ทำตามได้" ไม่ใช่ความรู้สึก
-
-ตัวอย่าง trigger: ถาม permission กับ edit ที่เป็น R2 · บอก "done" โดยไม่ได้รัน `npm run typecheck` / build · เดา file path · wire write side ของ pipeline แต่ลืม read side.
+Use `@AGENTS.md` for security, reversibility gates, scope drift, learning capture, project workflow, verification, i18n, component conventions, deployment, and data rules.
 
 ---
 
@@ -109,74 +64,9 @@ Track stated goal vs actual execution. แจ้งเตือน (ไม่ท
 - Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1
 - Supabase (Postgres + RLS) — MCP connected via `.mcp.json`
 - Auth: LINE Login only (HMAC-signed `bc_session` cookie, no Supabase Auth). Guest signup removed v0.14.0 (2026-06-24) — `isGuest` field + gates kept for legacy cookies; viewers use public links, owners add guest *players* to rosters.
-- i18n: `next-intl` 4.x, cookie-based TH/EN (no URL routing) — see `## Internationalization (i18n)`
+- i18n: `next-intl` 4.x, cookie-based TH/EN (no URL routing) — shared rules live in `@AGENTS.md`
 - Font: Google Font Anuphan (`thai` + `latin` subsets)
 - Navigation progress bar: `@bprogress/next` 3.x (3px top bar, `var(--primary)`, no spinner)
-
-## After completing any task
-
-1. Update `spec.md` — current state, decisions made, what's next
-2. Update data contracts if any interface changed
-3. Never claim "done" without updating `spec.md` first
-4. **User-facing change?** (ฟีเจอร์ใหม่ / แก้บั๊กที่ผู้ใช้สังเกตเห็น) → เพิ่ม entry ใน `src/lib/changelog.ts` (**source หลัก** ของหน้า `/whats-new` + เลข version) **และ mirror ใน `CHANGELOG.md`** (root). **bump version (semver):** ฟีเจอร์ใหม่ = +minor, แก้บั๊กล้วน = +patch → ใส่ `version` ใน entry ใหม่ (บนสุด) + sync `package.json` "version" ให้ตรง (= `CURRENT_VERSION`). ใช้วันที่ release · ถ้อยคำที่ผู้ใช้เข้าใจ (ไม่ใช่ commit message/ศัพท์เทคนิค) · จัดกลุ่ม `✨ new` / `🔧 improved` / `🐞 fixed` · รุ่นใหม่บนสุด. **ข้ามได้** สำหรับงานภายในที่ผู้ใช้ไม่เห็น (refactor, CI/lockfile, test, RLS/security hardening, docs, i18n plumbing).
-
-## Bug tracking (`bug.md`)
-
-Single source of truth for known bugs. Two sections: `## Open` and `## Resolved`. Newest entries on top of each section.
-
-**After running tests** (unit / build / E2E / manual smoke):
-
-- Append every new finding to `## Open` under a dated subheading (e.g. `### YYYY-MM-DD — <test type>`).
-- Entry format: `- **[P0|P1|P2] short title** — Context · Repro · Suspected cause · Suggested fix`.
-- Even if all tests pass, add a one-line confirmation under the date (so the log shows the run happened).
-
-**After fixing a bug**:
-
-1. Move the entry from `## Open` to `## Resolved`, prefix with fix date and commit SHA.
-2. Append a `Fix:` line summarizing what changed (files + approach).
-3. Update `spec.md` if the fix changed any documented behavior, schema, label, or contract.
-4. If the bug had a related entry in `spec.md` "Known issues" / "Pending fix" — remove that entry there as well.
-
-## Development Rules
-
-- **Forms**: TanStack Form everywhere — `useForm` + `form.Field` + `form.Subscribe`
-- **UI**: shadcn/ui components only — no raw `<input>` / `<button>` elements
-- **Server actions**: accept plain typed objects (not FormData) — export types in `clubs.ts`
-- **Validation**: two layers — client-side TanStack validators + server-side zod
-- **DB writes**: through server actions using service role key (bypasses RLS)
-- **Tooltips**: every action button (icon-only AND text+icon) wraps in `<Tooltip><TooltipTrigger render={<Button .../>}/><TooltipContent>...</TooltipContent></Tooltip>` — tooltip text describes side-effect or context that isn't visible in the label (e.g. "เริ่มแมตช์ #N + แจ้งเตือน LINE"). `<TooltipProvider delay={300}>` lives in root layout.
-
-## Key Conventions
-
-- Supabase key env var is `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (not ANON_KEY)
-- DB column for club cost is `total_cost` (not `cost_per_person`) — set by owner after game ends
-- `club_players` has `position` column for drag-and-drop ordering
-- Writes go through server actions using `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS)
-- Session stored in `bc_session` cookie (see `src/lib/auth/session.ts`)
-- Auth redirects: use `?redirectTo=/path` on login page; LINE OAuth stores it in `line_redirect_to` cookie
-- `loginRedirect()` in `clubs.ts` uses `referer` header to auto-populate `redirectTo`
-- Player list auto-refreshes via `router.refresh()` every 30s; manual refresh button included
-- `SortablePlayerList` uses `@dnd-kit` with `activationConstraint: { distance: 8 }` for mobile compat
-- Theme stored in `theme` cookie — `layout.tsx` reads it server-side to add `dark` class on `<html>` (no next-themes)
-- Root `body` has `overflow-x-clip` (not `overflow-x-hidden`) — global horizontal-overflow guard for iOS Safari; `clip` chosen so `position:sticky` children keep working
-- `EntityLink` (`src/components/tournament/stats/entity-link.tsx`) derives its base href via `usePathname().startsWith()` guard — admin context → `/tournaments/[id]/stats/...`, public-token context → `/t/[token]/stats/...`. Short-circuits self-links (`pathname.endsWith("/stats/<type>/<id>")`). Callers must gate `entityType="division"` on `thresholds.length > 0` (no-split tournaments otherwise 404).
-
-## Internationalization (i18n)
-
-`next-intl`, **cookie-based** (`locale` cookie, no URL routing — mirrors the `theme` cookie). TH default, EN second. Switcher lives in the account dropdown (`user-menu.tsx`) → `setLocaleAction` + `router.refresh()` (anonymous visitors get it inline in `site-header.tsx`).
-
-- `src/i18n/config.ts` — `locales` (`th`/`en`), `defaultLocale`, `LOCALE_COOKIE`, `NAMESPACES`. Add a namespace = add to this array **and** create both `messages/<loc>/<ns>.json` files.
-- `src/i18n/request.ts` — `getRequestConfig` loops `NAMESPACES`, composes `messages` (one top-level key per namespace) from `messages/<locale>/<ns>.json`.
-- `src/i18n/locale.ts` — `getUserLocale()` (plain reader, safe to call from `request.ts`). `src/i18n/actions.ts` — `setLocaleAction` (`"use server"`). Provider mounted in root layout.
-- 10 namespaces: `common · nav · home · auth · settings · club · tournament · stats · validation · actions`.
-- **Client component**: `const t = useTranslations("<ns>")` (from `next-intl`). **Async server component + server action**: `const t = await getTranslations("<ns>")` (from `next-intl/server`). NEVER make a client component `async`.
-- **Interpolation = ICU `{name}`, NOT JS `${name}`**: catalog value `"... {n} ..."`, call `t("key", { n })`. The placeholder name MUST match the passed param key (else next-intl throws at runtime).
-- **tsc does NOT catch missing/typo'd `t()` keys** — they render as the raw key string at runtime. After editing translations: (a) key-check — parse every `t("ns.key")` in changed files, assert each path exists in BOTH locales; (b) confirm th/en key parity; (c) `next build` (catches RSC-boundary errors). This gate is mandatory — tsc + vitest miss all three failure modes.
-- `actions` namespace is sub-keyed by domain: `club.* / tournament.* / class.* / match.*`. Server actions return translated `{ error: t("...") }`.
-- Display-label maps live in the `tournament` catalog under `matchStatus / result / tournamentStatus / matchFormat` — consumers index `t(\`matchStatus.${m.status}\`)`. The CSS class/badge maps stay in the lib (`status-display.ts` / `result-display.ts` / `status.ts` / `match-format.ts`); `resolveMatchResult` returns a reason **code** (translated at the call site).
-- **Intentionally kept Thai** (data/external, not UI chrome): `audit_logs.description`, LINE notification bodies, group-name generator (`กลุ่ม A`), `console.*`.
-- **CSV exports** (2026-06-12): generators in `csv.ts`/`cost-csv.ts` stay pure — they take a labels object built by the client caller from `t()` (`tournament.csv.*` / `club.costCsv.*`). **Import-template header lines stay canonical English ids (`team,id_player,...`) in BOTH locales** — the parser in `csv-import-dialog.tsx` requires them; only sample data rows are localized.
-- **Dates** (2026-06-12): all date-fns `format()` calls pass `{ locale: dateFnsLocaleOf(locale) }` (`src/i18n/date-fns-locale.ts`); locale from `getLocale()` (server) / `useLocale()` (client). Numbers keep bare `toLocaleString()` (th/en grouping identical). `permissions.ts` helpers throw the internal code `permission_check_failed` only (never rendered as UI text) — not a translation surface.
 
 ## Tournament System (Phase 0–13 done; competition mode shipped & live on prod — see `spec.md`)
 

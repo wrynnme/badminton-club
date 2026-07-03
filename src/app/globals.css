@@ -62,7 +62,7 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Base: green-tinted neutral. Brand tokens: #00129F primary, #F18303 secondary.
+/* Base: neutral gray. Brand accents: --primary (blue) + orange --brand (#F18303).
    --accent stays a subtle neutral (shadcn hover/selected role). */
 :root {
   --card: oklch(1 0 0);
@@ -118,7 +118,7 @@
   --div-8: oklch(0.5 0.13 270);
 
   /* elevation ladder (consumed by flagship components in phase 2) */
-  --shadow-color: 158 30% 12%;
+  --shadow-color: 265 30% 12%;
   --e-1: 0 1px 2px hsl(var(--shadow-color) / 0.12);
   --e-2: 0 2px 6px -1px hsl(var(--shadow-color) / 0.16), 0 1px 2px hsl(var(--shadow-color) / 0.1);
   --e-3: 0 8px 24px -6px hsl(var(--shadow-color) / 0.22), 0 2px 6px hsl(var(--shadow-color) / 0.12);
