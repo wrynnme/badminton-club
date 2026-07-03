@@ -10,6 +10,13 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-04 — refactor: `useLiveRefresh` hook dedup (deferred จาก ship-check v0.16.1) — ✅ DONE (develop)
+
+Extract debounced-refresh scaffolding ที่ซ้ำบรรทัดต่อบรรทัดใน `TournamentLiveWrapper` / `ClubLiveWrapper` (timer ref + `scheduleRefresh` + `live` state จาก subscribe status + cleanup timer/`removeChannel`) → hook เดียว `src/lib/hooks/use-live-refresh.ts` (`useLiveRefresh({ channelName, enabled, wire })`); wrapper เหลือเฉพาะ channel wiring ของตัวเอง (postgres_changes vs broadcast). `wire` อ่านผ่าน ref — inline closure ที่ call site ไม่ retrigger effect; subscription rebuild เฉพาะเมื่อ `channelName`/`enabled` เปลี่ยน. การแก้ debounce/CHANNEL_ERROR handling ในอนาคตลงที่ hook จุดเดียว.
+
+- **Gate:** tsc 0 · vitest 760/760 · e2e 5/5 PASS (club flow — หน้า mount `ClubLiveWrapper` เต็มหน้า, net-zero).
+- **Live badge smoke (net-zero):** seed ทัวร์ throwaway `SMOKE_E2E_LIVE_BADGE` (`realtime_enabled:true` + share token) → เปิด `/t/[token]` headless → **LIVE badge ขึ้น** (subscribe ถึง SUBSCRIBED ผ่าน hook ใหม่) · console 0 error → ลบทิ้ง เหลือ 0 row. เช็ค negative case ด้วยทัวร์จริงที่ตั้ง `realtime_enabled:false` → badge ไม่ขึ้น (ถูกต้อง).
+
 ### 2026-07-03 — ship-check v0.16.1 release (develop→prod delta, PR #11+#12 + fix/slip-scroll-clip) — ⚠️ 1 P1 caught, fixed pre-prod
 
 Scope = `origin/master..origin/develop` (mobile overflow fixes). รีวิว 8 angles → 12 candidates → verify (empirical browser + call-site trace).
