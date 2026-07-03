@@ -477,7 +477,9 @@ export function ReceiptTemplateEditor({
             {/* ── Live preview ── */}
             <div className="space-y-1.5">
               <Label className="text-xs">{t("previewLabel")}</Label>
-              <div className="flex justify-center overflow-x-auto rounded-lg border bg-muted/40 p-3">
+              {/* No justify-center: see the SlipDialog preview wrapper note in
+                  club-slip-card.tsx — the card centres itself with mx-auto. */}
+              <div className="flex overflow-x-auto rounded-lg border bg-muted/40 p-3">
                 <form.Subscribe selector={(s) => s.values}>
                   {(values) => (
                     <SlipCard
