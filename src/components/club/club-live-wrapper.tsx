@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Badge } from "@/components/ui/badge";
+import { LiveBadge } from "@/components/live-badge";
 
 const REFRESH_DEBOUNCE_MS = 800;
 
@@ -56,14 +56,7 @@ export function ClubLiveWrapper({
 
   return (
     <>
-      {live && (
-        <div className="fixed top-3 right-3 z-50">
-          <Badge variant="default" className="text-xs gap-1.5 bg-green-600 hover:bg-green-600">
-            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-            LIVE
-          </Badge>
-        </div>
-      )}
+      {live && <LiveBadge />}
       {children}
     </>
   );

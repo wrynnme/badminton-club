@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-03 — ship-check v0.16.1 release (develop→prod delta, PR #11+#12 + fix/slip-scroll-clip) — ⚠️ 1 P1 caught, fixed pre-prod
+
+Scope = `origin/master..origin/develop` (mobile overflow fixes). รีวิว 8 angles → 12 candidates → verify (empirical browser + call-site trace).
+- **[P1] found & fixed:** `justify-center` + `overflow-x-auto` + SlipCard `flexShrink:0` → ขอบซ้ายใบเสร็จ clip แบบ scroll ไม่ถึง (27px @390px) ใน SlipDialog + editor preview — regression จาก PR #12 เอง. Fix: ตัด justify-center + `marginInline:"auto"` ที่การ์ด. รายละเอียดใน Resolved.
+- **P2 fixed:** CHANGELOG.md mirror drift ×2 · bug.md missing entry · `max-w-full` no-op ตัดออก. **Refactor:** extract shared `<LiveBadge/>`. **Deferred:** `useLiveRefresh` hook dedup (นอก scope bugfix release).
+- **Gate:** tsc 0 · vitest 760/760 · `next build` OK (BUILD_ID `oibvxrKTdk8qw2ErpVn-u`) · i18n N/A (ไม่แตะ catalog).
+- **Live browser smoke PASS (net-zero, authenticated):** seed profile+club throwaway → mint `bc_session` → `/clubs/[id]?tab=cost` @390px → กาง "ปรับแต่งใบเสร็จ": page scrollWidth 390 (ไม่ล้น) · textarea 300px fits · slip 360px คงดีไซน์ · **leftEdgeReachable=true, clip 0px, scroll เต็มช่วง 86px** · LIVE badge `display:none` บนมือถือ · console 0 error · teardown เหลือ 0 row.
+
 ### 2026-07-03 — ship-check PR#7 (deps safe batch, ff03a07) — ✅ clean
 
 Dependency-only PR (ไม่มี app code diff) — bump 7 แพ็กเกจ: `@types/node` 20→22.20.0 (major, dev) · `lucide-react` 1.14→1.22 · `react-hook-form` 7.75→7.80 · `tailwindcss`+`@tailwindcss/postcss` 4→4.3.2 · `@line/liff` 2.29.0→2.29.1 · `@playwright/test` 1.61.0→1.61.1.
@@ -492,6 +500,12 @@ Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upse
 All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
 
 ## Resolved
+
+### 2026-07-03 — mobile overflow ฟอร์มปรับแต่งใบเสร็จ (user-reported) + P1 regression จาก ship-check — FIXED บน develop (v0.16.1, ยังไม่ขึ้น prod)
+
+- **บั๊กเดิม (user screenshot, iOS Safari ~390px)**: ฟอร์ม "ปรับแต่งใบเสร็จ" ล้นขอบจอ — 2 สาเหตุซ้อน: (1) grid `md:grid-cols-2` ไม่มี explicit mobile column → implicit `auto` track ถูก SlipCard `width:360` ดันจน column กว้างเกิน viewport ลาก Textarea (`w-full`) ล้นตาม; (2) LIVE badge ของ `ClubLiveWrapper` ไม่มี `hidden sm:block` (คนละ component กับ `TournamentLiveWrapper` ที่แก้ไปใน PR #8 — parallel wrapper per domain). **Fix (PR #11+#12)**: Textarea base + `min-w-0`; grid + `grid-cols-1`; SlipCard + `flexShrink:0`; badge + `hidden sm:block`.
+- **[P1] regression ที่ ship-check จับได้ก่อนขึ้น prod**: `flexShrink:0` + wrapper `flex justify-center overflow-x-auto` → การ์ด 360px ล้นแล้ว justify-center ดัน overflow ออกสองข้าง แต่ scrollLeft ต่ำสุด = 0 → **ขอบซ้ายใบเสร็จ clip แบบ scroll ไม่ถึง** (วัดจริง: 27px ที่ 390px, หนักกว่าบนจอเล็ก) ทั้งใน SlipDialog + editor preview. **Fix (fix/slip-scroll-clip)**: ตัด `justify-center` ออกจาก wrapper 2 จุด + `marginInline:"auto"` ที่ SlipCard (auto margin center เมื่อมีที่ / collapse เป็น 0 เมื่อล้น → ขอบซ้าย reachable เสมอ; เลือกแทน `justify-center-safe` เพราะ support กว้างกว่าใน iOS Safari เก่า). Verified ใน Chromium 390px: leftEdgeClipped 27px → 0, maxScrollLeft 27 → 54 (เต็มช่วง).
+- พ่วง cleanup จากรีวิว: ตัด `max-w-full` ที่ไม่ทำงานออกจาก Textarea base; extract `<LiveBadge/>` shared (`src/components/live-badge.tsx`) แทน markup ซ้ำ byte-identical ใน 2 wrapper (diverge มาแล้ว 1 รอบ); CHANGELOG.md sync ให้ mirror changelog.ts คำต่อคำ.
 
 ### 2026-06-10 — /code-review xhigh on club public/private feature: 5 findings, all FIXED pre-merge (develop)
 
