@@ -4,13 +4,18 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-- **[P2] tournament queue: reorder ชนกับ "เริ่มแมตช์" → แมตช์ in_progress ถูก renumber** (พบโดย T5 race probe R2, 2026-07-04 — เกิด 26/30 รอบ, deterministic repro ใน `e2e/race-hardening.spec.ts`) · กลไก: `swap_pending_match_numbers` validate "ทุก id เป็น pending" **ก่อน** 2-pass renumber แต่ `start_match_atomic` ล็อกแค่ row ตัวเอง ไม่ได้ยึด advisory lock ของทัวร์ → start ที่ commit ในหน้าต่าง validate→UPDATE ทำให้เลข `#N` ของแมตช์ที่กำลังแข่งเปลี่ยนกลางเกมทุกจอ (ผลจำกัดที่ display identity — ข้อมูลไม่พัง, match_number ยังเป็น permutation ครบ) · **fix เตรียมพร้อมแล้ว**: `supabase/migrations/20260704000200_swap_pending_lock_rows_before_validate.sql` (`FOR UPDATE` rows ก่อน validate) — **ยังไม่ apply** ตามนโยบาย P2+prod-migration รออนุมัติ; หลัง apply รัน R2 ซ้ำต้องได้ `renumberedInProgress=0`
-
-(อัปเดต 2026-07-04 — ก่อนหน้านี้ no open bugs ตั้งแต่ 2026-06-10.) Every finding from the 2026-06-09 whole-system core review (`docs/reviews/code-review-core-2026-06-09.html` — 1 P0 + 4 P1 + 23 P2) is closed — full records in Resolved.
+(no open bugs — อัปเดต 2026-07-06 หลังปิด P2 reorder∥start renumber.) Every finding from the 2026-06-09 whole-system core review (`docs/reviews/code-review-core-2026-06-09.html` — 1 P0 + 4 P1 + 23 P2) is closed — full records in Resolved.
 
 The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open)**: `computeExpenseShares` ceil-per-head over-collects a few baht (100฿/3 → 34×3 = 102). By design — equal players pay the same whole baht, the organizer is never short, and it stays reconciled across the cost-breakdown table + ExpenseManager. A fair largest-remainder split was offered and declined (user, 2026-06-09).
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
+
+### 2026-07-06 — P2 reorder∥start renumber (R2) — ✅ RESOLVED (migration applied prod, v0.18.1)
+
+- **[P2] tournament queue: reorder ชนกับ "เริ่มแมตช์" → แมตช์ in_progress ถูก renumber** (พบโดย T5 race probe R2, 2026-07-04 — เกิด 26/30 รอบ) · กลไกเดิม: `swap_pending_match_numbers` validate "ทุก id เป็น pending" **ก่อน** 2-pass renumber แต่ `start_match_atomic` ล็อกแค่ row ตัวเอง → start ที่ commit ในหน้าต่าง validate→UPDATE ทำให้เลข `#N` ของแมตช์ที่กำลังแข่งเปลี่ยนกลางเกม
+- **Fix**: migration `20260704000200_swap_pending_lock_rows_before_validate` — `FOR UPDATE` row-lock target matches ทันทีหลัง advisory lock **ก่อน** validate → serialize กับ `start_match_atomic` (ซึ่ง `FOR UPDATE` row เดียวกัน): start commit ก่อน → swap reject สะอาด ("not pending"); swap ล็อกก่อน → start block แล้วเริ่มด้วยเลขใหม่ (renumber เกิดตอนยัง pending — ถูกต้อง). **✅ applied prod 2026-07-06** (verified `pg_proc.prosrc` มี `FOR UPDATE` + grants service_role-only คงเดิม)
+- **หมายเหตุการวัดผล**: ตัวเลขคาดหวังเดิม "`renumberedInProgress=0`" ใช้ไม่ได้กับ probe เดิม — probe เทียบแค่ final state เลยแยก "swap ชนะ race → renumber ตอน pending → start ตาม" (ถูกต้อง) กับ "renumber หลัง start" (บั๊ก) ไม่ออก. R2 ถูกอัปเกรดเป็น **hard invariant I6**: snapshot `match_number` ทันทีที่ `start` return แล้ว assert ว่าเท่ากับเลขสุดท้ายเสมอ (แมตช์ที่เริ่มแล้วห้ามถูก renumber)
+- **Gate**: R2 ใหม่ `midGameRenumber=0/30` (swapRejected=19, swapWonFirst=11) · race-hardening ทั้ง suite **5/5 PASS** (net-zero) · bump **v0.18.1**
 
 ### 2026-07-05 — preset payment receiver implementation — ✅ PASS
 
