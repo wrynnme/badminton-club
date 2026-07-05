@@ -5,7 +5,6 @@ import { TvAutoRefresh } from "@/components/tournament/tv-auto-refresh";
 import { ScheduleMatchCard } from "@/components/tournament/schedule-match-card";
 import { buildCompetitorMap } from "@/lib/tournament/competitor";
 import { parseSettings } from "@/lib/tournament/settings";
-import { Badge } from "@/components/ui/badge";
 import { getTranslations } from "next-intl/server";
 import type { Tournament, Team, PairWithPlayers, Match } from "@/lib/types";
 
@@ -83,7 +82,6 @@ export default async function CourtRefereePage({
     .slice(0, 2);
 
   const hasAny = inProgressMatches.length > 0 || pendingMatches.length > 0;
-  const isLive = inProgressMatches.length > 0;
 
   return (
     <TournamentLiveWrapper tournamentId={t.id} realtimeEnabled={settings.realtime_enabled}>
@@ -97,12 +95,6 @@ export default async function CourtRefereePage({
           <header className="space-y-1">
             <div className="flex items-center justify-between gap-3">
               <h1 className="text-2xl font-bold truncate">{tl("page.courtPageTitle", { name: courtName })}</h1>
-              {isLive && (
-                <Badge className="shrink-0 bg-green-600 hover:bg-green-600 text-white gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                  LIVE
-                </Badge>
-              )}
             </div>
             <p className="text-sm text-muted-foreground truncate">{t.name}</p>
           </header>

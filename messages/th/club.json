@@ -648,7 +648,17 @@
     "toastSetReserve": "ย้ายเป็นสำรองแล้ว {count} คน",
     "toastSession": "บันทึกเวลา/เกมแล้ว {count} คน",
     "toastDeleted": "ลบแล้ว {count} คน",
-    "toastDeletePartial": "ลบแล้ว {deleted} คน · ไม่สำเร็จ {failed} คน"
+    "toastDeletePartial": "ลบแล้ว {deleted} คน · ไม่สำเร็จ {failed} คน",
+    "setLevel": "ตั้งระดับ",
+    "setLevelTooltip": "ตั้งระดับให้ผู้เล่นที่เลือก",
+    "levelDialogTitle": "ตั้งระดับให้ {n} คน",
+    "levelDialogNote": "เลือกระดับที่จะตั้งให้ทุกคนที่เลือก",
+    "levelFieldLabel": "ระดับ",
+    "levelNone": "ไม่มีระดับ",
+    "levelDialogCancel": "ยกเลิก",
+    "levelDialogSubmit": "บันทึก",
+    "levelDialogSubmitting": "กำลังบันทึก…",
+    "toastLevel": "ตั้งระดับแล้ว {count} คน"
   },
   "playerList": {
     "autoRefresh": "อัพเดทอัตโนมัติทุก 30 วินาที",
@@ -673,10 +683,16 @@
     "sessionEditorTitle": "แก้ไขเวลา/เกม",
     "sessionEditorSaved": "บันทึกข้อมูลแล้ว",
     "renameLabel": "ชื่อ",
-    "renameTitle": "แก้ไขชื่อ",
     "renameSave": "บันทึก",
     "renameCancel": "ยกเลิก",
-    "partialPlay": "เล่น {start}–{end}"
+    "partialPlay": "เล่น {start}–{end}",
+    "levelNone": "ไม่มีระดับ",
+    "levelSaved": "บันทึกระดับแล้ว",
+    "levelSelectAriaLabel": "ตั้งระดับให้ {name}",
+    "editTitle": "แก้ไขผู้เล่น",
+    "editLevelLabel": "ระดับ",
+    "editNoteLabel": "โน้ต",
+    "editSaved": "บันทึกแล้ว"
   },
   "payment": {
     "collectTitle": "เก็บเงิน",

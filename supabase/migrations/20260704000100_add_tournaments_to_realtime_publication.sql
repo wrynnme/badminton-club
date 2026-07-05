@@ -1,0 +1,11 @@
+-- P1 fix (found by T5 race-hardening, 2026-07-04): TournamentLiveWrapper
+-- subscribes ONE channel with TWO postgres_changes bindings (matches +
+-- tournaments), but `tournaments` was never added to the supabase_realtime
+-- publication — 20260515 enable_realtime_matches added `matches` only. The
+-- dead binding silently kills delivery for the WHOLE channel (0 frames ever
+-- arrive), so the page-level debounced router.refresh() never fired on any
+-- tournament page; live updates only appeared where the opt-in queue-sync
+-- patch path (matches-only binding) was on. REPLICA IDENTITY FULL was already
+-- set on tournaments (20260519000000) in anticipation — publication
+-- membership is the only missing piece.
+ALTER PUBLICATION supabase_realtime ADD TABLE public.tournaments;

@@ -4,7 +4,7 @@
 
 **Stack**: Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1 · Supabase (Postgres + RLS) · LINE Login · next-intl (TH/EN, cookie-based) · @bprogress/next (nav progress) · @dnd-kit · Anuphan font
 
-**เวอร์ชันล่าสุด**: v0.14.0 — หน้า "มีอะไรใหม่" ที่ `/whats-new` (source เดียว: `src/lib/changelog.ts`, mirror ที่ `CHANGELOG.md`)
+**เวอร์ชันล่าสุด**: v0.17.1 — เอาป้าย LIVE ออกจากหน้าก๊วน/ทัวร์นาเมนต์ โดย realtime ยังอัปเดตเบื้องหลังเหมือนเดิม (source เดียว: `src/lib/changelog.ts`, mirror ที่ `CHANGELOG.md`)
 
 **Deployed** (กลยุทธ์ branch: feature → `develop` [CI gate] → `master` [prod]):
 - Production: https://kuanbad.vercel.app (**master** branch)
@@ -62,7 +62,7 @@ npx skills add supabase/agent-skills   # ติดตั้งครั้งเ
 - ปุ่ม **"ทุกสนาม"** สร้างแมตช์ให้ทุกสนามว่างพร้อมกัน · drag จัดลำดับคิว · partial match (จองสนามก่อนผู้เล่นครบ)
 - **เช็คอิน = สัญญาณความพร้อม** → `not_ready_action`: `skip` (ตัดคนยังไม่เช็คอินออก, default) | `requeue` (ดึงได้แต่ต่อท้ายคิว)
 - **จับเวลาต่อเกม** (`game_time_limit_min`) — แมตช์ที่เล่นเกินเวลา timer เปลี่ยนเป็นแดง + ป้าย "เกินเวลา"
-- ระดับฝีมือรายก๊วน (per-club levels, copy-on-write จากชุดกลาง) · realtime broadcast (คิวอัปเดตข้ามอุปกรณ์)
+- ระดับฝีมือรายก๊วน (per-club levels, copy-on-write จากชุดกลาง) · owner/co-admin แก้ระดับผู้เล่นใน roster หลังเพิ่มแล้วได้ (รายคน / ฟอร์มแก้ไข / bulk) · realtime broadcast (คิวอัปเดตข้ามอุปกรณ์)
 
 ### ค่าใช้จ่าย + เก็บเงิน
 
@@ -229,7 +229,7 @@ src/
 
 - ✅ Rotation queue (fair_queue / winner_stays / fair_winner_fallback) · multi-court · locked pairs · build-all-courts
 - ✅ Check-in + `not_ready_action` · game-time over-time indicator
-- ✅ Per-club skill levels + level-based matchmaking
+- ✅ Per-club skill levels + level-based matchmaking + roster level editing after signup
 - ✅ Reserve / waiting list (สำรอง) · co-admin · preset · import from message · realtime
 - ✅ Itemized expenses + per-player PromptPay QR
 - ✅ LINE billing (push bill + slip auto-verify: manual / BYOK)
@@ -243,10 +243,10 @@ src/
 ```bash
 npm run typecheck   # tsc --noEmit
 npm test            # vitest (unit — pure logic: queue / scoring / bracket / divisions …)
-npm run e2e         # @playwright/test — club happy path + A1/A4 (e2e/)
+npm run e2e         # @playwright/test — club happy path + roster level edit + A1/A4 + race-hardening
 ```
 
-- **E2E** (`e2e/`) รัน **net-zero against prod** (โปรเจกต์มี Supabase เดียว): `global-setup` seed ก๊วน throwaway (marker `SMOKE_E2E_`) + mint `bc_session` cookie จาก `SESSION_SECRET`; `global-teardown` ลบทิ้งหมด. ต้องมี `.env.local` + dev server (auto-start/reuse :3000) · ครั้งแรก: `npx playwright install chromium`.
+- **E2E** (`e2e/`) รัน **net-zero against prod** (โปรเจกต์มี Supabase เดียว): `global-setup` seed ก๊วน throwaway (marker `SMOKE_E2E_`) + mint `bc_session` cookie จาก `SESSION_SECRET`; `global-teardown` ลบทิ้งหมด. ครอบ club happy path, roster level quick-select persist, build-all-courts/over-time, และ race-hardening ของ tournament queue. ต้องมี `.env.local` + dev server (auto-start/reuse :3000) · ครั้งแรก: `npx playwright install chromium`.
 - **local-only** — ไม่อยู่ใน CI (CI = typecheck + vitest + build เท่านั้น; ยิง prod จาก CI ไม่ทำ).
 
 ## กฏการพัฒนา

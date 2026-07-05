@@ -8,7 +8,7 @@ import { useRouter as useProgressRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import {
   RefreshCw, GripVertical, CheckCircle2, Circle, Loader2, Clock,
-  CheckCheck, Users, Trash2, AlertTriangle,
+  CheckCheck, Users, Trash2, AlertTriangle, Pencil, Gauge,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,14 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogClose,
@@ -49,14 +57,14 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Pencil } from "lucide-react";
 import { LeaveButton } from "@/components/club/leave-button";
 import { KickButton } from "@/components/club/kick-button";
 import {
   reorderPlayersAction,
   toggleCheckInAction,
   updateClubPlayerSessionAction,
-  renameClubGuestAction,
+  updateClubPlayerDetailsAction,
+  bulkSetClubPlayerLevelAction,
   promoteClubReserveAction,
   bulkCheckInClubPlayersAction,
   bulkSetClubPlayerStatusAction,
@@ -76,6 +84,17 @@ type Props = {
   sessionStart?: string; // "HH:MM:SS"
   sessionEnd?: string;   // "HH:MM:SS"
 };
+
+// Radix/Base UI Select can't hold an empty-string value; this sentinel stands in
+// for "ไม่มีระดับ" (no level) and is mapped to null at the action boundary.
+const NONE_SENTINEL = "__none__";
+
+/** Trigger label for a selected level value. Base UI's SelectValue does not echo
+ * the chosen SelectItem's text, so callers pass this as its render child. */
+function levelTriggerLabel(levels: Level[] | undefined, v: string, noneLabel: string) {
+  if (!v || v === NONE_SENTINEL) return noneLabel;
+  return levels?.find((l) => l.id === v)?.label ?? noneLabel;
+}
 
 // ─── Check-in button ─────────────────────────────────────────────────────────
 
@@ -271,46 +290,140 @@ function SessionEditor({
   );
 }
 
-// ─── Rename control (guests only, canManage only) ─────────────────────────────
+// ─── Edit control (canManage only) ────────────────────────────────────────────
 
-function RenameButton({ onOpen }: { onOpen: () => void }) {
+function EditButton({ onOpen }: { onOpen: () => void }) {
   const t = useTranslations("club.playerList");
   return (
-    <Button
-      size="xs"
-      variant="ghost"
-      className="text-muted-foreground h-6 w-6 p-0"
-      onClick={onOpen}
-      title={t("renameTitle")}
-      type="button"
-    >
-      <Pencil className="h-3 w-3" />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            size="xs"
+            variant="ghost"
+            className="text-muted-foreground h-6 w-6 p-0"
+            onClick={onOpen}
+            type="button"
+            aria-label={t("editTitle")}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+        }
+      />
+      <TooltipContent>{t("editTitle")}</TooltipContent>
+    </Tooltip>
   );
 }
 
-function RenameForm({
+/**
+ * Inline quick level picker shown in the row for managers (non-managers see a
+ * static Badge instead). Saves on change; reverts on error. Resyncs from props
+ * only while closed + idle so a background refresh can't clobber an edit.
+ */
+function LevelQuickSelect({
   player,
   clubId,
+  levels,
+}: {
+  player: ClubPlayer;
+  clubId: string;
+  levels?: Level[];
+}) {
+  const t = useTranslations("club.playerList");
+  const router = useProgressRouter();
+  const [value, setValue] = useState(player.level_id ?? NONE_SENTINEL);
+  const [open, setOpen] = useState(false);
+  const [pending, start] = useTransition();
+
+  useEffect(() => {
+    if (open || pending) return;
+    setValue(player.level_id ?? NONE_SENTINEL);
+  }, [open, pending, player.level_id]);
+
+  function handleChange(next: string) {
+    const prev = value;
+    setValue(next); // optimistic
+    start(async () => {
+      const res = await updateClubPlayerDetailsAction({
+        club_id: clubId,
+        player_id: player.id,
+        level_id: next === NONE_SENTINEL ? null : next,
+      });
+      if (res && "error" in res) {
+        toast.error(res.error);
+        setValue(prev); // revert
+      } else {
+        toast.success(t("levelSaved"));
+        router.refresh();
+      }
+    });
+  }
+
+  return (
+    <Select
+      value={value}
+      open={open}
+      onOpenChange={setOpen}
+      onValueChange={(v) => {
+        if (v) handleChange(v);
+      }}
+      disabled={pending}
+    >
+      <SelectTrigger
+        size="sm"
+        className="h-6 w-auto max-w-[96px] gap-1 px-2 text-xs"
+        aria-label={t("levelSelectAriaLabel", { name: player.display_name })}
+      >
+        <SelectValue>{(v: string) => levelTriggerLabel(levels, v, t("levelNone"))}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value={NONE_SENTINEL}>{t("levelNone")}</SelectItem>
+        {(levels ?? []).map((l) => (
+          <SelectItem key={l.id} value={l.id}>
+            {l.label} ({l.real})
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** Inline "edit player" form (expands below the row). Name is guest-only; level
+ * and note apply to every player. One partial-patch call. */
+function EditPlayerForm({
+  player,
+  clubId,
+  levels,
   onClose,
 }: {
   player: ClubPlayer;
   clubId: string;
+  levels?: Level[];
   onClose: () => void;
 }) {
   const t = useTranslations("club.playerList");
   const router = useProgressRouter();
-  const [value, setValue] = useState(player.display_name);
+  const isGuest = player.profile_id == null;
+  const [name, setName] = useState(player.display_name);
+  const [level, setLevel] = useState(player.level_id ?? NONE_SENTINEL);
+  const [note, setNote] = useState(player.note ?? "");
   const [pending, start] = useTransition();
 
   function handleSave() {
-    const trimmed = value.trim();
-    if (!trimmed) return;
+    const trimmedName = name.trim();
+    if (isGuest && !trimmedName) return;
     start(async () => {
-      const res = await renameClubGuestAction(clubId, player.id, trimmed);
-      if ("error" in res) {
+      const res = await updateClubPlayerDetailsAction({
+        club_id: clubId,
+        player_id: player.id,
+        ...(isGuest ? { display_name: trimmedName } : {}),
+        level_id: level === NONE_SENTINEL ? null : level,
+        note: note.trim() || null,
+      });
+      if (res && "error" in res) {
         toast.error(res.error);
       } else {
+        toast.success(t("editSaved"));
         router.refresh();
         onClose();
       }
@@ -318,38 +431,59 @@ function RenameForm({
   }
 
   return (
-    <div className="mt-1.5 flex flex-wrap items-end gap-2 rounded-md border bg-muted/30 p-2 text-xs">
-      <div className="flex flex-col gap-0.5 flex-1 min-w-[140px]">
-        <Label className="text-[10px] text-muted-foreground">{t("renameLabel")}</Label>
-        <Input
-          autoFocus
-          value={value}
-          maxLength={60}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSave();
-            if (e.key === "Escape") onClose();
-          }}
-          className="h-7 text-xs"
+    <div className="mt-1.5 flex flex-col gap-2 rounded-md border bg-muted/30 p-2 text-xs">
+      {isGuest && (
+        <div className="flex flex-col gap-0.5">
+          <Label className="text-[10px] text-muted-foreground">{t("renameLabel")}</Label>
+          <Input
+            autoFocus
+            value={name}
+            maxLength={60}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") onClose();
+            }}
+            className="h-7 text-xs"
+          />
+        </div>
+      )}
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-[10px] text-muted-foreground">{t("editLevelLabel")}</Label>
+        <Select value={level} onValueChange={(v) => { if (v) setLevel(v); }}>
+          <SelectTrigger size="sm" className="h-7 w-full text-xs">
+            <SelectValue>{(v: string) => levelTriggerLabel(levels, v, t("levelNone"))}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NONE_SENTINEL}>{t("levelNone")}</SelectItem>
+            {(levels ?? []).map((l) => (
+              <SelectItem key={l.id} value={l.id}>
+                {l.label} ({l.real})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex flex-col gap-0.5">
+        <Label className="text-[10px] text-muted-foreground">{t("editNoteLabel")}</Label>
+        <Textarea
+          value={note}
+          maxLength={500}
+          rows={2}
+          onChange={(e) => setNote(e.target.value)}
+          className="text-xs"
         />
       </div>
-      <div className="flex items-end gap-1 pb-0.5">
+      <div className="flex items-center gap-1">
         <Button
           type="button"
           size="xs"
-          disabled={pending || !value.trim()}
+          disabled={pending || (isGuest && !name.trim())}
           onClick={handleSave}
           className="h-7 text-xs"
         >
           {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : t("renameSave")}
         </Button>
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          className="h-7 text-xs"
-          onClick={onClose}
-        >
+        <Button type="button" size="xs" variant="ghost" className="h-7 text-xs" onClick={onClose}>
           {t("renameCancel")}
         </Button>
       </div>
@@ -511,6 +645,91 @@ function BulkSessionDialog({
   );
 }
 
+// ─── Bulk level dialog ────────────────────────────────────────────────────────
+
+function BulkLevelDialog({
+  open,
+  onOpenChange,
+  clubId,
+  playerIds,
+  levels,
+  onDone,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  clubId: string;
+  playerIds: string[];
+  levels?: Level[];
+  onDone: () => void;
+}) {
+  const t = useTranslations("club.bulkSelect");
+  const tp = useTranslations("club.playerList");
+  const router = useProgressRouter();
+  const [pending, start] = useTransition();
+  const [level, setLevel] = useState(NONE_SENTINEL);
+
+  useEffect(() => {
+    if (open) setLevel(NONE_SENTINEL);
+  }, [open]);
+
+  function handleSubmit() {
+    start(async () => {
+      const res = await bulkSetClubPlayerLevelAction({
+        clubId,
+        playerIds,
+        levelId: level === NONE_SENTINEL ? null : level,
+      });
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        toast.success(t("toastLevel", { count: res.count }));
+        router.refresh();
+        onOpenChange(false);
+        onDone();
+      }
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t("levelDialogTitle", { n: playerIds.length })}</DialogTitle>
+          <DialogDescription className="text-xs">{t("levelDialogNote")}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-1.5 py-1">
+          <Label className="text-xs">{t("levelFieldLabel")}</Label>
+          <Select value={level} onValueChange={(v) => { if (v) setLevel(v); }}>
+            <SelectTrigger className="w-full">
+              <SelectValue>{(v: string) => levelTriggerLabel(levels, v, t("levelNone"))}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE_SENTINEL}>{t("levelNone")}</SelectItem>
+              {(levels ?? []).map((l) => (
+                <SelectItem key={l.id} value={l.id}>
+                  {l.label} ({l.real})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <DialogClose render={
+            <Button variant="outline" disabled={pending}>{t("levelDialogCancel")}</Button>
+          } />
+          <Button onClick={handleSubmit} disabled={pending}>
+            {pending
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />{t("levelDialogSubmitting")}</>
+              : t("levelDialogSubmit")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Bulk delete dialog ───────────────────────────────────────────────────────
 
 function BulkDeleteDialog({
@@ -603,6 +822,7 @@ function BulkActionBar({
   clubId,
   selectedIds,
   allPlayers,
+  levels,
   sessionStart,
   sessionEnd,
   onClearSelection,
@@ -610,6 +830,7 @@ function BulkActionBar({
   clubId: string;
   selectedIds: Set<string>;
   allPlayers: ClubPlayer[];
+  levels?: Level[];
   sessionStart?: string;
   sessionEnd?: string;
   onClearSelection: () => void;
@@ -617,6 +838,7 @@ function BulkActionBar({
   const t = useTranslations("club.bulkSelect");
   const router = useProgressRouter();
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+  const [levelDialogOpen, setLevelDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [pending, start] = useTransition();
 
@@ -728,6 +950,19 @@ function BulkActionBar({
           <TooltipContent>{t("editSessionTooltip")}</TooltipContent>
         </Tooltip>
 
+        {/* Set level */}
+        <Tooltip>
+          <TooltipTrigger render={
+            <Button size="xs" variant="outline" disabled={pending}
+              onClick={() => setLevelDialogOpen(true)}
+              aria-label={t("setLevelTooltip")}>
+              <Gauge className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1">{t("setLevel")}</span>
+            </Button>
+          } />
+          <TooltipContent>{t("setLevelTooltip")}</TooltipContent>
+        </Tooltip>
+
         {/* Delete */}
         <Tooltip>
           <TooltipTrigger render={
@@ -752,6 +987,15 @@ function BulkActionBar({
         onDone={onClearSelection}
       />
 
+      <BulkLevelDialog
+        open={levelDialogOpen}
+        onOpenChange={setLevelDialogOpen}
+        clubId={clubId}
+        playerIds={playerIds}
+        levels={levels}
+        onDone={onClearSelection}
+      />
+
       <BulkDeleteDialog
         open={deleteDialogOpen}
         onOpenChange={setDeleteDialogOpen}
@@ -773,7 +1017,7 @@ type RowBodyProps = {
   canManage: boolean;
   sessionStart?: string;
   sessionEnd?: string;
-  levelById?: Map<string, { label: string }>;
+  levels?: Level[];
   /** Drag handle element injected by SortableItem; null for reserve rows. */
   dragHandle?: React.ReactNode;
   /** Position label shown before the name (e.g. "1." or "#1"). */
@@ -789,19 +1033,18 @@ function PlayerRowBody({
   canManage,
   sessionStart,
   sessionEnd,
-  levelById,
+  levels,
   dragHandle,
   positionLabel,
   selectCheckbox,
 }: RowBodyProps) {
   const t = useTranslations("club.playerList");
   const isCheckedIn = !!player.checked_in_at;
-  const isGuest = player.profile_id == null;
   // Require a non-null session: a public/anon viewer has sessionProfileId=null and
   // guest players have profile_id=null, so a bare `===` would render the self-only
   // LeaveButton on every guest row for anonymous viewers.
   const isSelf = sessionProfileId != null && sessionProfileId === player.profile_id;
-  const [renameOpen, setRenameOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   // Partial session: player's effective window differs from the club's full window.
   const cs = sessionStart?.slice(0, 5);
@@ -818,13 +1061,15 @@ function PlayerRowBody({
         {dragHandle}
         <span className="text-muted-foreground w-6 tabular-nums">{positionLabel}</span>
         <span className="font-medium">{player.display_name}</span>
-        {canManage && isGuest && (
-          <RenameButton onOpen={() => setRenameOpen(true)} />
+        {canManage && <EditButton onOpen={() => setEditOpen(true)} />}
+        {canManage ? (
+          <LevelQuickSelect player={player} clubId={clubId} levels={levels} />
+        ) : (
+          (() => {
+            const label = player.level_id ? levels?.find((l) => l.id === player.level_id)?.label : undefined;
+            return label ? <Badge variant="outline">{label}</Badge> : null;
+          })()
         )}
-        {(() => {
-          const label = player.level_id ? levelById?.get(player.level_id)?.label : undefined;
-          return label ? <Badge variant="outline">{label}</Badge> : null;
-        })()}
         {player.note && (
           <span className="text-muted-foreground text-xs hidden sm:inline">— {player.note}</span>
         )}
@@ -844,12 +1089,13 @@ function PlayerRowBody({
         </span>
       </div>
 
-      {/* Guest rename form — expands below main row */}
-      {canManage && isGuest && renameOpen && (
-        <RenameForm
+      {/* Edit form — expands below main row */}
+      {canManage && editOpen && (
+        <EditPlayerForm
           player={player}
           clubId={clubId}
-          onClose={() => setRenameOpen(false)}
+          levels={levels}
+          onClose={() => setEditOpen(false)}
         />
       )}
 
@@ -874,7 +1120,7 @@ function SortableItem({
   canManage,
   sessionStart,
   sessionEnd,
-  levelById,
+  levels,
   selectMode,
   selected,
   onToggleSelect,
@@ -886,7 +1132,7 @@ function SortableItem({
   canManage: boolean;
   sessionStart?: string;
   sessionEnd?: string;
-  levelById?: Map<string, { label: string }>;
+  levels?: Level[];
   selectMode: boolean;
   selected: boolean;
   onToggleSelect: (id: string) => void;
@@ -944,7 +1190,7 @@ function SortableItem({
         canManage={canManage}
         sessionStart={sessionStart}
         sessionEnd={sessionEnd}
-        levelById={levelById}
+        levels={levels}
         dragHandle={dragHandle}
         positionLabel={`${index + 1}.`}
         selectCheckbox={selectCheckbox}
@@ -963,7 +1209,7 @@ function ReserveItem({
   canManage,
   sessionStart,
   sessionEnd,
-  levelById,
+  levels,
   selectMode,
   selected,
   onToggleSelect,
@@ -975,7 +1221,7 @@ function ReserveItem({
   canManage: boolean;
   sessionStart?: string;
   sessionEnd?: string;
-  levelById?: Map<string, { label: string }>;
+  levels?: Level[];
   selectMode: boolean;
   selected: boolean;
   onToggleSelect: (id: string) => void;
@@ -1029,7 +1275,7 @@ function ReserveItem({
         canManage={canManage}
         sessionStart={sessionStart}
         sessionEnd={sessionEnd}
-        levelById={levelById}
+        levels={levels}
         dragHandle={dragHandle}
         positionLabel={`#${rank}`}
         selectCheckbox={selectCheckbox}
@@ -1103,9 +1349,6 @@ export function SortablePlayerList({
 }: Props) {
   const t = useTranslations("club.playerList");
   const tBulk = useTranslations("club.bulkSelect");
-  const levelById = levels
-    ? new Map(levels.map((l) => [l.id, l]))
-    : undefined;
   const [items, setItems] = useState(players);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -1354,7 +1597,7 @@ export function SortablePlayerList({
                     canManage={canManage}
                     sessionStart={sessionStart}
                     sessionEnd={sessionEnd}
-                    levelById={levelById}
+                    levels={levels}
                     selectMode={selectMode}
                     selected={selectedIds.has(p.id)}
                     onToggleSelect={togglePlayerSelect}
@@ -1387,7 +1630,7 @@ export function SortablePlayerList({
                     canManage={canManage}
                     sessionStart={sessionStart}
                     sessionEnd={sessionEnd}
-                    levelById={levelById}
+                    levels={levels}
                     selectMode={selectMode}
                     selected={selectedIds.has(p.id)}
                     onToggleSelect={togglePlayerSelect}
@@ -1405,6 +1648,7 @@ export function SortablePlayerList({
           clubId={clubId}
           selectedIds={selectedIds}
           allPlayers={items}
+          levels={levels}
           sessionStart={sessionStart}
           sessionEnd={sessionEnd}
           onClearSelection={clearSelection}

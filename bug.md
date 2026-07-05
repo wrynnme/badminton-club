@@ -4,11 +4,62 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-**No open bugs as of 2026-06-10.** Every finding from the 2026-06-09 whole-system core review (`docs/reviews/code-review-core-2026-06-09.html` — 1 P0 + 4 P1 + 23 P2) is closed — full records in Resolved.
+- **[P2] tournament queue: reorder ชนกับ "เริ่มแมตช์" → แมตช์ in_progress ถูก renumber** (พบโดย T5 race probe R2, 2026-07-04 — เกิด 26/30 รอบ, deterministic repro ใน `e2e/race-hardening.spec.ts`) · กลไก: `swap_pending_match_numbers` validate "ทุก id เป็น pending" **ก่อน** 2-pass renumber แต่ `start_match_atomic` ล็อกแค่ row ตัวเอง ไม่ได้ยึด advisory lock ของทัวร์ → start ที่ commit ในหน้าต่าง validate→UPDATE ทำให้เลข `#N` ของแมตช์ที่กำลังแข่งเปลี่ยนกลางเกมทุกจอ (ผลจำกัดที่ display identity — ข้อมูลไม่พัง, match_number ยังเป็น permutation ครบ) · **fix เตรียมพร้อมแล้ว**: `supabase/migrations/20260704000200_swap_pending_lock_rows_before_validate.sql` (`FOR UPDATE` rows ก่อน validate) — **ยังไม่ apply** ตามนโยบาย P2+prod-migration รออนุมัติ; หลัง apply รัน R2 ซ้ำต้องได้ `renumberedInProgress=0`
+
+(อัปเดต 2026-07-04 — ก่อนหน้านี้ no open bugs ตั้งแต่ 2026-06-10.) Every finding from the 2026-06-09 whole-system core review (`docs/reviews/code-review-core-2026-06-09.html` — 1 P0 + 4 P1 + 23 P2) is closed — full records in Resolved.
 
 The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open)**: `computeExpenseShares` ceil-per-head over-collects a few baht (100฿/3 → 34×3 = 102). By design — equal players pay the same whole baht, the organizer is never short, and it stays reconciled across the cost-breakdown table + ExpenseManager. A fair largest-remainder split was offered and declined (user, 2026-06-09).
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
+
+### 2026-07-05 — v0.17.1 remove visible LIVE badge — ✅ PASS
+
+- เอา visible LIVE badge ออกจาก `TournamentLiveWrapper`, `ClubLiveWrapper`, และหน้าสนาม `/t/[token]/court/[n]`; realtime subscription ยังทำงานผ่าน `useLiveRefresh` เพื่อ `router.refresh()` เหมือนเดิม.
+- ลบ `src/components/live-badge.tsx`; ไม่มี code reference ไปที่ component นี้เหลือใน `src`.
+- Ship-check follow-up: full E2E รอบแรกจับ test stale — `race-hardening` ยังรอข้อความ `LIVE` เพื่อเช็ค subscribed. แก้ test ให้ใช้ sentinel reorder/retry เป็น realtime warm-up gate แทน UI badge.
+- **Gate:** `npm run typecheck` ผ่าน · `npm test` **764/764** ผ่าน · `npm run build` ผ่าน · `npx playwright test e2e/club-flow.spec.ts` **6/6 PASS** · `npx playwright test e2e/race-hardening.spec.ts` **5/5 PASS** · final `npm run e2e` **11/11 PASS**.
+
+### 2026-07-05 — Codex ship-check continuation (roster level E2E coverage) — ✅ PASS
+
+- เพิ่ม E2E smoke ใน `club-flow`: owner เปิดแท็บ "ลงชื่อ / เช็คอิน" → quick-select ระดับให้ `SMOKE_E2E_p1` → toast สำเร็จ → DB `club_players.level_id` persist ตรงกับ level ที่เลือก.
+- Cleanup UI: ปุ่มแก้ไขผู้เล่นใน roster ใช้ Tooltip/Button pattern + `aria-label` แทน `title` เฉย ๆ.
+- **Gate:** `npm run typecheck` ผ่าน · `npm test` **764/764** ผ่าน · `npm run build` ผ่านก่อนหน้าในรอบ ship-check · `npx playwright test e2e/club-flow.spec.ts` **6/6 PASS** · `npx playwright test e2e/race-hardening.spec.ts` **5/5 PASS** · final `npm run e2e` **11/11 PASS**.
+- หมายเหตุ: full E2E รอบแรกเจอ R5 realtime warm-up ไม่ converge ในแท็บที่ 2 หนึ่งครั้ง; rerun เฉพาะ `race-hardening` ผ่านครบ และ final full run ผ่านครบ จึงบันทึกเป็น flake รอบเดียว ไม่เปิด bug ใหม่.
+
+### 2026-07-04 — v0.17.0 feature ship-check (roster level editing + time fields + QR SVG) — ✅ pass, authenticated live-smoke
+
+Feature 3 ก้อน (branch `feat/roster-level-editing`): (T1) แก้ระดับฝีมือผู้เล่นที่อยู่ใน roster แล้วได้ — quick-select ในแถว + ฟอร์มแก้ไข (ชื่อ guest-only + ระดับ + โน้ต) + bulk dialog; (T2) แยกช่องเวลาเริ่ม/เลิกเป็น 2 บรรทัด; (T3) โลโก้กลาง QR รับ SVG.
+- **Gate:** tsc 0 · vitest **764/764** (+4 `resolveActiveLevelIds`) · i18n th/en parity OK · `next build` OK (BUILD_ID `4z6F0frbscclIxbVJQOXM`).
+- **Live browser smoke (net-zero, authenticated @390px):** seed club + 3 ผู้เล่น (2 guest + 1 profile-linked) → `/clubs/[id]?tab=checkin`:
+  - quick-select ในแถว G1 → BG → DB `club_players.level_id` ตรง ✓
+  - edit form: guest มีช่องชื่อ / profile-linked **ไม่มี**ช่องชื่อ (มีแค่ระดับ+โน้ต) ✓
+  - bulk "ตั้งระดับให้ 2 คน" (G2+LINKED) → BG+ → DB ทั้งคู่ตรง ✓ · page ไม่ล้นจอ · console 0 error · teardown 0 row
+  - T2: `/clubs/new` เวลาเริ่ม/เลิก stacked 2 บรรทัด (top 542 vs 606) พอดีจอ ✓
+  - T3 (SVG QR): safety-gate logic PASS (`<script>`/`on*=`/`javascript:`/`<foreignObject>` → reject; png/svg data-url → accept). **live-upload smoke deferred** (ต้อง apply migration + set is_site_admin ก่อน).
+- **⚠️ Pending pre-deploy (R1):** migration `20260704000300_app_assets_allow_svg` (เพิ่ม `image/svg+xml` ใน bucket `app-assets` allowlist) **ยังไม่ apply prod** — จนกว่าจะ apply, upload SVG จะโดน storage reject (dev preview + prod ใช้ DB เดียวกัน). config-only, non-destructive, idempotent (upsert). ต้อง apply ก่อน T3 ใช้งานได้จริง.
+
+- **Code-review pass (ship-check Phase 1, 2026-07-04):** **0 P0/P1**. Verified clean: bulk-level PostgREST filter (uuid-validated, null-safe branch, truthful count) · `updateClubPlayerDetailsAction` patch + empty-guard + note→null · membership validation (`resolveActiveLevelIds`) · quick-select clobber-guard · Base UI Select null-guard. **2 minor fixed:** ลบ dead i18n key `renameTitle` (th+en, orphaned จาก RenameForm→EditPlayerForm); SVG safety-gate + `@import` (บล็อกโหลด CSS ภายนอก) — จงใจ **ไม่** reject `<style>`/`<use>` เพราะ logo จริง (kuanbad.svg) ใช้ `<style>` กำหนดสี fill (verified: real logo ยัง accepted). tsc 0 · vitest 764/764.
+
+### 2026-07-04 — T5 race-hardening (deterministic adversarial races) — ✅ 10/10 PASS · 🔴 พบ P1 FIXED + P2 ใหม่ 1 (v0.16.3)
+
+สร้าง `e2e/race-hardening.spec.ts` + `e2e/helpers/tournament-fixtures.ts` — seed ทัวร์ throwaway (8 แมตช์ TBD, fixed UUID, marker `SMOKE_E2E_T5_`) แล้วยิง race จริงแบบ Promise.all + browser 2 แท็บ; ปิด backlog T5 ทั้ง 3 ข้อ (2-client reorder / optimistic-vs-payload / multi-court start):
+
+- **R5 (browser, 2 live tabs):** page1 ค้าง mid-drag → server reorder ลง → page2 patch สด → page1 ปล่อย drop → **ทุกจอ + DB converge ลำดับเดียวกัน**, console 0 error · มี warm-up gate (sentinel swap ต้องถึงทั้ง 2 แท็บก่อนเริ่ม race) + ย้ายไปรันก่อน DB rounds กัน Realtime WAL backlog
+- **R1 (reorder ∥ reorder ×20):** advisory xact lock serialize สมบูรณ์ — winner ทั้งใบเสมอ (split A=7/B=13) ไม่มี interleave, match_number เป็น permutation 1..8 ทุกครั้ง
+- **R3 (start ∥ start สนามเดียวกัน ×20):** partial unique index `uniq_matches_inprogress_court` กันได้ 20/20 — ok 1 / 23505 1 / in_progress 1 เสมอ
+- **R4 (start ∥ start แมตช์เดียวกัน ×20):** row lock + status re-check กันได้ 20/20 — ok:true 1 เดียว อีกฝั่ง reason `in_progress`
+- **R2 (reorder ∥ start — probe):** ยืนยัน gap จริง **26/30 รอบ** แมตช์ที่เพิ่งเริ่มถูก renumber → log เป็น P2 ใน `## Open` พร้อม migration fix ที่เตรียมไว้ (ยังไม่ apply)
+
+**🔴 P1 FOUND + FIXED (ผลพลอยได้จากการเทส R5):** `tournaments` ไม่เคยถูก add เข้า publication `supabase_realtime` (migration 2026-05-15 add แค่ `matches`; REPLICA IDENTITY FULL ตั้งไว้แล้วทั้งคู่ตั้งแต่ 2026-05-19) — binding ที่ตายตัวเดียวทำให้ **channel ทั้งตัวของ `TournamentLiveWrapper` ไม่ได้รับ event เลย** (พิสูจน์ด้วย ws frame count: 0 vs 16) → debounced `router.refresh()` ระดับหน้าไม่เคยยิงในทุกหน้าทัวร์ (แดชบอร์ด/แชร์/TV/court) ที่ผ่านมาเห็น live เฉพาะเส้น queue-sync patch (opt-in `queue_payload_sync`). **Fix**: migration `20260704000100_add_tournaments_to_realtime_publication` ✅ **applied prod + verified** — rsc refresh ยิงทั้ง 2 หน้า (idle 1/1), mid-drag stale self-heal ภายใน ~1s. หมายเหตุ: อาการ "no-op drag drop ทิ้ง patch ที่ suppress แล้วค้าง stale ถาวร" ที่เจอระหว่างสืบ หายไปในตัวด้วย P1 fix (wrapper refresh กลับมาเป็น authority — ไม่ต้องแก้โค้ด client)
+
+**Gate:** tsc 0 · vitest เขียวทั้งชุด · e2e **10/10 PASS** (club-flow 5 + race-hardening 5) · net-zero (teardown เหลือ 0 row) · bump **v0.16.3** (fixed: realtime ระดับหน้ากลับมาทำงานทุกหน้า)
+
+### 2026-07-04 — refactor: `useLiveRefresh` hook dedup (deferred จาก ship-check v0.16.1) — ✅ DONE (develop)
+
+Extract debounced-refresh scaffolding ที่ซ้ำบรรทัดต่อบรรทัดใน `TournamentLiveWrapper` / `ClubLiveWrapper` (timer ref + `scheduleRefresh` + `live` state จาก subscribe status + cleanup timer/`removeChannel`) → hook เดียว `src/lib/hooks/use-live-refresh.ts` (`useLiveRefresh({ channelName, enabled, wire })`); wrapper เหลือเฉพาะ channel wiring ของตัวเอง (postgres_changes vs broadcast). `wire` อ่านผ่าน ref — inline closure ที่ call site ไม่ retrigger effect; subscription rebuild เฉพาะเมื่อ `channelName`/`enabled` เปลี่ยน. การแก้ debounce/CHANNEL_ERROR handling ในอนาคตลงที่ hook จุดเดียว.
+
+- **Gate:** tsc 0 · vitest 760/760 · e2e 5/5 PASS (club flow — หน้า mount `ClubLiveWrapper` เต็มหน้า, net-zero).
+- **Live badge smoke (net-zero):** seed ทัวร์ throwaway `SMOKE_E2E_LIVE_BADGE` (`realtime_enabled:true` + share token) → เปิด `/t/[token]` headless → **LIVE badge ขึ้น** (subscribe ถึง SUBSCRIBED ผ่าน hook ใหม่) · console 0 error → ลบทิ้ง เหลือ 0 row. เช็ค negative case ด้วยทัวร์จริงที่ตั้ง `realtime_enabled:false` → badge ไม่ขึ้น (ถูกต้อง).
 
 ### 2026-07-03 — ship-check v0.16.1 release (develop→prod delta, PR #11+#12 + fix/slip-scroll-clip) — ⚠️ 1 P1 caught, fixed pre-prod
 
