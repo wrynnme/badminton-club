@@ -683,7 +683,6 @@
     "sessionEditorTitle": "แก้ไขเวลา/เกม",
     "sessionEditorSaved": "บันทึกข้อมูลแล้ว",
     "renameLabel": "ชื่อ",
-    "renameTitle": "แก้ไขชื่อ",
     "renameSave": "บันทึก",
     "renameCancel": "ยกเลิก",
     "partialPlay": "เล่น {start}–{end}",

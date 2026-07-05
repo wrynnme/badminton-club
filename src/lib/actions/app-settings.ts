@@ -49,10 +49,14 @@ export async function uploadQrLogoAction(input: { dataUrl: string }) {
   // enough without pulling in a full SVG sanitizer dependency.
   if (contentType === "image/svg+xml") {
     const svg = buffer.toString("utf8");
+    // NB: <style> and <use> are intentionally NOT rejected — they're legitimate
+    // in ordinary logo SVGs (the Kuanbad mark uses <style> for its fill colors).
+    // We reject only active-content vectors + external CSS pulls (@import).
     if (
       /<script[\s>]/i.test(svg) ||
       /\son\w+\s*=/i.test(svg) ||
       /javascript:/i.test(svg) ||
+      /@import/i.test(svg) ||
       /<foreignObject[\s>]/i.test(svg)
     ) {
       return { error: t("admin.unsafeSvg") };
