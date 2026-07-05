@@ -7,7 +7,7 @@ import { getSession } from "@/lib/auth/session";
 import { loginRedirect } from "@/lib/club/permissions";
 import { isSiteAdmin } from "@/lib/auth/site-admin";
 
-const QR_DATA_URL_RE = /^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+/=]+)$/;
+const QR_DATA_URL_RE = /^data:(image\/(?:png|jpe?g|webp|svg\+xml));base64,([A-Za-z0-9+/=]+)$/;
 const MAX_LOGO_BYTES = 1_000_000; // ~1MB, matches the app-assets bucket limit
 
 /** Toggle the global centre-of-QR logo on/off (site owner only). */
@@ -41,6 +41,26 @@ export async function uploadQrLogoAction(input: { dataUrl: string }) {
   const buffer = Buffer.from(m[2], "base64");
   if (buffer.byteLength === 0 || buffer.byteLength > MAX_LOGO_BYTES) {
     return { error: t("admin.invalidImage") };
+  }
+
+  // An SVG logo is served from a public bucket URL; the on-screen <img> render
+  // path won't execute its script, but opening the bucket URL directly would.
+  // Reject anything scriptable. Site-admin-only upload, so a pattern gate is
+  // enough without pulling in a full SVG sanitizer dependency.
+  if (contentType === "image/svg+xml") {
+    const svg = buffer.toString("utf8");
+    // NB: <style> and <use> are intentionally NOT rejected — they're legitimate
+    // in ordinary logo SVGs (the Kuanbad mark uses <style> for its fill colors).
+    // We reject only active-content vectors + external CSS pulls (@import).
+    if (
+      /<script[\s>]/i.test(svg) ||
+      /\son\w+\s*=/i.test(svg) ||
+      /javascript:/i.test(svg) ||
+      /@import/i.test(svg) ||
+      /<foreignObject[\s>]/i.test(svg)
+    ) {
+      return { error: t("admin.unsafeSvg") };
+    }
   }
 
   const sb = await createAdminClient();

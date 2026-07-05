@@ -6,6 +6,25 @@ import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
+import { resolveActiveLevelIds } from "@/lib/club/levels";
+
+/**
+ * True when `levelId` belongs to the club's active level set (club-scoped rows
+ * if the club has customized its ladder, else the global rows). The FK on
+ * `club_players.level_id` alone would accept any levels row — including another
+ * club's — so writers validate against this before persisting a level.
+ */
+async function isLevelInClubSet(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  clubId: string,
+  levelId: string,
+): Promise<boolean> {
+  const { data } = await sb
+    .from("levels")
+    .select("id, club_id")
+    .or(`club_id.eq.${clubId},club_id.is.null`);
+  return resolveActiveLevelIds(data ?? []).has(levelId);
+}
 
 function guestSchema(nameRequiredMsg: string, nameTooLongMsg: string) {
   return z.object({
@@ -46,6 +65,11 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, parsed.data.club_id, session.profileId))) {
     return { error: t("club.noPermission") };
+  }
+
+  // Reject a level that isn't in this club's set (the RPC/FK don't check).
+  if (parsed.data.level_id && !(await isLevelInClubSet(sb, parsed.data.club_id, parsed.data.level_id))) {
+    return { error: t("club.invalidLevel") };
   }
 
   // Atomic capacity check + insert under a club-row lock (add_club_player RPC):
@@ -634,37 +658,112 @@ export async function bulkDeleteClubPlayersAction(input: {
   return { ok: true, deleted, failed };
 }
 
-/** Owner / co-admin renames a guest player (profile_id IS NULL — LINE players keep their account name). */
-export async function renameClubGuestAction(
-  clubId: string,
-  playerId: string,
-  displayName: string,
+const UpdatePlayerDetailsSchema = z.object({
+  club_id: z.string().uuid(),
+  player_id: z.string().uuid(),
+  display_name: z.string().trim().min(1).max(60).optional(), // undefined = untouched
+  level_id: z.string().uuid().nullable().optional(), // null = "ไม่มีระดับ" (clear)
+  note: z.string().trim().max(500).nullable().optional(), // "" / null = clear
+});
+
+export type UpdateClubPlayerDetailsInput = z.infer<typeof UpdatePlayerDetailsSchema>;
+
+/**
+ * Owner / co-admin edits an existing roster player. Partial patch — a field left
+ * `undefined` is untouched; `level_id: null` or `note: ""` clears it. Skill level
+ * and note apply to every player; `display_name` is guest-only (profile-linked
+ * players keep their LINE account name). Replaces the old rename-only action.
+ */
+export async function updateClubPlayerDetailsAction(
+  input: UpdateClubPlayerDetailsInput,
 ): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
   const t = await getTranslations("actions");
-  const name = displayName.trim();
-  if (name.length < 1 || name.length > 60) return { error: t("club.nameLength") };
+  const parsed = UpdatePlayerDetailsSchema.safeParse(input);
+  if (!parsed.success) return { error: t("club.invalidData") };
+  const { club_id, player_id, display_name, level_id, note } = parsed.data;
 
   const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
+  if (!(await assertCanManageClub(sb, club_id, session.profileId)))
+    return { error: t("club.noPermission") };
 
   const { data: player, error: fetchError } = await sb
     .from("club_players")
     .select("id, profile_id")
-    .eq("id", playerId)
-    .eq("club_id", clubId)
+    .eq("id", player_id)
+    .eq("club_id", club_id)
     .single();
   if (fetchError || !player) return { error: t("club.playerNotFound") };
-  if (player.profile_id) return { error: t("club.renameGuestOnly") };
+
+  // Name is guest-only — LINE-linked players keep their account name.
+  if (display_name !== undefined && player.profile_id)
+    return { error: t("club.renameGuestOnly") };
+
+  // A non-null level must belong to this club's active set (FK alone accepts any).
+  if (level_id && !(await isLevelInClubSet(sb, club_id, level_id)))
+    return { error: t("club.invalidLevel") };
+
+  const patch: Record<string, unknown> = {};
+  if (display_name !== undefined) patch.display_name = display_name;
+  if (level_id !== undefined) patch.level_id = level_id; // null clears
+  if (note !== undefined) patch.note = note || null; // "" → null
+
+  if (Object.keys(patch).length === 0)
+    return { error: t("club.updatePlayerNoFields") };
 
   const { error } = await sb
     .from("club_players")
-    .update({ display_name: name })
-    .eq("id", playerId);
+    .update(patch)
+    .eq("id", player_id)
+    .eq("club_id", club_id);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidatePath(`/clubs/${club_id}`);
   return { ok: true };
+}
+
+/**
+ * Bulk set (or clear with `levelId: null`) the skill level for a set of players.
+ * Only touches rows whose level actually differs so the returned count is truthful.
+ */
+export async function bulkSetClubPlayerLevelAction(input: {
+  clubId: string;
+  playerIds: string[];
+  levelId: string | null;
+}): Promise<{ ok: true; count: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const ids = BulkIdsSchema.safeParse(input.playerIds);
+  if (!ids.success) return { error: t("club.invalidData") };
+  const levelId = z.string().uuid().nullable().safeParse(input.levelId);
+  if (!levelId.success) return { error: t("club.invalidData") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId)))
+    return { error: t("club.noPermission") };
+
+  if (levelId.data && !(await isLevelInClubSet(sb, input.clubId, levelId.data)))
+    return { error: t("club.invalidLevel") };
+
+  // Only touch rows whose level differs. PostgREST `.neq` silently excludes NULL
+  // rows, so branch on clear-vs-set to keep the returned count truthful.
+  let q = sb
+    .from("club_players")
+    .update({ level_id: levelId.data })
+    .eq("club_id", input.clubId)
+    .in("id", ids.data);
+  q =
+    levelId.data === null
+      ? q.not("level_id", "is", null)
+      : q.or(`level_id.neq.${levelId.data},level_id.is.null`);
+
+  const { data, error } = await q.select("id");
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true, count: data?.length ?? 0 };
 }

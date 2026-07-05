@@ -51,7 +51,7 @@ export function AdminQrLogoManager({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (!/^image\/(png|jpe?g|webp)$/.test(file.type) || file.size > 1_000_000) {
+    if (!/^image\/(png|jpe?g|webp|svg\+xml)$/.test(file.type) || file.size > 1_000_000) {
       toast.error(t("uploadInvalid"));
       return;
     }
@@ -134,7 +134,7 @@ export function AdminQrLogoManager({
                 <input
                   ref={fileRef}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
                   className="hidden"
                   onChange={onPickFile}
                 />
