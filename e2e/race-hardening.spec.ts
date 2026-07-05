@@ -94,21 +94,42 @@ test.describe.serial("T5 race-hardening — tournament queue", () => {
         .map((t) => t.match(/SMOKE_[A-H]/)?.[0] ?? "?")
         .filter((t) => t !== "?");
     };
+    const waitForOrder = async (page: Page, expected: string[], timeout = 8_000): Promise<boolean> => {
+      try {
+        await expect.poll(() => teamOrder(page), { timeout }).toEqual(expected);
+        return true;
+      } catch {
+        return false;
+      }
+    };
 
     const p1 = await mkPage();
     const p2 = await mkPage();
     try {
-      // subscribed on both tabs before racing
-      await expect(p1.page.getByText("LIVE", { exact: true })).toBeVisible({ timeout: 15_000 });
-      await expect(p2.page.getByText("LIVE", { exact: true })).toBeVisible({ timeout: 15_000 });
+      await expect.poll(() => teamOrder(p1.page), { timeout: 15_000 }).toEqual([...T5.teamNames]);
+      await expect.poll(() => teamOrder(p2.page), { timeout: 15_000 }).toEqual([...T5.teamNames]);
 
       // warm-up gate: prove BOTH tabs' realtime→UI pipelines are live before
       // racing (sentinel reorder must reach both), then restore the baseline.
       const sentinel = rotate(T5.matchIds, 1);
-      expect((await swap(sb, sentinel)).error).toBeNull();
       const sentinelOrder = [...T5.teamNames.slice(1), T5.teamNames[0]];
-      await expect.poll(() => teamOrder(p1.page), { timeout: 30_000 }).toEqual(sentinelOrder);
-      await expect.poll(() => teamOrder(p2.page), { timeout: 30_000 }).toEqual(sentinelOrder);
+      let warmed = false;
+      for (let attempt = 0; attempt < 4 && !warmed; attempt++) {
+        expect((await swap(sb, sentinel)).error).toBeNull();
+        const [p1Warm, p2Warm] = await Promise.all([
+          waitForOrder(p1.page, sentinelOrder),
+          waitForOrder(p2.page, sentinelOrder),
+        ]);
+        warmed = p1Warm && p2Warm;
+        if (!warmed) {
+          await resetT5(sb);
+          await Promise.all([
+            waitForOrder(p1.page, [...T5.teamNames]),
+            waitForOrder(p2.page, [...T5.teamNames]),
+          ]);
+        }
+      }
+      expect(warmed, "both tabs should receive a realtime sentinel reorder before racing").toBe(true);
       await resetT5(sb);
       await expect.poll(() => teamOrder(p1.page), { timeout: 30_000 }).toEqual([...T5.teamNames]);
       await expect.poll(() => teamOrder(p2.page), { timeout: 30_000 }).toEqual([...T5.teamNames]);

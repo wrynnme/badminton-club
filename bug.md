@@ -16,7 +16,8 @@ Dated entries below are the historical test-run / fix log (kept per the bug-trac
 
 - เอา visible LIVE badge ออกจาก `TournamentLiveWrapper`, `ClubLiveWrapper`, และหน้าสนาม `/t/[token]/court/[n]`; realtime subscription ยังทำงานผ่าน `useLiveRefresh` เพื่อ `router.refresh()` เหมือนเดิม.
 - ลบ `src/components/live-badge.tsx`; ไม่มี code reference ไปที่ component นี้เหลือใน `src`.
-- **Gate:** `npm run typecheck` ผ่าน · `npm run build` ผ่าน.
+- Ship-check follow-up: full E2E รอบแรกจับ test stale — `race-hardening` ยังรอข้อความ `LIVE` เพื่อเช็ค subscribed. แก้ test ให้ใช้ sentinel reorder/retry เป็น realtime warm-up gate แทน UI badge.
+- **Gate:** `npm run typecheck` ผ่าน · `npm test` **764/764** ผ่าน · `npm run build` ผ่าน · `npx playwright test e2e/club-flow.spec.ts` **6/6 PASS** · `npx playwright test e2e/race-hardening.spec.ts` **5/5 PASS** · final `npm run e2e` **11/11 PASS**.
 
 ### 2026-07-05 — Codex ship-check continuation (roster level E2E coverage) — ✅ PASS
 
