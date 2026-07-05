@@ -15,9 +15,16 @@ export function adminClient(): SupabaseClient {
 
 // Delete every throwaway row for this suite, child→parent (FK order). Idempotent.
 export async function teardownE2E(sb: SupabaseClient): Promise<void> {
-  await sb.from("club_matches").delete().eq("club_id", E2E.clubId);
-  await sb.from("club_players").delete().eq("club_id", E2E.clubId);
-  await sb.from("clubs").delete().eq("id", E2E.clubId);
+  const { data: clubs } = await sb.from("clubs").select("id").eq("owner_id", E2E.ownerId);
+  const clubIds = [...new Set([E2E.clubId, ...(clubs ?? []).map((club) => club.id as string)])];
+  if (clubIds.length > 0) {
+    await sb.from("club_matches").delete().in("club_id", clubIds);
+    await sb.from("club_players").delete().in("club_id", clubIds);
+    await sb.from("club_admins").delete().in("club_id", clubIds);
+    await sb.from("club_expenses").delete().in("club_id", clubIds);
+    await sb.from("clubs").delete().in("id", clubIds);
+  }
+  await sb.from("club_presets").delete().eq("owner_id", E2E.ownerId);
   await sb.from("profiles").delete().eq("id", E2E.ownerId);
 }
 

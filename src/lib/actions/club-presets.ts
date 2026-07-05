@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { format } from "date-fns";
 import { z } from "zod";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import {
@@ -12,6 +14,14 @@ import {
   parsePresetConfig,
   type ClubPresetConfig,
 } from "@/lib/club/preset";
+import { assertCanManageClub } from "@/lib/club/permissions";
+import { parseQueueSettings } from "@/lib/club/queue-settings";
+import { isValidPromptPayId } from "@/lib/club/promptpay";
+import {
+  DEFAULT_RECEIPT_TEMPLATE,
+  hasBankReceiver,
+  parseReceiptTemplate,
+} from "@/lib/club/receipt";
 import type { ClubPreset } from "@/lib/types";
 
 async function loginRedirect(): Promise<never> {
@@ -42,6 +52,133 @@ async function assertPresetOwner(
   if (error) return false;
   if (!data || data.owner_id !== profileId) return false;
   return true;
+}
+
+function normalizeNullableString(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? "";
+  return trimmed ? trimmed : null;
+}
+
+function validatePresetConfigPayment(
+  config: ClubPresetConfig,
+  t: Awaited<ReturnType<typeof getTranslations>>,
+): { ok: true; config: ClubPresetConfig } | { error: string } {
+  const next: ClubPresetConfig = {
+    ...config,
+    promptpay_id: normalizeNullableString(config.promptpay_id),
+    promptpay_name: normalizeNullableString(config.promptpay_name),
+    promptpay_qr_image: normalizeNullableString(config.promptpay_qr_image),
+  };
+
+  if (next.promptpay_id && !isValidPromptPayId(next.promptpay_id)) {
+    return { error: t("club.invalidPromptPay") };
+  }
+  if (next.receipt_template.payment_show.bank && !hasBankReceiver(next.receipt_template.bank)) {
+    return { error: t("club.invalidData") };
+  }
+
+  return { ok: true, config: next };
+}
+
+function receiptTemplateForPreset(config: ClubPresetConfig) {
+  return {
+    ...DEFAULT_RECEIPT_TEMPLATE,
+    bank: config.receipt_template.bank,
+    payment_show: config.receipt_template.payment_show,
+    theme: config.receipt_template.theme,
+  };
+}
+
+function weekdayLabel(playDate: string, locale: string): string {
+  try {
+    return format(new Date(`${playDate}T00:00:00`), "EEEE", {
+      locale: dateFnsLocaleOf(locale),
+    });
+  } catch {
+    return "";
+  }
+}
+
+type ClubSnapshotRow = {
+  id: string;
+  name: string;
+  venue: string;
+  play_date: string;
+  start_time: string;
+  end_time: string;
+  max_players: number;
+  court_fee: number;
+  shuttle_price: number;
+  courts: string[] | null;
+  queue_settings: Record<string, unknown> | null;
+  promptpay_id: string | null;
+  promptpay_name: string | null;
+  promptpay_qr_image: string | null;
+  receipt_template: Record<string, unknown> | null;
+};
+
+type ClubAdminSnapshotRow = { user_id: string };
+
+type ClubPlayerSnapshotRow = {
+  display_name: string;
+  profile_id: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  position: number | null;
+  joined_at: string;
+  status: "active" | "reserve";
+};
+
+function buildPresetConfigFromClub(input: {
+  club: ClubSnapshotRow;
+  admins: ClubAdminSnapshotRow[];
+  players: ClubPlayerSnapshotRow[];
+  locale: string;
+}): ClubPresetConfig {
+  const queueSettings = parseQueueSettings(input.club.queue_settings);
+  const receiptTemplate = parseReceiptTemplate(input.club.receipt_template);
+  const courts = Array.isArray(input.club.courts) ? input.club.courts : [];
+  const courtCount = courts.length > 0 ? courts.length : queueSettings.court_count;
+  const players = [...input.players].sort((a, b) => {
+    const statusDiff =
+      (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1);
+    if (statusDiff !== 0) return statusDiff;
+    const aPos = a.position ?? Number.MAX_SAFE_INTEGER;
+    const bPos = b.position ?? Number.MAX_SAFE_INTEGER;
+    if (aPos !== bPos) return aPos - bPos;
+    return a.joined_at.localeCompare(b.joined_at);
+  });
+
+  return ClubPresetConfigSchema.parse({
+    venue: input.club.venue ?? "",
+    schedule_day: weekdayLabel(input.club.play_date, input.locale),
+    start_time: input.club.start_time?.slice(0, 5) ?? "",
+    end_time: input.club.end_time?.slice(0, 5) ?? "",
+    max_players: input.club.max_players,
+    court_fee: input.club.court_fee,
+    shuttle_price: input.club.shuttle_price,
+    court_count: courtCount,
+    players_per_team: queueSettings.players_per_team,
+    rotation_mode: queueSettings.rotation_mode,
+    queue_mode: queueSettings.queue_mode,
+    co_admin_ids: [...new Set(input.admins.map((a) => a.user_id))],
+    promptpay_id: input.club.promptpay_id,
+    promptpay_name: input.club.promptpay_name,
+    promptpay_qr_image: input.club.promptpay_qr_image,
+    receipt_template: {
+      bank: receiptTemplate.bank,
+      payment_show: receiptTemplate.payment_show,
+      theme: receiptTemplate.theme,
+    },
+    regulars: players
+      .filter((p) => p.display_name.trim() !== "")
+      .map((p) => ({
+        name: p.display_name.trim(),
+        profile_id: p.profile_id,
+        start_time: p.start_time,
+        end_time: p.end_time,
+      })),
+  });
 }
 
 // ─── List ────────────────────────────────────────────────────────────────────
@@ -96,6 +233,9 @@ export async function createClubPresetAction(input: {
   } catch {
     return { error: t("club.invalidConfigData") };
   }
+  const paymentValidation = validatePresetConfigPayment(parsedConfig, t);
+  if ("error" in paymentValidation) return { error: paymentValidation.error };
+  parsedConfig = paymentValidation.config;
 
   const sb = await createAdminClient();
   const { data, error } = await sb
@@ -137,11 +277,15 @@ export async function updateClubPresetAction(
   }
 
   if (input.config !== undefined) {
+    let parsedConfig: ClubPresetConfig;
     try {
-      patch.config = ClubPresetConfigSchema.parse(input.config);
+      parsedConfig = ClubPresetConfigSchema.parse(input.config);
     } catch {
       return { error: t("club.invalidConfigData") };
     }
+    const paymentValidation = validatePresetConfigPayment(parsedConfig, t);
+    if ("error" in paymentValidation) return { error: paymentValidation.error };
+    patch.config = paymentValidation.config;
   }
 
   if (Object.keys(patch).length === 0) return { ok: true };
@@ -151,6 +295,103 @@ export async function updateClubPresetAction(
 
   revalidatePath("/clubs");
   return { ok: true };
+}
+
+// ─── Snapshot current club into a preset ─────────────────────────────────────
+
+const SaveClubAsPresetSchema = z.object({
+  clubId: z.string().uuid(),
+  name: z.string().min(2),
+  presetId: z.string().uuid().nullable().optional(),
+});
+
+export async function saveClubAsPresetAction(input: {
+  clubId: string;
+  name: string;
+  presetId?: string | null;
+}): Promise<{ id: string; mode: "created" | "updated" } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
+  if (session.isGuest) return { error: t("club.requireLineForPresetCreate") };
+
+  const parsed = SaveClubAsPresetSchema.safeParse(input);
+  if (!parsed.success) return { error: t("club.invalidData") };
+
+  const nameResult = z.string().min(2, t("club.presetNameTooShort")).safeParse(parsed.data.name);
+  if (!nameResult.success) {
+    return { error: nameResult.error.issues[0]?.message ?? t("club.invalidName") };
+  }
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, parsed.data.clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+  if (
+    parsed.data.presetId &&
+    !(await assertPresetOwner(sb, parsed.data.presetId, session.profileId))
+  ) {
+    return { error: t("club.noPermission") };
+  }
+
+  const [clubRes, adminsRes, playersRes, locale] = await Promise.all([
+    sb
+      .from("clubs")
+      .select(
+        "id, name, venue, play_date, start_time, end_time, max_players, court_fee, shuttle_price, courts, queue_settings, promptpay_id, promptpay_name, promptpay_qr_image, receipt_template",
+      )
+      .eq("id", parsed.data.clubId)
+      .single(),
+    sb.from("club_admins").select("user_id").eq("club_id", parsed.data.clubId),
+    sb
+      .from("club_players")
+      .select("display_name, profile_id, start_time, end_time, position, joined_at, status")
+      .eq("club_id", parsed.data.clubId),
+    getLocale(),
+  ]);
+
+  if (clubRes.error || !clubRes.data) {
+    return { error: clubRes.error?.message ?? t("club.clubNotFound") };
+  }
+  if (adminsRes.error) return { error: adminsRes.error.message };
+  if (playersRes.error) return { error: playersRes.error.message };
+
+  let config = buildPresetConfigFromClub({
+    club: clubRes.data as ClubSnapshotRow,
+    admins: (adminsRes.data ?? []) as ClubAdminSnapshotRow[],
+    players: (playersRes.data ?? []) as ClubPlayerSnapshotRow[],
+    locale,
+  });
+  const paymentValidation = validatePresetConfigPayment(config, t);
+  if ("error" in paymentValidation) return { error: paymentValidation.error };
+  config = paymentValidation.config;
+
+  if (parsed.data.presetId) {
+    const { error } = await sb
+      .from("club_presets")
+      .update({ name: nameResult.data, config })
+      .eq("id", parsed.data.presetId)
+      .eq("owner_id", session.profileId);
+    if (error) return { error: error.message };
+
+    revalidatePath("/clubs");
+    revalidatePath("/clubs/mine");
+    revalidatePath(`/clubs/${parsed.data.clubId}`);
+    return { id: parsed.data.presetId, mode: "updated" };
+  }
+
+  const { data, error } = await sb
+    .from("club_presets")
+    .insert({ owner_id: session.profileId, name: nameResult.data, config })
+    .select("id")
+    .single();
+
+  if (error || !data) return { error: error?.message ?? t("club.createPresetFailed") };
+
+  revalidatePath("/clubs");
+  revalidatePath("/clubs/mine");
+  revalidatePath(`/clubs/${parsed.data.clubId}`);
+  return { id: data.id as string, mode: "created" };
 }
 
 // ─── Delete ──────────────────────────────────────────────────────────────────
@@ -288,19 +529,22 @@ export async function applyClubPresetAction(
   if (presetErr || !presetRow) return { error: t("club.presetNotFound") };
 
   const config = parsePresetConfig(presetRow.config);
+  const paymentValidation = validatePresetConfigPayment(config, t);
+  if ("error" in paymentValidation) return { error: paymentValidation.error };
+  const validatedConfig = paymentValidation.config;
 
   // Derive today's date server-side (server action — Date is allowed here)
   const today = new Date().toISOString().slice(0, 10);
 
   // Derive courts array from court_count
-  const courts = Array.from({ length: config.court_count }, (_, i) => String(i + 1));
+  const courts = Array.from({ length: validatedConfig.court_count }, (_, i) => String(i + 1));
 
   // Build queue_settings from config fields
   const queueSettings = {
-    court_count: config.court_count,
-    players_per_team: config.players_per_team,
-    rotation_mode: config.rotation_mode,
-    queue_mode: config.queue_mode,
+    court_count: validatedConfig.court_count,
+    players_per_team: validatedConfig.players_per_team,
+    rotation_mode: validatedConfig.rotation_mode,
+    queue_mode: validatedConfig.queue_mode,
   };
 
   // ── Step 1: Insert clubs row ──────────────────────────────────────────────
@@ -308,15 +552,19 @@ export async function applyClubPresetAction(
     .from("clubs")
     .insert({
       name: presetRow.name as string,
-      venue: config.venue || "ก๊วน",
+      venue: validatedConfig.venue || "ก๊วน",
       play_date: today,
-      start_time: config.start_time || "18:00",
-      end_time: config.end_time || "21:00",
-      max_players: config.max_players,
-      court_fee: config.court_fee,
-      shuttle_price: config.shuttle_price,
+      start_time: validatedConfig.start_time || "18:00",
+      end_time: validatedConfig.end_time || "21:00",
+      max_players: validatedConfig.max_players,
+      court_fee: validatedConfig.court_fee,
+      shuttle_price: validatedConfig.shuttle_price,
       courts,
       queue_settings: queueSettings,
+      promptpay_id: validatedConfig.promptpay_id,
+      promptpay_name: validatedConfig.promptpay_name,
+      promptpay_qr_image: validatedConfig.promptpay_qr_image,
+      receipt_template: receiptTemplateForPreset(validatedConfig),
       owner_id: session.profileId,
     })
     .select("id")
@@ -335,7 +583,7 @@ export async function applyClubPresetAction(
 
   // ── Step 2: Insert co-admins (dedup; never include the owner) ──────────────
   const coAdminIds = [
-    ...new Set((config.co_admin_ids ?? []).filter((uid) => uid !== session.profileId)),
+    ...new Set((validatedConfig.co_admin_ids ?? []).filter((uid) => uid !== session.profileId)),
   ];
   if (coAdminIds.length > 0) {
     const adminRows = coAdminIds.map((userId) => ({
@@ -353,14 +601,14 @@ export async function applyClubPresetAction(
   }
 
   // ── Step 3: Bulk-insert regulars ──────────────────────────────────────────
-  const regulars = config.regulars ?? [];
+  const regulars = validatedConfig.regulars ?? [];
   if (regulars.length > 0) {
     const playerRows = regulars.map((reg, idx) => ({
       club_id: clubId,
       profile_id: reg.profile_id ?? null,
       display_name: reg.name,
       position: idx + 1,
-      status: idx < config.max_players ? "active" : "reserve",
+      status: idx < validatedConfig.max_players ? "active" : "reserve",
       start_time: reg.start_time ?? null,
       end_time: reg.end_time ?? null,
     }));

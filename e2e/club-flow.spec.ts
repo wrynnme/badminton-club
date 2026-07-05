@@ -102,4 +102,120 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
     await page.getByRole("tab", { name: "ค่าใช้จ่าย" }).click();
     await expect(page.getByRole("heading", { name: E2E.clubName })).toBeVisible();
   });
+
+  test("save current club as preset carries payment receiver through apply", async ({ page }) => {
+    const sb = adminClient();
+    const presetName = `${E2E.marker}payment_preset`;
+    let appliedClubId: string | null = null;
+
+    async function cleanupGenerated() {
+      const { data: generatedClubs } = await sb
+        .from("clubs")
+        .select("id")
+        .eq("owner_id", E2E.ownerId)
+        .eq("name", presetName);
+      const generatedIds = (generatedClubs ?? []).map((club) => club.id as string);
+      if (generatedIds.length > 0) {
+        await sb.from("club_matches").delete().in("club_id", generatedIds);
+        await sb.from("club_players").delete().in("club_id", generatedIds);
+        await sb.from("club_admins").delete().in("club_id", generatedIds);
+        await sb.from("club_expenses").delete().in("club_id", generatedIds);
+        await sb.from("clubs").delete().in("id", generatedIds);
+      }
+      await sb.from("club_presets").delete().eq("owner_id", E2E.ownerId).eq("name", presetName);
+    }
+
+    await cleanupGenerated();
+
+    await sb
+      .from("clubs")
+      .update({
+        promptpay_id: "0812345678",
+        promptpay_name: "SMOKE_E2E_receiver",
+        promptpay_qr_image: "https://example.com/smoke-qr.png",
+        receipt_template: {
+          footer_note: "not copied to preset",
+          fields: { court: false, shuttle: true, expense: true, discount: true },
+          payment_show: { promptpay: true, bank: true },
+          bank: {
+            name: "SCB",
+            account_no: "123-4-56789-0",
+            account_name: "SMOKE_E2E_receiver",
+          },
+          theme: "blue",
+          bank_qr: false,
+        },
+      })
+      .eq("id", E2E.clubId);
+
+    try {
+      await page.goto(`${CLUB_URL}?tab=settings`);
+      await page.getByRole("button", { name: "บันทึกเป็นพรีเซ็ต" }).click();
+      await page.getByLabel("ชื่อพรีเซ็ต").fill(presetName);
+      await page.getByRole("button", { name: "สร้างพรีเซ็ต" }).click();
+      await expect(page.getByText("สร้างพรีเซ็ตแล้ว")).toBeVisible();
+
+      const { data: preset, error: presetError } = await sb
+        .from("club_presets")
+        .select("id, config")
+        .eq("owner_id", E2E.ownerId)
+        .eq("name", presetName)
+        .single();
+      expect(presetError).toBeNull();
+      expect(preset?.config).toMatchObject({
+        promptpay_id: "0812345678",
+        promptpay_name: "SMOKE_E2E_receiver",
+        promptpay_qr_image: "https://example.com/smoke-qr.png",
+        receipt_template: {
+          payment_show: { promptpay: true, bank: true },
+          bank: {
+            name: "SCB",
+            account_no: "123-4-56789-0",
+            account_name: "SMOKE_E2E_receiver",
+          },
+          theme: "blue",
+        },
+      });
+
+      await page.goto("/clubs/mine");
+      const presetCard = page
+        .locator('[data-slot="card"]')
+        .filter({ hasText: presetName })
+        .first();
+      await presetCard.getByRole("button", { name: "เปิดก๊วน" }).click();
+      await expect(page).toHaveURL(/\/clubs\/[0-9a-f-]+/);
+      appliedClubId = page.url().match(/\/clubs\/([0-9a-f-]+)/)?.[1] ?? null;
+      expect(appliedClubId).toBeTruthy();
+
+      const { data: applied, error: appliedError } = await sb
+        .from("clubs")
+        .select("promptpay_id, promptpay_name, promptpay_qr_image, receipt_template")
+        .eq("id", appliedClubId)
+        .single();
+      expect(appliedError).toBeNull();
+      expect(applied).toMatchObject({
+        promptpay_id: "0812345678",
+        promptpay_name: "SMOKE_E2E_receiver",
+        promptpay_qr_image: "https://example.com/smoke-qr.png",
+        receipt_template: {
+          payment_show: { promptpay: true, bank: true },
+          bank: {
+            name: "SCB",
+            account_no: "123-4-56789-0",
+            account_name: "SMOKE_E2E_receiver",
+          },
+          theme: "blue",
+        },
+      });
+    } finally {
+      if (appliedClubId) {
+        await sb.from("club_matches").delete().eq("club_id", appliedClubId);
+        await sb.from("club_players").delete().eq("club_id", appliedClubId);
+        await sb.from("club_admins").delete().eq("club_id", appliedClubId);
+        await sb.from("club_expenses").delete().eq("club_id", appliedClubId);
+        await sb.from("clubs").delete().eq("id", appliedClubId);
+      }
+      await sb.from("club_presets").delete().eq("owner_id", E2E.ownerId).eq("name", presetName);
+    }
+  });
 });

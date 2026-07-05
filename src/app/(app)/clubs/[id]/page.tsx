@@ -30,8 +30,11 @@ import { ClubLevelsManager } from "@/components/club/club-levels-manager";
 import { ClubQueuePanel } from "@/components/club/club-queue-panel";
 import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
 import { ClubLiveWrapper } from "@/components/club/club-live-wrapper";
+import { SaveClubAsPresetDialog } from "@/components/club/save-club-as-preset-dialog";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
 import { parseBillingVerifySettings } from "@/lib/club/billing-verify-settings";
+import { hasBankReceiver, parseReceiptTemplate } from "@/lib/club/receipt";
+import { parsePresetConfig } from "@/lib/club/preset";
 import { resolveClubCourts } from "@/lib/club/courts";
 import { ClubInfoRow } from "@/components/club/club-info-row";
 import { getTranslations } from "next-intl/server";
@@ -39,7 +42,7 @@ import { getClubLevelsAction } from "@/lib/actions/levels";
 import { getAppSettings, resolveQrLogoUrl } from "@/lib/app-settings";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
-import type { ClubMatch, ClubLockedPair, Level } from "@/lib/types";
+import type { ClubMatch, ClubLockedPair, Level, ClubPreset } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -152,6 +155,22 @@ export default async function ClubDetailPage({
     redirect("/clubs");
   }
 
+  let ownedPresets: ClubPreset[] = [];
+  if (session && !session.isGuest) {
+    const { data: presetRows } = await sb
+      .from("club_presets")
+      .select("id, owner_id, name, config, created_at")
+      .eq("owner_id", session.profileId)
+      .order("created_at", { ascending: false });
+    ownedPresets = (presetRows ?? []).map((row) => ({
+      id: row.id as string,
+      owner_id: row.owner_id as string,
+      name: row.name as string,
+      config: parsePresetConfig(row.config),
+      created_at: row.created_at as string,
+    }));
+  }
+
   // ── Slip review queue (manual verify_status) ─────────────────────────────
   // canManage is guaranteed true below this point (redirect fires above for others).
   let slipReviewItems: ReviewItem[] = [];
@@ -221,6 +240,15 @@ export default async function ClubDetailPage({
 
   const locale = await getLocale();
   const t = await getTranslations("club");
+  const receiptTemplate = parseReceiptTemplate(club.receipt_template);
+  const presetSummary = {
+    coAdminCount: coAdmins.length,
+    regularCount: players.length,
+    hasPromptPay: Boolean(club.promptpay_id),
+    hasQrImage: Boolean(club.promptpay_qr_image),
+    hasBank: hasBankReceiver(receiptTemplate.bank),
+    themeLabel: t(`receipt.theme_${receiptTemplate.theme}`),
+  };
 
   return (
     <ClubLiveWrapper clubId={club.id} realtimeEnabled={queueSettings.realtime_enabled}>
@@ -424,6 +452,18 @@ export default async function ClubDetailPage({
           }
           settings={
             <div className="space-y-4">
+              {canManage && session && !session.isGuest && (
+                <Card>
+                  <CardContent className="pt-4">
+                    <SaveClubAsPresetDialog
+                      clubId={club.id}
+                      defaultName={club.name}
+                      presets={ownedPresets}
+                      summary={presetSummary}
+                    />
+                  </CardContent>
+                </Card>
+              )}
               {isOwner && <EditClubForm club={club} />}
               {isOwner && (
                 <ClubVisibilityControls clubId={club.id} isPublic={club.is_public} appUrl={appUrl} />

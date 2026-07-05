@@ -12,6 +12,19 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-05 — preset payment receiver implementation — ✅ PASS
+
+- Implemented preset payment receiver config: parser schema, apply mapping, save-current-club-as-preset workflow, preset edit UI, i18n, docs/changelog/version.
+- **Gate:** `npm run typecheck` ผ่าน · `npx vitest run src/lib/club/__tests__/preset.test.ts` **39/39 PASS** · `npm test` **767/767 PASS** · `npm run build` ผ่าน · `npx playwright test e2e/club-flow.spec.ts` **7/7 PASS** · `npm run e2e` **12/12 PASS**.
+- Browser smoke: owner เปิดหน้าก๊วน → ตั้งค่า tab → สร้าง preset จากก๊วนที่มี PromptPay/QR/bank/theme → DB preset config ครบ → `/clubs/mine` กดเปิดก๊วนจาก preset → club ใหม่มี receiver config ครบ → cleanup net-zero.
+
+### 2026-07-05 — ship-check: preset payment receiver task + skills lock — ✅ PASS
+
+- Scope: `spec.md` backlog task ให้ preset ก๊วนบันทึกตั้งค่าผู้รับเงินได้ด้วย (`origin/master..HEAD`) + working-tree `skills-lock.json` จากการติดตั้ง skill packs.
+- Review: ไม่เจอ P0/P1/P2 ใน app behavior; change เป็น docs/lockfile-only ไม่มี `src/` runtime code, ไม่มี i18n key ใหม่, ไม่มี DB migration.
+- **Gate:** `npx tsc --noEmit` error count 0 · `npx vitest run` **764/764** ผ่าน · `npm run build` ผ่าน.
+- Browser smoke: ไม่ได้รัน เพราะไม่มี UI/runtime behavior ใหม่ให้คลิก; งาน implement จริงของ preset receiver ต้องมี Playwright smoke แยกตอนลงโค้ด.
+
 ### 2026-07-05 — v0.17.1 remove visible LIVE badge — ✅ PASS
 
 - เอา visible LIVE badge ออกจาก `TournamentLiveWrapper`, `ClubLiveWrapper`, และหน้าสนาม `/t/[token]/court/[n]`; realtime subscription ยังทำงานผ่าน `useLiveRefresh` เพื่อ `router.refresh()` เหมือนเดิม.
