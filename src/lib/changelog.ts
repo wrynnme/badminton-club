@@ -22,6 +22,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.17.1",
+    date: "2026-07-05",
+    groups: [
+      {
+        type: "fixed",
+        items: [
+          "เอาป้าย LIVE ออกจากหน้าก๊วนและทัวร์นาเมนต์ทั้งหมด — realtime ยังอัปเดตเองเหมือนเดิม แต่ไม่มีป้ายลอยทับหน้าจอแล้ว",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.17.0",
     date: "2026-07-04",
     groups: [

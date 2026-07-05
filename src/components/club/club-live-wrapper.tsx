@@ -1,7 +1,6 @@
 "use client";
 
 import { useLiveRefresh } from "@/lib/hooks/use-live-refresh";
-import { LiveBadge } from "@/components/live-badge";
 
 /**
  * Realtime auto-refresh for the club detail page (queue + players + cost).
@@ -24,17 +23,12 @@ export function ClubLiveWrapper({
   realtimeEnabled?: boolean;
   children: React.ReactNode;
 }) {
-  const live = useLiveRefresh({
+  useLiveRefresh({
     channelName: `club:${clubId}`,
     enabled: realtimeEnabled,
     wire: (channel, scheduleRefresh) =>
       channel.on("broadcast", { event: "change" }, scheduleRefresh),
   });
 
-  return (
-    <>
-      {live && <LiveBadge />}
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }

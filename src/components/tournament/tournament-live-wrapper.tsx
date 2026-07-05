@@ -1,7 +1,6 @@
 "use client";
 
 import { useLiveRefresh } from "@/lib/hooks/use-live-refresh";
-import { LiveBadge } from "@/components/live-badge";
 
 export function TournamentLiveWrapper({
   tournamentId,
@@ -12,7 +11,7 @@ export function TournamentLiveWrapper({
   realtimeEnabled?: boolean;
   children: React.ReactNode;
 }) {
-  const live = useLiveRefresh({
+  useLiveRefresh({
     channelName: `tournament:${tournamentId}`,
     enabled: realtimeEnabled,
     wire: (channel, scheduleRefresh) =>
@@ -29,10 +28,5 @@ export function TournamentLiveWrapper({
         ),
   });
 
-  return (
-    <>
-      {live && <LiveBadge />}
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }

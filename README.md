@@ -4,7 +4,7 @@
 
 **Stack**: Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1 · Supabase (Postgres + RLS) · LINE Login · next-intl (TH/EN, cookie-based) · @bprogress/next (nav progress) · @dnd-kit · Anuphan font
 
-**เวอร์ชันล่าสุด**: v0.17.0 — แก้ระดับฝีมือผู้เล่นใน roster หลังเพิ่มแล้วได้, ฟอร์มเวลาก๊วนอ่านง่ายขึ้น, และ QR logo รองรับ SVG (source เดียว: `src/lib/changelog.ts`, mirror ที่ `CHANGELOG.md`)
+**เวอร์ชันล่าสุด**: v0.17.1 — เอาป้าย LIVE ออกจากหน้าก๊วน/ทัวร์นาเมนต์ โดย realtime ยังอัปเดตเบื้องหลังเหมือนเดิม (source เดียว: `src/lib/changelog.ts`, mirror ที่ `CHANGELOG.md`)
 
 **Deployed** (กลยุทธ์ branch: feature → `develop` [CI gate] → `master` [prod]):
 - Production: https://kuanbad.vercel.app (**master** branch)

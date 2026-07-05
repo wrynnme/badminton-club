@@ -12,6 +12,12 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-05 — v0.17.1 remove visible LIVE badge — ✅ PASS
+
+- เอา visible LIVE badge ออกจาก `TournamentLiveWrapper`, `ClubLiveWrapper`, และหน้าสนาม `/t/[token]/court/[n]`; realtime subscription ยังทำงานผ่าน `useLiveRefresh` เพื่อ `router.refresh()` เหมือนเดิม.
+- ลบ `src/components/live-badge.tsx`; ไม่มี code reference ไปที่ component นี้เหลือใน `src`.
+- **Gate:** `npm run typecheck` ผ่าน · `npm run build` ผ่าน.
+
 ### 2026-07-05 — Codex ship-check continuation (roster level E2E coverage) — ✅ PASS
 
 - เพิ่ม E2E smoke ใน `club-flow`: owner เปิดแท็บ "ลงชื่อ / เช็คอิน" → quick-select ระดับให้ `SMOKE_E2E_p1` → toast สำเร็จ → DB `club_players.level_id` persist ตรงกับ level ที่เลือก.
