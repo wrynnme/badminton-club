@@ -4,6 +4,7 @@ import {
   ReceiptPaymentShowSchema,
   ReceiptThemeSchema,
   DEFAULT_RECEIPT_TEMPLATE,
+  parseReceiptTemplate,
 } from "@/lib/club/receipt";
 
 /**
@@ -75,31 +76,10 @@ export const DEFAULT_PRESET_CONFIG: ClubPresetConfig = ClubPresetConfigSchema.pa
 function recoverPresetReceiptTemplate(value: unknown): ClubPresetReceiptTemplate {
   const fast = ClubPresetReceiptTemplateSchema.safeParse(value);
   if (fast.success) return fast.data;
-  if (value == null || typeof value !== "object" || Array.isArray(value)) {
-    return DEFAULT_PRESET_CONFIG.receipt_template;
-  }
-
-  const rec = value as Record<string, unknown>;
-  const out: ClubPresetReceiptTemplate = {
-    bank: DEFAULT_PRESET_CONFIG.receipt_template.bank,
-    payment_show: DEFAULT_PRESET_CONFIG.receipt_template.payment_show,
-    theme: DEFAULT_PRESET_CONFIG.receipt_template.theme,
-  };
-
-  if ("bank" in rec) {
-    const parsed = ReceiptBankSchema.safeParse(rec.bank);
-    if (parsed.success) out.bank = parsed.data;
-  }
-  if ("payment_show" in rec) {
-    const parsed = ReceiptPaymentShowSchema.safeParse(rec.payment_show);
-    if (parsed.success) out.payment_show = parsed.data;
-  }
-  if ("theme" in rec) {
-    const parsed = ReceiptThemeSchema.safeParse(rec.theme);
-    if (parsed.success) out.theme = parsed.data;
-  }
-
-  return out;
+  // Delegate to the receipt module's tolerant parser so preset recovery can
+  // never drift from how clubs.receipt_template itself is recovered.
+  const { bank, payment_show, theme } = parseReceiptTemplate(value);
+  return { bank, payment_show, theme };
 }
 
 /**

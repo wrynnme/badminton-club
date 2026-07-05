@@ -556,7 +556,8 @@
     "thursday": "Thursday",
     "friday": "Friday",
     "saturday": "Saturday",
-    "sunday": "Sunday"
+    "sunday": "Sunday",
+    "qrImageClearTooltip": "Remove the QR image URL from this preset"
   },
   "presetManager": {
     "heading": "Club presets",

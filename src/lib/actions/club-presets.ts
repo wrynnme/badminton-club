@@ -3,10 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { format } from "date-fns";
 import { z } from "zod";
-import { getLocale, getTranslations } from "next-intl/server";
-import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
+import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import {
@@ -74,10 +72,35 @@ function validatePresetConfigPayment(
     return { error: t("club.invalidPromptPay") };
   }
   if (next.receipt_template.payment_show.bank && !hasBankReceiver(next.receipt_template.bank)) {
-    return { error: t("club.invalidData") };
+    return { error: t("club.bankReceiverIncomplete") };
   }
 
   return { ok: true, config: next };
+}
+
+// Apply-path counterpart of validatePresetConfigPayment: a stored preset the
+// user cannot edit from the apply flow must never dead-end, so instead of
+// rejecting we degrade — drop an invalid PromptPay id and hide the bank
+// channel when the receiver is unusable. Save paths keep hard validation.
+function sanitizePresetConfigPayment(config: ClubPresetConfig): ClubPresetConfig {
+  const next: ClubPresetConfig = {
+    ...config,
+    promptpay_id: normalizeNullableString(config.promptpay_id),
+    promptpay_name: normalizeNullableString(config.promptpay_name),
+    promptpay_qr_image: normalizeNullableString(config.promptpay_qr_image),
+  };
+
+  if (next.promptpay_id && !isValidPromptPayId(next.promptpay_id)) {
+    next.promptpay_id = null;
+  }
+  if (next.receipt_template.payment_show.bank && !hasBankReceiver(next.receipt_template.bank)) {
+    next.receipt_template = {
+      ...next.receipt_template,
+      payment_show: { ...next.receipt_template.payment_show, bank: false },
+    };
+  }
+
+  return next;
 }
 
 function receiptTemplateForPreset(config: ClubPresetConfig) {
@@ -89,14 +112,27 @@ function receiptTemplateForPreset(config: ClubPresetConfig) {
   };
 }
 
-function weekdayLabel(playDate: string, locale: string): string {
-  try {
-    return format(new Date(`${playDate}T00:00:00`), "EEEE", {
-      locale: dateFnsLocaleOf(locale),
-    });
-  } catch {
-    return "";
-  }
+// Weekday label MUST come from the same club.presetForm catalog the preset
+// form's day <Select> options use — date-fns th wide names ("พุธ") don't match
+// the catalog values ("วันพุธ"), which left snapshotted presets with a day no
+// Select option recognises.
+const WEEKDAY_KEYS = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+] as const;
+
+function weekdayLabel(
+  playDate: string,
+  tPresetForm: Awaited<ReturnType<typeof getTranslations>>,
+): string {
+  const day = new Date(`${playDate}T00:00:00`).getDay();
+  if (Number.isNaN(day)) return "";
+  return tPresetForm(WEEKDAY_KEYS[day]);
 }
 
 type ClubSnapshotRow = {
@@ -129,16 +165,24 @@ type ClubPlayerSnapshotRow = {
   status: "active" | "reserve";
 };
 
+// ClubPresetConfigSchema caps court_count at 20 while clubs.courts allows up
+// to 50 named courts (updateClubCourtsAction) — clamp so snapshotting a large
+// club degrades to 20 courts instead of throwing.
+const PRESET_COURT_COUNT_MAX = 20;
+
 function buildPresetConfigFromClub(input: {
   club: ClubSnapshotRow;
   admins: ClubAdminSnapshotRow[];
   players: ClubPlayerSnapshotRow[];
-  locale: string;
+  scheduleDay: string;
 }): ClubPresetConfig {
   const queueSettings = parseQueueSettings(input.club.queue_settings);
   const receiptTemplate = parseReceiptTemplate(input.club.receipt_template);
   const courts = Array.isArray(input.club.courts) ? input.club.courts : [];
-  const courtCount = courts.length > 0 ? courts.length : queueSettings.court_count;
+  const courtCount = Math.min(
+    courts.length > 0 ? courts.length : queueSettings.court_count,
+    PRESET_COURT_COUNT_MAX,
+  );
   const players = [...input.players].sort((a, b) => {
     const statusDiff =
       (a.status === "active" ? 0 : 1) - (b.status === "active" ? 0 : 1);
@@ -151,7 +195,7 @@ function buildPresetConfigFromClub(input: {
 
   return ClubPresetConfigSchema.parse({
     venue: input.club.venue ?? "",
-    schedule_day: weekdayLabel(input.club.play_date, input.locale),
+    schedule_day: input.scheduleDay,
     start_time: input.club.start_time?.slice(0, 5) ?? "",
     end_time: input.club.end_time?.slice(0, 5) ?? "",
     max_players: input.club.max_players,
@@ -318,23 +362,16 @@ export async function saveClubAsPresetAction(input: {
   const parsed = SaveClubAsPresetSchema.safeParse(input);
   if (!parsed.success) return { error: t("club.invalidData") };
 
-  const nameResult = z.string().min(2, t("club.presetNameTooShort")).safeParse(parsed.data.name);
-  if (!nameResult.success) {
-    return { error: nameResult.error.issues[0]?.message ?? t("club.invalidName") };
-  }
-
   const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, parsed.data.clubId, session.profileId))) {
-    return { error: t("club.noPermission") };
-  }
-  if (
-    parsed.data.presetId &&
-    !(await assertPresetOwner(sb, parsed.data.presetId, session.profileId))
-  ) {
-    return { error: t("club.noPermission") };
-  }
+  const [canManage, ownsPreset] = await Promise.all([
+    assertCanManageClub(sb, parsed.data.clubId, session.profileId),
+    parsed.data.presetId
+      ? assertPresetOwner(sb, parsed.data.presetId, session.profileId)
+      : Promise.resolve(true),
+  ]);
+  if (!canManage || !ownsPreset) return { error: t("club.noPermission") };
 
-  const [clubRes, adminsRes, playersRes, locale] = await Promise.all([
+  const [clubRes, adminsRes, playersRes, tPresetForm] = await Promise.all([
     sb
       .from("clubs")
       .select(
@@ -347,7 +384,7 @@ export async function saveClubAsPresetAction(input: {
       .from("club_players")
       .select("display_name, profile_id, start_time, end_time, position, joined_at, status")
       .eq("club_id", parsed.data.clubId),
-    getLocale(),
+    getTranslations("club.presetForm"),
   ]);
 
   if (clubRes.error || !clubRes.data) {
@@ -356,42 +393,46 @@ export async function saveClubAsPresetAction(input: {
   if (adminsRes.error) return { error: adminsRes.error.message };
   if (playersRes.error) return { error: playersRes.error.message };
 
-  let config = buildPresetConfigFromClub({
-    club: clubRes.data as ClubSnapshotRow,
-    admins: (adminsRes.data ?? []) as ClubAdminSnapshotRow[],
-    players: (playersRes.data ?? []) as ClubPlayerSnapshotRow[],
-    locale,
-  });
+  let config: ClubPresetConfig;
+  try {
+    config = buildPresetConfigFromClub({
+      club: clubRes.data as ClubSnapshotRow,
+      admins: (adminsRes.data ?? []) as ClubAdminSnapshotRow[],
+      players: (playersRes.data ?? []) as ClubPlayerSnapshotRow[],
+      scheduleDay: weekdayLabel((clubRes.data as ClubSnapshotRow).play_date, tPresetForm),
+    });
+  } catch {
+    // A club whose stored values fall outside the preset schema bounds must
+    // surface as a friendly error, not an uncaught ZodError → 500.
+    return { error: t("club.invalidData") };
+  }
   const paymentValidation = validatePresetConfigPayment(config, t);
   if ("error" in paymentValidation) return { error: paymentValidation.error };
   config = paymentValidation.config;
 
+  let result: { id: string; mode: "created" | "updated" };
   if (parsed.data.presetId) {
     const { error } = await sb
       .from("club_presets")
-      .update({ name: nameResult.data, config })
+      .update({ name: parsed.data.name, config })
       .eq("id", parsed.data.presetId)
       .eq("owner_id", session.profileId);
     if (error) return { error: error.message };
-
-    revalidatePath("/clubs");
-    revalidatePath("/clubs/mine");
-    revalidatePath(`/clubs/${parsed.data.clubId}`);
-    return { id: parsed.data.presetId, mode: "updated" };
+    result = { id: parsed.data.presetId, mode: "updated" };
+  } else {
+    const { data, error } = await sb
+      .from("club_presets")
+      .insert({ owner_id: session.profileId, name: parsed.data.name, config })
+      .select("id")
+      .single();
+    if (error || !data) return { error: error?.message ?? t("club.createPresetFailed") };
+    result = { id: data.id as string, mode: "created" };
   }
-
-  const { data, error } = await sb
-    .from("club_presets")
-    .insert({ owner_id: session.profileId, name: nameResult.data, config })
-    .select("id")
-    .single();
-
-  if (error || !data) return { error: error?.message ?? t("club.createPresetFailed") };
 
   revalidatePath("/clubs");
   revalidatePath("/clubs/mine");
   revalidatePath(`/clubs/${parsed.data.clubId}`);
-  return { id: data.id as string, mode: "created" };
+  return result;
 }
 
 // ─── Delete ──────────────────────────────────────────────────────────────────
@@ -528,10 +569,9 @@ export async function applyClubPresetAction(
     .single();
   if (presetErr || !presetRow) return { error: t("club.presetNotFound") };
 
-  const config = parsePresetConfig(presetRow.config);
-  const paymentValidation = validatePresetConfigPayment(config, t);
-  if ("error" in paymentValidation) return { error: paymentValidation.error };
-  const validatedConfig = paymentValidation.config;
+  // Degrade (never reject) here: parsePresetConfig is tolerant by design, and
+  // the apply flow has no UI to fix a stored preset's receiver fields.
+  const validatedConfig = sanitizePresetConfigPayment(parsePresetConfig(presetRow.config));
 
   // Derive today's date server-side (server action — Date is allowed here)
   const today = new Date().toISOString().slice(0, 10);
@@ -563,7 +603,10 @@ export async function applyClubPresetAction(
       queue_settings: queueSettings,
       promptpay_id: validatedConfig.promptpay_id,
       promptpay_name: validatedConfig.promptpay_name,
-      promptpay_qr_image: validatedConfig.promptpay_qr_image,
+      // Never copy the stored QR URL verbatim — it points at the SOURCE club's
+      // storage object, which that club can replace or delete later. The object
+      // is copied to this club's own path below (best-effort).
+      promptpay_qr_image: null,
       receipt_template: receiptTemplateForPreset(validatedConfig),
       owner_id: session.profileId,
     })
@@ -573,6 +616,27 @@ export async function applyClubPresetAction(
   if (clubErr || !clubData) return { error: clubErr?.message ?? t("club.createClubFailed") };
 
   const clubId = clubData.id as string;
+
+  // Give the new club its own copy of the PromptPay QR object so the source
+  // club replacing/removing its QR can never break — or silently swap — the
+  // QR players of this club pay to. Degrades to "no image" if the source
+  // object is already gone.
+  if (validatedConfig.promptpay_qr_image) {
+    const srcPath = validatedConfig.promptpay_qr_image
+      .split("/club-qr/")[1]
+      ?.split("?")[0];
+    if (srcPath) {
+      const destPath = `${clubId}/promptpay`;
+      const copied = await sb.storage.from("club-qr").copy(srcPath, destPath);
+      if (!copied.error) {
+        const { data: pub } = sb.storage.from("club-qr").getPublicUrl(destPath);
+        await sb
+          .from("clubs")
+          .update({ promptpay_qr_image: `${pub.publicUrl}?v=${Date.now()}` })
+          .eq("id", clubId);
+      }
+    }
+  }
 
   // Compensating cleanup: deleting the club CASCADEs to club_admins/club_players,
   // so on any child-insert failure we remove the just-created club instead of

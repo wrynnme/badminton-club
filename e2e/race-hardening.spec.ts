@@ -237,12 +237,17 @@ test.describe.serial("T5 race-hardening — tournament queue", () => {
       // snapshot != final ⇒ an in_progress match was renumbered mid-game.
       const startThenSnapshot = async () => {
         const rt = await start(sb, target);
-        const { data } = await sb
+        const { data, error } = await sb
           .from("matches")
           .select("match_number")
           .eq("id", target)
           .single();
-        return { rt, numAtStartReturn: data?.match_number as number };
+        // A failed snapshot must abort the round loudly — an undefined value
+        // would be counted as a phantom mid-game renumber.
+        if (error || !data) {
+          throw new Error(`R2 snapshot select failed: ${error?.message ?? "no row"}`);
+        }
+        return { rt, numAtStartReturn: data.match_number as number };
       };
 
       const [rs, { rt, numAtStartReturn }] = await Promise.all([
@@ -266,8 +271,11 @@ test.describe.serial("T5 race-hardening — tournament queue", () => {
         swapRejected++;
         expect(started.match_number).toBe(T5.matchIds.length); // untouched
       } else {
-        // swap won the row locks first → start blocked, began with its new number
+        // swap won the row locks first → start blocked, began with its new
+        // number, which must be exactly what the submitted order implies
+        // (the RPC assigns the sorted numbers 1..N in caller order).
         swapWonFirst++;
+        expect(started.match_number).toBe(order.indexOf(target) + 1);
       }
     }
     console.log(

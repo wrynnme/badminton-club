@@ -36,7 +36,7 @@ const NEW_PRESET = "__new__";
 type Props = {
   clubId: string;
   defaultName: string;
-  presets: ClubPreset[];
+  presets: Pick<ClubPreset, "id" | "name">[];
   summary: {
     coAdminCount: number;
     regularCount: number;

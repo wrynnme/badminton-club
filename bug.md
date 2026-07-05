@@ -10,6 +10,16 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-06 — ship-check (2 unpushed commits: preset payment receiver + R2 closure) — ⚠️ 2 P1 + 6 P2 found, ✅ all fixed (v0.18.2)
+
+- Scope: `origin/develop..HEAD` (fb966b8 + 427a2c0). Review 8 angles → 39 candidates → dedup 26 → verify 24 → **19 CONFIRMED / 4 PLAUSIBLE / 1 REFUTED**.
+- **[P1] fixed:** (1) ก๊วน >20 สนาม → save-as-preset โยน ZodError ไม่ถูก catch = 500 — clamp `court_count` ที่ 20 + try/catch คืน error อ่านได้ (`club-presets.ts`); (2) `schedule_day` snapshot ใช้ date-fns th ("พุธ") ไม่ตรงตัวเลือกฟอร์ม ("วันพุธ") — เปลี่ยนไปใช้ catalog `club.presetForm` เดียวกับฟอร์ม.
+- **[P2] fixed:** (3) apply preset hard-fail เมื่อ receiver config เพี้ยน → เปลี่ยนเป็น degrade (`sanitizePresetConfigPayment` — ตัด promptpay ผิด format / ปิด bank channel ที่ไม่ครบ); (4) **QR pointer**: apply เดิม copy URL ชี้ storage object ของ club ต้นทาง (ต้นทางลบ/เปลี่ยน = club ใหม่รูปแตก/QR ผิดบัญชีเงียบๆ) → copy object ไป `club-qr/{newClubId}/promptpay` (degrade เป็น null ถ้า copy ไม่ได้); (5) badge PromptPay บนการ์ด preset ไม่เช็ค `payment_show.promptpay`; (6) save error ธนาคารไม่ครบเป็น generic → key ใหม่ `club.bankReceiverIncomplete` th/en; (7)+(8) R2 test: snapshot ไม่เช็ค error (false positive ได้) + swapWonFirst ขาด assertion ตำแหน่งเลขตาม order ที่ส่ง.
+- **Simplify applied:** reuse `hasBankReceiver` ฝั่ง client (ยุบ 2 if ซ้ำ) · `recoverPresetReceiptTemplate` delegate ไป `parseReceiptTemplate` (−22 บรรทัด, semantics เดียวกับ club) · ตัด dead name re-parse + hoist `revalidatePath` ×3 + Promise.all permission checks (`club-presets.ts`) · preset query เข้า Promise.all wave + `select("id, name")` แทน jsonb เต็ม (`clubs/[id]/page.tsx`) · Tooltip บนปุ่มล้าง QR. **Skipped (backlog):** TanStack Form rewrite ของ save-dialog, extract shared PaymentReceiverFields/ThemePicker (~120 บรรทัด dup กับ receipt-template-editor), รวม payment validation 2 action, ย้าย `buildPresetConfigFromClub` ไป lib เพื่อ unit-test, `Pick<Club>` (nullability ไม่ตรง).
+- **e2e updated:** `club-flow.spec.ts` preset test เปลี่ยนไปทดสอบ contract ใหม่ — upload object จริง → apply → assert club ใหม่มี object ของตัวเอง (`download` ยืนยัน) + teardown ลบ storage ทั้งคู่.
+- **Gate:** tsc 0 · vitest 767/767 · `next build` OK (BUILD_ID) · i18n parity club 818 / actions 227 keys · **e2e 12/12 PASS** + temp smoke 1/1 (clamp=20, "วันพุธ", degrade, badge — browser จริง, console 0 error) · net-zero verified (clubs/presets/profile/storage = 0 row) · bump **v0.18.2**.
+- หมายเหตุ: A1 fail 1 ครั้งแรกจาก dev-server cold start (รันซ้ำผ่าน — ไม่ใช่ regression); R2 timing blind-spot (PLAUSIBLE, bounded ~p^30) note ไว้ใน test comment.
+
 ### 2026-07-06 — P2 reorder∥start renumber (R2) — ✅ RESOLVED (migration applied prod, v0.18.1)
 
 - **[P2] tournament queue: reorder ชนกับ "เริ่มแมตช์" → แมตช์ in_progress ถูก renumber** (พบโดย T5 race probe R2, 2026-07-04 — เกิด 26/30 รอบ) · กลไกเดิม: `swap_pending_match_numbers` validate "ทุก id เป็น pending" **ก่อน** 2-pass renumber แต่ `start_match_atomic` ล็อกแค่ row ตัวเอง → start ที่ commit ในหน้าต่าง validate→UPDATE ทำให้เลข `#N` ของแมตช์ที่กำลังแข่งเปลี่ยนกลางเกม

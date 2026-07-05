@@ -34,7 +34,6 @@ import { SaveClubAsPresetDialog } from "@/components/club/save-club-as-preset-di
 import { parseQueueSettings } from "@/lib/club/queue-settings";
 import { parseBillingVerifySettings } from "@/lib/club/billing-verify-settings";
 import { hasBankReceiver, parseReceiptTemplate } from "@/lib/club/receipt";
-import { parsePresetConfig } from "@/lib/club/preset";
 import { resolveClubCourts } from "@/lib/club/courts";
 import { ClubInfoRow } from "@/components/club/club-info-row";
 import { getTranslations } from "next-intl/server";
@@ -63,7 +62,7 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -97,6 +96,15 @@ export default async function ClubDetailPage({
       .order("created_at", { ascending: true }),
     getClubLevelsAction(id),
     getAppSettings(),
+    // SaveClubAsPresetDialog only needs id+name for its target <Select>; the
+    // full-config consumer (PresetManager) lives on /clubs/mine instead.
+    session && !session.isGuest
+      ? sb
+          .from("club_presets")
+          .select("id, name")
+          .eq("owner_id", session.profileId)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: null }),
   ]);
 
   const owner = ownerRes.data;
@@ -155,21 +163,9 @@ export default async function ClubDetailPage({
     redirect("/clubs");
   }
 
-  let ownedPresets: ClubPreset[] = [];
-  if (session && !session.isGuest) {
-    const { data: presetRows } = await sb
-      .from("club_presets")
-      .select("id, owner_id, name, config, created_at")
-      .eq("owner_id", session.profileId)
-      .order("created_at", { ascending: false });
-    ownedPresets = (presetRows ?? []).map((row) => ({
-      id: row.id as string,
-      owner_id: row.owner_id as string,
-      name: row.name as string,
-      config: parsePresetConfig(row.config),
-      created_at: row.created_at as string,
-    }));
-  }
+  const ownedPresets: Pick<ClubPreset, "id" | "name">[] = (presetsRes.data ?? []).map(
+    (row) => ({ id: row.id as string, name: row.name as string }),
+  );
 
   // ── Slip review queue (manual verify_status) ─────────────────────────────
   // canManage is guaranteed true below this point (redirect fires above for others).

@@ -74,6 +74,7 @@ import {
   RECEIPT_THEME_KEYS,
   RECEIPT_THEMES,
   DEFAULT_RECEIPT_TEMPLATE,
+  hasBankReceiver,
   type ReceiptThemeKey,
 } from "@/lib/club/receipt";
 
@@ -437,13 +438,10 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
           })),
       };
 
-      if (config.receipt_template.payment_show.bank && !config.receipt_template.bank.name.trim()) {
-        toast.error(t("validationBankIncomplete"));
-        return;
-      }
+      // Same "usable bank receiver" rule the server enforces (hasBankReceiver).
       if (
         config.receipt_template.payment_show.bank &&
-        !config.receipt_template.bank.account_no.trim()
+        !hasBankReceiver(config.receipt_template.bank)
       ) {
         toast.error(t("validationBankIncomplete"));
         return;
@@ -890,14 +888,21 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                           className="min-w-0 flex-1"
                         />
                         {field.state.value.trim() && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => field.handleChange("")}
-                          >
-                            {t("qrImageClear")}
-                          </Button>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => field.handleChange("")}
+                                >
+                                  {t("qrImageClear")}
+                                </Button>
+                              }
+                            />
+                            <TooltipContent>{t("qrImageClearTooltip")}</TooltipContent>
+                          </Tooltip>
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground">

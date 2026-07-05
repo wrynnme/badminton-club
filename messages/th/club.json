@@ -556,7 +556,8 @@
     "thursday": "วันพฤหัสบดี",
     "friday": "วันศุกร์",
     "saturday": "วันเสาร์",
-    "sunday": "วันอาทิตย์"
+    "sunday": "วันอาทิตย์",
+    "qrImageClearTooltip": "ล้างลิงก์รูป QR ออกจากพรีเซ็ตนี้"
   },
   "presetManager": {
     "heading": "พรีเซ็ตก๊วน",

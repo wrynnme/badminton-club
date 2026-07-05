@@ -86,7 +86,14 @@ export function PresetManager({ presets }: Props) {
   function paymentSummary(preset: ClubPreset) {
     const c = preset.config;
     const parts: string[] = [];
-    if (c.promptpay_id || c.promptpay_qr_image) parts.push(t("paymentPromptPay"));
+    // Mirror what the applied club's receipt will actually show: a channel
+    // counts only when its payment_show flag is on AND it has a usable receiver.
+    if (
+      c.receipt_template.payment_show.promptpay &&
+      (c.promptpay_id || c.promptpay_qr_image)
+    ) {
+      parts.push(t("paymentPromptPay"));
+    }
     if (c.receipt_template.payment_show.bank) parts.push(t("paymentBank"));
     if (parts.length === 0) return null;
     return parts.join(" · ");

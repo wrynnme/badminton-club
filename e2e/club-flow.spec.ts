@@ -121,18 +121,33 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
         await sb.from("club_admins").delete().in("club_id", generatedIds);
         await sb.from("club_expenses").delete().in("club_id", generatedIds);
         await sb.from("clubs").delete().in("id", generatedIds);
+        await sb.storage.from("club-qr").remove(generatedIds.map((id) => `${id}/promptpay`));
       }
       await sb.from("club_presets").delete().eq("owner_id", E2E.ownerId).eq("name", presetName);
     }
 
     await cleanupGenerated();
 
+    // Upload a real storage object so the apply-path QR copy is exercised
+    // end-to-end (apply copies the object to the new club's own path instead
+    // of sharing the source club's mutable URL).
+    const sourceQrPath = `${E2E.clubId}/promptpay`;
+    const up = await sb.storage
+      .from("club-qr")
+      .upload(sourceQrPath, Buffer.from("smoke-e2e-qr-bytes"), {
+        contentType: "image/png",
+        upsert: true,
+      });
+    expect(up.error).toBeNull();
+    const { data: sourceQrPub } = sb.storage.from("club-qr").getPublicUrl(sourceQrPath);
+    const sourceQrUrl = `${sourceQrPub.publicUrl}?v=e2e`;
+
     await sb
       .from("clubs")
       .update({
         promptpay_id: "0812345678",
         promptpay_name: "SMOKE_E2E_receiver",
-        promptpay_qr_image: "https://example.com/smoke-qr.png",
+        promptpay_qr_image: sourceQrUrl,
         receipt_template: {
           footer_note: "not copied to preset",
           fields: { court: false, shuttle: true, expense: true, discount: true },
@@ -165,7 +180,8 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
       expect(preset?.config).toMatchObject({
         promptpay_id: "0812345678",
         promptpay_name: "SMOKE_E2E_receiver",
-        promptpay_qr_image: "https://example.com/smoke-qr.png",
+        // Save-as-preset snapshots the source URL verbatim...
+        promptpay_qr_image: sourceQrUrl,
         receipt_template: {
           payment_show: { promptpay: true, bank: true },
           bank: {
@@ -196,7 +212,6 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
       expect(applied).toMatchObject({
         promptpay_id: "0812345678",
         promptpay_name: "SMOKE_E2E_receiver",
-        promptpay_qr_image: "https://example.com/smoke-qr.png",
         receipt_template: {
           payment_show: { promptpay: true, bank: true },
           bank: {
@@ -207,6 +222,11 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
           theme: "blue",
         },
       });
+      // ...but apply gives the new club its OWN storage object — never the
+      // source club's mutable URL (source replace/delete must not affect it).
+      expect(applied?.promptpay_qr_image).toContain(`/club-qr/${appliedClubId}/promptpay`);
+      const copied = await sb.storage.from("club-qr").download(`${appliedClubId}/promptpay`);
+      expect(copied.error).toBeNull();
     } finally {
       if (appliedClubId) {
         await sb.from("club_matches").delete().eq("club_id", appliedClubId);
@@ -214,7 +234,9 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
         await sb.from("club_admins").delete().eq("club_id", appliedClubId);
         await sb.from("club_expenses").delete().eq("club_id", appliedClubId);
         await sb.from("clubs").delete().eq("id", appliedClubId);
+        await sb.storage.from("club-qr").remove([`${appliedClubId}/promptpay`]);
       }
+      await sb.storage.from("club-qr").remove([sourceQrPath]);
       await sb.from("club_presets").delete().eq("owner_id", E2E.ownerId).eq("name", presetName);
     }
   });
