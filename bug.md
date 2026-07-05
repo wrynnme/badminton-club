@@ -12,6 +12,18 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-04 — v0.17.0 feature ship-check (roster level editing + time fields + QR SVG) — ✅ pass, authenticated live-smoke
+
+Feature 3 ก้อน (branch `feat/roster-level-editing`): (T1) แก้ระดับฝีมือผู้เล่นที่อยู่ใน roster แล้วได้ — quick-select ในแถว + ฟอร์มแก้ไข (ชื่อ guest-only + ระดับ + โน้ต) + bulk dialog; (T2) แยกช่องเวลาเริ่ม/เลิกเป็น 2 บรรทัด; (T3) โลโก้กลาง QR รับ SVG.
+- **Gate:** tsc 0 · vitest **764/764** (+4 `resolveActiveLevelIds`) · i18n th/en parity OK · `next build` OK (BUILD_ID `4z6F0frbscclIxbVJQOXM`).
+- **Live browser smoke (net-zero, authenticated @390px):** seed club + 3 ผู้เล่น (2 guest + 1 profile-linked) → `/clubs/[id]?tab=checkin`:
+  - quick-select ในแถว G1 → BG → DB `club_players.level_id` ตรง ✓
+  - edit form: guest มีช่องชื่อ / profile-linked **ไม่มี**ช่องชื่อ (มีแค่ระดับ+โน้ต) ✓
+  - bulk "ตั้งระดับให้ 2 คน" (G2+LINKED) → BG+ → DB ทั้งคู่ตรง ✓ · page ไม่ล้นจอ · console 0 error · teardown 0 row
+  - T2: `/clubs/new` เวลาเริ่ม/เลิก stacked 2 บรรทัด (top 542 vs 606) พอดีจอ ✓
+  - T3 (SVG QR): safety-gate logic PASS (`<script>`/`on*=`/`javascript:`/`<foreignObject>` → reject; png/svg data-url → accept). **live-upload smoke deferred** (ต้อง apply migration + set is_site_admin ก่อน).
+- **⚠️ Pending pre-deploy (R1):** migration `20260704000300_app_assets_allow_svg` (เพิ่ม `image/svg+xml` ใน bucket `app-assets` allowlist) **ยังไม่ apply prod** — จนกว่าจะ apply, upload SVG จะโดน storage reject (dev preview + prod ใช้ DB เดียวกัน). config-only, non-destructive, idempotent (upsert). ต้อง apply ก่อน T3 ใช้งานได้จริง.
+
 ### 2026-07-04 — T5 race-hardening (deterministic adversarial races) — ✅ 10/10 PASS · 🔴 พบ P1 FIXED + P2 ใหม่ 1 (v0.16.3)
 
 สร้าง `e2e/race-hardening.spec.ts` + `e2e/helpers/tournament-fixtures.ts` — seed ทัวร์ throwaway (8 แมตช์ TBD, fixed UUID, marker `SMOKE_E2E_T5_`) แล้วยิง race จริงแบบ Promise.all + browser 2 แท็บ; ปิด backlog T5 ทั้ง 3 ข้อ (2-client reorder / optimistic-vs-payload / multi-court start):

@@ -648,7 +648,17 @@
     "toastSetReserve": "Moved {count} players to reserve",
     "toastSession": "Updated time/games for {count} players",
     "toastDeleted": "Deleted {count} players",
-    "toastDeletePartial": "Deleted {deleted} players · {failed} failed"
+    "toastDeletePartial": "Deleted {deleted} players · {failed} failed",
+    "setLevel": "Set level",
+    "setLevelTooltip": "Set the level for selected players",
+    "levelDialogTitle": "Set level for {n} players",
+    "levelDialogNote": "Choose a level to apply to everyone selected",
+    "levelFieldLabel": "Level",
+    "levelNone": "No level",
+    "levelDialogCancel": "Cancel",
+    "levelDialogSubmit": "Save",
+    "levelDialogSubmitting": "Saving…",
+    "toastLevel": "Level set for {count} players"
   },
   "playerList": {
     "autoRefresh": "Auto-refreshes every 30 seconds",
@@ -676,7 +686,14 @@
     "renameTitle": "Edit name",
     "renameSave": "Save",
     "renameCancel": "Cancel",
-    "partialPlay": "Playing {start}–{end}"
+    "partialPlay": "Playing {start}–{end}",
+    "levelNone": "No level",
+    "levelSaved": "Level saved",
+    "levelSelectAriaLabel": "Set level for {name}",
+    "editTitle": "Edit player",
+    "editLevelLabel": "Level",
+    "editNoteLabel": "Note",
+    "editSaved": "Saved"
   },
   "payment": {
     "collectTitle": "Collect payment",

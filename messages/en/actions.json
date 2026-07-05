@@ -90,7 +90,9 @@
     "billingVerifyByokNeedsProvider": "BYOK mode requires a provider (easyslip or slipok)",
     "billingVerifySlipOkNeedsBranch": "SlipOK requires a Branch ID",
     "billingVerifyByokNeedsKey": "BYOK mode requires an API Key (no existing key on file)",
-    "billingVerifySaveFailed": "Failed to save slip verification settings"
+    "billingVerifySaveFailed": "Failed to save slip verification settings",
+    "invalidLevel": "Selected level is not in this club's level set",
+    "updatePlayerNoFields": "No fields to update"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",
@@ -230,6 +232,7 @@
   },
   "admin": {
     "notSiteAdmin": "Site owner only",
-    "invalidImage": "Invalid image file"
+    "invalidImage": "Invalid image file",
+    "unsafeSvg": "This SVG contains unsafe script content and can't be uploaded"
   }
 }

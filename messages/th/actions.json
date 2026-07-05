@@ -90,7 +90,9 @@
     "billingVerifyByokNeedsProvider": "โหมด BYOK ต้องระบุ provider (easyslip หรือ slipok)",
     "billingVerifySlipOkNeedsBranch": "SlipOK ต้องระบุ Branch ID",
     "billingVerifyByokNeedsKey": "โหมด BYOK ต้องกรอก API Key (ยังไม่มี key เดิม)",
-    "billingVerifySaveFailed": "บันทึกการตั้งค่ายืนยันสลิปไม่สำเร็จ"
+    "billingVerifySaveFailed": "บันทึกการตั้งค่ายืนยันสลิปไม่สำเร็จ",
+    "invalidLevel": "ระดับที่เลือกไม่อยู่ในชุดระดับของก๊วนนี้",
+    "updatePlayerNoFields": "ไม่มีข้อมูลที่จะแก้ไข"
   },
   "tournament": {
     "requireLineLogin": "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้างทัวร์นาเมนต์",
@@ -230,6 +232,7 @@
   },
   "admin": {
     "notSiteAdmin": "เฉพาะเจ้าของเว็บเท่านั้น",
-    "invalidImage": "ไฟล์รูปไม่ถูกต้อง"
+    "invalidImage": "ไฟล์รูปไม่ถูกต้อง",
+    "unsafeSvg": "ไฟล์ SVG นี้มีสคริปต์ที่ไม่ปลอดภัย จึงอัปโหลดไม่ได้"
   }
 }
