@@ -12,6 +12,36 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
     await expect(page.getByRole("button", { name: new RegExp(E2E.ownerName) })).toBeVisible();
   });
 
+  test("roster level quick-select persists to the player row", async ({ page }) => {
+    const sb = adminClient();
+    const { data: levels, error: levelsError } = await sb
+      .from("levels")
+      .select("id,label,real,sort_order")
+      .is("club_id", null)
+      .order("sort_order", { ascending: true });
+    expect(levelsError).toBeNull();
+
+    const level = levels?.find((row) => row.label === "N") ?? levels?.[0];
+    expect(level).toBeTruthy();
+
+    await page.goto(CLUB_URL);
+    await page.getByRole("tab", { name: "ลงชื่อ / เช็คอิน" }).click();
+    await page
+      .getByRole("combobox", { name: `ตั้งระดับให้ ${E2E.players[0]}` })
+      .click();
+    await page.getByRole("option", { name: `${level!.label} (${level!.real})` }).click();
+    await expect(page.getByText("บันทึกระดับแล้ว")).toBeVisible();
+
+    const { data: player, error: playerError } = await sb
+      .from("club_players")
+      .select("level_id")
+      .eq("club_id", E2E.clubId)
+      .eq("display_name", E2E.players[0])
+      .single();
+    expect(playerError).toBeNull();
+    expect(player?.level_id).toBe(level!.id);
+  });
+
   test("A1: 'ทุกสนาม' builds a match on every free court", async ({ page }) => {
     await page.goto(QUEUE_URL);
     await page.getByRole("button", { name: "ทุกสนาม" }).click();

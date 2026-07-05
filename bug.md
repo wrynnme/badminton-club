@@ -12,6 +12,13 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-05 — Codex ship-check continuation (roster level E2E coverage) — ✅ PASS
+
+- เพิ่ม E2E smoke ใน `club-flow`: owner เปิดแท็บ "ลงชื่อ / เช็คอิน" → quick-select ระดับให้ `SMOKE_E2E_p1` → toast สำเร็จ → DB `club_players.level_id` persist ตรงกับ level ที่เลือก.
+- Cleanup UI: ปุ่มแก้ไขผู้เล่นใน roster ใช้ Tooltip/Button pattern + `aria-label` แทน `title` เฉย ๆ.
+- **Gate:** `npm run typecheck` ผ่าน · `npm test` **764/764** ผ่าน · `npm run build` ผ่านก่อนหน้าในรอบ ship-check · `npx playwright test e2e/club-flow.spec.ts` **6/6 PASS** · `npx playwright test e2e/race-hardening.spec.ts` **5/5 PASS** · final `npm run e2e` **11/11 PASS**.
+- หมายเหตุ: full E2E รอบแรกเจอ R5 realtime warm-up ไม่ converge ในแท็บที่ 2 หนึ่งครั้ง; rerun เฉพาะ `race-hardening` ผ่านครบ และ final full run ผ่านครบ จึงบันทึกเป็น flake รอบเดียว ไม่เปิด bug ใหม่.
+
 ### 2026-07-04 — v0.17.0 feature ship-check (roster level editing + time fields + QR SVG) — ✅ pass, authenticated live-smoke
 
 Feature 3 ก้อน (branch `feat/roster-level-editing`): (T1) แก้ระดับฝีมือผู้เล่นที่อยู่ใน roster แล้วได้ — quick-select ในแถว + ฟอร์มแก้ไข (ชื่อ guest-only + ระดับ + โน้ต) + bulk dialog; (T2) แยกช่องเวลาเริ่ม/เลิกเป็น 2 บรรทัด; (T3) โลโก้กลาง QR รับ SVG.

@@ -8,7 +8,7 @@ import { useRouter as useProgressRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import {
   RefreshCw, GripVertical, CheckCircle2, Circle, Loader2, Clock,
-  CheckCheck, Users, Trash2, AlertTriangle,
+  CheckCheck, Users, Trash2, AlertTriangle, Pencil, Gauge,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -57,7 +57,6 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Pencil, Gauge } from "lucide-react";
 import { LeaveButton } from "@/components/club/leave-button";
 import { KickButton } from "@/components/club/kick-button";
 import {
@@ -296,16 +295,23 @@ function SessionEditor({
 function EditButton({ onOpen }: { onOpen: () => void }) {
   const t = useTranslations("club.playerList");
   return (
-    <Button
-      size="xs"
-      variant="ghost"
-      className="text-muted-foreground h-6 w-6 p-0"
-      onClick={onOpen}
-      title={t("editTitle")}
-      type="button"
-    >
-      <Pencil className="h-3 w-3" />
-    </Button>
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            size="xs"
+            variant="ghost"
+            className="text-muted-foreground h-6 w-6 p-0"
+            onClick={onOpen}
+            type="button"
+            aria-label={t("editTitle")}
+          >
+            <Pencil className="h-3 w-3" />
+          </Button>
+        }
+      />
+      <TooltipContent>{t("editTitle")}</TooltipContent>
+    </Tooltip>
   );
 }
 
