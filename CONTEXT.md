@@ -32,3 +32,19 @@ uses only the **global** level set — do not conflate it with club `level_id`.
   a profile-linked player keeps their LINE account name.
 - **Manager** — the club **owner** or a **co-admin** (`canManage` / `assertCanManageClub`).
   Only managers may add or edit roster players or manage the level catalog.
+
+## Club presets
+
+- **Club preset** — a user-owned reusable template for opening a new club session.
+  It stores setup data and regular roster defaults, not live runtime state. Applying a
+  preset creates a new independent club.
+- **Snapshot config** — the config captured from an existing club when a manager
+  saves it as a preset. It copies only fields the preset schema supports; it does not
+  copy matches, current queue state, payment status, slips, or verification secrets.
+- **Payment receiver** — the receiver details copied by presets for collecting
+  money: PromptPay id/name, an optional existing QR image URL, bank receiver details,
+  and which payment channels a receipt should show.
+- **Receipt theme** — the preset-supported receipt presentation choice copied with
+  payment receiver settings. It is intentionally narrower than the full receipt
+  template: footer text, line-item visibility, and receipt logo are not part of the
+  preset payment receiver snapshot.

@@ -17,6 +17,8 @@ import { T5, T5_QUEUE_URL, seedT5, teardownT5, resetT5, fetchT5 } from "./helper
 //   I3  at most one in_progress match per court (partial unique index)
 //   I4  a match can be started exactly once
 //   I5  two live tabs converge to the same order after a mid-drag conflict
+//   I6  a match's number never changes after start_match_atomic returns ok
+//       (renumber-while-pending then start is legal; renumber mid-game is not)
 //
 // History: the first run of I5 exposed a P1 — `tournaments` was missing from
 // the supabase_realtime publication, which silently killed the WHOLE page-level
@@ -24,10 +26,13 @@ import { T5, T5_QUEUE_URL, seedT5, teardownT5, resetT5, fetchT5 } from "./helper
 // refresh never fired anywhere. Fixed by migration
 // 20260704000100_add_tournaments_to_realtime_publication.
 //
-// Known-gap probe (reported, not hard-failed): swap_pending_match_numbers
-// validates "all pending" BEFORE its renumber passes and start_match_atomic
-// does not take the same advisory lock — a start committing inside that window
-// renumbers an in_progress match. Incidence is counted and logged to bug.md.
+// R2 history: originally a known-gap probe — swap_pending_match_numbers
+// validated "all pending" BEFORE its renumber passes, so a start committing
+// inside that window renumbered an in_progress match (26/30 incidence).
+// Closed by migration 20260704000200_swap_pending_lock_rows_before_validate
+// (FOR UPDATE row locks before validation): now either the swap commits first
+// and the blocked start begins with the new number, or the start commits first
+// and the swap cleanly rejects. R2 asserts the hard invariant I6.
 
 const ROUNDS = 20;
 const WINDOW_ROUNDS = 30;
@@ -213,19 +218,42 @@ test.describe.serial("T5 race-hardening — tournament queue", () => {
     console.log(`R1: last-committed winner split A=${aWins} B=${bWins} over ${ROUNDS} rounds`);
   });
 
-  test("R2: reorder racing a concurrent start — known-gap probe (I1 + incidence report)", async () => {
+  test("R2: reorder racing a concurrent start — no renumber after start returns (I6)", async () => {
     test.setTimeout(180_000);
     const sb = adminClient();
     const target = T5.matchIds[T5.matchIds.length - 1]; // last id → widest window after validation
-    let renumberedInProgress = 0;
+    let midGameRenumber = 0;
     let swapRejected = 0;
-    let cleanBoth = 0;
+    let swapWonFirst = 0;
 
     for (let round = 0; round < WINDOW_ROUNDS; round++) {
       await resetT5(sb);
       const order = rotate(T5.matchIds, (round % (T5.matchIds.length - 1)) + 1);
 
-      const [rs, rt] = await Promise.all([swap(sb, order), start(sb, target)]);
+      // Snapshot the target's number the moment start returns ok. If the swap
+      // committed first, start was blocked on the row lock and begins with the
+      // NEW number — snapshot == final. If start committed first, the swap must
+      // reject, so nothing may legally change the number after this point:
+      // snapshot != final ⇒ an in_progress match was renumbered mid-game.
+      const startThenSnapshot = async () => {
+        const rt = await start(sb, target);
+        const { data, error } = await sb
+          .from("matches")
+          .select("match_number")
+          .eq("id", target)
+          .single();
+        // A failed snapshot must abort the round loudly — an undefined value
+        // would be counted as a phantom mid-game renumber.
+        if (error || !data) {
+          throw new Error(`R2 snapshot select failed: ${error?.message ?? "no row"}`);
+        }
+        return { rt, numAtStartReturn: data.match_number as number };
+      };
+
+      const [rs, { rt, numAtStartReturn }] = await Promise.all([
+        swap(sb, order),
+        startThenSnapshot(),
+      ]);
       // start must always succeed here (the match is pending at round start)
       expect(rt.error, `round ${round} start: ${rt.error?.message}`).toBeNull();
       expect((rt.data as { ok: boolean }).ok).toBe(true);
@@ -235,26 +263,25 @@ test.describe.serial("T5 race-hardening — tournament queue", () => {
       const started = rows.find((r) => r.id === target)!;
       expect(started.status).toBe("in_progress");
 
+      if ((started.match_number as number) !== numAtStartReturn) midGameRenumber++;
+
       if (rs.error) {
-        // swap saw the started match → whole reorder rejected (documented behavior)
+        // start committed first → whole reorder rejected (documented behavior)
         expect(rs.error.message).toMatch(/not pending/i);
         swapRejected++;
         expect(started.match_number).toBe(T5.matchIds.length); // untouched
-      } else if ((started.match_number as number) !== T5.matchIds.length) {
-        // swap validated while pending, start committed inside the renumber window
-        // → an in_progress match got renumbered (the known gap)
-        renumberedInProgress++;
       } else {
-        cleanBoth++;
+        // swap won the row locks first → start blocked, began with its new
+        // number, which must be exactly what the submitted order implies
+        // (the RPC assigns the sorted numbers 1..N in caller order).
+        swapWonFirst++;
+        expect(started.match_number).toBe(order.indexOf(target) + 1);
       }
     }
     console.log(
-      `R2: swapRejected=${swapRejected} cleanBoth=${cleanBoth} renumberedInProgress=${renumberedInProgress} / ${WINDOW_ROUNDS}`,
+      `R2: swapRejected=${swapRejected} swapWonFirst=${swapWonFirst} midGameRenumber=${midGameRenumber} / ${WINDOW_ROUNDS}`,
     );
-    test.info().annotations.push({
-      type: "known-gap",
-      description: `renumbered-in-progress incidence: ${renumberedInProgress}/${WINDOW_ROUNDS}`,
-    });
+    expect(midGameRenumber, "I6 — no match may be renumbered after it started").toBe(0);
   });
 
   test("R3: two matches, same court, started concurrently — exactly one wins (I3)", async () => {

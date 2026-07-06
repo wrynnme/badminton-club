@@ -4,13 +4,41 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-- **[P2] tournament queue: reorder ชนกับ "เริ่มแมตช์" → แมตช์ in_progress ถูก renumber** (พบโดย T5 race probe R2, 2026-07-04 — เกิด 26/30 รอบ, deterministic repro ใน `e2e/race-hardening.spec.ts`) · กลไก: `swap_pending_match_numbers` validate "ทุก id เป็น pending" **ก่อน** 2-pass renumber แต่ `start_match_atomic` ล็อกแค่ row ตัวเอง ไม่ได้ยึด advisory lock ของทัวร์ → start ที่ commit ในหน้าต่าง validate→UPDATE ทำให้เลข `#N` ของแมตช์ที่กำลังแข่งเปลี่ยนกลางเกมทุกจอ (ผลจำกัดที่ display identity — ข้อมูลไม่พัง, match_number ยังเป็น permutation ครบ) · **fix เตรียมพร้อมแล้ว**: `supabase/migrations/20260704000200_swap_pending_lock_rows_before_validate.sql` (`FOR UPDATE` rows ก่อน validate) — **ยังไม่ apply** ตามนโยบาย P2+prod-migration รออนุมัติ; หลัง apply รัน R2 ซ้ำต้องได้ `renumberedInProgress=0`
-
-(อัปเดต 2026-07-04 — ก่อนหน้านี้ no open bugs ตั้งแต่ 2026-06-10.) Every finding from the 2026-06-09 whole-system core review (`docs/reviews/code-review-core-2026-06-09.html` — 1 P0 + 4 P1 + 23 P2) is closed — full records in Resolved.
+(no open bugs — อัปเดต 2026-07-06 หลังปิด P2 reorder∥start renumber.) Every finding from the 2026-06-09 whole-system core review (`docs/reviews/code-review-core-2026-06-09.html` — 1 P0 + 4 P1 + 23 P2) is closed — full records in Resolved.
 
 The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open)**: `computeExpenseShares` ceil-per-head over-collects a few baht (100฿/3 → 34×3 = 102). By design — equal players pay the same whole baht, the organizer is never short, and it stays reconciled across the cost-breakdown table + ExpenseManager. A fair largest-remainder split was offered and declined (user, 2026-06-09).
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
+
+### 2026-07-06 — ship-check (2 unpushed commits: preset payment receiver + R2 closure) — ⚠️ 2 P1 + 6 P2 found, ✅ all fixed (v0.18.2)
+
+- Scope: `origin/develop..HEAD` (fb966b8 + 427a2c0). Review 8 angles → 39 candidates → dedup 26 → verify 24 → **19 CONFIRMED / 4 PLAUSIBLE / 1 REFUTED**.
+- **[P1] fixed:** (1) ก๊วน >20 สนาม → save-as-preset โยน ZodError ไม่ถูก catch = 500 — clamp `court_count` ที่ 20 + try/catch คืน error อ่านได้ (`club-presets.ts`); (2) `schedule_day` snapshot ใช้ date-fns th ("พุธ") ไม่ตรงตัวเลือกฟอร์ม ("วันพุธ") — เปลี่ยนไปใช้ catalog `club.presetForm` เดียวกับฟอร์ม.
+- **[P2] fixed:** (3) apply preset hard-fail เมื่อ receiver config เพี้ยน → เปลี่ยนเป็น degrade (`sanitizePresetConfigPayment` — ตัด promptpay ผิด format / ปิด bank channel ที่ไม่ครบ); (4) **QR pointer**: apply เดิม copy URL ชี้ storage object ของ club ต้นทาง (ต้นทางลบ/เปลี่ยน = club ใหม่รูปแตก/QR ผิดบัญชีเงียบๆ) → copy object ไป `club-qr/{newClubId}/promptpay` (degrade เป็น null ถ้า copy ไม่ได้); (5) badge PromptPay บนการ์ด preset ไม่เช็ค `payment_show.promptpay`; (6) save error ธนาคารไม่ครบเป็น generic → key ใหม่ `club.bankReceiverIncomplete` th/en; (7)+(8) R2 test: snapshot ไม่เช็ค error (false positive ได้) + swapWonFirst ขาด assertion ตำแหน่งเลขตาม order ที่ส่ง.
+- **Simplify applied:** reuse `hasBankReceiver` ฝั่ง client (ยุบ 2 if ซ้ำ) · `recoverPresetReceiptTemplate` delegate ไป `parseReceiptTemplate` (−22 บรรทัด, semantics เดียวกับ club) · ตัด dead name re-parse + hoist `revalidatePath` ×3 + Promise.all permission checks (`club-presets.ts`) · preset query เข้า Promise.all wave + `select("id, name")` แทน jsonb เต็ม (`clubs/[id]/page.tsx`) · Tooltip บนปุ่มล้าง QR. **Skipped (backlog):** TanStack Form rewrite ของ save-dialog, extract shared PaymentReceiverFields/ThemePicker (~120 บรรทัด dup กับ receipt-template-editor), รวม payment validation 2 action, ย้าย `buildPresetConfigFromClub` ไป lib เพื่อ unit-test, `Pick<Club>` (nullability ไม่ตรง).
+- **e2e updated:** `club-flow.spec.ts` preset test เปลี่ยนไปทดสอบ contract ใหม่ — upload object จริง → apply → assert club ใหม่มี object ของตัวเอง (`download` ยืนยัน) + teardown ลบ storage ทั้งคู่.
+- **Gate:** tsc 0 · vitest 767/767 · `next build` OK (BUILD_ID) · i18n parity club 818 / actions 227 keys · **e2e 12/12 PASS** + temp smoke 1/1 (clamp=20, "วันพุธ", degrade, badge — browser จริง, console 0 error) · net-zero verified (clubs/presets/profile/storage = 0 row) · bump **v0.18.2**.
+- หมายเหตุ: A1 fail 1 ครั้งแรกจาก dev-server cold start (รันซ้ำผ่าน — ไม่ใช่ regression); R2 timing blind-spot (PLAUSIBLE, bounded ~p^30) note ไว้ใน test comment.
+
+### 2026-07-06 — P2 reorder∥start renumber (R2) — ✅ RESOLVED (migration applied prod, v0.18.1)
+
+- **[P2] tournament queue: reorder ชนกับ "เริ่มแมตช์" → แมตช์ in_progress ถูก renumber** (พบโดย T5 race probe R2, 2026-07-04 — เกิด 26/30 รอบ) · กลไกเดิม: `swap_pending_match_numbers` validate "ทุก id เป็น pending" **ก่อน** 2-pass renumber แต่ `start_match_atomic` ล็อกแค่ row ตัวเอง → start ที่ commit ในหน้าต่าง validate→UPDATE ทำให้เลข `#N` ของแมตช์ที่กำลังแข่งเปลี่ยนกลางเกม
+- **Fix**: migration `20260704000200_swap_pending_lock_rows_before_validate` — `FOR UPDATE` row-lock target matches ทันทีหลัง advisory lock **ก่อน** validate → serialize กับ `start_match_atomic` (ซึ่ง `FOR UPDATE` row เดียวกัน): start commit ก่อน → swap reject สะอาด ("not pending"); swap ล็อกก่อน → start block แล้วเริ่มด้วยเลขใหม่ (renumber เกิดตอนยัง pending — ถูกต้อง). **✅ applied prod 2026-07-06** (verified `pg_proc.prosrc` มี `FOR UPDATE` + grants service_role-only คงเดิม)
+- **หมายเหตุการวัดผล**: ตัวเลขคาดหวังเดิม "`renumberedInProgress=0`" ใช้ไม่ได้กับ probe เดิม — probe เทียบแค่ final state เลยแยก "swap ชนะ race → renumber ตอน pending → start ตาม" (ถูกต้อง) กับ "renumber หลัง start" (บั๊ก) ไม่ออก. R2 ถูกอัปเกรดเป็น **hard invariant I6**: snapshot `match_number` ทันทีที่ `start` return แล้ว assert ว่าเท่ากับเลขสุดท้ายเสมอ (แมตช์ที่เริ่มแล้วห้ามถูก renumber)
+- **Gate**: R2 ใหม่ `midGameRenumber=0/30` (swapRejected=19, swapWonFirst=11) · race-hardening ทั้ง suite **5/5 PASS** (net-zero) · bump **v0.18.1**
+
+### 2026-07-05 — preset payment receiver implementation — ✅ PASS
+
+- Implemented preset payment receiver config: parser schema, apply mapping, save-current-club-as-preset workflow, preset edit UI, i18n, docs/changelog/version.
+- **Gate:** `npm run typecheck` ผ่าน · `npx vitest run src/lib/club/__tests__/preset.test.ts` **39/39 PASS** · `npm test` **767/767 PASS** · `npm run build` ผ่าน · `npx playwright test e2e/club-flow.spec.ts` **7/7 PASS** · `npm run e2e` **12/12 PASS**.
+- Browser smoke: owner เปิดหน้าก๊วน → ตั้งค่า tab → สร้าง preset จากก๊วนที่มี PromptPay/QR/bank/theme → DB preset config ครบ → `/clubs/mine` กดเปิดก๊วนจาก preset → club ใหม่มี receiver config ครบ → cleanup net-zero.
+
+### 2026-07-05 — ship-check: preset payment receiver task + skills lock — ✅ PASS
+
+- Scope: `spec.md` backlog task ให้ preset ก๊วนบันทึกตั้งค่าผู้รับเงินได้ด้วย (`origin/master..HEAD`) + working-tree `skills-lock.json` จากการติดตั้ง skill packs.
+- Review: ไม่เจอ P0/P1/P2 ใน app behavior; change เป็น docs/lockfile-only ไม่มี `src/` runtime code, ไม่มี i18n key ใหม่, ไม่มี DB migration.
+- **Gate:** `npx tsc --noEmit` error count 0 · `npx vitest run` **764/764** ผ่าน · `npm run build` ผ่าน.
+- Browser smoke: ไม่ได้รัน เพราะไม่มี UI/runtime behavior ใหม่ให้คลิก; งาน implement จริงของ preset receiver ต้องมี Playwright smoke แยกตอนลงโค้ด.
 
 ### 2026-07-05 — v0.17.1 remove visible LIVE badge — ✅ PASS
 

@@ -13,6 +13,7 @@ import {
   Link2,
   Unlink,
   ChevronsUpDown,
+  QrCode,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -66,6 +69,14 @@ import type { PresetProfileResult } from "@/lib/actions/club-presets";
 import { fieldErrors } from "@/lib/form-errors";
 import type { ClubPreset } from "@/lib/types";
 import type { ClubPresetConfig } from "@/lib/club/preset";
+import { isValidPromptPayId } from "@/lib/club/promptpay";
+import {
+  RECEIPT_THEME_KEYS,
+  RECEIPT_THEMES,
+  DEFAULT_RECEIPT_TEMPLATE,
+  hasBankReceiver,
+  type ReceiptThemeKey,
+} from "@/lib/club/receipt";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -90,6 +101,15 @@ type FormValues = {
   players_per_team: "1" | "2";
   rotation_mode: "fair_queue" | "winner_stays" | "fair_winner_fallback";
   queue_mode: "rest_longest" | "fifo" | "level_match" | "smart";
+  promptpay_id: string;
+  promptpay_name: string;
+  promptpay_qr_image: string;
+  show_promptpay: boolean;
+  show_bank: boolean;
+  bank_name: string;
+  bank_account_no: string;
+  bank_account_name: string;
+  receipt_theme: ReceiptThemeKey;
 };
 
 // ── Props ─────────────────────────────────────────────────────────────────────
@@ -117,6 +137,15 @@ function toFormDefaults(preset?: ClubPreset): FormValues {
       players_per_team: "2",
       rotation_mode: "fair_queue",
       queue_mode: "rest_longest",
+      promptpay_id: "",
+      promptpay_name: "",
+      promptpay_qr_image: "",
+      show_promptpay: DEFAULT_RECEIPT_TEMPLATE.payment_show.promptpay,
+      show_bank: DEFAULT_RECEIPT_TEMPLATE.payment_show.bank,
+      bank_name: "",
+      bank_account_no: "",
+      bank_account_name: "",
+      receipt_theme: DEFAULT_RECEIPT_TEMPLATE.theme,
     };
   }
   const c = preset.config;
@@ -133,6 +162,15 @@ function toFormDefaults(preset?: ClubPreset): FormValues {
     players_per_team: String(c.players_per_team) as "1" | "2",
     rotation_mode: c.rotation_mode,
     queue_mode: c.queue_mode,
+    promptpay_id: c.promptpay_id ?? "",
+    promptpay_name: c.promptpay_name ?? "",
+    promptpay_qr_image: c.promptpay_qr_image ?? "",
+    show_promptpay: c.receipt_template.payment_show.promptpay,
+    show_bank: c.receipt_template.payment_show.bank,
+    bank_name: c.receipt_template.bank.name,
+    bank_account_no: c.receipt_template.bank.account_no,
+    bank_account_name: c.receipt_template.bank.account_name,
+    receipt_theme: c.receipt_template.theme,
   };
 }
 
@@ -289,6 +327,18 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
     players_per_team: z.enum(["1", "2"]),
     rotation_mode: z.enum(["fair_queue", "winner_stays", "fair_winner_fallback"]),
     queue_mode: z.enum(["rest_longest", "fifo", "level_match", "smart"]),
+    promptpay_id: z
+      .string()
+      .max(40)
+      .refine((v) => !v.trim() || isValidPromptPayId(v), t("validationPromptPay")),
+    promptpay_name: z.string().max(80),
+    promptpay_qr_image: z.string().max(2048),
+    show_promptpay: z.boolean(),
+    show_bank: z.boolean(),
+    bank_name: z.string().max(60),
+    bank_account_no: z.string().max(40),
+    bank_account_name: z.string().max(80),
+    receipt_theme: z.enum(RECEIPT_THEME_KEYS),
   });
 
   // Regulars are managed outside TanStack Form (dynamic array UI),
@@ -362,6 +412,21 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
         players_per_team: Number(value.players_per_team) as 1 | 2,
         rotation_mode: value.rotation_mode,
         queue_mode: value.queue_mode,
+        promptpay_id: value.promptpay_id.trim() || null,
+        promptpay_name: value.promptpay_name.trim() || null,
+        promptpay_qr_image: value.promptpay_qr_image.trim() || null,
+        receipt_template: {
+          payment_show: {
+            promptpay: value.show_promptpay,
+            bank: value.show_bank,
+          },
+          bank: {
+            name: value.bank_name.trim(),
+            account_no: value.bank_account_no.trim(),
+            account_name: value.bank_account_name.trim(),
+          },
+          theme: value.receipt_theme,
+        },
         co_admin_ids: coAdmins.map((a) => a.id),
         regulars: regulars
           .filter((r) => r.name.trim() !== "")
@@ -372,6 +437,15 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
             end_time: r.end_time || null,
           })),
       };
+
+      // Same "usable bank receiver" rule the server enforces (hasBankReceiver).
+      if (
+        config.receipt_template.payment_show.bank &&
+        !hasBankReceiver(config.receipt_template.bank)
+      ) {
+        toast.error(t("validationBankIncomplete"));
+        return;
+      }
 
       let res: { ok: true } | { id: string } | { error: string };
       if (isEdit) {
@@ -737,6 +811,235 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                 </Field>
               )}
             />
+
+            {/* ── Payment receiver ─────────────────────────────────────── */}
+            <Field>
+              <FieldLabel className="flex items-center gap-1.5">
+                <QrCode className="h-4 w-4 text-muted-foreground" />
+                {t("paymentReceiverLabel")}
+              </FieldLabel>
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <form.Field
+                    name="promptpay_id"
+                    children={(field) => {
+                      const isInvalid =
+                        field.state.meta.isTouched && !field.state.meta.isValid;
+                      return (
+                        <Field data-invalid={isInvalid}>
+                          <FieldLabel htmlFor={field.name}>
+                            {t("promptpayIdLabel")}
+                          </FieldLabel>
+                          <Input
+                            id={field.name}
+                            value={field.state.value}
+                            onBlur={field.handleBlur}
+                            onChange={(e) => field.handleChange(e.target.value)}
+                            placeholder={t("promptpayIdPlaceholder")}
+                            inputMode="numeric"
+                            aria-invalid={isInvalid}
+                          />
+                          {isInvalid && (
+                            <FieldError errors={fieldErrors(field.state.meta.errors)} />
+                          )}
+                        </Field>
+                      );
+                    }}
+                  />
+                  <form.Field
+                    name="promptpay_name"
+                    children={(field) => (
+                      <Field>
+                        <FieldLabel htmlFor={field.name}>
+                          {t("promptpayNameLabel")}
+                        </FieldLabel>
+                        <Input
+                          id={field.name}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          placeholder={t("promptpayNamePlaceholder")}
+                        />
+                      </Field>
+                    )}
+                  />
+                </div>
+
+                <form.Field
+                  name="promptpay_qr_image"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel htmlFor={field.name}>{t("qrImageUrlLabel")}</FieldLabel>
+                      <div className="flex items-center gap-2">
+                        {field.state.value.trim() && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={field.state.value.trim()}
+                            alt=""
+                            className="h-10 w-10 rounded-md border bg-white object-contain"
+                          />
+                        )}
+                        <Input
+                          id={field.name}
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(e) => field.handleChange(e.target.value)}
+                          placeholder={t("qrImageUrlPlaceholder")}
+                          className="min-w-0 flex-1"
+                        />
+                        {field.state.value.trim() && (
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => field.handleChange("")}
+                                >
+                                  {t("qrImageClear")}
+                                </Button>
+                              }
+                            />
+                            <TooltipContent>{t("qrImageClearTooltip")}</TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {t("qrImageUrlHint")}
+                      </p>
+                    </Field>
+                  )}
+                />
+
+                <div className="space-y-2">
+                  <Label className="text-xs">{t("paymentChannelsLabel")}</Label>
+                  <div className="flex flex-wrap gap-3 text-sm">
+                    <form.Field
+                      name="show_promptpay"
+                      children={(field) => (
+                        <label className="flex items-center gap-2">
+                          <Checkbox
+                            checked={field.state.value}
+                            onCheckedChange={(v) => field.handleChange(Boolean(v))}
+                          />
+                          {t("paymentPromptpay")}
+                        </label>
+                      )}
+                    />
+                    <form.Field
+                      name="show_bank"
+                      children={(field) => (
+                        <label className="flex items-center gap-2">
+                          <Checkbox
+                            checked={field.state.value}
+                            onCheckedChange={(v) => field.handleChange(Boolean(v))}
+                          />
+                          {t("paymentBank")}
+                        </label>
+                      )}
+                    />
+                  </div>
+                </div>
+
+                <form.Subscribe selector={(s) => s.values.show_bank}>
+                  {(showBank) =>
+                    showBank ? (
+                      <div className="grid gap-2 rounded-lg border bg-background/60 p-3 sm:grid-cols-3">
+                        <form.Field
+                          name="bank_name"
+                          children={(field) => (
+                            <Field>
+                              <FieldLabel htmlFor={field.name}>
+                                {t("bankNameLabel")}
+                              </FieldLabel>
+                              <Input
+                                id={field.name}
+                                value={field.state.value}
+                                onBlur={field.handleBlur}
+                                onChange={(e) => field.handleChange(e.target.value)}
+                                placeholder={t("bankNamePlaceholder")}
+                              />
+                            </Field>
+                          )}
+                        />
+                        <form.Field
+                          name="bank_account_no"
+                          children={(field) => (
+                            <Field>
+                              <FieldLabel htmlFor={field.name}>
+                                {t("bankAccountNoLabel")}
+                              </FieldLabel>
+                              <Input
+                                id={field.name}
+                                value={field.state.value}
+                                onBlur={field.handleBlur}
+                                onChange={(e) => field.handleChange(e.target.value)}
+                                placeholder={t("bankAccountNoPlaceholder")}
+                                inputMode="numeric"
+                              />
+                            </Field>
+                          )}
+                        />
+                        <form.Field
+                          name="bank_account_name"
+                          children={(field) => (
+                            <Field>
+                              <FieldLabel htmlFor={field.name}>
+                                {t("bankAccountNameLabel")}
+                              </FieldLabel>
+                              <Input
+                                id={field.name}
+                                value={field.state.value}
+                                onBlur={field.handleBlur}
+                                onChange={(e) => field.handleChange(e.target.value)}
+                                placeholder={t("bankAccountNamePlaceholder")}
+                              />
+                            </Field>
+                          )}
+                        />
+                      </div>
+                    ) : null
+                  }
+                </form.Subscribe>
+
+                <form.Field
+                  name="receipt_theme"
+                  children={(field) => (
+                    <Field>
+                      <FieldLabel>{t("receiptThemeLabel")}</FieldLabel>
+                      <div className="flex flex-wrap gap-2">
+                        {RECEIPT_THEME_KEYS.map((key) => {
+                          const selected = field.state.value === key;
+                          return (
+                            <Tooltip key={key}>
+                              <TooltipTrigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="icon"
+                                    aria-label={t(`theme_${key}`)}
+                                    aria-pressed={selected}
+                                    onClick={() => field.handleChange(key)}
+                                    className={`h-7 w-7 rounded-full p-0 ${selected ? "ring-2 ring-foreground ring-offset-2 ring-offset-background" : ""}`}
+                                    style={{ backgroundColor: RECEIPT_THEMES[key].headerBg }}
+                                  />
+                                }
+                              />
+                              <TooltipContent>{t(`theme_${key}`)}</TooltipContent>
+                            </Tooltip>
+                          );
+                        })}
+                      </div>
+                    </Field>
+                  )}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {t("paymentReceiverNote")}
+              </p>
+            </Field>
 
             {/* ── Co-admins ─────────────────────────────────────────────── */}
             <Field>

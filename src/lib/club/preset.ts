@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  ReceiptBankSchema,
+  ReceiptPaymentShowSchema,
+  ReceiptThemeSchema,
+  DEFAULT_RECEIPT_TEMPLATE,
+  parseReceiptTemplate,
+} from "@/lib/club/receipt";
 
 /**
  * Saved config for a ClubPreset. Stored on `club_presets.config jsonb`.
@@ -19,7 +26,16 @@ import { z } from "zod";
  *  queue_mode       rest_longest | fifo | level_match | smart
  *  co_admin_ids     profile UUIDs to add as club_admins on apply
  *  regulars         seed club_players on apply (D4 decision: name + optional link)
+ *  payment receiver PromptPay/bank receiver + receipt channel/theme defaults
  */
+
+export const ClubPresetReceiptTemplateSchema = z.object({
+  bank: ReceiptBankSchema.default(DEFAULT_RECEIPT_TEMPLATE.bank),
+  payment_show: ReceiptPaymentShowSchema.default(DEFAULT_RECEIPT_TEMPLATE.payment_show),
+  theme: ReceiptThemeSchema.default(DEFAULT_RECEIPT_TEMPLATE.theme),
+});
+export type ClubPresetReceiptTemplate = z.infer<typeof ClubPresetReceiptTemplateSchema>;
+
 export const ClubPresetConfigSchema = z.object({
   venue: z.string().default(""),
   schedule_day: z.string().default(""),
@@ -33,6 +49,14 @@ export const ClubPresetConfigSchema = z.object({
   rotation_mode: z.enum(["fair_queue", "winner_stays", "fair_winner_fallback"]).default("fair_queue"),
   queue_mode: z.enum(["rest_longest", "fifo", "level_match", "smart"]).default("rest_longest"),
   co_admin_ids: z.array(z.string()).default([]),
+  promptpay_id: z.string().trim().max(40).nullable().default(null),
+  promptpay_name: z.string().trim().max(80).nullable().default(null),
+  promptpay_qr_image: z.string().trim().max(2048).nullable().default(null),
+  receipt_template: ClubPresetReceiptTemplateSchema.default({
+    bank: DEFAULT_RECEIPT_TEMPLATE.bank,
+    payment_show: DEFAULT_RECEIPT_TEMPLATE.payment_show,
+    theme: DEFAULT_RECEIPT_TEMPLATE.theme,
+  }),
   regulars: z
     .array(
       z.object({
@@ -48,6 +72,15 @@ export const ClubPresetConfigSchema = z.object({
 export type ClubPresetConfig = z.infer<typeof ClubPresetConfigSchema>;
 
 export const DEFAULT_PRESET_CONFIG: ClubPresetConfig = ClubPresetConfigSchema.parse({});
+
+function recoverPresetReceiptTemplate(value: unknown): ClubPresetReceiptTemplate {
+  const fast = ClubPresetReceiptTemplateSchema.safeParse(value);
+  if (fast.success) return fast.data;
+  // Delegate to the receipt module's tolerant parser so preset recovery can
+  // never drift from how clubs.receipt_template itself is recovered.
+  const { bank, payment_show, theme } = parseReceiptTemplate(value);
+  return { bank, payment_show, theme };
+}
 
 /**
  * Per-field tolerant parse: if the whole-object parse succeeds, return it
@@ -72,6 +105,10 @@ export function parsePresetConfig(raw: unknown): ClubPresetConfig {
 
   for (const key of Object.keys(shape) as Array<keyof typeof shape>) {
     if (!(key in rec)) continue;
+    if (key === "receipt_template") {
+      out.receipt_template = recoverPresetReceiptTemplate(rec[key]);
+      continue;
+    }
     const parsed = shape[key].safeParse(rec[key]);
     if (parsed.success) {
       (out as Record<string, unknown>)[key] = parsed.data;

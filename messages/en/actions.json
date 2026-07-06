@@ -92,7 +92,8 @@
     "billingVerifyByokNeedsKey": "BYOK mode requires an API Key (no existing key on file)",
     "billingVerifySaveFailed": "Failed to save slip verification settings",
     "invalidLevel": "Selected level is not in this club's level set",
-    "updatePlayerNoFields": "No fields to update"
+    "updatePlayerNoFields": "No fields to update",
+    "bankReceiverIncomplete": "Bank receiver on the receipt is incomplete (bank name and account number required) — fix it in Cost tab > Receipt settings"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",

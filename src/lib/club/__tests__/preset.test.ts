@@ -28,6 +28,12 @@ describe("parsePresetConfig — empty / null input", () => {
     expect(result.rotation_mode).toBe("fair_queue");
     expect(result.queue_mode).toBe("rest_longest");
     expect(result.co_admin_ids).toEqual([]);
+    expect(result.promptpay_id).toBeNull();
+    expect(result.promptpay_name).toBeNull();
+    expect(result.promptpay_qr_image).toBeNull();
+    expect(result.receipt_template.payment_show).toEqual({ promptpay: true, bank: false });
+    expect(result.receipt_template.bank).toEqual({ name: "", account_no: "", account_name: "" });
+    expect(result.receipt_template.theme).toBe("green");
     expect(result.regulars).toEqual([]);
   });
 
@@ -101,6 +107,46 @@ describe("parsePresetConfig — partial config", () => {
     expect(result.rotation_mode).toBe("fair_queue");
     expect(result.regulars).toEqual([]);
   });
+
+  it("preserves valid payment receiver fields", () => {
+    const result = parsePresetConfig({
+      promptpay_id: "0812345678",
+      promptpay_name: "เจ้าของก๊วน",
+      promptpay_qr_image: "https://example.com/qr.png",
+      receipt_template: {
+        payment_show: { promptpay: true, bank: true },
+        bank: {
+          name: "SCB",
+          account_no: "123-4-56789-0",
+          account_name: "Club Owner",
+        },
+        theme: "blue",
+      },
+    });
+    expect(result.promptpay_id).toBe("0812345678");
+    expect(result.promptpay_name).toBe("เจ้าของก๊วน");
+    expect(result.promptpay_qr_image).toBe("https://example.com/qr.png");
+    expect(result.receipt_template.payment_show).toEqual({ promptpay: true, bank: true });
+    expect(result.receipt_template.bank.name).toBe("SCB");
+    expect(result.receipt_template.theme).toBe("blue");
+  });
+
+  it("recovers valid receipt preset subfields when a sibling is corrupt", () => {
+    const result = parsePresetConfig({
+      receipt_template: {
+        payment_show: { promptpay: false, bank: true },
+        bank: {
+          name: "KBank",
+          account_no: "1112223333",
+          account_name: "Receiver",
+        },
+        theme: "bad-theme",
+      },
+    });
+    expect(result.receipt_template.payment_show).toEqual({ promptpay: false, bank: true });
+    expect(result.receipt_template.bank.account_no).toBe("1112223333");
+    expect(result.receipt_template.theme).toBe("green");
+  });
 });
 
 // ─── Bad types → clamped / fallback to default ───────────────────────────────
@@ -159,6 +205,13 @@ describe("parsePresetConfig — bad / out-of-range types", () => {
   it("co_admin_ids non-array falls back to default", () => {
     const result = parsePresetConfig({ co_admin_ids: "not-an-array" });
     expect(result.co_admin_ids).toEqual([]);
+  });
+
+  it("bad receipt_template shape falls back to default payment receipt config", () => {
+    const result = parsePresetConfig({ receipt_template: "not-an-object" });
+    expect(result.receipt_template.payment_show).toEqual({ promptpay: true, bank: false });
+    expect(result.receipt_template.bank).toEqual({ name: "", account_no: "", account_name: "" });
+    expect(result.receipt_template.theme).toBe("green");
   });
 
   it("bad field does not poison valid sibling fields", () => {
@@ -281,6 +334,18 @@ describe("parsePresetConfig — full valid config", () => {
       rotation_mode: "winner_stays",
       queue_mode: "smart",
       co_admin_ids: ["a1b2c3d4-e5f6-4789-abcd-ef0123456710"],
+      promptpay_id: "0812345678",
+      promptpay_name: "ผู้รับเงิน",
+      promptpay_qr_image: "https://example.com/qr.png",
+      receipt_template: {
+        payment_show: { promptpay: true, bank: true },
+        bank: {
+          name: "SCB",
+          account_no: "123-4-56789-0",
+          account_name: "ผู้รับเงิน",
+        },
+        theme: "rose",
+      },
       regulars: [
         {
           name: "ผู้เล่น 1",
@@ -305,6 +370,10 @@ describe("parsePresetConfig — full valid config", () => {
     expect(result.rotation_mode).toBe(full.rotation_mode);
     expect(result.queue_mode).toBe(full.queue_mode);
     expect(result.co_admin_ids).toEqual(full.co_admin_ids);
+    expect(result.promptpay_id).toBe(full.promptpay_id);
+    expect(result.promptpay_name).toBe(full.promptpay_name);
+    expect(result.promptpay_qr_image).toBe(full.promptpay_qr_image);
+    expect(result.receipt_template).toEqual(full.receipt_template);
     expect(result.regulars).toHaveLength(2);
     expect(result.regulars[0].profile_id).toBe("a1b2c3d4-e5f6-4789-abcd-ef0123456720");
     expect(result.regulars[1].profile_id).toBeNull();

@@ -14,6 +14,7 @@ import {
   MapPin,
   Users,
   LayoutGrid,
+  Wallet,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -79,6 +80,22 @@ export function PresetManager({ presets }: Props) {
     const parts: string[] = [];
     if (c.max_players) parts.push(t("playerSuffix", { count: c.max_players }));
     if (c.court_count) parts.push(t("courtSuffix", { count: c.court_count }));
+    return parts.join(" · ");
+  }
+
+  function paymentSummary(preset: ClubPreset) {
+    const c = preset.config;
+    const parts: string[] = [];
+    // Mirror what the applied club's receipt will actually show: a channel
+    // counts only when its payment_show flag is on AND it has a usable receiver.
+    if (
+      c.receipt_template.payment_show.promptpay &&
+      (c.promptpay_id || c.promptpay_qr_image)
+    ) {
+      parts.push(t("paymentPromptPay"));
+    }
+    if (c.receipt_template.payment_show.bank) parts.push(t("paymentBank"));
+    if (parts.length === 0) return null;
     return parts.join(" · ");
   }
 
@@ -160,6 +177,7 @@ export function PresetManager({ presets }: Props) {
             const isApplying = applyingId === preset.id;
             const isDeleting = deletingId === preset.id;
             const summary = presetSummary(preset);
+            const payment = paymentSummary(preset);
             const time = timeRange(preset);
             const regularCount = preset.config.regulars?.length ?? 0;
 
@@ -197,6 +215,12 @@ export function PresetManager({ presets }: Props) {
                     )}
                     {regularCount > 0 && (
                       <p className="pl-0.5">{t("regularCount", { count: regularCount })}</p>
+                    )}
+                    {payment && (
+                      <div className="flex items-center gap-1.5">
+                        <Wallet className="h-3 w-3 shrink-0" />
+                        <span>{payment}</span>
+                      </div>
                     )}
                   </div>
 
