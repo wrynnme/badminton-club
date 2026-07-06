@@ -10,6 +10,12 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-07 — feat/club-batch-queue implementation (v0.19.0) — ✅ PASS
+
+- Implement batch queue "สุ่มคิว" ตาม plan ที่อนุมัติ (7 commits): migrations ×3 (court nullable · winner pointer · finish_club_match promotion — **ทั้งหมด applied prod + verified**, promotion live-tested net-zero ด้วย DO-block) · pure generator `batch-queue.ts` (20 tests) + `queue-preview.ts` (8 tests) · actions (generate/rebuild/start-court-gate/manual-court-optional) · UI (GenerateQueueDialog + placeholder side + re-roll + CourtSelect null) · e2e rework
+- **Gate:** tsc 0 · vitest **795/795** (baseline 767 + 28 ใหม่) · `next build` OK (BUILD_ID) · i18n parity th/en (club + actions) · **e2e 14/14 PASS** (club-flow 9 รวม 3 flow ใหม่: สุ่มคิว courtless + court gate + assign, จัดคิวใหม่คง court/position, winner chain placeholder → promotion ผ่าน UI จริง · race-hardening 5) · net-zero verified (SMOKE_* = 0 row)
+- e2e flake ที่แก้ระหว่างทาง: (1) option ชื่อ "สนาม 1" ไม่ใช่ "1"; (2) target select ด้วย nth(i) แทน "first unassigned" — UI stale ระหว่าง server write กับ router refresh ทำให้ retarget แถวแรกซ้ำ
+
 ### 2026-07-06 — ship-check (2 unpushed commits: preset payment receiver + R2 closure) — ⚠️ 2 P1 + 6 P2 found, ✅ all fixed (v0.18.2)
 
 - Scope: `origin/develop..HEAD` (fb966b8 + 427a2c0). Review 8 angles → 39 candidates → dedup 26 → verify 24 → **19 CONFIRMED / 4 PLAUSIBLE / 1 REFUTED**.
