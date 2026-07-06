@@ -47,7 +47,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -1627,31 +1626,49 @@ export function ClubQueuePanel({
         new Date(a.ended_at ?? a.created_at).getTime(),
     );
 
+  // Single-page layout (tabs removed 2026-07-07): all three statuses stack in
+  // one view, colour-coded per section — live matches first (short + most
+  // relevant mid-session; the batch-generated pending list can be long), then
+  // the queue, then finished. Empty กำลังแข่ง / จบแล้ว sections are hidden.
   return (
-    <Tabs defaultValue="pending" className="space-y-3">
-      <TabsList className="w-full flex-wrap h-auto">
-        <TabsTrigger value="pending" className="gap-1.5">
-          {t("tabPending")}{" "}
+    <div className="space-y-4">
+      {/* ── กำลังแข่ง — amber, live ── */}
+      {inProgress.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-warning" />
+            {t("tabInProgress")}
+            <Badge variant="outline" className="text-[10px] px-1 py-0">
+              {inProgress.length}
+            </Badge>
+          </h3>
+          <Card className="border-l-4 border-l-warning/60">
+            <CardContent className="py-3 px-4">
+              {inProgress.map((m) => (
+                <InProgressRow
+                  key={m.id}
+                  match={m}
+                  nameMap={nameMap.current}
+                  courts={courts}
+                  canManage={canManage}
+                  onRefresh={onRefresh}
+                  gameTimeLimitMin={settings.game_time_limit_min}
+                />
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      {/* ── รอแข่ง — primary ── */}
+      <section className="space-y-3">
+        <h3 className="flex items-center gap-2 text-sm font-semibold">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary" />
+          {t("tabPending")}
           <Badge variant="outline" className="text-[10px] px-1 py-0">
             {pendingOrder.length}
           </Badge>
-        </TabsTrigger>
-        <TabsTrigger value="in_progress" className="gap-1.5">
-          {t("tabInProgress")}{" "}
-          <Badge variant="outline" className="text-[10px] px-1 py-0">
-            {inProgress.length}
-          </Badge>
-        </TabsTrigger>
-        <TabsTrigger value="completed" className="gap-1.5">
-          {t("tabCompleted")}{" "}
-          <Badge variant="outline" className="text-[10px] px-1 py-0">
-            {completed.length}
-          </Badge>
-        </TabsTrigger>
-      </TabsList>
-
-      {/* ── รอแข่ง tab ── */}
-      <TabsContent value="pending" className="space-y-3 mt-0">
+        </h3>
         {canManage && (
           <div className="space-y-2">
             {courts.length === 0 && (
@@ -1697,7 +1714,7 @@ export function ClubQueuePanel({
           </p>
         )}
 
-        <Card>
+        <Card className="border-l-4 border-l-primary/50">
           <CardContent className="py-3 px-4">
             {pendingOrder.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
@@ -1749,43 +1766,21 @@ export function ClubQueuePanel({
             )}
           </CardContent>
         </Card>
-      </TabsContent>
+      </section>
 
-      {/* ── กำลังแข่ง tab ── */}
-      <TabsContent value="in_progress" className="mt-0">
-        <Card>
-          <CardContent className="py-3 px-4">
-            {inProgress.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                {t("inProgressEmpty")}
-              </p>
-            ) : (
-              inProgress.map((m) => (
-                <InProgressRow
-                  key={m.id}
-                  match={m}
-                  nameMap={nameMap.current}
-                  courts={courts}
-                  canManage={canManage}
-                  onRefresh={onRefresh}
-                  gameTimeLimitMin={settings.game_time_limit_min}
-                />
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </TabsContent>
-
-      {/* ── จบแล้ว tab ── */}
-      <TabsContent value="completed" className="mt-0">
-        <Card>
-          <CardContent className="py-3 px-4">
-            {completed.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">
-                {t("completedEmpty")}
-              </p>
-            ) : (
-              completed.map((m) => (
+      {/* ── จบแล้ว — success ── */}
+      {completed.length > 0 && (
+        <section className="space-y-2">
+          <h3 className="flex items-center gap-2 text-sm font-semibold">
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-success" />
+            {t("tabCompleted")}
+            <Badge variant="outline" className="text-[10px] px-1 py-0">
+              {completed.length}
+            </Badge>
+          </h3>
+          <Card className="border-l-4 border-l-success/50">
+            <CardContent className="py-3 px-4">
+              {completed.map((m) => (
                 <CompletedRow
                   key={m.id}
                   match={m}
@@ -1793,11 +1788,11 @@ export function ClubQueuePanel({
                   canManage={canManage}
                   onRefresh={onRefresh}
                 />
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </TabsContent>
-    </Tabs>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+      )}
+    </div>
   );
 }

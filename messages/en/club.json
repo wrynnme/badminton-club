@@ -198,8 +198,6 @@
     "noCourts": "No courts set up — add courts in Settings before building matches",
     "dragHint": "Drag to reorder",
     "pendingEmpty": "No matches in queue",
-    "inProgressEmpty": "No matches in progress",
-    "completedEmpty": "No completed matches yet",
     "addManualMatch": "Add match manually",
     "overTime": "Over time",
     "dragRowAriaLabel": "Drag to reorder",

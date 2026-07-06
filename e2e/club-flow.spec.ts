@@ -51,7 +51,8 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
     await minInput.fill("1");
     await page.getByRole("dialog").getByRole("button", { name: "สุ่มคิว" }).click();
     await expect(page.getByText(/สุ่มคิวแล้ว 2 แมตช์/)).toBeVisible();
-    await expect(page.getByRole("tab", { name: /รอแข่ง/ })).toContainText("2");
+    // Single-page layout: sections replaced the tabs — count lives in the heading badge.
+    await expect(page.getByRole("heading", { name: /รอแข่ง/ })).toContainText("2");
 
     // Generated rows are courtless in the DB…
     const sb = adminClient();
@@ -130,7 +131,7 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
     // start one pending match via the UI
     await page.goto(QUEUE_URL);
     await page.getByRole("button", { name: /เริ่มแมตช์/ }).first().click();
-    await expect(page.getByRole("tab", { name: /กำลังแข่ง/ })).toContainText("1");
+    await expect(page.getByRole("heading", { name: /กำลังแข่ง/ })).toContainText("1");
 
     // backdate beyond the 1-min limit (deterministic — no real wait), reload, assert badge
     await sb
@@ -140,17 +141,15 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
       .eq("status", "in_progress");
 
     await page.goto(QUEUE_URL);
-    await page.getByRole("tab", { name: /กำลังแข่ง/ }).click();
     await expect(page.getByText("เกินเวลา")).toBeVisible();
   });
 
   test("finish the match → moves to จบแล้ว", async ({ page }) => {
     await page.goto(QUEUE_URL);
-    await page.getByRole("tab", { name: /กำลังแข่ง/ }).click();
     await page.getByRole("button", { name: /จบแข่ง/ }).first().click();
     // winner-only finish (no per-set score required)
     await page.getByRole("button", { name: /ฝั่ง A ชนะ/ }).click();
-    await expect(page.getByRole("tab", { name: /จบแล้ว/ })).toContainText("1");
+    await expect(page.getByRole("heading", { name: /จบแล้ว/ })).toContainText("1");
 
     const sb = adminClient();
     const { data } = await sb
@@ -212,8 +211,7 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
 
     // Start + finish the feeder with side A (p1) winning → promotion fires in the RPC.
     await page.getByRole("button", { name: /เริ่มแมตช์/ }).first().click();
-    await expect(page.getByRole("tab", { name: /กำลังแข่ง/ })).toContainText("1");
-    await page.getByRole("tab", { name: /กำลังแข่ง/ }).click();
+    await expect(page.getByRole("heading", { name: /กำลังแข่ง/ })).toContainText("1");
     await page.getByRole("button", { name: /จบแข่ง/ }).first().click();
     await page.getByRole("button", { name: /ฝั่ง A ชนะ/ }).click();
 
