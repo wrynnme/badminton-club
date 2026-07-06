@@ -34,6 +34,8 @@ import { z } from "zod";
  *  realtime_enabled     true = หน้าก๊วน subscribe Realtime broadcast (topic `club:<id>`)
  *                       → คิว/ผู้เล่นอัปเดตสดข้ามอุปกรณ์โดยไม่ต้องรีเฟรช (default true,
  *                       mirror tournaments.settings.realtime_enabled). ปิด = manual refresh
+ *  batch_min_matches    "สุ่มคิว": ขั้นต่ำแมตช์/คน (N) ครั้งล่าสุดที่เจ้าของกรอกใน dialog —
+ *                       จำไว้เป็น default ครั้งถัดไป; เป้าจริงต่อคนถูก pro-rate ตามเวลาที่อยู่
  */
 export const ClubQueueSettingsSchema = z.object({
   court_count: z.number().int().min(1).max(20).default(1),
@@ -48,6 +50,7 @@ export const ClubQueueSettingsSchema = z.object({
   balance_strictness: z.enum(["loose", "balanced", "strict"]).default("balanced"),
   balance_locked_pairs: z.boolean().default(false),
   realtime_enabled: z.boolean().default(true),
+  batch_min_matches: z.number().int().min(1).max(20).default(3),
 });
 
 export type ClubQueueSettings = z.infer<typeof ClubQueueSettingsSchema>;

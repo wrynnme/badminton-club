@@ -102,7 +102,7 @@ export function orderPool(pool: QueuePlayer[], settings: ClubQueueSettings): Que
  * - strict + ไม่พอคน  → คืน null (caller คืน null ต่อ = ไม่มีแมตช์)
  * - loose/balanced + ไม่พอคน → ผ่อนเพดาน เลือก nearest จาก candidate ทั้งหมด
  */
-function pickBalancedMatch(
+export function pickBalancedMatch(
   pool: QueuePlayer[],
   need: number,
   settings: ClubQueueSettings,
@@ -238,7 +238,7 @@ export type LockedPair = readonly [string, string];
  * player whose partner is absent, so every locked player reached here has its
  * partner present somewhere in `ordered`.
  */
-function takeSides(
+export function takeSides(
   ordered: QueuePlayer[],
   partnerOf: Map<string, string>,
   sidesNeeded: number,
