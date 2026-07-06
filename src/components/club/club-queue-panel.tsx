@@ -377,7 +377,7 @@ function CourtSelect({
   if (!canManage || courts.length <= 1) {
     return (
       <Badge variant="outline" className={badgeClassName ?? "shrink-0 text-xs"}>
-        {t("courtBadge", { court: match.court })}
+        {t("courtBadge", { court: match.court ?? "" })}
       </Badge>
     );
   }
@@ -579,14 +579,14 @@ function PendingRow({
                   className="h-7 px-2"
                   disabled={startBusy || editBusy || !isMatchFull}
                   onClick={handleStart}
-                  aria-label={isMatchFull ? t("startTooltip", { court: match.court }) : t("startNeedsFullTooltip")}
+                  aria-label={isMatchFull ? t("startTooltip", { court: match.court ?? "" }) : t("startNeedsFullTooltip")}
                 >
                   <Play className="h-3.5 w-3.5" />
                 </Button>
               }
             />
             <TooltipContent>
-              {isMatchFull ? t("startTooltip", { court: match.court }) : t("startNeedsFullTooltip")}
+              {isMatchFull ? t("startTooltip", { court: match.court ?? "" }) : t("startNeedsFullTooltip")}
             </TooltipContent>
           </Tooltip>
           <Tooltip>
@@ -777,7 +777,7 @@ function InProgressRow({
                   </Button>
                 }
               />
-              <TooltipContent>{t("finishTooltip", { court: match.court })}</TooltipContent>
+              <TooltipContent>{t("finishTooltip", { court: match.court ?? "" })}</TooltipContent>
             </Tooltip>
             <DeleteMatchButton matchId={match.id} status="in_progress" onRefresh={onRefresh} />
           </>
@@ -941,7 +941,7 @@ function CompletedRow({
   return (
     <div className="flex items-center gap-2 py-2 border-b last:border-0 text-sm text-muted-foreground">
       <Badge variant="outline" className="shrink-0 text-xs opacity-60">
-        {t("courtBadge", { court: match.court })}
+        {t("courtBadge", { court: match.court ?? "" })}
       </Badge>
       <span className={winnerA ? "text-winner font-medium" : ""}>{sideA}</span>
       <span className="text-xs">vs</span>

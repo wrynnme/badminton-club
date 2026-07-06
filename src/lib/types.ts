@@ -115,13 +115,21 @@ export type ClubMatchStatus = "pending" | "in_progress" | "completed" | "cancell
 export type ClubMatch = {
   id: string;
   club_id: string;
-  court: string; // named court (FK-by-name to clubs.courts); was int 1..N pre-2026-06-08
+  // Named court (FK-by-name to clubs.courts); was int 1..N pre-2026-06-08.
+  // null = batch-generated match not yet assigned a court (can't start until set).
+  court: string | null;
 
   side_a_player1: string | null;
   side_a_player2: string | null;
   side_b_player1: string | null;
   side_b_player2: string | null;
   status: ClubMatchStatus;
+  // Winner forward-pointer (mirror of matches.next_match_id/next_match_slot):
+  // when THIS match completes with a winner, finish_club_match copies the winning
+  // side's player ids into the target match's side `winner_next_match_slot` —
+  // only if that side is still fully empty (a manual edit always wins).
+  winner_next_match_id: string | null;
+  winner_next_match_slot: "a" | "b" | null;
   shuttles_used: number; // shuttles consumed by this match (for shuttle_split="per_match")
   queue_position: number | null;
   winner_side: "a" | "b" | null;
