@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock } from "lucide-react";
+import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock, RotateCcw } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -61,8 +61,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  buildNextClubMatchAction,
-  buildAllCourtsAction,
   startClubMatchAction,
   finishClubMatchAction,
   cancelClubMatchAction,
@@ -72,11 +70,13 @@ import {
   setClubMatchPlayersAction,
   reorderClubQueueAction,
   deleteClubMatchAction,
+  rebuildClubPendingMatchAction,
 } from "@/lib/actions/club-matches";
 import type { ClubMatch, Game } from "@/lib/types";
 import { isClubMatchFull } from "@/lib/club/queue";
 import type { ClubQueueSettings } from "@/lib/club/queue-settings";
 import { firstFreeCourt, occupiedCourtMap } from "@/lib/club/courts";
+import { GenerateQueueDialog } from "@/components/club/generate-queue-dialog";
 import { cn } from "@/lib/utils";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -377,7 +377,7 @@ function CourtSelect({
   if (!canManage || courts.length <= 1) {
     return (
       <Badge variant="outline" className={badgeClassName ?? "shrink-0 text-xs"}>
-        {t("courtBadge", { court: match.court ?? "" })}
+        {match.court ? t("courtBadge", { court: match.court }) : t("courtUnassignedBadge")}
       </Badge>
     );
   }
@@ -399,7 +399,9 @@ function CourtSelect({
         disabled={busy}
         className="h-7 w-auto gap-1 text-xs shrink-0"
       >
-        <SelectValue>{(v: string) => t("courtSelectValue", { court: v })}</SelectValue>
+        <SelectValue>
+          {(v: string | null) => (v ? t("courtSelectValue", { court: v }) : t("courtSelectPlaceholder"))}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         {courts.map((c) => (
@@ -424,6 +426,7 @@ function PendingRow({
   onRefresh,
   dragHandleProps,
   rowNumber,
+  feederByTarget,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
@@ -434,11 +437,15 @@ function PendingRow({
   onRefresh: () => void;
   dragHandleProps?: Record<string, unknown> | null;
   rowNumber?: number;
+  /** feeder match (still pending/in_progress) keyed `${winner_next_match_id}:${slot}` —
+   *  presence means that side is a LIVE "winner of" placeholder, not an empty slot. */
+  feederByTarget: Map<string, ClubMatch>;
 }) {
   const t = useTranslations("club.queuePanel");
   const [startBusy, startTransition] = useTransition();
   const [cancelBusy, cancelTransition] = useTransition();
   const [editBusy, editTransition] = useTransition();
+  const [rerollBusy, rerollTransition] = useTransition();
 
   // Local slot state for inline editing (manager only). Seeded from the match row and
   // re-synced when the server row changes (a persist or an external realtime / 30s refresh)
@@ -468,6 +475,31 @@ function PendingRow({
       : match,
     playersPerTeam,
   );
+
+  // A side is a LIVE "winner of" placeholder when both its player slots are empty AND a
+  // still-active feeder match points its winner here — distinct from an ordinary empty
+  // slot (which is editable). Rendered as a badge instead of InlinePlayerSlots.
+  const feederA = feederByTarget.get(`${match.id}:a`);
+  const feederB = feederByTarget.get(`${match.id}:b`);
+  const placeholderA = match.side_a_player1 == null && match.side_a_player2 == null && !!feederA;
+  const placeholderB = match.side_b_player1 == null && match.side_b_player2 == null && !!feederB;
+  const hasLivePlaceholder = placeholderA || placeholderB;
+
+  function feederLabel(feeder: ClubMatch): string {
+    return feeder.status === "in_progress" && feeder.court
+      ? t("winnerPlaceholderInProgress", { court: feeder.court })
+      : t("winnerPlaceholder", { number: feeder.queue_position ?? "?" });
+  }
+
+  // Start-button disable/tooltip priority: missing court > waiting on a live winner
+  // placeholder > incomplete roster > ready.
+  const startDisabledReason = !match.court
+    ? t("startNeedsCourtTooltip")
+    : hasLivePlaceholder
+      ? t("startWaitingWinnerTooltip")
+      : !isMatchFull
+        ? t("startNeedsFullTooltip")
+        : t("startTooltip", { court: match.court });
 
   type SlotKey = "a1" | "a2" | "b1" | "b2";
   // Options for one slot: every club player except those already placed in this match's
@@ -520,6 +552,18 @@ function PendingRow({
     });
   }
 
+  function handleReroll() {
+    rerollTransition(async () => {
+      const res = await rebuildClubPendingMatchAction(match.id);
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        toast.success(t("toastRerolled"));
+        onRefresh();
+      }
+    });
+  }
+
   return (
     <div className="flex items-center gap-2 py-2 border-b last:border-0">
       {dragHandleProps && (
@@ -553,19 +597,36 @@ function PendingRow({
       />
       {canManage ? (
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-          <InlinePlayerSlot value={slots.a1} options={optionsFor("a1")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("a1", id)} />
-          {playersPerTeam === 2 && (
-            <InlinePlayerSlot value={slots.a2} options={optionsFor("a2")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("a2", id)} />
+          {placeholderA ? (
+            <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
+              {feederLabel(feederA!)}
+            </Badge>
+          ) : (
+            <>
+              <InlinePlayerSlot value={slots.a1} options={optionsFor("a1")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("a1", id)} />
+              {playersPerTeam === 2 && (
+                <InlinePlayerSlot value={slots.a2} options={optionsFor("a2")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("a2", id)} />
+              )}
+            </>
           )}
           <span className="px-0.5 text-xs text-muted-foreground">vs</span>
-          <InlinePlayerSlot value={slots.b1} options={optionsFor("b1")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("b1", id)} />
-          {playersPerTeam === 2 && (
-            <InlinePlayerSlot value={slots.b2} options={optionsFor("b2")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("b2", id)} />
+          {placeholderB ? (
+            <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
+              {feederLabel(feederB!)}
+            </Badge>
+          ) : (
+            <>
+              <InlinePlayerSlot value={slots.b1} options={optionsFor("b1")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("b1", id)} />
+              {playersPerTeam === 2 && (
+                <InlinePlayerSlot value={slots.b2} options={optionsFor("b2")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("b2", id)} />
+              )}
+            </>
           )}
         </div>
       ) : (
         <span className="flex-1 text-sm truncate">
-          {sideA} <span className="text-muted-foreground">vs</span> {sideB}
+          {placeholderA ? feederLabel(feederA!) : sideA} <span className="text-muted-foreground">vs</span>{" "}
+          {placeholderB ? feederLabel(feederB!) : sideB}
         </span>
       )}
       {canManage && (
@@ -577,17 +638,31 @@ function PendingRow({
                   size="sm"
                   variant="default"
                   className="h-7 px-2"
-                  disabled={startBusy || editBusy || !isMatchFull}
+                  disabled={startBusy || editBusy || !isMatchFull || !match.court || hasLivePlaceholder}
                   onClick={handleStart}
-                  aria-label={isMatchFull ? t("startTooltip", { court: match.court ?? "" }) : t("startNeedsFullTooltip")}
+                  aria-label={startDisabledReason}
                 >
                   <Play className="h-3.5 w-3.5" />
                 </Button>
               }
             />
-            <TooltipContent>
-              {isMatchFull ? t("startTooltip", { court: match.court ?? "" }) : t("startNeedsFullTooltip")}
-            </TooltipContent>
+            <TooltipContent>{startDisabledReason}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  disabled={rerollBusy}
+                  onClick={handleReroll}
+                  aria-label={t("rerollAriaLabel")}
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                </Button>
+              }
+            />
+            <TooltipContent>{t("rerollTooltip")}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger
@@ -622,6 +697,7 @@ function SortablePendingRow({
   courts,
   onRefresh,
   rowNumber,
+  feederByTarget,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
@@ -630,6 +706,7 @@ function SortablePendingRow({
   courts: string[];
   onRefresh: () => void;
   rowNumber: number;
+  feederByTarget: Map<string, ClubMatch>;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: match.id });
@@ -652,6 +729,7 @@ function SortablePendingRow({
         onRefresh={onRefresh}
         dragHandleProps={{ ...attributes, ...listeners }}
         rowNumber={rowNumber}
+        feederByTarget={feederByTarget}
       />
     </li>
   );
@@ -982,100 +1060,6 @@ function CompletedRow({
         )}
       </div>
     </div>
-  );
-}
-
-// ─── Per-court build button ───────────────────────────────────────────────────
-
-function BuildButton({
-  clubId,
-  court,
-  onRefresh,
-}: {
-  clubId: string;
-  court: string;
-  onRefresh: () => void;
-}) {
-  const t = useTranslations("club.queuePanel");
-  const [busy, transition] = useTransition();
-
-  function handleBuild() {
-    transition(async () => {
-      const res = await buildNextClubMatchAction(clubId, court);
-      if ("error" in res) {
-        toast.error(res.error);
-      } else {
-        toast.success(t("toastBuilt", { court }));
-        onRefresh();
-      }
-    });
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 text-xs gap-1"
-            disabled={busy}
-            onClick={handleBuild}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t("buildCourtButton", { court })}
-          </Button>
-        }
-      />
-      <TooltipContent>{t("buildCourtTooltip", { court })}</TooltipContent>
-    </Tooltip>
-  );
-}
-
-// ─── Build all free courts at once (A1) ───────────────────────────────────────
-
-function BuildAllButton({
-  clubId,
-  onRefresh,
-}: {
-  clubId: string;
-  onRefresh: () => void;
-}) {
-  const t = useTranslations("club.queuePanel");
-  const [busy, transition] = useTransition();
-
-  function handleBuildAll() {
-    transition(async () => {
-      const res = await buildAllCourtsAction(clubId);
-      if ("error" in res) {
-        toast.error(res.error);
-      } else if (res.built > 0) {
-        toast.success(t("toastBuiltAll", { count: res.built }));
-        onRefresh();
-      } else {
-        toast.info(t("toastNoneBuilt"));
-      }
-    });
-  }
-
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            size="sm"
-            variant="default"
-            className="h-8 text-xs gap-1"
-            disabled={busy}
-            onClick={handleBuildAll}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t("buildAllButton")}
-          </Button>
-        }
-      />
-      <TooltipContent>{t("buildAllTooltip")}</TooltipContent>
-    </Tooltip>
   );
 }
 
@@ -1531,17 +1515,48 @@ export function ClubQueuePanel({
   settings,
   courts,
   canManage,
+  clubStart,
+  clubEnd,
+  batchMinMatches,
 }: {
   clubId: string;
   matches: ClubMatch[];
-  players: { id: string; display_name: string }[];
+  players: Array<{
+    id: string;
+    display_name: string;
+    status?: string;
+    checked_in_at?: string | null;
+    start_time?: string | null;
+    end_time?: string | null;
+  }>;
   settings: ClubQueueSettings;
   courts: string[];
   canManage: boolean;
+  /** "HH:MM" club session window — used by GenerateQueueDialog's pro-rated target preview. */
+  clubStart?: string;
+  clubEnd?: string;
+  batchMinMatches?: number;
 }) {
   const t = useTranslations("club.queuePanel");
   const router = useRouter();
   const [reorderPending, startReorder] = useTransition();
+
+  // Live "winner of" placeholders: feeder match (still pending/in_progress) keyed
+  // `${winner_next_match_id}:${winner_next_match_slot}`. A pending row's side is a
+  // placeholder — not an ordinary empty slot — when this map has its `${id}:${side}` key.
+  const feederByTarget = useMemo(() => {
+    const m = new Map<string, ClubMatch>();
+    for (const mt of matches) {
+      if (
+        mt.winner_next_match_id &&
+        mt.winner_next_match_slot &&
+        (mt.status === "pending" || mt.status === "in_progress")
+      ) {
+        m.set(`${mt.winner_next_match_id}:${mt.winner_next_match_slot}`, mt);
+      }
+    }
+    return m;
+  }, [matches]);
 
   // Build a stable name-resolution map
   const nameMap = useRef(new Map<string, string>());
@@ -1645,17 +1660,22 @@ export function ClubQueuePanel({
               </p>
             )}
             <div className="flex flex-wrap gap-2">
-              {courts.length >= 2 && (
-                <BuildAllButton clubId={clubId} onRefresh={onRefresh} />
-              )}
-              {courts.map((c) => (
-                <BuildButton
-                  key={c}
-                  clubId={clubId}
-                  court={c}
-                  onRefresh={onRefresh}
-                />
-              ))}
+              <GenerateQueueDialog
+                clubId={clubId}
+                players={players.map((p) => ({
+                  id: p.id,
+                  display_name: p.display_name,
+                  status: p.status ?? "active",
+                  checked_in_at: p.checked_in_at ?? null,
+                  start_time: p.start_time ?? null,
+                  end_time: p.end_time ?? null,
+                }))}
+                matches={matches}
+                clubStart={clubStart ?? "00:00"}
+                clubEnd={clubEnd ?? "23:59"}
+                batchMinMatches={batchMinMatches ?? 3}
+                onRefresh={onRefresh}
+              />
               <ManualMatchDialog
                 clubId={clubId}
                 players={players}
@@ -1705,6 +1725,7 @@ export function ClubQueuePanel({
                         courts={courts}
                         onRefresh={onRefresh}
                         rowNumber={i + 1}
+                        feederByTarget={feederByTarget}
                       />
                     ))}
                   </ul>
@@ -1722,6 +1743,7 @@ export function ClubQueuePanel({
                   canManage={false}
                   onRefresh={onRefresh}
                   rowNumber={i + 1}
+                  feederByTarget={feederByTarget}
                 />
               ))
             )}

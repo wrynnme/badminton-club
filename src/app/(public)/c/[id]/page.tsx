@@ -157,10 +157,20 @@ export default async function PublicClubPage({
               <ClubQueuePanel
                 clubId={club.id}
                 matches={clubMatches}
-                players={nameList}
+                players={publicPlayers.map((p) => ({
+                  id: p.id,
+                  display_name: p.display_name,
+                  status: p.status,
+                  checked_in_at: p.checked_in_at,
+                  start_time: p.start_time,
+                  end_time: p.end_time,
+                }))}
                 settings={queueSettings}
                 courts={clubCourts}
                 canManage={false}
+                clubStart={club.start_time.slice(0, 5)}
+                clubEnd={club.end_time.slice(0, 5)}
+                batchMinMatches={queueSettings.batch_min_matches}
               />
             </div>
           }
