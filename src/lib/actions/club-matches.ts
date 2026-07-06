@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
+import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 import {
   parseQueueSettings,
+  type ClubQueueSettings,
 } from "@/lib/club/queue-settings";
 import { resolveClubCourts } from "@/lib/club/courts";
 import {
@@ -18,9 +20,18 @@ import {
   keepsWinner,
   benchSufficientForFresh,
   playersInLatestPerCourt,
+  orderPool,
+  takeSides,
   type QueuePlayer,
   type MatchSide,
 } from "@/lib/club/queue";
+import {
+  generateBatchQueue,
+  countFixedAppearances,
+  resolvePlayerWindow,
+  proRatedTarget,
+  type BatchCountableMatch,
+} from "@/lib/club/batch-queue";
 import type { ClubMatch, Game } from "@/lib/types";
 
 /**
@@ -37,6 +48,8 @@ async function loadClubMatchForManage(
       match: {
         id: string;
         club_id: string;
+        status: string;
+        court: string | null;
         side_a_player1: string | null;
         side_a_player2: string | null;
         side_b_player1: string | null;
@@ -48,7 +61,7 @@ async function loadClubMatchForManage(
   const t = await getTranslations("actions");
   const { data: match, error } = await sb
     .from("club_matches")
-    .select("id, club_id, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
+    .select("id, club_id, status, court, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
     .eq("id", matchId)
     .single();
   if (error || !match) return { error: t("club.matchNotFound") };
@@ -406,6 +419,358 @@ export async function buildAllCourtsAction(
   return { ok: true, built, free: freeCourts.length };
 }
 
+// ─── Batch queue ("สุ่มคิว") ───────────────────────────────────────────────────
+
+type QueueContext = {
+  settings: ClubQueueSettings;
+  courts: string[];
+  clubStart: string;
+  clubEnd: string;
+  /** check-in-gated eligible players — INCLUDES players in active matches (the
+   *  batch generator accounts for those via the per-player remaining counts) */
+  pool: QueuePlayer[];
+  /** ids currently in a pending / in_progress match */
+  activePlayerIds: Set<string>;
+  lockedPairs: [string, string][];
+  /** raw eligible rows — carries the pro-rate fields (start/end/check-in) */
+  playerRows: Array<{
+    id: string;
+    start_time: string | null;
+    end_time: string | null;
+    checked_in_at: string | null;
+  }>;
+};
+
+/**
+ * Shared pool assembly for the batch-queue actions: settings + named courts +
+ * active roster (check-in gate / not_ready_action applied, level resolved via
+ * the levels FK) + busy-player set + locked pairs. Mirrors the eligibility
+ * rules of the per-court builder.
+ */
+async function loadClubQueueContext(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  clubId: string,
+  t: Awaited<ReturnType<typeof getTranslations>>,
+): Promise<QueueContext | { error: string }> {
+  const { data: clubRow, error: clubFetchError } = await sb
+    .from("clubs")
+    .select("queue_settings, courts, start_time, end_time")
+    .eq("id", clubId)
+    .single();
+  if (clubFetchError || !clubRow) return { error: t("club.clubNotFound") };
+  const settings = parseQueueSettings(clubRow.queue_settings);
+  const courts = resolveClubCourts((clubRow.courts ?? []) as string[], settings.court_count);
+
+  const { data: allPlayers, error: playersFetchError } = await sb
+    .from("club_players")
+    .select(
+      "id, position, joined_at, level_id, games_played, last_finished_at, checked_in_at, start_time, end_time, levels:level_id(real)",
+    )
+    .eq("club_id", clubId)
+    .eq("status", "active");
+  if (playersFetchError || !allPlayers) return { error: t("club.loadPlayersFailed") };
+
+  const { data: activeMatches } = await sb
+    .from("club_matches")
+    .select("side_a_player1, side_a_player2, side_b_player1, side_b_player2")
+    .eq("club_id", clubId)
+    .in("status", ["pending", "in_progress"]);
+  const activePlayerIds = new Set<string>();
+  for (const m of activeMatches ?? []) {
+    for (const id of [m.side_a_player1, m.side_a_player2, m.side_b_player1, m.side_b_player2]) {
+      if (id) activePlayerIds.add(id);
+    }
+  }
+
+  const anyCheckedIn = allPlayers.some((p) => p.checked_in_at != null);
+  const isNotReady = (p: (typeof allPlayers)[number]) =>
+    anyCheckedIn && p.checked_in_at == null;
+  const eligible = allPlayers.filter(
+    (p) => !(isNotReady(p) && settings.not_ready_action === "skip"),
+  );
+
+  const pool: QueuePlayer[] = eligible.map((p) => {
+    const lvRow = Array.isArray(p.levels) ? p.levels[0] : p.levels;
+    let level: number | null = null;
+    if (lvRow?.real != null) {
+      const r = Number(lvRow.real);
+      level = Number.isNaN(r) ? null : r;
+    }
+    return {
+      id: p.id,
+      position: p.position,
+      joined_at: p.joined_at,
+      level,
+      games_played: p.games_played,
+      last_finished_at: p.last_finished_at,
+      notReady: isNotReady(p),
+    };
+  });
+
+  const { data: lockRows } = await sb
+    .from("club_locked_pairs")
+    .select("player1_id, player2_id")
+    .eq("club_id", clubId);
+  const lockedPairs: [string, string][] = (lockRows ?? []).map((r) => [
+    r.player1_id,
+    r.player2_id,
+  ]);
+
+  return {
+    settings,
+    courts,
+    clubStart: (clubRow.start_time as string).slice(0, 5),
+    clubEnd: (clubRow.end_time as string).slice(0, 5),
+    pool,
+    activePlayerIds,
+    lockedPairs,
+    playerRows: eligible.map((p) => ({
+      id: p.id,
+      start_time: p.start_time,
+      end_time: p.end_time,
+      checked_in_at: p.checked_in_at,
+    })),
+  };
+}
+
+const GenerateQueueSchema = z.object({
+  minMatches: z.number().int().min(1).max(20),
+});
+
+/**
+ * "สุ่มคิว" — generate the whole session's queue in one press: courtless pending
+ * matches such that every eligible player reaches their PRO-RATED minimum of N
+ * fixed appearances (N scaled by the fraction of the session they're present;
+ * see resolvePlayerWindow / proRatedTarget). Re-pressing tops up: existing
+ * fixed appearances (pending + in_progress + completed) count toward the
+ * target and only the shortfall is generated — nothing is deleted.
+ *
+ * winner_stays / fair_winner_fallback generate court-count lanes whose chained
+ * matches carry a "ผู้ชนะจากแมตช์ #N" placeholder side, wired via the
+ * winner_next_match_id/slot forward pointer (promotion in finish_club_match).
+ */
+export async function generateClubQueueAction(
+  clubId: string,
+  input: { minMatches: number },
+): Promise<{ ok: true; created: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const parsed = GenerateQueueSchema.safeParse(input);
+  if (!parsed.success) return { error: t("club.invalidData") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const ctx = await loadClubQueueContext(sb, clubId, t);
+  if ("error" in ctx) return ctx;
+
+  // Remember the organizer's N as the dialog default for next time.
+  if (ctx.settings.batch_min_matches !== parsed.data.minMatches) {
+    await sb
+      .from("clubs")
+      .update({ queue_settings: { ...ctx.settings, batch_min_matches: parsed.data.minMatches } })
+      .eq("id", clubId);
+  }
+
+  // Top-up: everything already scheduled or played this session counts.
+  const { data: allMatches, error: matchesError } = await sb
+    .from("club_matches")
+    .select("status, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
+    .eq("club_id", clubId);
+  if (matchesError) return { error: matchesError.message };
+  const existing = countFixedAppearances((allMatches ?? []) as BatchCountableMatch[]);
+
+  // Per-player pro-rated target. checked_in_at is a UTC timestamp — convert to
+  // Bangkok wall-clock HH:MM so it lines up with the club's start/end times.
+  const hhmm = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Bangkok",
+  });
+  const remaining = new Map<string, number>();
+  for (const row of ctx.playerRows) {
+    const window = resolvePlayerWindow({
+      declaredStart: row.start_time?.slice(0, 5) ?? null,
+      declaredEnd: row.end_time?.slice(0, 5) ?? null,
+      checkedInHHMM: row.checked_in_at ? hhmm.format(new Date(row.checked_in_at)) : null,
+      clubStart: ctx.clubStart,
+      clubEnd: ctx.clubEnd,
+    });
+    const target = proRatedTarget(parsed.data.minMatches, window, ctx.clubStart, ctx.clubEnd);
+    remaining.set(row.id, Math.max(0, target - (existing.get(row.id) ?? 0)));
+  }
+
+  const plans = generateBatchQueue({
+    pool: ctx.pool,
+    settings: ctx.settings,
+    lockedPairs: ctx.lockedPairs,
+    remaining,
+    laneCount: ctx.courts.length,
+  });
+  if (plans.length === 0) {
+    if (ctx.pool.length < ctx.settings.players_per_team * 2) {
+      return { error: t("club.generateNotEnoughPlayers") };
+    }
+    return { error: t("club.generateNothingToDo") };
+  }
+
+  // Queue tail for the whole batch.
+  const { data: maxRow } = await sb
+    .from("club_matches")
+    .select("queue_position")
+    .eq("club_id", clubId)
+    .eq("status", "pending")
+    .order("queue_position", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const base = maxRow?.queue_position ?? 0;
+
+  // Phase 1: insert all rows (courtless; winnerOf sides = empty slots).
+  const rows = plans.map((plan, i) => ({
+    club_id: clubId,
+    court: null,
+    side_a_player1: plan.sideA.kind === "players" ? plan.sideA.player1 : null,
+    side_a_player2: plan.sideA.kind === "players" ? plan.sideA.player2 : null,
+    side_b_player1: plan.sideB.kind === "players" ? plan.sideB.player1 : null,
+    side_b_player2: plan.sideB.kind === "players" ? plan.sideB.player2 : null,
+    status: "pending",
+    queue_position: base + i + 1,
+  }));
+  const { data: inserted, error: insertError } = await sb
+    .from("club_matches")
+    .insert(rows)
+    .select("id");
+  if (insertError || !inserted || inserted.length !== plans.length) {
+    return { error: insertError?.message ?? t("club.generateFailed") };
+  }
+
+  // Phase 2: wire winner pointers on the feeder rows. Not atomic with phase 1 —
+  // a failure here leaves chainless matches that degrade to editable empty
+  // slots (accepted; see plan). The generator only puts winnerOf in sideA.
+  for (let i = 0; i < plans.length; i++) {
+    const sideA = plans[i].sideA;
+    if (sideA.kind !== "winnerOf") continue;
+    const { error: pointerError } = await sb
+      .from("club_matches")
+      .update({
+        winner_next_match_id: inserted[i].id as string,
+        winner_next_match_slot: "a",
+      })
+      .eq("id", inserted[sideA.sourceIndex].id as string);
+    if (pointerError) return { error: pointerError.message };
+  }
+
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true, created: plans.length };
+}
+
+/**
+ * "จัดคิวใหม่" — re-roll ONE pending match's fixed players from the freshest
+ * pool (the match's own players return to the pool and may be re-picked when
+ * they're still the fairest choice). Court, queue position and winner pointers
+ * are untouched. A live "ผู้ชนะจากแมตช์ #N" placeholder side is left alone —
+ * only the fixed side re-rolls, and the feeder's fixed players stay excluded
+ * (the promoted winner may BE them).
+ */
+export async function rebuildClubPendingMatchAction(
+  matchId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  const guard = await loadClubMatchForManage(sb, matchId, session.profileId);
+  if ("error" in guard) return { error: guard.error };
+  const { match } = guard;
+  if (match.status !== "pending") return { error: t("club.rebuildOnlyPending") };
+
+  const ctx = await loadClubQueueContext(sb, match.club_id, t);
+  if ("error" in ctx) return ctx;
+  const ppt = ctx.settings.players_per_team;
+
+  // Live feeder pointing at this match → that side is a placeholder.
+  const { data: feeder } = await sb
+    .from("club_matches")
+    .select(
+      "winner_next_match_slot, side_a_player1, side_a_player2, side_b_player1, side_b_player2",
+    )
+    .eq("winner_next_match_id", matchId)
+    .in("status", ["pending", "in_progress"])
+    .limit(1)
+    .maybeSingle();
+  const placeholderSlot =
+    feeder?.winner_next_match_slot === "a" || feeder?.winner_next_match_slot === "b"
+      ? feeder.winner_next_match_slot
+      : null;
+
+  const own = new Set(
+    [match.side_a_player1, match.side_a_player2, match.side_b_player1, match.side_b_player2].filter(
+      (x): x is string => x != null,
+    ),
+  );
+  const feederIds = new Set(
+    feeder
+      ? [feeder.side_a_player1, feeder.side_a_player2, feeder.side_b_player1, feeder.side_b_player2].filter(
+          (x): x is string => x != null,
+        )
+      : [],
+  );
+  // Free players + this match's own players (released back), minus the feeder's.
+  const pool = ctx.pool.filter(
+    (p) => (!ctx.activePlayerIds.has(p.id) || own.has(p.id)) && !feederIds.has(p.id),
+  );
+
+  let update: Record<string, string | null>;
+  if (placeholderSlot) {
+    const partnerOf = new Map<string, string>();
+    if (ppt === 2) {
+      for (const [a, b] of ctx.lockedPairs) {
+        partnerOf.set(a, b);
+        partnerOf.set(b, a);
+      }
+    }
+    const poolIds = new Set(pool.map((p) => p.id));
+    const selectable = pool.filter((p) => {
+      const partner = partnerOf.get(p.id);
+      return partner == null || poolIds.has(partner);
+    });
+    const sides = takeSides(orderPool(selectable, ctx.settings), partnerOf, 1, ppt);
+    if (!sides) return { error: t("club.rebuildNoPlayers") };
+    const side = sides[0];
+    update =
+      placeholderSlot === "a"
+        ? { side_b_player1: side.player1, side_b_player2: side.player2 ?? null }
+        : { side_a_player1: side.player1, side_a_player2: side.player2 ?? null };
+  } else {
+    const proposed = buildNextMatch(pool, ctx.settings, undefined, ctx.lockedPairs);
+    if (!proposed) return { error: t("club.rebuildNoPlayers") };
+    update = {
+      side_a_player1: proposed.sideA.player1,
+      side_a_player2: proposed.sideA.player2 ?? null,
+      side_b_player1: proposed.sideB.player1,
+      side_b_player2: proposed.sideB.player2 ?? null,
+    };
+  }
+
+  const { data: updated, error: updateError } = await sb
+    .from("club_matches")
+    .update(update)
+    .eq("id", matchId)
+    .eq("status", "pending")
+    .select("id");
+  if (updateError) return { error: updateError.message };
+  if (!updated || updated.length === 0) return { error: t("club.rebuildOnlyPending") };
+
+  revalidatePath(`/clubs/${match.club_id}`);
+  return { ok: true };
+}
+
 /**
  * Owner / co-admin starts a pending match (pending → in_progress).
  * A partial UNIQUE index on (club_id, court) WHERE status='in_progress' ensures
@@ -424,6 +789,11 @@ export async function startClubMatchAction(
   const { match } = guard;
 
   const t = await getTranslations("actions");
+  // Court gate: batch-generated matches start courtless — the organizer must
+  // assign a court before starting (keeps the in_progress occupancy index able
+  // to do its job; a NULL court would slip past it).
+  if (!match.court || !match.court.trim()) return { error: t("club.matchNeedsCourtToStart") };
+
   // Roster-completeness gate: a partial-roster match (reserved with empty slots) may
   // sit in the pending queue but must be fully staffed before it can start.
   const { data: clubRow } = await sb
@@ -432,7 +802,20 @@ export async function startClubMatchAction(
     .eq("id", match.club_id)
     .single();
   const ppt = parseQueueSettings(clubRow?.queue_settings ?? {}).players_per_team;
-  if (!isClubMatchFull(match, ppt)) return { error: t("club.matchNotFullToStart") };
+  if (!isClubMatchFull(match, ppt)) {
+    // Distinguish "waiting for a winner" (a live feeder still points here) from
+    // an ordinary partial roster — the fix for each is different for the user.
+    const { data: feeder } = await sb
+      .from("club_matches")
+      .select("id")
+      .eq("winner_next_match_id", matchId)
+      .in("status", ["pending", "in_progress"])
+      .limit(1)
+      .maybeSingle();
+    return {
+      error: feeder ? t("club.matchWaitingForWinner") : t("club.matchNotFullToStart"),
+    };
+  }
 
   const { error: updateError } = await sb
     .from("club_matches")
@@ -722,7 +1105,8 @@ export async function setClubMatchShuttlesAction(
  */
 export async function createClubManualMatchAction(input: {
   clubId: string;
-  court: string;
+  /** optional — omitted/blank = courtless (assign later, required before start) */
+  court?: string;
   sideA: string[];
   sideB: string[];
 }): Promise<{ ok: true; match: ClubMatch } | { error: string }> {
@@ -731,8 +1115,7 @@ export async function createClubManualMatchAction(input: {
 
   const t = await getTranslations("actions");
   const { clubId, sideA, sideB } = input;
-  const courtName = input.court.trim();
-  if (!courtName) return { error: t("club.specifyCourtName") };
+  const courtName = input.court?.trim() ?? "";
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
@@ -746,9 +1129,11 @@ export async function createClubManualMatchAction(input: {
   if (clubErr || !clubRow) return { error: t("club.clubNotFound") };
   const ppt = parseQueueSettings(clubRow.queue_settings).players_per_team;
 
-  // Court must be one of the club's named courts (when any are configured).
+  // Court (when given) must be one of the club's named courts (when any are configured).
   const courts = (clubRow.courts ?? []) as string[];
-  if (courts.length > 0 && !courts.includes(courtName)) return { error: t("club.courtNotInClub") };
+  if (courtName && courts.length > 0 && !courts.includes(courtName)) {
+    return { error: t("club.courtNotInClub") };
+  }
 
   // Partial roster allowed: reserve a match/court with as few as 1 player and fill the
   // rest later (setClubMatchPlayersAction). Starting is separately gated on a full
@@ -772,7 +1157,7 @@ export async function createClubManualMatchAction(input: {
     .from("club_matches")
     .insert({
       club_id: clubId,
-      court: courtName,
+      court: courtName || null,
       side_a_player1: cleanA[0] ?? null,
       side_a_player2: cleanA[1] ?? null,
       side_b_player1: cleanB[0] ?? null,
