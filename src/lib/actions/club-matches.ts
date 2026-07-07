@@ -30,7 +30,9 @@ import {
   buildPairHistory,
   countFixedAppearances,
   computePlayerTargets,
+  planRerollSwap,
   type BatchCountableMatch,
+  type RerollSwapMatch,
 } from "@/lib/club/batch-queue";
 import { embeddedReal } from "@/lib/tournament/levels";
 import type { ClubMatch, Game } from "@/lib/types";
@@ -418,7 +420,7 @@ export async function regenerateClubQueueAction(
  */
 export async function rebuildClubPendingMatchAction(
   matchId: string,
-): Promise<{ ok: true } | { error: string }> {
+): Promise<{ ok: true; swapped?: boolean } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
@@ -497,17 +499,49 @@ export async function rebuildClubPendingMatchAction(
     };
   }
 
-  const { data: updated, error: updateError } = await sb
-    .from("club_matches")
-    .update(update)
-    .eq("id", matchId)
-    .eq("status", "pending")
-    .select("id");
-  if (updateError) return { error: updateError.message };
-  if (!updated || updated.length === 0) return { error: t("club.rebuildOnlyPending") };
+  // Does the free-pool re-roll actually change WHO is in this match? With free
+  // players available it does (a rester rotates in). When the whole roster is
+  // already queued the pool is just this match's own players, so it re-picks the
+  // same faces — fall through to a cross-match swap instead of a misleading
+  // no-op "success".
+  const newFixedIds = new Set(Object.values(update).filter((x): x is string => x != null));
+  const changed = newFixedIds.size !== own.size || [...newFixedIds].some((id) => !own.has(id));
 
+  if (changed) {
+    const { data: updated, error: updateError } = await sb
+      .from("club_matches")
+      .update(update)
+      .eq("id", matchId)
+      .eq("status", "pending")
+      .select("id");
+    if (updateError) return { error: updateError.message };
+    if (!updated || updated.length === 0) return { error: t("club.rebuildOnlyPending") };
+    revalidatePath(`/clubs/${match.club_id}`);
+    return { ok: true };
+  }
+
+  // Nobody free to rotate in → swap a whole side with another pending match so
+  // both get a fresh matchup while everyone keeps their one game. The swap is
+  // atomic + double-book-guarded in the RPC; planRerollSwap enforces the
+  // winner-chain exclusions.
+  const { data: queueRows } = await sb
+    .from("club_matches")
+    .select(
+      "id, status, side_a_player1, side_a_player2, side_b_player1, side_b_player2, winner_next_match_id",
+    )
+    .eq("club_id", match.club_id)
+    .in("status", ["pending", "in_progress"]);
+  const swap = planRerollSwap(matchId, (queueRows ?? []) as RerollSwapMatch[]);
+  if (!swap) return { error: t("club.rebuildNoSwap") };
+  const { error: swapError } = await sb.rpc("swap_club_match_sides", {
+    p_m1: matchId,
+    p_slot1: swap.targetSlot,
+    p_m2: swap.donorId,
+    p_slot2: swap.donorSlot,
+  });
+  if (swapError) return { error: swapError.message };
   revalidatePath(`/clubs/${match.club_id}`);
-  return { ok: true };
+  return { ok: true, swapped: true };
 }
 
 /**

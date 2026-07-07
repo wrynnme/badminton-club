@@ -172,6 +172,82 @@ export function countFixedAppearances(
   return counts;
 }
 
+export type RerollSwapMatch = BatchCountableMatch & {
+  id: string;
+  winner_next_match_id: string | null;
+};
+
+/** A safe side-for-side swap between two pending matches. */
+export type RerollSwap = {
+  targetSlot: "a" | "b";
+  donorId: string;
+  donorSlot: "a" | "b";
+};
+
+/**
+ * "จัดคิวใหม่" fallback when there are no FREE players to swap in (the whole
+ * roster is already queued). Finds one fixed side of the target pending match and
+ * a fixed side of another pending match that can be swapped whole — giving both
+ * matches a fresh matchup while every player keeps exactly their one game.
+ *
+ * Swapping a whole side (never a single player) can't split a locked pair — a
+ * locked pair always occupies one entire side. The only real constraint is the
+ * winner-chain: a side must never receive a player who could be promoted onto
+ * that match's placeholder side (the promoted winner might BE them → self-play),
+ * so both directions of the swap exclude the other match's incoming-feeder players.
+ *
+ * `matches` = every pending + in_progress match of the club (target included).
+ * Returns the first safe swap in deterministic order, or null if none exists.
+ */
+export function planRerollSwap(
+  targetId: string,
+  matches: RerollSwapMatch[],
+): RerollSwap | null {
+  const target = matches.find((m) => m.id === targetId);
+  if (!target || target.status !== "pending") return null;
+
+  // Players that may be promoted onto matchId's placeholder side = the fixed
+  // players of any (pending/in_progress) match whose winner feeds matchId.
+  const feederIdsOf = (matchId: string): Set<string> => {
+    const acc = new Set<string>();
+    for (const m of matches) {
+      if (m.winner_next_match_id !== matchId) continue;
+      for (const p of [m.side_a_player1, m.side_a_player2, m.side_b_player1, m.side_b_player2]) {
+        if (p != null) acc.add(p);
+      }
+    }
+    return acc;
+  };
+  const sidePlayers = (m: RerollSwapMatch, slot: "a" | "b"): string[] =>
+    (slot === "a"
+      ? [m.side_a_player1, m.side_a_player2]
+      : [m.side_b_player1, m.side_b_player2]
+    ).filter((x): x is string => x != null);
+  // A side with real players (an empty winnerOf placeholder side is skipped).
+  const fixedSlots = (m: RerollSwapMatch): ("a" | "b")[] =>
+    (["a", "b"] as const).filter((slot) => sidePlayers(m, slot).length > 0);
+
+  const targetFeeder = feederIdsOf(target.id);
+
+  for (const tSlot of fixedSlots(target)) {
+    const tPlayers = sidePlayers(target, tSlot);
+    for (const donor of matches) {
+      if (donor.id === target.id || donor.status !== "pending") continue;
+      const donorFeeder = feederIdsOf(donor.id);
+      for (const dSlot of fixedSlots(donor)) {
+        const dPlayers = sidePlayers(donor, dSlot);
+        if (dPlayers.length !== tPlayers.length) continue;
+        // donor's players land on the target → must not clash with target's
+        // future promoted winner, and vice-versa.
+        if (dPlayers.some((p) => targetFeeder.has(p))) continue;
+        if (tPlayers.some((p) => donorFeeder.has(p))) continue;
+        return { targetSlot: tSlot, donorId: donor.id, donorSlot: dSlot };
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Session pairing memory seeded from the matches already on the board (pending +
  * in_progress + completed; cancelled skipped). Feeds the generator's variety

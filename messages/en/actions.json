@@ -102,7 +102,8 @@
     "matchNeedsCourtToStart": "Select a court before starting the match",
     "matchWaitingForWinner": "This match is waiting for a winner from an earlier match",
     "rebuildOnlyPending": "Only pending matches can be re-rolled",
-    "rebuildNoPlayers": "Not enough free players to re-roll this match"
+    "rebuildNoPlayers": "Not enough free players to re-roll this match",
+    "rebuildNoSwap": "Everyone is already queued — no free player to swap in. Use Rebuild + reshuffle for the whole queue instead"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",
