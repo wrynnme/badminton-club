@@ -172,6 +172,110 @@ export function countFixedAppearances(
   return counts;
 }
 
+export type RerollSwapMatch = BatchCountableMatch & {
+  id: string;
+  winner_next_match_id: string | null;
+};
+
+/** A safe side-for-side swap between two pending matches. */
+export type RerollSwap = {
+  targetSlot: "a" | "b";
+  donorId: string;
+  donorSlot: "a" | "b";
+};
+
+/**
+ * "จัดคิวใหม่" fallback when there are no FREE players to swap in (the whole
+ * roster is already queued). Finds one fixed side of the target pending match and
+ * a fixed side of another pending match that can be swapped whole — giving both
+ * matches a fresh matchup while every player keeps exactly their game count.
+ *
+ * Swapping a whole side (never a single player) can't split a locked pair — a
+ * locked pair always occupies one entire side. The receiving side must stay
+ * conflict-free, so the players landing on a match are excluded from that match's
+ * `forbiddenOn` set:
+ *   (a) the match's OTHER (kept) fixed side — else a player lands on both sides.
+ *       In fair mode a player legitimately appears in several pending matches, so
+ *       this overlap is common, not theoretical.
+ *   (b) every player who could be promoted INTO the match's winner placeholder —
+ *       the whole upstream feeder chain (transitive), since the promoted winner
+ *       might BE the swapped-in player → self-play.
+ *   (c) every fixed player of the match's downstream successor chain (transitive)
+ *       — a swapped-in player could win here and be promoted onto a match where
+ *       they already sit as a challenger.
+ *
+ * `matches` = every pending + in_progress match of the club (target included).
+ * Returns the first safe swap in deterministic order, or null if none exists.
+ */
+export function planRerollSwap(
+  targetId: string,
+  matches: RerollSwapMatch[],
+): RerollSwap | null {
+  const target = matches.find((m) => m.id === targetId);
+  if (!target || target.status !== "pending") return null;
+  const byId = new Map(matches.map((m) => [m.id, m]));
+
+  const sidePlayers = (m: RerollSwapMatch, slot: "a" | "b"): string[] =>
+    (slot === "a"
+      ? [m.side_a_player1, m.side_a_player2]
+      : [m.side_b_player1, m.side_b_player2]
+    ).filter((x): x is string => x != null);
+  const allFixed = (m: RerollSwapMatch): string[] => [
+    ...sidePlayers(m, "a"),
+    ...sidePlayers(m, "b"),
+  ];
+  // A side with real players (an empty winnerOf placeholder side is skipped).
+  const fixedSlots = (m: RerollSwapMatch): ("a" | "b")[] =>
+    (["a", "b"] as const).filter((slot) => sidePlayers(m, slot).length > 0);
+
+  // Transitive fixed players of every match that feeds `id` (directly or up a chain).
+  const chainUp = (id: string, seen: Set<string>, acc: Set<string>): Set<string> => {
+    for (const m of matches) {
+      if (m.winner_next_match_id === id && !seen.has(m.id)) {
+        seen.add(m.id);
+        for (const p of allFixed(m)) acc.add(p);
+        chainUp(m.id, seen, acc);
+      }
+    }
+    return acc;
+  };
+  // Transitive fixed players of the match `id` feeds into (directly or down a chain).
+  const chainDown = (id: string, seen: Set<string>, acc: Set<string>): Set<string> => {
+    const next = byId.get(id)?.winner_next_match_id ?? null;
+    if (next && byId.has(next) && !seen.has(next)) {
+      seen.add(next);
+      for (const p of allFixed(byId.get(next)!)) acc.add(p);
+      chainDown(next, seen, acc);
+    }
+    return acc;
+  };
+  // Players that must NOT land on match m's `receivingSlot` fixed side.
+  const forbiddenOn = (m: RerollSwapMatch, receivingSlot: "a" | "b"): Set<string> => {
+    const keptSlot = receivingSlot === "a" ? "b" : "a";
+    const acc = new Set<string>(sidePlayers(m, keptSlot)); // (a) same-match other side
+    chainUp(m.id, new Set(), acc); // (b) upstream feeders
+    chainDown(m.id, new Set(), acc); // (c) downstream successors
+    return acc;
+  };
+
+  for (const tSlot of fixedSlots(target)) {
+    const tPlayers = sidePlayers(target, tSlot);
+    const tForbid = forbiddenOn(target, tSlot);
+    for (const donor of matches) {
+      if (donor.id === target.id || donor.status !== "pending") continue;
+      for (const dSlot of fixedSlots(donor)) {
+        const dPlayers = sidePlayers(donor, dSlot);
+        if (dPlayers.length !== tPlayers.length) continue;
+        if (dPlayers.some((p) => tForbid.has(p))) continue; // donor's → target
+        const dForbid = forbiddenOn(donor, dSlot);
+        if (tPlayers.some((p) => dForbid.has(p))) continue; // target's → donor
+        return { targetSlot: tSlot, donorId: donor.id, donorSlot: dSlot };
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Session pairing memory seeded from the matches already on the board (pending +
  * in_progress + completed; cancelled skipped). Feeds the generator's variety

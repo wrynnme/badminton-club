@@ -30,7 +30,9 @@ import {
   buildPairHistory,
   countFixedAppearances,
   computePlayerTargets,
+  planRerollSwap,
   type BatchCountableMatch,
+  type RerollSwapMatch,
 } from "@/lib/club/batch-queue";
 import { embeddedReal } from "@/lib/tournament/levels";
 import type { ClubMatch, Game } from "@/lib/types";
@@ -418,7 +420,7 @@ export async function regenerateClubQueueAction(
  */
 export async function rebuildClubPendingMatchAction(
   matchId: string,
-): Promise<{ ok: true } | { error: string }> {
+): Promise<{ ok: true; swapped?: boolean } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
@@ -497,17 +499,66 @@ export async function rebuildClubPendingMatchAction(
     };
   }
 
-  const { data: updated, error: updateError } = await sb
-    .from("club_matches")
-    .update(update)
-    .eq("id", matchId)
-    .eq("status", "pending")
-    .select("id");
-  if (updateError) return { error: updateError.message };
-  if (!updated || updated.length === 0) return { error: t("club.rebuildOnlyPending") };
+  // Did the free-pool re-roll actually change the MATCHUP (not just the player
+  // set)? With free players a rester rotates in. Even with the same faces,
+  // buildNextMatch may re-pair them (A+B / C+D → A+C / B+D) — a fresh matchup
+  // worth keeping. Only when the two sides are identical do we fall through to a
+  // cross-match swap instead of a misleading no-op "success".
+  const sideKey = (p1: string | null | undefined, p2: string | null | undefined) =>
+    [p1, p2].filter((x): x is string => x != null).sort().join(",");
+  const pick = (key: keyof typeof update, fallback: string | null) =>
+    key in update ? update[key] : fallback;
+  const curMatchup = [
+    sideKey(match.side_a_player1, match.side_a_player2),
+    sideKey(match.side_b_player1, match.side_b_player2),
+  ]
+    .sort()
+    .join("|");
+  const newMatchup = [
+    sideKey(pick("side_a_player1", match.side_a_player1), pick("side_a_player2", match.side_a_player2)),
+    sideKey(pick("side_b_player1", match.side_b_player1), pick("side_b_player2", match.side_b_player2)),
+  ]
+    .sort()
+    .join("|");
 
+  if (curMatchup !== newMatchup) {
+    const { data: updated, error: updateError } = await sb
+      .from("club_matches")
+      .update(update)
+      .eq("id", matchId)
+      .eq("status", "pending")
+      .select("id");
+    if (updateError) return { error: updateError.message };
+    if (!updated || updated.length === 0) return { error: t("club.rebuildOnlyPending") };
+    revalidatePath(`/clubs/${match.club_id}`);
+    return { ok: true };
+  }
+
+  // Nobody free to rotate in → swap a whole side with another pending match so
+  // both get a fresh matchup while everyone keeps their game count. The swap is
+  // atomic + double-book-guarded in the RPC; planRerollSwap enforces kept-side +
+  // winner-chain exclusions so it never proposes a swap the RPC would reject.
+  const { data: queueRows, error: queueError } = await sb
+    .from("club_matches")
+    .select(
+      "id, status, side_a_player1, side_a_player2, side_b_player1, side_b_player2, winner_next_match_id",
+    )
+    .eq("club_id", match.club_id)
+    .in("status", ["pending", "in_progress"]);
+  if (queueError) return { error: queueError.message };
+  const swap = planRerollSwap(matchId, (queueRows ?? []) as RerollSwapMatch[]);
+  if (!swap) return { error: t("club.rebuildNoSwap") };
+  const { error: swapError } = await sb.rpc("swap_club_match_sides", {
+    p_m1: matchId,
+    p_slot1: swap.targetSlot,
+    p_m2: swap.donorId,
+    p_slot2: swap.donorSlot,
+  });
+  // planRerollSwap already excludes every unsafe swap, so a raised error here is a
+  // rare race (a donor just started) — show a friendly retry, not the raw RPC code.
+  if (swapError) return { error: t("club.rebuildSwapFailed") };
   revalidatePath(`/clubs/${match.club_id}`);
-  return { ok: true };
+  return { ok: true, swapped: true };
 }
 
 /**

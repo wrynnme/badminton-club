@@ -10,6 +10,15 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-07 (แก้ไข → ✅ FIXED) — reroll "จัดคิวใหม่" no-op เมื่อ roster เต็มคิว + ship-check PR #18
+
+- **[P2 UX] ปุ่ม "จัดคิวใหม่" รายใบคืน ok แต่ไม่เปลี่ยนอะไร เมื่อทุกคนถูกจัดลงคิวหมด** (`rebuildClubPendingMatchAction`): free-pool ของ reroll = ผู้เล่นของแมตช์เอง (0 คนว่าง) → สุ่มได้ชุดเดิม → toast success ปลอม. **repro:** club 0a0130af (12 คน, fair_winner_fallback, 4 pending, 0 free). **Fix:** free-pool reroll เดิม → ถ้า matchup ไม่เปลี่ยน → **cross-match side-swap** (`planRerollSwap` + RPC `swap_club_match_sides` atomic) — 2 แมตช์ได้คู่ใหม่ ทุกคนเล่นครบเท่าเดิม; สลับไม่ได้ → `rebuildNoSwap` ชี้ "รื้อ+สุ่มใหม่"; toast แยก "สลับผู้เล่นกับอีกคิวแล้ว".
+- **[P1] ship-check code-review เจอ: planRerollSwap เสนอ swap ที่ทำคนซ้ำ 2 ฝั่ง → RPC reject → raw error โผล่ UI (fair mode, common case).** ราก: สมมติผิดว่า "ผู้เล่นอยู่แมตช์เดียว" — fair mode คนอยู่หลายแมตช์ (เล่นครบ N). เทสเดิมใช้ผู้เล่น disjoint p1..p12 เลย blind (ซ้ำรอย MEMORY foursome-lock: convenient config ปิดบั๊ก). **Fix:** planRerollSwap เพิ่ม kept-side exclusion + transitive winner-chain (chainUp/chainDown) + keep-searching (ไม่ return candidate แรกที่ยัง collide); +5 adversarial test (shared-player, deeper chain, successor challengers).
+- **[P2] `changed` เทียบแค่ set → re-partition (คน 4 เดิม จับคู่ใหม่) ถูกทิ้ง** → เทียบ matchup จริง. **[P2]** queueRows error เงียบ → return error จริง; RPC error → friendly `rebuildSwapFailed` (ไม่โผล่ raw code). **[P2 obs, ไม่แก้]** RPC guard ไม่ re-verify feeder — service_role-only + caller เดียวรัน planner ก่อนเสมอ = documented boundary.
+- **Verify:** tsc 0 · vitest **818/818** (+5 adversarial) · next build OK · i18n th/en parity (actions 238 · club 835) · migration `20260707000500` applied prod + net-zero DO-block smoke (swap ถูก · no-dup · guard same/pending/double-book raise) + perms hardened (anon/authenticated revoke). **Browser smoke (Playwright, net-zero):** seed SMOKE_ club (shared player C, 0 free) → คลิก "จัดคิวใหม่" จริง → DB: T `{A,B}/{C,D}→{F,G}/{C,D}` · DN `{C,E}/{F,G}→{C,E}/{A,B}` · dup_in_match=0 · toast "สลับผู้เล่นกับอีกคิวแล้ว" · 0 console error · teardown 0 row. PR #18 → develop.
+
+---
+
 ### 2026-07-07 (แก้ไข → ✅ FIXED) — ship-check re-review (4 finder + probe): P1-2 fix ไม่ครบ → แก้ครบทั้งชุดแล้ว
 
 **✅ Resolution (2026-07-07, "แก้ทั้งหมด" per user) — verified vitest 808/808 · tsc 0:**

@@ -303,7 +303,8 @@
     "startWaitingWinnerTooltip": "Waiting for the previous match's winner",
     "rerollTooltip": "Re-roll — repick this match's players from the latest queue (court/position kept)",
     "rerollAriaLabel": "Re-roll match",
-    "toastRerolled": "Match re-rolled"
+    "toastRerolled": "Match re-rolled",
+    "toastRerolledSwap": "Swapped players with another queued match"
   },
   "queueSettings": {
     "title": "Queue rotation settings",

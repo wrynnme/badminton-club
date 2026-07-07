@@ -303,7 +303,8 @@
     "startWaitingWinnerTooltip": "รอผู้ชนะจากแมตช์ก่อนหน้า",
     "rerollTooltip": "จัดคิวใหม่ — สุ่มผู้เล่นใบนี้ใหม่จากคิวล่าสุด (สนาม/ลำดับเดิม)",
     "rerollAriaLabel": "จัดคิวใหม่",
-    "toastRerolled": "จัดคิวใหม่แล้ว"
+    "toastRerolled": "จัดคิวใหม่แล้ว",
+    "toastRerolledSwap": "สลับผู้เล่นกับอีกคิวแล้ว"
   },
   "queueSettings": {
     "title": "ตั้งค่าระบบหมุนคิว",

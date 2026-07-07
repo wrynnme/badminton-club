@@ -557,7 +557,7 @@ function PendingRow({
       if ("error" in res) {
         toast.error(res.error);
       } else {
-        toast.success(t("toastRerolled"));
+        toast.success(res.swapped ? t("toastRerolledSwap") : t("toastRerolled"));
         onRefresh();
       }
     });

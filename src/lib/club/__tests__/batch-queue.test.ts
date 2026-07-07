@@ -6,8 +6,10 @@ import {
   countFixedAppearances,
   buildPairHistory,
   generateBatchQueue,
+  planRerollSwap,
   type BatchMatchPlan,
   type BatchCountableMatch,
+  type RerollSwapMatch,
 } from "../batch-queue";
 import { pairKey } from "../pair-history";
 import { DEFAULT_QUEUE_SETTINGS, type ClubQueueSettings } from "../queue-settings";
@@ -694,5 +696,173 @@ describe("generateBatchQueue — variety (partner / opponent spread)", () => {
     });
     expect(plans.some((p) => p.lane === 1)).toBe(true); // both courts genuinely used
     assertNoConcurrentDoubleBooking(plans);
+  });
+});
+
+describe("planRerollSwap — cross-match side swap when the roster is fully queued", () => {
+  function mkMatch(
+    id: string,
+    a: [string | null, string | null],
+    b: [string | null, string | null],
+    opts: { status?: string; winnerNext?: string | null } = {},
+  ): RerollSwapMatch {
+    return {
+      id,
+      status: opts.status ?? "pending",
+      side_a_player1: a[0],
+      side_a_player2: a[1],
+      side_b_player1: b[0],
+      side_b_player2: b[1],
+      winner_next_match_id: opts.winnerNext ?? null,
+    };
+  }
+  const sideIds = (m: RerollSwapMatch, slot: "a" | "b") =>
+    (slot === "a"
+      ? [m.side_a_player1, m.side_a_player2]
+      : [m.side_b_player1, m.side_b_player2]
+    ).filter((x): x is string => x != null);
+
+  // Apply the swap the way swap_club_match_sides would, and assert no player ends
+  // up twice in the same match.
+  function applyAndCheck(
+    matches: RerollSwapMatch[],
+    swap: NonNullable<ReturnType<typeof planRerollSwap>>,
+    targetId: string,
+  ) {
+    const byId = new Map(matches.map((m) => [m.id, { ...m }]));
+    const t = byId.get(targetId)!;
+    const d = byId.get(swap.donorId)!;
+    const tSide = sideIds(t, swap.targetSlot);
+    const dSide = sideIds(d, swap.donorSlot);
+    const setSide = (m: RerollSwapMatch, slot: "a" | "b", players: string[]) => {
+      if (slot === "a") {
+        m.side_a_player1 = players[0] ?? null;
+        m.side_a_player2 = players[1] ?? null;
+      } else {
+        m.side_b_player1 = players[0] ?? null;
+        m.side_b_player2 = players[1] ?? null;
+      }
+    };
+    setSide(t, swap.targetSlot, dSide);
+    setSide(d, swap.donorSlot, tSide);
+    for (const m of [t, d]) {
+      const all = [
+        m.side_a_player1,
+        m.side_a_player2,
+        m.side_b_player1,
+        m.side_b_player2,
+      ].filter((x): x is string => x != null);
+      expect(new Set(all).size).toBe(all.length); // no player twice in a match
+    }
+    return { t, d };
+  }
+
+  it("finds a safe swap for the whole-roster winner-stays layout (2 openers + 2 chained)", () => {
+    const matches = [
+      mkMatch("op1", ["p1", "p2"], ["p3", "p4"], { winnerNext: "ch1" }),
+      mkMatch("op2", ["p5", "p6"], ["p7", "p8"], { winnerNext: "ch2" }),
+      mkMatch("ch1", [null, null], ["p9", "p10"]),
+      mkMatch("ch2", [null, null], ["p11", "p12"]),
+    ];
+    const swap = planRerollSwap("ch1", matches);
+    expect(swap).not.toBeNull();
+    const { t } = applyAndCheck(matches, swap!, "ch1");
+    expect(sideIds(t, swap!.targetSlot)).not.toEqual(["p9", "p10"]); // genuinely changed
+  });
+
+  it("refuses a swap that would drop a match's own feeder players onto it (no self-play)", () => {
+    // ch1's placeholder side is fed by op1 {p1..p4}; every other pending match only
+    // offers a side made of those same players → no safe swap exists.
+    const matches = [
+      mkMatch("op1", ["p1", "p2"], ["p3", "p4"], { winnerNext: "ch1" }),
+      mkMatch("ch1", [null, null], ["p9", "p10"]),
+      mkMatch("bad", ["p1", "p2"], ["p3", "p4"]),
+    ];
+    expect(planRerollSwap("ch1", matches)).toBeNull();
+  });
+
+  it("returns null when there is no other pending match to swap with", () => {
+    expect(planRerollSwap("m1", [mkMatch("m1", ["p1", "p2"], ["p3", "p4"])])).toBeNull();
+  });
+
+  it("ignores in_progress matches as swap partners", () => {
+    const matches = [
+      mkMatch("m1", ["p1", "p2"], ["p3", "p4"]),
+      mkMatch("m2", ["p5", "p6"], ["p7", "p8"], { status: "in_progress" }),
+    ];
+    expect(planRerollSwap("m1", matches)).toBeNull();
+  });
+
+  it("swaps a whole side between two plain full-fixed pending matches, keeping every player", () => {
+    const matches = [
+      mkMatch("m1", ["p1", "p2"], ["p3", "p4"]),
+      mkMatch("m2", ["p5", "p6"], ["p7", "p8"]),
+    ];
+    const swap = planRerollSwap("m1", matches);
+    expect(swap).not.toBeNull();
+    const { t, d } = applyAndCheck(matches, swap!, "m1");
+    const allT = [t.side_a_player1, t.side_a_player2, t.side_b_player1, t.side_b_player2].filter(Boolean);
+    const allD = [d.side_a_player1, d.side_a_player2, d.side_b_player1, d.side_b_player2].filter(Boolean);
+    expect(allT.length).toBe(4);
+    expect(allD.length).toBe(4);
+    expect(new Set([...allT, ...allD]).size).toBe(8); // all 8 preserved, none duplicated
+  });
+
+  // Adversarial: in FAIR mode a player legitimately appears in several pending
+  // matches (that's how everyone reaches N games), so donor sides overlap the
+  // target's kept side — the naive feeder-only exclusion double-books.
+  it("fair mode: a player shared across two matches never yields a double-booking swap", () => {
+    const matches = [
+      mkMatch("T", ["A", "B"], ["C", "D"]),
+      mkMatch("DN", ["C", "E"], ["F", "G"]), // C is also in T's kept side
+    ];
+    const swap = planRerollSwap("T", matches);
+    expect(swap).not.toBeNull();
+    applyAndCheck(matches, swap!, "T"); // asserts no player twice in a match
+    // the naive swap (T.a ← DN.a {C,E}) would put C on both sides of T → must avoid it
+    expect(swap).not.toEqual({ targetSlot: "a", donorId: "DN", donorSlot: "a" });
+  });
+
+  it("returns null when every candidate side collides with the target's kept side", () => {
+    const matches = [
+      mkMatch("T", ["A", "B"], ["C", "D"]),
+      mkMatch("DN", ["A", "C"], ["B", "D"]), // both sides overlap T entirely
+    ];
+    expect(planRerollSwap("T", matches)).toBeNull();
+  });
+
+  it("excludes a deeper feeder chain (feeder-of-feeder) from the receiving side", () => {
+    // F2 → F → T: F2's players could promote all the way up to T's placeholder.
+    const matches = [
+      mkMatch("F2", ["X", "Y"], ["Z", "W"], { winnerNext: "F" }),
+      mkMatch("F", [null, null], ["P", "Q"], { winnerNext: "T" }),
+      mkMatch("T", [null, null], ["M", "N"]),
+      mkMatch("D", ["X", "Y"], [null, null]), // only fixed side = F2's players
+    ];
+    expect(planRerollSwap("T", matches)).toBeNull();
+  });
+
+  it("excludes the target's downstream successor challengers from the receiving side", () => {
+    // T → Tnext: a player swapped onto T could win and be promoted into Tnext,
+    // where they already sit as a challenger → self-play.
+    const matches = [
+      mkMatch("T", [null, null], ["M", "N"], { winnerNext: "Tnext" }),
+      mkMatch("Tnext", [null, null], ["S", "R"]),
+      mkMatch("D", ["S", "R"], [null, null]), // donor side = Tnext's challengers
+    ];
+    expect(planRerollSwap("T", matches)).toBeNull();
+  });
+
+  it("winner-stays: swaps two chains' challenger sides safely (feeder-colliding donor skipped)", () => {
+    const matches = [
+      mkMatch("op1", ["p1", "p2"], ["p3", "p4"], { winnerNext: "ch1" }),
+      mkMatch("op2", ["p5", "p6"], ["p7", "p8"], { winnerNext: "ch2" }),
+      mkMatch("ch1", [null, null], ["p9", "p10"]),
+      mkMatch("ch2", [null, null], ["p11", "p12"]),
+    ];
+    const swap = planRerollSwap("ch1", matches);
+    expect(swap).not.toBeNull();
+    const { t } = applyAndCheck(matches, swap!, "ch1"); // no double-book
+    expect(sideIds(t, swap!.targetSlot)).not.toEqual(["p9", "p10"]); // genuinely changed
   });
 });
