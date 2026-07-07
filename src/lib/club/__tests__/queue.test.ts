@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   buildNextMatch,
   buildPartialMatch,
-  deriveWinnerSide,
   isClubMatchFull,
   planWinnerStays,
   resolveCourtStay,
@@ -651,19 +650,6 @@ describe("buildNextMatch — null-anchor does not deadlock (FIX 1 P1-A)", () => 
     const m = buildNextMatch(pool, s);
     expect(m).not.toBeNull();
     expect(ids(m!)).toContain("anchor");
-  });
-});
-
-describe("deriveWinnerSide", () => {
-  it("returns 'a' when side A scores higher", () => {
-    expect(deriveWinnerSide(21, 18)).toBe("a");
-  });
-  it("returns 'b' when side B scores higher", () => {
-    expect(deriveWinnerSide(15, 21)).toBe("b");
-  });
-  it("returns null on a tie", () => {
-    expect(deriveWinnerSide(21, 21)).toBeNull();
-    expect(deriveWinnerSide(0, 0)).toBeNull();
   });
 });
 

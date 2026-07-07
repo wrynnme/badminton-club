@@ -49,7 +49,7 @@ const readyRank = (p: QueuePlayer): number => (p.notReady ? 1 : 0);
 /**
  * Rotation modes where a passed `stayingSide` keeps the winner on court.
  * `winner_stays` always; `fair_winner_fallback` only when the caller decides the
- * bench is too short and hands a stayingSide (see buildNextClubMatchAction).
+ * bench is too short and hands a stayingSide (see the winner_stays planning path).
  * `fair_queue` is absent → it ignores any stayingSide (both sides from the pool).
  */
 export function keepsWinner(mode: ClubQueueSettings["rotation_mode"]): boolean {
@@ -521,20 +521,6 @@ export function isClubMatchFull(
     return m.side_a_player2 != null && m.side_b_player2 != null;
   }
   return true;
-}
-
-/**
- * Derive the winning side from a finished game's score.
- * Returns "a" / "b" for the higher score, or null on a tie (a recorded full
- * score should normally have a winner — callers may reject the tie at input).
- */
-export function deriveWinnerSide(
-  scoreA: number,
-  scoreB: number,
-): "a" | "b" | null {
-  if (scoreA > scoreB) return "a";
-  if (scoreB > scoreA) return "b";
-  return null;
 }
 
 // ─── winner_stays planning (multi-court aware) ──────────────────────────────────
