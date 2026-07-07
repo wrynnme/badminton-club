@@ -58,6 +58,23 @@ export type ClubQueueSettings = z.infer<typeof ClubQueueSettingsSchema>;
 export const DEFAULT_QUEUE_SETTINGS: ClubQueueSettings = ClubQueueSettingsSchema.parse({});
 
 /**
+ * Fold removed legacy enum values onto their surviving twin, in place, before any
+ * schema parse — shared by parseQueueSettings and parsePresetConfig so the two
+ * translators can't drift. `queue_mode "smart"` ≡ `"level_match"` (identical
+ * ordering + level split); `balance_strictness "loose"` ≡ `"balanced"` (only
+ * "strict" ever branched). Preset configs have no balance_strictness field, so
+ * the second mapping is simply a no-op there. Keeps existing clubs working with
+ * no DB migration.
+ */
+export function normalizeLegacyQueueValues(
+  rec: Record<string, unknown>,
+): Record<string, unknown> {
+  if (rec.queue_mode === "smart") rec.queue_mode = "level_match";
+  if (rec.balance_strictness === "loose") rec.balance_strictness = "balanced";
+  return rec;
+}
+
+/**
  * Per-field fallback parse: if the whole-object parse passes, return it; otherwise
  * keep any field that parses individually instead of dropping everything. Defends
  * against partial corruption from manual DB edits / older partial writes.
@@ -67,13 +84,7 @@ export function parseQueueSettings(raw: unknown): ClubQueueSettings {
     return DEFAULT_QUEUE_SETTINGS;
   }
 
-  // Legacy value translation — removed enum members map to their surviving twin
-  // so existing clubs keep byte-identical behaviour without a DB migration:
-  //   queue_mode "smart" → "level_match" (identical ordering + level-split)
-  //   balance_strictness "loose" → "balanced" (only "strict" ever branched)
-  const rec: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
-  if (rec.queue_mode === "smart") rec.queue_mode = "level_match";
-  if (rec.balance_strictness === "loose") rec.balance_strictness = "balanced";
+  const rec = normalizeLegacyQueueValues({ ...(raw as Record<string, unknown>) });
 
   const fast = ClubQueueSettingsSchema.safeParse(rec);
   if (fast.success) return fast.data;

@@ -65,6 +65,91 @@ function assertNoPartialSides(plans: BatchMatchPlan[], ppt: 1 | 2) {
   }
 }
 
+/**
+ * Every player who could occupy a plan side AT RUNTIME: fixed slots as-is; a
+ * winnerOf slot resolves to the full set of its source match's possible occupants
+ * (recursively — promotion fills it with an unknown 2 of them). Memoised;
+ * sourceIndex always points at an earlier plan so the walk is a finite DAG.
+ */
+function sideOccupants(
+  plans: BatchMatchPlan[],
+  side: BatchMatchPlan["sideA"],
+  memo: Map<number, Set<string>>,
+): Set<string> {
+  if (side.kind === "players") {
+    const s = new Set<string>();
+    s.add(side.player1);
+    if (side.player2) s.add(side.player2);
+    return s;
+  }
+  return matchOccupants(plans, side.sourceIndex, memo);
+}
+
+function matchOccupants(
+  plans: BatchMatchPlan[],
+  index: number,
+  memo: Map<number, Set<string>>,
+): Set<string> {
+  const cached = memo.get(index);
+  if (cached) return cached;
+  const acc = new Set<string>();
+  memo.set(index, acc); // set before recursing — sourceIndex is always earlier, no cycle
+  for (const id of sideOccupants(plans, plans[index].sideA, memo)) acc.add(id);
+  for (const id of sideOccupants(plans, plans[index].sideB, memo)) acc.add(id);
+  return acc;
+}
+
+/**
+ * Reconstruct concurrent rounds from a lane-mode plan list (a lane index that
+ * does not increase marks the next round) and assert no double-book, judged on
+ * POSSIBLE OCCUPANTS not just fixed ids: a winnerOf slot is filled at runtime by
+ * an unknown 2 of its source match's occupants, so the safe invariant is that
+ * (1) a match's two sides can never share a possible occupant (else P-vs-P after
+ * promotion) and (2) two matches in the same round can never share one (else the
+ * same player lands on two courts once winners are promoted). Disjoint possible
+ * occupants ⇒ no double-book for ANY winner outcome. (Fair mode: lane=null → each
+ * plan its own round → trivially ok.)
+ */
+function assertNoConcurrentDoubleBooking(plans: BatchMatchPlan[]) {
+  const rounds: number[][] = [];
+  let cur: number[] = [];
+  let lastLane = -1;
+  plans.forEach((plan, i) => {
+    const lane = plan.lane ?? 0;
+    if (lane <= lastLane) {
+      if (cur.length) rounds.push(cur);
+      cur = [];
+    }
+    cur.push(i);
+    lastLane = lane;
+  });
+  if (cur.length) rounds.push(cur);
+
+  const memo = new Map<number, Set<string>>();
+  rounds.forEach((round, r) => {
+    // (1) no player on both sides of the same match
+    for (const i of round) {
+      const a = sideOccupants(plans, plans[i].sideA, memo);
+      const b = sideOccupants(plans, plans[i].sideB, memo);
+      for (const id of a) {
+        expect(b.has(id), `player ${id} could face itself (P-vs-P) in round ${r}`).toBe(false);
+      }
+    }
+    // (2) no player can occupy two concurrent courts this round
+    const seen = new Map<string, number>();
+    for (const i of round) {
+      for (const id of matchOccupants(plans, i, memo)) {
+        const prev = seen.get(id);
+        expect(
+          prev === undefined || prev === i,
+          `player ${id} could occupy two concurrent courts in round ${r}`,
+        ).toBe(true);
+        seen.set(id, i);
+      }
+    }
+  });
+}
+
 const ids = (n: number) => Array.from({ length: n }, (_, i) => String.fromCharCode(65 + i));
 
 describe("resolvePlayerWindow", () => {
@@ -215,7 +300,10 @@ describe("generateBatchQueue — fair mode (doubles)", () => {
   });
 
   it("rest spacing: with a big enough pool, adjacent matches share no players", () => {
-    const pool = ids(8).map((id) => mkPlayer(id));
+    // 12 doubles players = 3× the match size, so the rested tier always has slack
+    // and strict rest-spacing holds. (At exactly 2× — 8 players — rest-spacing is
+    // deliberately relaxed to break the foursome lock; see the regression below.)
+    const pool = ids(12).map((id) => mkPlayer(id));
     const plans = generateBatchQueue({
       pool,
       settings: settings(),
@@ -306,7 +394,10 @@ describe("generateBatchQueue — lane mode (winner_stays)", () => {
   const laneSettings = settings({ rotation_mode: "winner_stays" });
 
   it("K=2: openers first, then winnerOf chains linked to the previous match in the SAME lane", () => {
-    const pool = ids(8).map((id) => mkPlayer(id));
+    // 12 players / 2 courts fills the two openers (8) then chains one round of
+    // fresh challengers (4) before the safe-exclusion halts — enough to exercise
+    // both the opener and the winnerOf-chain branch.
+    const pool = ids(12).map((id) => mkPlayer(id));
     const plans = generateBatchQueue({
       pool,
       settings: laneSettings,
@@ -337,7 +428,7 @@ describe("generateBatchQueue — lane mode (winner_stays)", () => {
   });
 
   it("challengers never overlap the previous lane match's fixed players", () => {
-    const pool = ids(8).map((id) => mkPlayer(id));
+    const pool = ids(12).map((id) => mkPlayer(id));
     const plans = generateBatchQueue({
       pool,
       settings: laneSettings,
@@ -353,8 +444,10 @@ describe("generateBatchQueue — lane mode (winner_stays)", () => {
     }
   });
 
-  it("winnerOf slots don't count toward N — fixed appearances reach the target", () => {
-    const pool = ids(8).map((id) => mkPlayer(id));
+  it("winner_stays: each player is a fixed challenger at most once — winnerOf bonus games don't count toward N", () => {
+    // 12 players / 2 courts: two openers (8) + one chained round of fresh
+    // challengers (4) exactly consumes the pool, so every player is seated once.
+    const pool = ids(12).map((id) => mkPlayer(id));
     const plans = generateBatchQueue({
       pool,
       settings: laneSettings,
@@ -362,8 +455,14 @@ describe("generateBatchQueue — lane mode (winner_stays)", () => {
       remaining: remainingAll(pool, 2),
       laneCount: 2,
     });
+    // winners chain via the (uncounted) winnerOf slot
+    expect(plans.some((p) => p.sideA.kind === "winnerOf" || p.sideB.kind === "winnerOf")).toBe(true);
     const counts = appearanceCounts(plans);
-    for (const p of pool) expect(counts.get(p.id) ?? 0).toBeGreaterThanOrEqual(2);
+    // A static winner_stays plan can never seat a player as a fixed challenger
+    // twice: a second fixed seat could face them while they're still the promoted
+    // incumbent. So fixed counts cap at 1 regardless of N (=2 here) — the winner's
+    // extra games run through the winnerOf slot, which appearanceCounts ignores.
+    for (const p of pool) expect(counts.get(p.id) ?? 0).toBe(1);
   });
 
   it("laneCount is floored at 1 and singles chains work", () => {
@@ -377,8 +476,12 @@ describe("generateBatchQueue — lane mode (winner_stays)", () => {
     });
     expect(plans.length).toBeGreaterThan(0);
     for (const plan of plans) expect(plan.lane).toBe(0);
+    // opener {A} vs {B}, then winnerOf vs a fresh challenger — chain reached
+    expect(plans.some((p) => p.sideA.kind === "winnerOf")).toBe(true);
     const counts = appearanceCounts(plans);
-    for (const p of pool) expect(counts.get(p.id) ?? 0).toBeGreaterThanOrEqual(2);
+    // each player seated once as a fixed player; the winner holds the court via
+    // the uncounted winnerOf slot (a second fixed seat could face them incumbent)
+    for (const p of pool) expect(counts.get(p.id) ?? 0).toBe(1);
   });
 
   it("terminates when the pool is too small to chain (exclusion leaves no challengers)", () => {
@@ -530,5 +633,66 @@ describe("generateBatchQueue — variety (partner / opponent spread)", () => {
       const prev = new Set(fixedIds(plans[i - 1]));
       expect(fixedIds(plans[i]).some((id) => prev.has(id))).toBe(false);
     }
+  });
+
+  it("even division at pool == 2× match size mixes foursomes instead of locking (regression)", () => {
+    // Foursome-lock regression: 8 doubles players on one court split evenly into
+    // two foursomes. Under strict rest-spacing the rested tier is always the exact
+    // complement, so {A,B,C,D} and {E,F,G,H} alternate forever and never meet
+    // (distinctFoursomes=2, crossHalf=0). Relaxing rest-spacing at the 2× boundary
+    // lets variety pick cross-half groupings — probe: distinctFoursomes 2→14, all
+    // 28 partnerships reached, maxPartnerRepeat=2.
+    const pool = ids(8).map((id) => mkPlayer(id));
+    const plans = generateBatchQueue({
+      pool,
+      settings: settings({ queue_mode: "level_match" }),
+      lockedPairs: [],
+      remaining: remainingAll(pool, 8),
+      laneCount: 1,
+    });
+    const firstHalf = new Set(ids(8).slice(0, 4)); // A B C D
+    const crossHalf = plans.filter((p) => {
+      const four = fixedIds(p);
+      return four.some((id) => firstHalf.has(id)) && four.some((id) => !firstHalf.has(id));
+    });
+    expect(crossHalf.length).toBeGreaterThan(0); // the two halves genuinely meet
+    const foursomes = new Set(plans.map((p) => [...fixedIds(p)].sort().join("")));
+    expect(foursomes.size).toBeGreaterThan(2); // not frozen into two fixed foursomes
+    // fairness is still honoured — everyone reaches N (=8)
+    const counts = appearanceCounts(plans);
+    for (const p of pool) expect(counts.get(p.id) ?? 0).toBeGreaterThanOrEqual(8);
+  });
+
+  it("winner_stays: never double-books a player across lanes when courts > fillable pool (regression)", () => {
+    // Regression: with 2 courts but only 6 checked-in doubles players, the second
+    // lane's opener used to fall back and re-draft the first lane's players → the
+    // same person scheduled on both courts at once. A lane that can't be filled
+    // with fresh players must simply not open.
+    const pool = ids(6).map((id) => mkPlayer(id));
+    const plans = generateBatchQueue({
+      pool,
+      settings: settings({ rotation_mode: "winner_stays", players_per_team: 2 }),
+      lockedPairs: [],
+      remaining: remainingAll(pool, 3),
+      laneCount: 2,
+    });
+    expect(plans.length).toBeGreaterThan(0);
+    assertNoConcurrentDoubleBooking(plans);
+  });
+
+  it("winner_stays: no cross-lane double-book across multiple rounds (8 players / 2 courts)", () => {
+    // 8 players fill two doubles courts exactly, so both lanes stay active for
+    // several rounds — exercises the challenger path (not just the opener), which
+    // must also exclude players already placed on a court this round.
+    const pool = ids(8).map((id) => mkPlayer(id));
+    const plans = generateBatchQueue({
+      pool,
+      settings: settings({ rotation_mode: "winner_stays", players_per_team: 2 }),
+      lockedPairs: [],
+      remaining: remainingAll(pool, 4),
+      laneCount: 2,
+    });
+    expect(plans.some((p) => p.lane === 1)).toBe(true); // both courts genuinely used
+    assertNoConcurrentDoubleBooking(plans);
   });
 });

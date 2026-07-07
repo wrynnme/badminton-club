@@ -33,6 +33,8 @@
     "invalidShuttleCount": "Invalid shuttle count",
     "invalidTotalCost": "Invalid total cost",
     "invalidWinner": "Invalid winner",
+    "finishFeederNeedsWinner": "This match feeds a winner into the next queued match, so you must pick a winner — \"no result\" isn't allowed here.",
+    "finishEmptySide": "The side you picked as winner has no players yet (it's waiting on the previous match's winner) — this match can't be finished until its roster is filled.",
     "cannotDeleteLastLevel": "At least one skill level must remain — cannot delete the last one",
     "levelAlreadyExists": "Level already exists",
     "levelNameRequired": "Level name is required",

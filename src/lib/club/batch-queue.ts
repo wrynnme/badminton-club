@@ -92,6 +92,58 @@ export function proRatedTarget(
   return computePlayerTarget(n, windowMinutes, sessionMinutes);
 }
 
+// Bangkok wall-clock HH:MM formatter for check-in timestamps (stored UTC) so a
+// player's check-in lines up with the club's "HH:MM" start/end. One module-level
+// Intl formatter, reused for every row.
+const CHECK_IN_HHMM = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+  timeZone: "Asia/Bangkok",
+});
+
+export type PlayerTargetRow = {
+  id: string;
+  start_time: string | null;
+  end_time: string | null;
+  checked_in_at: string | null;
+};
+
+export type PlayerTarget = { target: number; have: number; shortfall: number };
+
+/**
+ * Per-player pro-rated batch target for a whole roster in one pass. Shared by
+ * generateClubQueueAction (authoritative — feeds `remaining`) and buildPreviewRows
+ * (the dialog preview) so the two can never drift. `sessionMinutes` is a per-session
+ * constant, computed ONCE here instead of once per player. `existing` = fixed
+ * appearances already on the board (top-up semantics); `shortfall` floors at 0.
+ * Numerically identical to calling `proRatedTarget` per row.
+ */
+export function computePlayerTargets(
+  rows: PlayerTargetRow[],
+  minMatches: number,
+  clubStart: string,
+  clubEnd: string,
+  existing: Map<string, number>,
+): Map<string, PlayerTarget> {
+  const sessionMinutes = clampedSessionMinutes(clubStart, clubEnd, clubStart, clubEnd);
+  const out = new Map<string, PlayerTarget>();
+  for (const row of rows) {
+    const window = resolvePlayerWindow({
+      declaredStart: row.start_time?.slice(0, 5) ?? null,
+      declaredEnd: row.end_time?.slice(0, 5) ?? null,
+      checkedInHHMM: row.checked_in_at ? CHECK_IN_HHMM.format(new Date(row.checked_in_at)) : null,
+      clubStart,
+      clubEnd,
+    });
+    const windowMinutes = clampedSessionMinutes(window.start, window.end, clubStart, clubEnd);
+    const target = computePlayerTarget(minMatches, windowMinutes, sessionMinutes);
+    const have = existing.get(row.id) ?? 0;
+    out.set(row.id, { target, have, shortfall: Math.max(0, target - have) });
+  }
+  return out;
+}
+
 // ─── Existing-appearance counting (top-up semantics) ─────────────────────────
 
 export type BatchCountableMatch = {
@@ -158,6 +210,34 @@ function sideIds(side: MatchSide): string[] {
 
 function toBatchSide(side: MatchSide): BatchSide {
   return { kind: "players", player1: side.player1, player2: side.player2 };
+}
+
+/**
+ * Every player who could be ON COURT in a planned match at runtime: fixed slots
+ * as-is, a winnerOf slot resolved to the full occupant set of its source match
+ * (recursively — promotion fills it with an unknown 2 of them). Memoised;
+ * sourceIndex always points at an earlier plan, so this is a finite backward DAG
+ * walk. Used to exclude every possible-promotion source from concurrent picks so
+ * the same player can never be scheduled onto two courts in one round.
+ */
+function planOccupants(
+  plans: BatchMatchPlan[],
+  index: number,
+  memo: Map<number, Set<string>>,
+): Set<string> {
+  const cached = memo.get(index);
+  if (cached) return cached;
+  const acc = new Set<string>();
+  memo.set(index, acc); // set before recursing (sourceIndex < index → no cycle)
+  for (const side of [plans[index].sideA, plans[index].sideB]) {
+    if (side.kind === "players") {
+      acc.add(side.player1);
+      if (side.player2) acc.add(side.player2);
+    } else {
+      for (const id of planOccupants(plans, side.sourceIndex, memo)) acc.add(id);
+    }
+  }
+  return acc;
 }
 
 /** Deterministic size-k subsets of `arr` (lexicographic by index). */
@@ -268,9 +348,9 @@ export function generateBatchQueue(input: {
    * ceiling keeps filtering; variety only chooses among what it allows. Falls
    * back to the plain fairest pick when the window forms no valid match (locks).
    */
-  const planFullMatch = (): MatchSide[] | null => {
+  const planFullMatch = (exclude?: Set<string>): MatchSide[] | null => {
     const need = ppt * 2;
-    const candidates = pickCandidates(need);
+    const candidates = pickCandidates(need, exclude);
 
     if (candidates && candidates.length >= need) {
       const ordered = orderPool(candidates, settings);
@@ -293,12 +373,15 @@ export function generateBatchQueue(input: {
       const tier = ordered.filter((p) => queueTierKey(p, settings) === cutoffKey);
       const fillCount = need - forced.length;
       // Rest-spacing: drop the previous match's players from the window so nobody
-      // plays back-to-back — but only while enough equally-owed players remain to
-      // still fill the pick. A bench too small to space out (e.g. 8 players, one
-      // rested foursome) falls back to the full tier, so variety there rotates
-      // the split within the fixed foursome instead of stalling.
+      // plays back-to-back — but only while MORE than enough equally-owed players
+      // remain to still fill the pick. When exactly `fillCount` rested players are
+      // left (pool == 2×match-size, e.g. 8 doubles: rest-spacing leaves the exact
+      // complementary foursome), forcing that complement locks the club into two
+      // fixed foursomes that never meet. Falling back to the full tier there lets
+      // variety pick a cross-foursome grouping (trading one back-to-back for the
+      // mixing) instead of stalling — hence `<=`, not `<`.
       let eligible = tier.filter((p) => !justPlayed.has(p.id));
-      if (eligible.length < fillCount) eligible = tier;
+      if (eligible.length <= fillCount) eligible = tier;
       // Cap enumeration so an all-rested bench stays cheap.
       const choosable = eligible.slice(0, fillCount + VARIETY_WINDOW_SLACK);
 
@@ -338,7 +421,10 @@ export function generateBatchQueue(input: {
     let proposed = candidates
       ? buildNextMatch(candidates, settings, undefined, lockedPairs, hist)
       : null;
-    if (!proposed) proposed = buildNextMatch(simPool, settings, undefined, lockedPairs, hist);
+    if (!proposed) {
+      const rest = exclude ? simPool.filter((p) => !exclude.has(p.id)) : simPool;
+      proposed = buildNextMatch(rest, settings, undefined, lockedPairs, hist);
+    }
     if (!proposed) return null;
     const ids = [...sideIds(proposed.sideA), ...sideIds(proposed.sideB)];
     if (!ids.some((id) => (rem.get(id) ?? 0) > 0)) return null;
@@ -417,30 +503,40 @@ export function generateBatchQueue(input: {
   let guard = 0;
   while (someRemaining() && guard++ < MAX_PLAN_ITERATIONS) {
     let progressed = false;
+    // Every lane runs a match CONCURRENTLY this round, so a player placed on one
+    // lane can't also be on another. A winnerOf slot is filled at runtime by an
+    // unknown 2 of its source match's occupants, so excluding only the fixed
+    // players already placed this round is not enough — we must exclude every
+    // player who COULD be promoted onto any court this round: the union of each
+    // lane's last match's possible occupants (winnerOf resolved through its whole
+    // chain). This closes both the cross-lane double-book (another lane's feeder
+    // foursome) and the in-chain P-vs-P (a transitive incumbent re-drafted as this
+    // match's own challenger); either would put the same player on two courts once
+    // winners promote (blocked at start by the club_player_busy guard). usedThisRound
+    // then adds this round's freshly-fixed players. A lane with no safe players
+    // left simply doesn't open this round.
+    const usedThisRound = new Set<string>();
+    const occMemo = new Map<number, Set<string>>();
+    const concurrentBase = new Set<string>();
+    for (const li of laneLast) {
+      if (li != null) for (const id of planOccupants(plans, li, occMemo)) concurrentBase.add(id);
+    }
     for (let lane = 0; lane < laneCount; lane++) {
       if (!someRemaining()) break;
+      const exclude = new Set<string>(concurrentBase);
+      for (const id of usedThisRound) exclude.add(id);
       const last = laneLast[lane];
       if (last == null) {
-        const sides = planFullMatch();
+        const sides = planFullMatch(exclude);
         if (!sides) continue;
+        const ids = [...sideIds(sides[0]), ...sideIds(sides[1])];
         plans.push({ sideA: toBatchSide(sides[0]), sideB: toBatchSide(sides[1]), lane });
         laneLast[lane] = plans.length - 1;
-        markScheduled([...sideIds(sides[0]), ...sideIds(sides[1])]);
+        markScheduled(ids);
+        for (const id of ids) usedThisRound.add(id);
         recordPairing(hist, sides[0], sides[1]);
         progressed = true;
       } else {
-        // HARD exclusion: the previous lane match's fixed players can be the
-        // winner that fills this match's placeholder side — drafting them as
-        // challengers too could put the same player on BOTH sides. No
-        // shortage fallback re-admits them.
-        const prev = plans[last];
-        const exclude = new Set<string>();
-        for (const side of [prev.sideA, prev.sideB]) {
-          if (side.kind === "players") {
-            exclude.add(side.player1);
-            if (side.player2) exclude.add(side.player2);
-          }
-        }
         const side = planChallengerSide(exclude);
         if (!side) continue;
         const ids = sideIds(side);
@@ -454,6 +550,7 @@ export function generateBatchQueue(input: {
         // Only the fixed challengers count toward N — the winnerOf slot is the
         // winner's bonus game (locked design decision).
         markScheduled(ids);
+        for (const id of ids) usedThisRound.add(id);
         // Record only the challenger pair's partnership — the opponent is the
         // yet-unknown promoted winner, so opposition can't be counted here.
         recordSidePartner(hist, side);

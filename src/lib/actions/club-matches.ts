@@ -29,10 +29,10 @@ import {
   generateBatchQueue,
   buildPairHistory,
   countFixedAppearances,
-  resolvePlayerWindow,
-  proRatedTarget,
+  computePlayerTargets,
   type BatchCountableMatch,
 } from "@/lib/club/batch-queue";
+import { embeddedReal } from "@/lib/tournament/levels";
 import type { ClubMatch, Game } from "@/lib/types";
 
 /**
@@ -55,6 +55,7 @@ async function loadClubMatchForManage(
         side_a_player2: string | null;
         side_b_player1: string | null;
         side_b_player2: string | null;
+        winner_next_match_id: string | null;
       };
     }
   | { error: string }
@@ -62,7 +63,9 @@ async function loadClubMatchForManage(
   const t = await getTranslations("actions");
   const { data: match, error } = await sb
     .from("club_matches")
-    .select("id, club_id, status, court, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
+    .select(
+      "id, club_id, status, court, side_a_player1, side_a_player2, side_b_player1, side_b_player2, winner_next_match_id",
+    )
     .eq("id", matchId)
     .single();
   if (error || !match) return { error: t("club.matchNotFound") };
@@ -178,23 +181,15 @@ async function loadClubQueueContext(
     (p) => !(isNotReady(p) && settings.not_ready_action === "skip"),
   );
 
-  const pool: QueuePlayer[] = eligible.map((p) => {
-    const lvRow = Array.isArray(p.levels) ? p.levels[0] : p.levels;
-    let level: number | null = null;
-    if (lvRow?.real != null) {
-      const r = Number(lvRow.real);
-      level = Number.isNaN(r) ? null : r;
-    }
-    return {
-      id: p.id,
-      position: p.position,
-      joined_at: p.joined_at,
-      level,
-      games_played: p.games_played,
-      last_finished_at: p.last_finished_at,
-      notReady: isNotReady(p),
-    };
-  });
+  const pool: QueuePlayer[] = eligible.map((p) => ({
+    id: p.id,
+    position: p.position,
+    joined_at: p.joined_at,
+    level: embeddedReal(p.levels),
+    games_played: p.games_played,
+    last_finished_at: p.last_finished_at,
+    notReady: isNotReady(p),
+  }));
 
   const { data: lockRows } = await sb
     .from("club_locked_pairs")
@@ -277,25 +272,17 @@ export async function generateClubQueueAction(
   // top-up avoids repeating the matchups that are already queued or played.
   const history = buildPairHistory(countable);
 
-  // Per-player pro-rated target. checked_in_at is a UTC timestamp — convert to
-  // Bangkok wall-clock HH:MM so it lines up with the club's start/end times.
-  const hhmm = new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "Asia/Bangkok",
-  });
+  // Per-player pro-rated target — shared helper, byte-identical math to the dialog
+  // preview (buildPreviewRows) so what the organizer previews is what gets generated.
   const remaining = new Map<string, number>();
-  for (const row of ctx.playerRows) {
-    const window = resolvePlayerWindow({
-      declaredStart: row.start_time?.slice(0, 5) ?? null,
-      declaredEnd: row.end_time?.slice(0, 5) ?? null,
-      checkedInHHMM: row.checked_in_at ? hhmm.format(new Date(row.checked_in_at)) : null,
-      clubStart: ctx.clubStart,
-      clubEnd: ctx.clubEnd,
-    });
-    const target = proRatedTarget(parsed.data.minMatches, window, ctx.clubStart, ctx.clubEnd);
-    remaining.set(row.id, Math.max(0, target - (existing.get(row.id) ?? 0)));
+  for (const [id, tgt] of computePlayerTargets(
+    ctx.playerRows,
+    parsed.data.minMatches,
+    ctx.clubStart,
+    ctx.clubEnd,
+    existing,
+  )) {
+    remaining.set(id, tgt.shortfall);
   }
 
   const plans = generateBatchQueue({
@@ -670,6 +657,23 @@ export async function finishClubMatchAction(input: {
   // jsonb stays bounded. Otherwise garbage flows straight into the RPC.
   if (input.winnerSide != null && input.winnerSide !== "a" && input.winnerSide !== "b") {
     return { error: t("club.invalidWinner") };
+  }
+  // A feeder match (whose winner is promoted into a chained "ผู้ชนะจากแมตช์ #N"
+  // slot) MUST record a winner. Finishing it with no result skips promotion and
+  // leaves the downstream match's placeholder side empty forever — un-startable.
+  if (input.winnerSide == null && match.winner_next_match_id != null) {
+    return { error: t("club.finishFeederNeedsWinner") };
+  }
+  // The chosen winner side must actually have players. An unresolved "ผู้ชนะจากแมตช์
+  // #N" placeholder (both slots NULL until its own feeder finishes) can't win —
+  // finishing it out of order would promote (NULL, NULL) into the next chained match
+  // and strand it. The UI only finishes in_progress matches (full roster); this guards
+  // a direct/out-of-order call.
+  if (
+    (input.winnerSide === "a" && match.side_a_player1 == null && match.side_a_player2 == null) ||
+    (input.winnerSide === "b" && match.side_b_player1 == null && match.side_b_player2 == null)
+  ) {
+    return { error: t("club.finishEmptySide") };
   }
   const games = input.games ?? [];
   if (!Array.isArray(games) || games.length > 9) {

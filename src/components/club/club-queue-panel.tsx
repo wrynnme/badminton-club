@@ -970,22 +970,27 @@ function InProgressRow({
               />
               <TooltipContent>{t("sideBWinsTooltip", { name: sideB })}</TooltipContent>
             </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs"
-                    disabled={finishBusy}
-                    onClick={() => commitFinish(undefined)}
-                  >
-                    {t("noResult")}
-                  </Button>
-                }
-              />
-              <TooltipContent>{t("noResultTooltip")}</TooltipContent>
-            </Tooltip>
+            {/* A feeder match must promote a winner into its chained target, so
+                "no result" is hidden — finishing it winnerless would strand the
+                downstream "ผู้ชนะจากแมตช์ #N" match (server also rejects it). */}
+            {match.winner_next_match_id == null && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      disabled={finishBusy}
+                      onClick={() => commitFinish(undefined)}
+                    >
+                      {t("noResult")}
+                    </Button>
+                  }
+                />
+                <TooltipContent>{t("noResultTooltip")}</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         </div>
       )}

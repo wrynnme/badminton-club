@@ -6,6 +6,7 @@ import {
   DEFAULT_RECEIPT_TEMPLATE,
   parseReceiptTemplate,
 } from "@/lib/club/receipt";
+import { normalizeLegacyQueueValues } from "@/lib/club/queue-settings";
 
 /**
  * Saved config for a ClubPreset. Stored on `club_presets.config jsonb`.
@@ -96,10 +97,9 @@ export function parsePresetConfig(raw: unknown): ClubPresetConfig {
     return DEFAULT_PRESET_CONFIG;
   }
 
-  // Legacy value translation: queue_mode "smart" folded into "level_match"
-  // (identical behaviour) so older presets keep working without a rewrite.
-  const rec: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
-  if (rec.queue_mode === "smart") rec.queue_mode = "level_match";
+  // Legacy value translation (queue_mode "smart" → "level_match") via the shared
+  // helper so it can't drift from parseQueueSettings.
+  const rec = normalizeLegacyQueueValues({ ...(raw as Record<string, unknown>) });
 
   const fast = ClubPresetConfigSchema.safeParse(rec);
   if (fast.success) return fast.data;
