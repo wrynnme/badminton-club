@@ -25,7 +25,10 @@ correct behavior ต้องเป็นคำสั่งที่ทำตา
 
 ## Log
 
-### pkill กว้างเกินไปฆ่า process ที่ไม่เกี่ยว (2026-06-26)
+### เทสฟีเจอร์ด้วย config ที่ "ผ่านง่าย" ทำให้ over-claim ว่าใช้ได้ (2026-07-07)
+- **what**: ทำฟีเจอร์ "สุ่มคิว variety" เสร็จ รายงานว่าเสร็จ+เขียว 806/806 tests. แต่พอ user ลองจริง (club 12 คน doubles N=10) กลับได้ 3 แมตช์วนซ้ำ 10 รอบ — variety ไม่ทำงานเลย. เทสที่เขียนไว้ใช้ 8 คน/N3 ซึ่ง**บังเอิญ**ไม่ trigger บั๊ก foursome-lock เลยผ่านหมด สร้างความมั่นใจผิดๆ
+- **root cause**: เลือก config เทสที่สะดวก/ผ่านง่าย ไม่ได้เลือก config ที่ **adversarial ต่อหัวใจของฟีเจอร์** (จำนวนคนหารลงตัวกับขนาดแมตช์ + N สูง = เคสที่ variety โดนบีบมากที่สุด). ประกาศ "done" จาก green suite โดยไม่ได้พิสูจน์ว่า output จริงมี variety ตามที่ฟีเจอร์สัญญา
+- **correct**: ฟีเจอร์ที่มี "หัวใจ" เป็นคุณสมบัติวัดได้ (variety, balance, fairness) → เขียน assertion ที่วัด**คุณสมบัตินั้นโดยตรง** (เช่น distinctPartnerships, maxRepeat) บน config ที่ adverse ที่สุด **ก่อน**บอก done; อย่าให้ green suite ที่ทดสอบเคสง่ายมาแทนการพิสูจน์ผลลัพธ์จริง. ถ้าเป็นอัลกอริทึม จับคู่/จัดคิว → ต้องมีเทส even-division + high-N เสมอ
 - **what**: user สั่ง "ปิด dev server" (แอปบน :3000). `kill $(lsof -ti tcp:3000)` ไม่ตายสนิท (next dev มี process tree + respawn) เลยใช้ `pkill -9 -f "next-server"` ซึ่ง match **ทุก** next-server → เผลอฆ่า claude-smart dashboard (PID 61147 บน :3001) ที่ไม่เกี่ยวไปด้วย
 - **root cause**: ใช้ name-pattern pkill ที่กว้าง ทั้งที่มีหลาย process ใช้ชื่อ binary เดียวกัน (`next-server`) — ไม่ได้จำกัดด้วย port/cwd/PID ที่เจาะจงเป้าหมาย
 - **correct**: ปิด process ตาม **เป้าที่เจาะจง** — kill ตาม PID ที่ฟัง port เป้าหมาย (`lsof -ti tcp:<port>`) หรือ stop background task ที่ harness จัดการ; ถ้าจำเป็นต้อง pattern-match ให้รวม cwd/พอร์ตเข้าไปด้วย (เช่น เช็ค `lsof` ของ PID ก่อนฆ่า) **ห้าม `pkill -f "<binary-name>"` ลอยๆ** เมื่อมี process ชื่อซ้ำกันหลายตัวในเครื่อง

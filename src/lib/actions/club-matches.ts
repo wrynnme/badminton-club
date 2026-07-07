@@ -27,6 +27,7 @@ import {
 } from "@/lib/club/queue";
 import {
   generateBatchQueue,
+  buildPairHistory,
   countFixedAppearances,
   resolvePlayerWindow,
   proRatedTarget,
@@ -582,7 +583,11 @@ export async function generateClubQueueAction(
     .select("status, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
     .eq("club_id", clubId);
   if (matchesError) return { error: matchesError.message };
-  const existing = countFixedAppearances((allMatches ?? []) as BatchCountableMatch[]);
+  const countable = (allMatches ?? []) as BatchCountableMatch[];
+  const existing = countFixedAppearances(countable);
+  // Seed variety from who has already partnered / opposed whom tonight, so a
+  // top-up avoids repeating the matchups that are already queued or played.
+  const history = buildPairHistory(countable);
 
   // Per-player pro-rated target. checked_in_at is a UTC timestamp — convert to
   // Bangkok wall-clock HH:MM so it lines up with the club's start/end times.
@@ -611,6 +616,7 @@ export async function generateClubQueueAction(
     lockedPairs: ctx.lockedPairs,
     remaining,
     laneCount: ctx.courts.length,
+    history,
   });
   if (plans.length === 0) {
     if (ctx.pool.length < ctx.settings.players_per_team * 2) {
@@ -667,6 +673,64 @@ export async function generateClubQueueAction(
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true, created: plans.length };
+}
+
+/**
+ * "รื้อคิว แล้วสุ่มใหม่" — clear every NOT-yet-started (pending) match and
+ * regenerate the whole upcoming queue from scratch, so the freshness logic
+ * gets to re-plan matchups the earlier queue may have repeated. In-progress
+ * and completed matches are never touched, and they still seed the variety
+ * memory (so the new queue keeps spreading partners/opponents away from what
+ * has already happened tonight). Destructive to pending only — the UI guards
+ * it behind a confirm dialog.
+ */
+export async function regenerateClubQueueAction(
+  clubId: string,
+  input: { minMatches: number },
+): Promise<{ ok: true; created: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const parsed = GenerateQueueSchema.safeParse(input);
+  if (!parsed.success) return { error: t("club.invalidData") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  // Which rows are we clearing?
+  const { data: pendingRows, error: pendingError } = await sb
+    .from("club_matches")
+    .select("id")
+    .eq("club_id", clubId)
+    .eq("status", "pending");
+  if (pendingError) return { error: pendingError.message };
+  const pendingIds = (pendingRows ?? []).map((r) => r.id as string);
+
+  if (pendingIds.length > 0) {
+    // Drop any winner-chain pointer aimed at a row we're about to delete first,
+    // so no feeder (in-progress, completed, or another pending) is left with a
+    // dangling reference when the rows go.
+    const { error: clearError } = await sb
+      .from("club_matches")
+      .update({ winner_next_match_id: null, winner_next_match_slot: null })
+      .eq("club_id", clubId)
+      .in("winner_next_match_id", pendingIds);
+    if (clearError) return { error: clearError.message };
+
+    const { error: deleteError } = await sb
+      .from("club_matches")
+      .delete()
+      .eq("club_id", clubId)
+      .eq("status", "pending");
+    if (deleteError) return { error: deleteError.message };
+  }
+
+  // With pending gone, a plain top-up rebuilds the whole queue from the
+  // remaining (in-progress + completed) appearances.
+  return generateClubQueueAction(clubId, { minMatches: parsed.data.minMatches });
 }
 
 /**

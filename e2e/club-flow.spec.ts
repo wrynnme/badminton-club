@@ -49,7 +49,7 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
     // N = 1 → 4 players singles → 2 matches covering everyone once
     const minInput = page.getByRole("spinbutton").first();
     await minInput.fill("1");
-    await page.getByRole("dialog").getByRole("button", { name: "สุ่มคิว" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "สุ่มเพิ่มในคิว" }).click();
     await expect(page.getByText(/สุ่มคิวแล้ว 2 แมตช์/)).toBeVisible();
     // Single-page layout: sections replaced the tabs — count lives in the heading badge.
     await expect(page.getByRole("heading", { name: /รอแข่ง/ })).toContainText("2");
@@ -232,6 +232,80 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
 
     // Cleanup the chain rows (keep the club reusable for the remaining tests).
     await sb.from("club_matches").delete().in("id", [feeder!.id, target!.id]);
+  });
+
+  test("รื้อ+สุ่มใหม่: sweeps pending and regenerates, leaves completed untouched", async ({ page }) => {
+    const sb = adminClient();
+
+    // Clean slate, then a known state: one completed (must survive the re-roll)
+    // + two courtless pending (must be swept and replaced by a fresh set).
+    await sb.from("club_matches").delete().eq("club_id", E2E.clubId);
+
+    const { data: playerRows, error: playersError } = await sb
+      .from("club_players")
+      .select("id, display_name")
+      .eq("club_id", E2E.clubId);
+    expect(playersError).toBeNull();
+    const idOf = (name: string) => playerRows!.find((p) => p.display_name === name)!.id as string;
+    const [p1, p2, p3, p4] = E2E.players.slice(0, 4).map(idOf);
+
+    const { data: completed, error: completedError } = await sb
+      .from("club_matches")
+      .insert({
+        club_id: E2E.clubId,
+        court: E2E.courts[0],
+        side_a_player1: p1,
+        side_b_player1: p2,
+        status: "completed",
+        winner_side: "a",
+        queue_position: 1,
+      })
+      .select("id")
+      .single();
+    expect(completedError).toBeNull();
+
+    const { data: seededPending, error: pendingError } = await sb
+      .from("club_matches")
+      .insert([
+        { club_id: E2E.clubId, court: null, side_a_player1: p3, side_b_player1: p4, status: "pending", queue_position: 2 },
+        { club_id: E2E.clubId, court: null, side_a_player1: p1, side_b_player1: p2, status: "pending", queue_position: 3 },
+      ])
+      .select("id");
+    expect(pendingError).toBeNull();
+    const oldPendingIds = (seededPending ?? []).map((r) => r.id as string);
+    expect(oldPendingIds.length).toBe(2);
+
+    // Re-roll from the dialog. N = 2 so everyone still needs a fresh game.
+    await page.goto(QUEUE_URL);
+    await page.getByRole("button", { name: "สุ่มคิว" }).click();
+    await page.getByRole("spinbutton").first().fill("2");
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "รื้อ+สุ่มใหม่" }).click();
+    await dialog.getByRole("button", { name: "รื้อแล้วสุ่มใหม่" }).click();
+    await expect(page.getByText(/สุ่มคิวใหม่แล้ว/)).toBeVisible();
+
+    // The completed match survives untouched…
+    const { data: stillCompleted, error: cErr } = await sb
+      .from("club_matches")
+      .select("status")
+      .eq("id", completed!.id)
+      .single();
+    expect(cErr).toBeNull();
+    expect(stillCompleted?.status).toBe("completed");
+
+    // …and the old pending rows are gone, replaced by a fresh non-empty set.
+    const { data: nowPending, error: pErr } = await sb
+      .from("club_matches")
+      .select("id")
+      .eq("club_id", E2E.clubId)
+      .eq("status", "pending");
+    expect(pErr).toBeNull();
+    const nowIds = new Set((nowPending ?? []).map((r) => r.id as string));
+    expect(nowIds.size).toBeGreaterThan(0);
+    for (const id of oldPendingIds) expect(nowIds.has(id)).toBe(false);
+
+    // Cleanup so later tests start from a clean club.
+    await sb.from("club_matches").delete().eq("club_id", E2E.clubId);
   });
 
   test("cost tab renders without error", async ({ page }) => {

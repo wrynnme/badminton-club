@@ -4,10 +4,12 @@ import {
   computePlayerTarget,
   proRatedTarget,
   countFixedAppearances,
+  buildPairHistory,
   generateBatchQueue,
   type BatchMatchPlan,
   type BatchCountableMatch,
 } from "../batch-queue";
+import { pairKey } from "../pair-history";
 import { DEFAULT_QUEUE_SETTINGS, type ClubQueueSettings } from "../queue-settings";
 import type { QueuePlayer } from "../queue";
 
@@ -391,5 +393,142 @@ describe("generateBatchQueue — lane mode (winner_stays)", () => {
     // opener consumes everyone; every later challenger side would need players
     // outside the previous match — none exist → generator stops cleanly.
     expect(plans).toHaveLength(1);
+  });
+});
+
+describe("generateBatchQueue — variety (partner / opponent spread)", () => {
+  /** partnership pairKey → times used across the plan (doubles only) */
+  function partnershipCounts(plans: BatchMatchPlan[]): Map<string, number> {
+    const m = new Map<string, number>();
+    for (const plan of plans) {
+      for (const side of [plan.sideA, plan.sideB]) {
+        if (side.kind === "players" && side.player2) {
+          const k = pairKey(side.player1, side.player2);
+          m.set(k, (m.get(k) ?? 0) + 1);
+        }
+      }
+    }
+    return m;
+  }
+
+  /** the side a player sits on in a plan, or null */
+  function sideOf(plan: BatchMatchPlan, id: string): "a" | "b" | null {
+    const on = (s: BatchMatchPlan["sideA"]) =>
+      s.kind === "players" && (s.player1 === id || s.player2 === id);
+    if (on(plan.sideA)) return "a";
+    if (on(plan.sideB)) return "b";
+    return null;
+  }
+
+  it("8 players N=3 → no partnership is used twice (12 distinct pairs)", () => {
+    const pool = ids(8).map((id) => mkPlayer(id));
+    const plans = generateBatchQueue({
+      pool,
+      settings: settings(),
+      lockedPairs: [],
+      remaining: remainingAll(pool, 3),
+      laneCount: 1,
+    });
+    const counts = partnershipCounts(plans);
+    // 6 matches × 2 partnerships each, all distinct.
+    expect([...counts.values()].every((v) => v === 1)).toBe(true);
+    expect(counts.size).toBe(12);
+  });
+
+  it("seeded history steers the split away from an already-partnered pair", () => {
+    // A & B have partnered three times already tonight.
+    const seed: BatchCountableMatch[] = Array.from({ length: 3 }, () => ({
+      status: "completed",
+      side_a_player1: "A",
+      side_a_player2: "B",
+      side_b_player1: "C",
+      side_b_player2: "D",
+    }));
+    const history = buildPairHistory(seed);
+
+    const pool = ids(4).map((id) => mkPlayer(id));
+    const plans = generateBatchQueue({
+      pool,
+      settings: settings(),
+      lockedPairs: [],
+      remaining: remainingAll(pool, 1),
+      laneCount: 1,
+      history,
+    });
+    expect(plans).toHaveLength(1);
+    // Fresh split must put A and B on OPPOSITE sides (they've teamed up plenty).
+    expect(sideOf(plans[0], "A")).not.toBe(sideOf(plans[0], "B"));
+  });
+
+  it("variety never overrides a locked pair — they stay teammates despite history", () => {
+    // History that would tempt the split to break A|B apart, but they're locked.
+    const seed: BatchCountableMatch[] = Array.from({ length: 4 }, () => ({
+      status: "completed",
+      side_a_player1: "A",
+      side_a_player2: "B",
+      side_b_player1: "C",
+      side_b_player2: "D",
+    }));
+    const pool = ids(8).map((id) => mkPlayer(id));
+    const plans = generateBatchQueue({
+      pool,
+      settings: settings(),
+      lockedPairs: [["A", "B"]],
+      remaining: remainingAll(pool, 2),
+      laneCount: 1,
+      history: buildPairHistory(seed),
+    });
+    for (const plan of plans) {
+      const a = sideOf(plan, "A");
+      const b = sideOf(plan, "B");
+      if (a || b) expect(a).toBe(b); // whenever either plays, they're on the same side
+    }
+  });
+
+  it("still lands everyone on their target with history seeded (fairness > variety)", () => {
+    const pool = ids(8).map((id) => mkPlayer(id));
+    const seed: BatchCountableMatch[] = [
+      { status: "completed", side_a_player1: "A", side_a_player2: "B", side_b_player1: "C", side_b_player2: "D" },
+    ];
+    const plans = generateBatchQueue({
+      pool,
+      settings: settings(),
+      lockedPairs: [],
+      remaining: remainingAll(pool, 2),
+      laneCount: 1,
+      history: buildPairHistory(seed),
+    });
+    const counts = appearanceCounts(plans);
+    for (const p of pool) expect(counts.get(p.id) ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it("even division + high N does not freeze into fixed foursomes (regression)", () => {
+    // Regression for the foursome-lock bug: when the pool divides evenly into
+    // rounds (12 players / 4 = 3 matches) and the tier was keyed on the per-match
+    // finish stamp, variety could only reshuffle inside a locked group of 4 → the
+    // same 3 matchups repeated every round (distinctMatchups=3, every partnership
+    // repeated N times). Keying the tier on games-played frees the pool to mix.
+    const pool = ids(12).map((id) => mkPlayer(id));
+    const plans = generateBatchQueue({
+      pool,
+      settings: settings({ queue_mode: "smart" }),
+      lockedPairs: [],
+      remaining: remainingAll(pool, 6),
+      laneCount: 1,
+    });
+    expect(plans).toHaveLength(18); // 12 × 6 / 4
+    expect(appearanceCounts(plans).size).toBe(12);
+
+    const counts = partnershipCounts(plans);
+    // Pre-fix this collapsed to 6 partnerships each repeated 6×. Post-fix the
+    // spread is wide and no pair repeats more than a couple of times.
+    expect(counts.size).toBeGreaterThanOrEqual(20);
+    expect(Math.max(...counts.values())).toBeLessThanOrEqual(4);
+
+    // Rest-spacing invariant still holds on this perfectly even pool.
+    for (let i = 1; i < plans.length; i++) {
+      const prev = new Set(fixedIds(plans[i - 1]));
+      expect(fixedIds(plans[i]).some((id) => prev.has(id))).toBe(false);
+    }
   });
 });

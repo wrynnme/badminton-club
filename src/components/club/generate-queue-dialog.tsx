@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useForm } from "@tanstack/react-form";
 import * as z from "zod";
 import { toast } from "sonner";
-import { Shuffle } from "lucide-react";
+import { RotateCcw, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,7 +28,10 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { fieldErrors } from "@/lib/form-errors";
-import { generateClubQueueAction } from "@/lib/actions/club-matches";
+import {
+  generateClubQueueAction,
+  regenerateClubQueueAction,
+} from "@/lib/actions/club-matches";
 import { buildPreviewRows, type PreviewPlayer } from "@/lib/club/queue-preview";
 import type { ClubMatch } from "@/lib/types";
 
@@ -51,11 +54,17 @@ export function GenerateQueueDialog({
 }) {
   const t = useTranslations("club.queuePanel");
   const [open, setOpen] = useState(false);
+  const [confirmingReroll, setConfirmingReroll] = useState(false);
   const [busy, startTransition] = useTransition();
 
   const activePlayers = useMemo(
     () => players.filter((p) => p.status === "active"),
     [players],
+  );
+
+  const pendingCount = useMemo(
+    () => matches.filter((m) => m.status === "pending").length,
+    [matches],
   );
 
   const schema = useMemo(
@@ -89,9 +98,28 @@ export function GenerateQueueDialog({
 
   // Reset to the latest remembered default whenever the dialog (re)opens.
   useEffect(() => {
-    if (open) form.reset({ minMatches: batchMinMatches });
+    if (open) {
+      form.reset({ minMatches: batchMinMatches });
+      setConfirmingReroll(false);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, batchMinMatches]);
+
+  const handleReroll = () => {
+    startTransition(async () => {
+      const res = await regenerateClubQueueAction(clubId, {
+        minMatches: form.state.values.minMatches,
+      });
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        toast.success(t("toastRegenerated", { count: res.created }));
+        setConfirmingReroll(false);
+        setOpen(false);
+        onRefresh();
+      }
+    });
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -192,18 +220,62 @@ export function GenerateQueueDialog({
             }}
           </form.Subscribe>
 
-          <DialogFooter>
-            <DialogClose
-              render={
-                <Button type="button" variant="outline" disabled={busy}>
+          {confirmingReroll ? (
+            <div className="space-y-3">
+              <p className="text-sm text-warning-foreground">
+                {t("regenerateConfirm", { count: pendingCount })}
+              </p>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => setConfirmingReroll(false)}
+                >
                   {t("generateDialogCancel")}
                 </Button>
-              }
-            />
-            <Button type="submit" disabled={busy}>
-              {busy ? t("generateDialogSubmitting") : t("generateDialogSubmit")}
-            </Button>
-          </DialogFooter>
+                <Button type="button" variant="destructive" disabled={busy} onClick={handleReroll}>
+                  {busy ? t("regenerateSubmitting") : t("regenerateConfirmSubmit")}
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <DialogFooter className="gap-2 sm:justify-between">
+              <div>
+                {pendingCount > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={busy}
+                          className="h-9 gap-1"
+                          onClick={() => setConfirmingReroll(true)}
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          {t("regenerateButton")}
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>{t("regenerateTooltip")}</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <DialogClose
+                  render={
+                    <Button type="button" variant="outline" disabled={busy}>
+                      {t("generateDialogCancel")}
+                    </Button>
+                  }
+                />
+                <Button type="submit" disabled={busy}>
+                  {busy ? t("generateDialogSubmitting") : t("generateDialogSubmit")}
+                </Button>
+              </div>
+            </DialogFooter>
+          )}
         </form>
       </DialogContent>
     </Dialog>

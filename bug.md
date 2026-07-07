@@ -4,7 +4,7 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-(no open bugs — อัปเดต 2026-07-06 หลังปิด P2 reorder∥start renumber.) Every finding from the 2026-06-09 whole-system core review (`docs/reviews/code-review-core-2026-06-09.html` — 1 P0 + 4 P1 + 23 P2) is closed — full records in Resolved.
+(no open bugs — อัปเดต 2026-07-07 หลังปิด P1 variety foursome-lock, ดู Resolved.) Every finding from the 2026-06-09 whole-system core review (`docs/reviews/code-review-core-2026-06-09.html` — 1 P0 + 4 P1 + 23 P2) is closed — full records in Resolved.
 
 The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open)**: `computeExpenseShares` ceil-per-head over-collects a few baht (100฿/3 → 34×3 = 102). By design — equal players pay the same whole baht, the organizer is never short, and it stays reconciled across the cost-breakdown table + ExpenseManager. A fair largest-remainder split was offered and declined (user, 2026-06-09).
 
@@ -109,6 +109,10 @@ Dependency-only PR (ไม่มี app code diff) — bump 7 แพ็กเก
 - **Gate:** tsc 0 · vitest 760/760 · `next build` OK (BUILD_ID `WXM94uvuwaOoz7GuNiGA-`) · node_modules verified in-sync กับ lockfile ใหม่ (installed versions ตรง range ไม่ stale) · lockfile healthy (react/react-dom/next single-version, ไม่มี invalid/UNMET; มีแค่ `@emnapi`/`@napi-rs` WASM optional-deps extraneous ปกติ).
 - **Review:** ไม่มี app-code = ไม่มี logic finding; bump ทุกตัว semver-safe, major `@types/node` คุ้มด้วย tsc 0. simplify ข้าม (ไม่มีโค้ดแอป).
 - **Live browser smoke PASS (net-zero, public):** home (login card ฝัง) render — logo + navy #1447E6 primary + lucide icons + tailwind 4.3.2 CSS + `@line/liff` 2.29.1 init ครบ runtime · console 0 error (1 warning LIFF-endpoint บน localhost = คาดไว้).
+
+### 2026-07-07 — สุ่มคิว variety + รื้อ+สุ่มใหม่ (v0.20.0, feat/club-batch-queue) — ✅ PASS
+
+Batch-queue จับคู่หลากหลาย (partner+opponent, ถ่วงเท่ากัน) ใต้ priority ladder N-games > queue-mode > variety > skill-gap; tier-bounded window กัน rest-spacing พัง + remSum tiebreak กัน packing บาน. เพิ่ม `pair-history.ts` + `regenerateClubQueueAction` ("รื้อ+สุ่มใหม่", ลบ pending → gen ใหม่, ไม่แตะ in_progress/completed). **Gate:** tsc 0 · vitest 806/806 (30→31 files, +11: pair-history 8 + variety 3... รวม variety block 4) · `next build` OK (BUILD_ID `UtCHPzf_iJlzIEEWIIQRP`) · club.json parity 114 keys · **e2e club-flow 10/10** (รวมเทสใหม่: รื้อ+สุ่มใหม่ sweeps pending + completed untouched). ไม่มี migration (compute จาก rows เดิม). Clean run — no new bugs.
 
 ### 2026-07-01 — Codex verification after rules/font-token cleanup
 
@@ -585,6 +589,13 @@ Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upse
 All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
 
 ## Resolved
+
+### 2026-07-07 — [P1] สุ่มคิว variety foursome-lock (คนหารลงตัว → 3 แมตช์วนซ้ำ) — ✅ FIXED (v0.20.0 branch, ยังไม่ merge)
+- **context**: club MUGGLE `0a0130af-189f-466d-b440-a2bb21861711` (12 คน doubles, N=10, smart, skill+gap2, ล็อก 1 คู่) → คิว 30 ใบ = 3 แมตช์ตายตัววนซ้ำ 10 รอบ. ผู้เล่นถูกล็อกเป็นก๊วนย่อย 4 คน 3 กลุ่มถาวร.
+- **repro**: probe จำลอง config เป๊ะ + ลอง 5 setting (smart/rest/fifo × skill × lock × N) ทุกแบบได้ `distinctMatchups=3, maxPartnerRepeat=10` → บั๊กโค้ด ไม่ใช่ setting/ข้อมูลเก่า.
+- **root cause**: `queueTierKey` (rest/smart) คีย์ด้วย `last_finished_at` สังเคราะห์ (เพิ่มทีละแมตช์ในการจำลอง) → แต่ละแมตช์กลายเป็น tier ของตัวเอง → หน้าต่าง variety ถูกบีบเหลือ 4 คนเดิม → ก๊วนย่อยประกอบตัวเองซ้ำทุกรอบ. คนที่ "เล่นครบเท่ากัน" ควรเสมอภาค/สลับข้ามได้ แต่ tier ใช้ timestamp ต่อรอบ → over-segment.
+- **fix**: (1) `queueTierKey` rest/smart → คีย์ด้วย `games_played` (คนเล่นครบเท่ากัน = tier เดียว, variety สลับข้ามได้); (2) `planFullMatch` ใน `batch-queue.ts` ติดตาม `justPlayed` (ผู้เล่นแมตช์ก่อนหน้า) แล้วกันออกจากหน้าต่าง variety เพื่อรักษา rest-spacing (มี fallback: bench เล็กเกินก็ใช้ทั้ง tier). ผล post-fix (config เดิม): distinctMatchups **3→29**, partnerships **6→39**, adjacent-share **0**, คู่ล็อกยังซ้ำ 10 (ถูกต้อง — ล็อกไว้); ตัดล็อก → 30 แมตช์ไม่ซ้ำ maxRepeat 3.
+- **verify**: tsc 0 · vitest **807/807** (+ regression "even division + high N does not freeze into fixed foursomes"). fifo tier (position) ไม่แตะ. เทสเดิม rest-spacing/packing/locked-pair เขียวหมด.
 
 ### 2026-07-03 — mobile overflow ฟอร์มปรับแต่งใบเสร็จ (user-reported) + P1 regression จาก ship-check — FIXED บน develop (v0.16.1, ยังไม่ขึ้น prod)
 
