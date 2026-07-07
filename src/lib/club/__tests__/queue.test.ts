@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import {
   buildNextMatch,
   buildPartialMatch,
-  deriveWinnerSide,
   isClubMatchFull,
   planWinnerStays,
   resolveCourtStay,
@@ -369,11 +368,17 @@ describe("parseQueueSettings", () => {
   });
 
   it("valid partial merges over defaults", () => {
-    const r = parseQueueSettings({ court_count: 3, players_per_team: 1, queue_mode: "smart" });
+    const r = parseQueueSettings({ court_count: 3, players_per_team: 1, queue_mode: "level_match" });
     expect(r.court_count).toBe(3);
     expect(r.players_per_team).toBe(1);
-    expect(r.queue_mode).toBe("smart");
+    expect(r.queue_mode).toBe("level_match");
     expect(r.rotation_mode).toBe("fair_queue"); // untouched default
+  });
+
+  it("translates legacy values: queue_mode smart→level_match, strictness loose→balanced", () => {
+    const r = parseQueueSettings({ queue_mode: "smart", balance_strictness: "loose" });
+    expect(r.queue_mode).toBe("level_match");
+    expect(r.balance_strictness).toBe("balanced");
   });
 
   it("per-field fallback: keep valid fields, drop the corrupt one", () => {
@@ -429,20 +434,20 @@ describe("buildNextMatch — pickBalancedMatch (max_skill_gap / balance_strictne
     expect(buildNextMatch(pool, s)).toBeNull();
   });
 
-  it("loose: returns a match even when all candidates exceed max_skill_gap", () => {
+  it("balanced (flexible): returns a match even when all candidates exceed max_skill_gap", () => {
     const s = settings({
       players_per_team: 1,
       queue_mode: "level_match",
       skill_level_enabled: true,
       max_skill_gap: 2,
-      balance_strictness: "loose",
+      balance_strictness: "balanced",
     });
     const pool = [
       player("anchor", { level: 5, last_finished_at: anchorTs }),
       player("far1",   { level: 9, last_finished_at: otherTs }),
       player("far2",   { level: 10, last_finished_at: otherTs }),
     ];
-    // loose → ผ่อนเพดาน → picks nearest available (far1, gap=4)
+    // balanced → ผ่อนเพดาน → picks nearest available (far1, gap=4)
     const m = buildNextMatch(pool, s)!;
     expect(m).not.toBeNull();
     expect(ids(m)).toContain("anchor");
@@ -486,10 +491,10 @@ describe("buildNextMatch — pickBalancedMatch (max_skill_gap / balance_strictne
     expect(ids(m)).toContain("unranked");
   });
 
-  it("smart mode with skill_level_enabled also routes through pickBalancedMatch", () => {
+  it("level_match mode with skill_level_enabled also routes through pickBalancedMatch", () => {
     const s = settings({
       players_per_team: 1,
-      queue_mode: "smart",
+      queue_mode: "level_match",
       skill_level_enabled: true,
       max_skill_gap: 2,
       balance_strictness: "strict",
@@ -499,7 +504,7 @@ describe("buildNextMatch — pickBalancedMatch (max_skill_gap / balance_strictne
       player("far1",   { level: 9, last_finished_at: otherTs }),
       player("far2",   { level: 10, last_finished_at: otherTs }),
     ];
-    // smart + skill_level_enabled + strict + no eligible → null
+    // level_match + skill_level_enabled + strict + no eligible → null
     expect(buildNextMatch(pool, s)).toBeNull();
   });
 });
@@ -651,19 +656,6 @@ describe("buildNextMatch — null-anchor does not deadlock (FIX 1 P1-A)", () => 
     const m = buildNextMatch(pool, s);
     expect(m).not.toBeNull();
     expect(ids(m!)).toContain("anchor");
-  });
-});
-
-describe("deriveWinnerSide", () => {
-  it("returns 'a' when side A scores higher", () => {
-    expect(deriveWinnerSide(21, 18)).toBe("a");
-  });
-  it("returns 'b' when side B scores higher", () => {
-    expect(deriveWinnerSide(15, 21)).toBe("b");
-  });
-  it("returns null on a tie", () => {
-    expect(deriveWinnerSide(21, 21)).toBeNull();
-    expect(deriveWinnerSide(0, 0)).toBeNull();
   });
 });
 

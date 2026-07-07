@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
+import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 import {
   parseQueueSettings,
+  type ClubQueueSettings,
 } from "@/lib/club/queue-settings";
 import { resolveClubCourts } from "@/lib/club/courts";
 import {
@@ -18,9 +20,19 @@ import {
   keepsWinner,
   benchSufficientForFresh,
   playersInLatestPerCourt,
+  orderPool,
+  takeSides,
   type QueuePlayer,
   type MatchSide,
 } from "@/lib/club/queue";
+import {
+  generateBatchQueue,
+  buildPairHistory,
+  countFixedAppearances,
+  computePlayerTargets,
+  type BatchCountableMatch,
+} from "@/lib/club/batch-queue";
+import { embeddedReal } from "@/lib/tournament/levels";
 import type { ClubMatch, Game } from "@/lib/types";
 
 /**
@@ -37,10 +49,13 @@ async function loadClubMatchForManage(
       match: {
         id: string;
         club_id: string;
+        status: string;
+        court: string | null;
         side_a_player1: string | null;
         side_a_player2: string | null;
         side_b_player1: string | null;
         side_b_player2: string | null;
+        winner_next_match_id: string | null;
       };
     }
   | { error: string }
@@ -48,7 +63,9 @@ async function loadClubMatchForManage(
   const t = await getTranslations("actions");
   const { data: match, error } = await sb
     .from("club_matches")
-    .select("id, club_id, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
+    .select(
+      "id, club_id, status, court, side_a_player1, side_a_player2, side_b_player1, side_b_player2, winner_next_match_id",
+    )
     .eq("id", matchId)
     .single();
   if (error || !match) return { error: t("club.matchNotFound") };
@@ -94,194 +111,86 @@ async function resolveMatchSides(
   return { cleanA, cleanB };
 }
 
+// ─── Batch queue ("สุ่มคิว") ───────────────────────────────────────────────────
+
+type QueueContext = {
+  settings: ClubQueueSettings;
+  courts: string[];
+  clubStart: string;
+  clubEnd: string;
+  /** check-in-gated eligible players — INCLUDES players in active matches (the
+   *  batch generator accounts for those via the per-player remaining counts) */
+  pool: QueuePlayer[];
+  /** ids currently in a pending / in_progress match */
+  activePlayerIds: Set<string>;
+  lockedPairs: [string, string][];
+  /** raw eligible rows — carries the pro-rate fields (start/end/check-in) */
+  playerRows: Array<{
+    id: string;
+    start_time: string | null;
+    end_time: string | null;
+    checked_in_at: string | null;
+  }>;
+};
+
 /**
- * Owner / co-admin proposes the next match for a given court.
- *
- * Pool eligibility:
- *  1. Exclude players currently assigned to a pending or in_progress match.
- *  2. Check-in gate: if ANY player in the club is checked in, restrict the pool
- *     to checked-in players only. Clubs that don't use check-in (nobody checked
- *     in) continue using all players — this preserves backwards compatibility.
- *
- * winner_stays: the most recently completed match on this court is inspected.
- * The winning side's streak is computed (consecutive wins by the same set of
- * player ids). If the cap hasn't been reached and the winners are still
- * pool-eligible, they stay on court as sideA and are removed from the pool
- * before the opponents are drawn.
+ * Shared pool assembly for the batch-queue actions: settings + named courts +
+ * active roster (check-in gate / not_ready_action applied, level resolved via
+ * the levels FK) + busy-player set + locked pairs. Mirrors the eligibility
+ * rules of the per-court builder.
  */
-export async function buildNextClubMatchAction(
+async function loadClubQueueContext(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
   clubId: string,
-  court: string,
-): Promise<{ ok: true; match: ClubMatch } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-
-  const t = await getTranslations("actions");
-  const courtName = court.trim();
-  if (!courtName) return { error: t("club.specifyCourtName") };
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
-
-  // Load settings.
+  t: Awaited<ReturnType<typeof getTranslations>>,
+): Promise<QueueContext | { error: string }> {
   const { data: clubRow, error: clubFetchError } = await sb
     .from("clubs")
-    .select("queue_settings, courts")
+    .select("queue_settings, courts, start_time, end_time")
     .eq("id", clubId)
     .single();
   if (clubFetchError || !clubRow) return { error: t("club.clubNotFound") };
   const settings = parseQueueSettings(clubRow.queue_settings);
+  const courts = resolveClubCourts((clubRow.courts ?? []) as string[], settings.court_count);
 
-  // Court must be one of the club's named courts (when any are configured) —
-  // mirror setClubMatchCourtAction so a phantom court can't be created.
-  const courts = (clubRow.courts ?? []) as string[];
-  if (courts.length > 0 && !courts.includes(courtName)) return { error: t("club.courtNotInClub") };
-
-  // Load active players for this club (level resolved via the levels FK).
-  // Reserves (status='reserve') are excluded — they wait until promoted and are
-  // never drafted into a match by the queue builder.
   const { data: allPlayers, error: playersFetchError } = await sb
     .from("club_players")
-    .select("id, position, joined_at, level_id, games_played, last_finished_at, checked_in_at, levels:level_id(real)")
+    .select(
+      "id, position, joined_at, level_id, games_played, last_finished_at, checked_in_at, start_time, end_time, levels:level_id(real)",
+    )
     .eq("club_id", clubId)
     .eq("status", "active");
   if (playersFetchError || !allPlayers) return { error: t("club.loadPlayersFailed") };
 
-  // Collect ids of players already in an active (pending or in_progress) match.
-  // `court` is also read so winner_stays can tell which courts are already busy
-  // (their winners must NOT be reserved — see planWinnerStays below).
   const { data: activeMatches } = await sb
     .from("club_matches")
-    .select("court, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
+    .select("side_a_player1, side_a_player2, side_b_player1, side_b_player2")
     .eq("club_id", clubId)
     .in("status", ["pending", "in_progress"]);
-
-  const activePlayers = new Set<string>();
+  const activePlayerIds = new Set<string>();
   for (const m of activeMatches ?? []) {
-    if (m.side_a_player1) activePlayers.add(m.side_a_player1);
-    if (m.side_a_player2) activePlayers.add(m.side_a_player2);
-    if (m.side_b_player1) activePlayers.add(m.side_b_player1);
-    if (m.side_b_player2) activePlayers.add(m.side_b_player2);
+    for (const id of [m.side_a_player1, m.side_a_player2, m.side_b_player1, m.side_b_player2]) {
+      if (id) activePlayerIds.add(id);
+    }
   }
 
-  // Check-in = readiness. When at least one player is checked in, check-in is
-  // "in use" and not_ready_action decides what to do with not-ready (not-checked-in)
-  // players: "skip" excludes them from the pool (the long-standing default behavior);
-  // "requeue" keeps them but the queue sorts them to the tail (drafted only when ready
-  // players run short — see QueuePlayer.notReady). When nobody is checked in, check-in
-  // isn't in use → everyone is eligible regardless of the setting.
   const anyCheckedIn = allPlayers.some((p) => p.checked_in_at != null);
   const isNotReady = (p: (typeof allPlayers)[number]) =>
     anyCheckedIn && p.checked_in_at == null;
+  const eligible = allPlayers.filter(
+    (p) => !(isNotReady(p) && settings.not_ready_action === "skip"),
+  );
 
-  // Build pool-eligible set: not in active match + (check-in gate if applicable).
-  const eligiblePlayers = allPlayers.filter((p) => {
-    if (activePlayers.has(p.id)) return false;
-    if (isNotReady(p) && settings.not_ready_action === "skip") return false;
-    return true;
-  });
+  const pool: QueuePlayer[] = eligible.map((p) => ({
+    id: p.id,
+    position: p.position,
+    joined_at: p.joined_at,
+    level: embeddedReal(p.levels),
+    games_played: p.games_played,
+    last_finished_at: p.last_finished_at,
+    notReady: isNotReady(p),
+  }));
 
-  // Map to QueuePlayer. Level = levels.real (via FK embed); NaN → null.
-  const toQueuePlayer = (p: (typeof eligiblePlayers)[number]): QueuePlayer => {
-    const lvRow = Array.isArray(p.levels) ? p.levels[0] : p.levels;
-    let level: number | null = null;
-    if (lvRow?.real != null) {
-      const r = Number(lvRow.real);
-      level = Number.isNaN(r) ? null : r;
-    }
-    return {
-      id: p.id,
-      position: p.position,
-      joined_at: p.joined_at,
-      level,
-      games_played: p.games_played,
-      last_finished_at: p.last_finished_at,
-      // requeue policy keeps not-checked-in players in the pool but at the tail.
-      notReady: isNotReady(p),
-    };
-  };
-
-  let pool: QueuePlayer[] = eligiblePlayers.map(toQueuePlayer);
-  let stayingSide: MatchSide | undefined;
-
-  // winner_stays / fair_winner_fallback: keep each court's most-recent winners on
-  // THEIR court. We fetch completed matches across ALL courts (not just this one) so
-  // building one court RESERVES the other free courts' winners — i.e. excludes them
-  // from this court's opponent pool. Without that, building court 1 would draw court 2's
-  // winners as opponents, and court 2 would lose its winner on the next build (the old
-  // bug: winners only stayed on the first-built court). No winner_side filter — a
-  // most-recent no-winner/tie finish must still count as "just played"; resolveCourtStay
-  // returns no stayer for a tie-headed court on its own.
-  if (keepsWinner(settings.rotation_mode)) {
-    const { data: recentMatches } = await sb
-      .from("club_matches")
-      .select(
-        "court, side_a_player1, side_a_player2, side_b_player1, side_b_player2, winner_side, ended_at",
-      )
-      .eq("club_id", clubId)
-      .eq("status", "completed")
-      .order("ended_at", { ascending: false })
-      .limit(100);
-
-    // Only READY players can be winner-stayers / be reserved for their court. Under
-    // `requeue`, eligiblePlayers includes not-ready (not-checked-in) players — they must
-    // NOT be force-kept on court ahead of ready waiters, so exclude them here.
-    const eligibleIds = new Set(
-      eligiblePlayers.filter((p) => !isNotReady(p)).map((p) => p.id),
-    );
-    // Courts that already hold a pending/in_progress match won't get a winner-stays
-    // build right now, so their winners must NOT be reserved (they'd never be drawn).
-    const courtsWithActive = new Set(
-      (activeMatches ?? []).map((m) => m.court).filter((c): c is string => c != null),
-    );
-
-    // ALWAYS plan reservation (both modes) so building this court can't steal another
-    // free court's winner. The cap stays the configured value — never globally overridden.
-    const plan = planWinnerStays(recentMatches ?? [], {
-      currentCourt: courtName,
-      courtsWithActiveMatch: courtsWithActive,
-      winnerStaysMax: settings.winner_stays_max,
-      eligibleIds,
-      // Only reserve winners for courts that still exist in the club's config — a
-      // removed/renamed court's stale completed rows must not strand players. When the
-      // club has no named courts (free-text fallback), reserve any free court.
-      reservableCourts: courts.length > 0 ? new Set(courts) : undefined,
-    });
-    stayingSide = plan.stayingSide ?? undefined;
-
-    // fair_winner_fallback is FAIR by default — this court's winner rotates out too and
-    // the longest-rested come in. It only KEEPS this court's winner when the bench can't
-    // seat a WHOLE fresh match: bench = players who didn't just play on ANY court (so a
-    // player who just finished elsewhere isn't mistaken for rested). winner_stays always
-    // keeps the winner (and respects its cap via plan.stayingSide above).
-    if (settings.rotation_mode === "fair_winner_fallback") {
-      const justPlayedAnywhere = playersInLatestPerCourt(recentMatches ?? []);
-      // Bench counts READY players only — not-ready (requeue) players must not make the
-      // bench look big enough to seat a whole fresh match (else the ready winner gets
-      // rotated out in favor of not-checked-in draftees).
-      const readyBench = pool.filter((p) => !p.notReady);
-      if (benchSufficientForFresh(readyBench, justPlayedAnywhere, settings.players_per_team)) {
-        stayingSide = undefined; // FAIR — drop this court's stayer (others stay reserved)
-      } else {
-        // FALLBACK: the shortage itself is the throttle, so this court's winner stays
-        // regardless of winner_stays_max (cap=0). Other courts' reservation in `plan`
-        // keeps the configured cap — the cap is only bypassed for THIS court's stay.
-        const thisCourtRows = (recentMatches ?? []).filter((m) => m.court === courtName);
-        stayingSide = resolveCourtStay(thisCourtRows, 0, eligibleIds)?.stayingSide ?? undefined;
-      }
-    }
-
-    // Remove this court's stayer (becomes sideA) AND other free courts' reserved winners
-    // (held for their own court) from this court's opponent pool.
-    const exclude = new Set<string>(plan.reservedIds);
-    if (stayingSide) {
-      if (stayingSide.player1) exclude.add(stayingSide.player1);
-      if (stayingSide.player2) exclude.add(stayingSide.player2);
-    }
-    if (exclude.size > 0) pool = pool.filter((p) => !exclude.has(p.id));
-  }
-
-  // Load active locked pairs (teammate locks honored by the queue, doubles only).
   const { data: lockRows } = await sb
     .from("club_locked_pairs")
     .select("player1_id, player2_id")
@@ -291,38 +200,107 @@ export async function buildNextClubMatchAction(
     r.player2_id,
   ]);
 
-  // Build the next match. If the pool is too small for a FULL match, fall back to a PARTIAL
-  // match (reserve the court with the players available now; the organizer fills the rest
-  // inline and can't START until full). The two error paths remain: nobody free at all, or
-  // enough bodies but a constraint (skill-gap strict / locked partner absent) blocked it.
-  const proposed = buildNextMatch(pool, settings, stayingSide, lockedPairs);
-  let slotIds: { a1: string | null; a2: string | null; b1: string | null; b2: string | null };
-  if (proposed) {
-    slotIds = {
-      a1: proposed.sideA.player1,
-      a2: proposed.sideA.player2 ?? null,
-      b1: proposed.sideB.player1,
-      b2: proposed.sideB.player2 ?? null,
-    };
-  } else {
-    // winner_stays only draws the opponents, so it needs ppt (not 2*ppt) more players.
-    const needed = stayingSide ? settings.players_per_team : settings.players_per_team * 2;
-    const available = pool.length;
-    const checkedIn = allPlayers.filter((p) => p.checked_in_at != null).length;
-    const playing = activePlayers.size;
-    if (available >= needed) {
-      // Enough bodies but no valid lineup (skill-gap strict / a locked player's partner is
-      // absent). Don't hide that behind a half-filled match — surface it.
-      return { error: t("club.cannotFormMatchSkillLock") };
-    }
-    const partial = available > 0 ? buildPartialMatch(pool, settings, stayingSide) : null;
-    if (!partial) {
-      return { error: t("club.notEnoughPlayersDetail", { needed, available, checkedIn, playing }) };
-    }
-    slotIds = partial;
+  return {
+    settings,
+    courts,
+    clubStart: (clubRow.start_time as string).slice(0, 5),
+    clubEnd: (clubRow.end_time as string).slice(0, 5),
+    pool,
+    activePlayerIds,
+    lockedPairs,
+    playerRows: eligible.map((p) => ({
+      id: p.id,
+      start_time: p.start_time,
+      end_time: p.end_time,
+      checked_in_at: p.checked_in_at,
+    })),
+  };
+}
+
+const GenerateQueueSchema = z.object({
+  minMatches: z.number().int().min(1).max(20),
+});
+
+/**
+ * "สุ่มคิว" — generate the whole session's queue in one press: courtless pending
+ * matches such that every eligible player reaches their PRO-RATED minimum of N
+ * fixed appearances (N scaled by the fraction of the session they're present;
+ * see resolvePlayerWindow / proRatedTarget). Re-pressing tops up: existing
+ * fixed appearances (pending + in_progress + completed) count toward the
+ * target and only the shortfall is generated — nothing is deleted.
+ *
+ * winner_stays / fair_winner_fallback generate court-count lanes whose chained
+ * matches carry a "ผู้ชนะจากแมตช์ #N" placeholder side, wired via the
+ * winner_next_match_id/slot forward pointer (promotion in finish_club_match).
+ */
+export async function generateClubQueueAction(
+  clubId: string,
+  input: { minMatches: number },
+): Promise<{ ok: true; created: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const parsed = GenerateQueueSchema.safeParse(input);
+  if (!parsed.success) return { error: t("club.invalidData") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
   }
 
-  // Compute next queue_position for this club's pending matches.
+  const ctx = await loadClubQueueContext(sb, clubId, t);
+  if ("error" in ctx) return ctx;
+
+  // Remember the organizer's N as the dialog default for next time.
+  if (ctx.settings.batch_min_matches !== parsed.data.minMatches) {
+    await sb
+      .from("clubs")
+      .update({ queue_settings: { ...ctx.settings, batch_min_matches: parsed.data.minMatches } })
+      .eq("id", clubId);
+  }
+
+  // Top-up: everything already scheduled or played this session counts.
+  const { data: allMatches, error: matchesError } = await sb
+    .from("club_matches")
+    .select("status, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
+    .eq("club_id", clubId);
+  if (matchesError) return { error: matchesError.message };
+  const countable = (allMatches ?? []) as BatchCountableMatch[];
+  const existing = countFixedAppearances(countable);
+  // Seed variety from who has already partnered / opposed whom tonight, so a
+  // top-up avoids repeating the matchups that are already queued or played.
+  const history = buildPairHistory(countable);
+
+  // Per-player pro-rated target — shared helper, byte-identical math to the dialog
+  // preview (buildPreviewRows) so what the organizer previews is what gets generated.
+  const remaining = new Map<string, number>();
+  for (const [id, tgt] of computePlayerTargets(
+    ctx.playerRows,
+    parsed.data.minMatches,
+    ctx.clubStart,
+    ctx.clubEnd,
+    existing,
+  )) {
+    remaining.set(id, tgt.shortfall);
+  }
+
+  const plans = generateBatchQueue({
+    pool: ctx.pool,
+    settings: ctx.settings,
+    lockedPairs: ctx.lockedPairs,
+    remaining,
+    laneCount: ctx.courts.length,
+    history,
+  });
+  if (plans.length === 0) {
+    if (ctx.pool.length < ctx.settings.players_per_team * 2) {
+      return { error: t("club.generateNotEnoughPlayers") };
+    }
+    return { error: t("club.generateNothingToDo") };
+  }
+
+  // Queue tail for the whole batch.
   const { data: maxRow } = await sb
     .from("club_matches")
     .select("queue_position")
@@ -331,79 +309,205 @@ export async function buildNextClubMatchAction(
     .order("queue_position", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const nextQueuePosition = (maxRow?.queue_position ?? 0) + 1;
+  const base = maxRow?.queue_position ?? 0;
 
-  // Insert the match row.
-  const { data: newMatch, error: insertError } = await sb
+  // Phase 1: insert all rows (courtless; winnerOf sides = empty slots).
+  const rows = plans.map((plan, i) => ({
+    club_id: clubId,
+    court: null,
+    side_a_player1: plan.sideA.kind === "players" ? plan.sideA.player1 : null,
+    side_a_player2: plan.sideA.kind === "players" ? plan.sideA.player2 : null,
+    side_b_player1: plan.sideB.kind === "players" ? plan.sideB.player1 : null,
+    side_b_player2: plan.sideB.kind === "players" ? plan.sideB.player2 : null,
+    status: "pending",
+    queue_position: base + i + 1,
+  }));
+  const { data: inserted, error: insertError } = await sb
     .from("club_matches")
-    .insert({
-      club_id: clubId,
-      court: courtName,
-      side_a_player1: slotIds.a1,
-      side_a_player2: slotIds.a2,
-      side_b_player1: slotIds.b1,
-      side_b_player2: slotIds.b2,
-      status: "pending",
-      queue_position: nextQueuePosition,
-    })
-    .select()
-    .single();
+    .insert(rows)
+    .select("id");
+  if (insertError || !inserted || inserted.length !== plans.length) {
+    return { error: insertError?.message ?? t("club.generateFailed") };
+  }
 
-  if (insertError || !newMatch) return { error: insertError?.message ?? t("club.createMatchFailed") };
+  // Phase 2: wire winner pointers on the feeder rows. Not atomic with phase 1 —
+  // a failure here leaves chainless matches that degrade to editable empty
+  // slots (accepted; see plan). The generator only puts winnerOf in sideA.
+  for (let i = 0; i < plans.length; i++) {
+    const sideA = plans[i].sideA;
+    if (sideA.kind !== "winnerOf") continue;
+    const { error: pointerError } = await sb
+      .from("club_matches")
+      .update({
+        winner_next_match_id: inserted[i].id as string,
+        winner_next_match_slot: "a",
+      })
+      .eq("id", inserted[sideA.sourceIndex].id as string);
+    if (pointerError) return { error: pointerError.message };
+  }
 
   revalidatePath(`/clubs/${clubId}`);
-  return { ok: true, match: newMatch as ClubMatch };
+  return { ok: true, created: plans.length };
 }
 
 /**
- * A1 — build the next match for EVERY free court at once. A "free" court has no
- * pending AND no in_progress match, so this never stacks a second pending onto a
- * court that already has one queued. Builds sequentially via the proven per-court
- * builder so each build sees the previous court's freshly-queued players
- * (busy-player exclusion) and the winner-stays cross-court reservation stays
- * correct. Stops early once the pool can't form another match (remaining courts
- * can't either). Returns how many were built out of how many courts were free.
+ * "รื้อคิว แล้วสุ่มใหม่" — clear every NOT-yet-started (pending) match and
+ * regenerate the whole upcoming queue from scratch, so the freshness logic
+ * gets to re-plan matchups the earlier queue may have repeated. In-progress
+ * and completed matches are never touched, and they still seed the variety
+ * memory (so the new queue keeps spreading partners/opponents away from what
+ * has already happened tonight). Destructive to pending only — the UI guards
+ * it behind a confirm dialog.
  */
-export async function buildAllCourtsAction(
+export async function regenerateClubQueueAction(
   clubId: string,
-): Promise<{ ok: true; built: number; free: number } | { error: string }> {
+  input: { minMatches: number },
+): Promise<{ ok: true; created: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const parsed = GenerateQueueSchema.safeParse(input);
+  if (!parsed.success) return { error: t("club.invalidData") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  // Which rows are we clearing?
+  const { data: pendingRows, error: pendingError } = await sb
+    .from("club_matches")
+    .select("id")
+    .eq("club_id", clubId)
+    .eq("status", "pending");
+  if (pendingError) return { error: pendingError.message };
+  const pendingIds = (pendingRows ?? []).map((r) => r.id as string);
+
+  if (pendingIds.length > 0) {
+    // Drop any winner-chain pointer aimed at a row we're about to delete first,
+    // so no feeder (in-progress, completed, or another pending) is left with a
+    // dangling reference when the rows go.
+    const { error: clearError } = await sb
+      .from("club_matches")
+      .update({ winner_next_match_id: null, winner_next_match_slot: null })
+      .eq("club_id", clubId)
+      .in("winner_next_match_id", pendingIds);
+    if (clearError) return { error: clearError.message };
+
+    const { error: deleteError } = await sb
+      .from("club_matches")
+      .delete()
+      .eq("club_id", clubId)
+      .eq("status", "pending");
+    if (deleteError) return { error: deleteError.message };
+  }
+
+  // With pending gone, a plain top-up rebuilds the whole queue from the
+  // remaining (in-progress + completed) appearances.
+  return generateClubQueueAction(clubId, { minMatches: parsed.data.minMatches });
+}
+
+/**
+ * "จัดคิวใหม่" — re-roll ONE pending match's fixed players from the freshest
+ * pool (the match's own players return to the pool and may be re-picked when
+ * they're still the fairest choice). Court, queue position and winner pointers
+ * are untouched. A live "ผู้ชนะจากแมตช์ #N" placeholder side is left alone —
+ * only the fixed side re-rolls, and the feeder's fixed players stay excluded
+ * (the promoted winner may BE them).
+ */
+export async function rebuildClubPendingMatchAction(
+  matchId: string,
+): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
   const t = await getTranslations("actions");
   const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
+  const guard = await loadClubMatchForManage(sb, matchId, session.profileId);
+  if ("error" in guard) return { error: guard.error };
+  const { match } = guard;
+  if (match.status !== "pending") return { error: t("club.rebuildOnlyPending") };
 
-  const { data: clubRow, error: clubFetchError } = await sb
-    .from("clubs")
-    .select("queue_settings, courts")
-    .eq("id", clubId)
-    .single();
-  if (clubFetchError || !clubRow) return { error: t("club.clubNotFound") };
-  const settings = parseQueueSettings(clubRow.queue_settings);
-  const courts = resolveClubCourts((clubRow.courts ?? []) as string[], settings.court_count);
+  const ctx = await loadClubQueueContext(sb, match.club_id, t);
+  if ("error" in ctx) return ctx;
+  const ppt = ctx.settings.players_per_team;
 
-  // Free = no pending AND no in_progress match on that court (don't stack a 2nd pending).
-  const { data: activeMatches } = await sb
+  // Live feeder pointing at this match → that side is a placeholder.
+  const { data: feeder } = await sb
     .from("club_matches")
-    .select("court")
-    .eq("club_id", clubId)
-    .in("status", ["pending", "in_progress"]);
-  const occupied = new Set(
-    (activeMatches ?? []).map((m) => m.court).filter((c): c is string => c != null),
-  );
-  const freeCourts = courts.filter((c) => !occupied.has(c));
+    .select(
+      "winner_next_match_slot, side_a_player1, side_a_player2, side_b_player1, side_b_player2",
+    )
+    .eq("winner_next_match_id", matchId)
+    .in("status", ["pending", "in_progress"])
+    .limit(1)
+    .maybeSingle();
+  const placeholderSlot =
+    feeder?.winner_next_match_slot === "a" || feeder?.winner_next_match_slot === "b"
+      ? feeder.winner_next_match_slot
+      : null;
 
-  let built = 0;
-  for (const court of freeCourts) {
-    const res = await buildNextClubMatchAction(clubId, court);
-    if ("ok" in res) built += 1;
-    // Stop at the first court that can't form a match — the common case is a drained
-    // pool (later courts can't form either). A rarer skill-gap/locked-pair block is
-    // also possible; the manager can still build that specific court via its own button.
-    else break;
+  const own = new Set(
+    [match.side_a_player1, match.side_a_player2, match.side_b_player1, match.side_b_player2].filter(
+      (x): x is string => x != null,
+    ),
+  );
+  const feederIds = new Set(
+    feeder
+      ? [feeder.side_a_player1, feeder.side_a_player2, feeder.side_b_player1, feeder.side_b_player2].filter(
+          (x): x is string => x != null,
+        )
+      : [],
+  );
+  // Free players + this match's own players (released back), minus the feeder's.
+  const pool = ctx.pool.filter(
+    (p) => (!ctx.activePlayerIds.has(p.id) || own.has(p.id)) && !feederIds.has(p.id),
+  );
+
+  let update: Record<string, string | null>;
+  if (placeholderSlot) {
+    const partnerOf = new Map<string, string>();
+    if (ppt === 2) {
+      for (const [a, b] of ctx.lockedPairs) {
+        partnerOf.set(a, b);
+        partnerOf.set(b, a);
+      }
+    }
+    const poolIds = new Set(pool.map((p) => p.id));
+    const selectable = pool.filter((p) => {
+      const partner = partnerOf.get(p.id);
+      return partner == null || poolIds.has(partner);
+    });
+    const sides = takeSides(orderPool(selectable, ctx.settings), partnerOf, 1, ppt);
+    if (!sides) return { error: t("club.rebuildNoPlayers") };
+    const side = sides[0];
+    update =
+      placeholderSlot === "a"
+        ? { side_b_player1: side.player1, side_b_player2: side.player2 ?? null }
+        : { side_a_player1: side.player1, side_a_player2: side.player2 ?? null };
+  } else {
+    const proposed = buildNextMatch(pool, ctx.settings, undefined, ctx.lockedPairs);
+    if (!proposed) return { error: t("club.rebuildNoPlayers") };
+    update = {
+      side_a_player1: proposed.sideA.player1,
+      side_a_player2: proposed.sideA.player2 ?? null,
+      side_b_player1: proposed.sideB.player1,
+      side_b_player2: proposed.sideB.player2 ?? null,
+    };
   }
-  return { ok: true, built, free: freeCourts.length };
+
+  const { data: updated, error: updateError } = await sb
+    .from("club_matches")
+    .update(update)
+    .eq("id", matchId)
+    .eq("status", "pending")
+    .select("id");
+  if (updateError) return { error: updateError.message };
+  if (!updated || updated.length === 0) return { error: t("club.rebuildOnlyPending") };
+
+  revalidatePath(`/clubs/${match.club_id}`);
+  return { ok: true };
 }
 
 /**
@@ -424,6 +528,11 @@ export async function startClubMatchAction(
   const { match } = guard;
 
   const t = await getTranslations("actions");
+  // Court gate: batch-generated matches start courtless — the organizer must
+  // assign a court before starting (keeps the in_progress occupancy index able
+  // to do its job; a NULL court would slip past it).
+  if (!match.court || !match.court.trim()) return { error: t("club.matchNeedsCourtToStart") };
+
   // Roster-completeness gate: a partial-roster match (reserved with empty slots) may
   // sit in the pending queue but must be fully staffed before it can start.
   const { data: clubRow } = await sb
@@ -432,7 +541,20 @@ export async function startClubMatchAction(
     .eq("id", match.club_id)
     .single();
   const ppt = parseQueueSettings(clubRow?.queue_settings ?? {}).players_per_team;
-  if (!isClubMatchFull(match, ppt)) return { error: t("club.matchNotFullToStart") };
+  if (!isClubMatchFull(match, ppt)) {
+    // Distinguish "waiting for a winner" (a live feeder still points here) from
+    // an ordinary partial roster — the fix for each is different for the user.
+    const { data: feeder } = await sb
+      .from("club_matches")
+      .select("id")
+      .eq("winner_next_match_id", matchId)
+      .in("status", ["pending", "in_progress"])
+      .limit(1)
+      .maybeSingle();
+    return {
+      error: feeder ? t("club.matchWaitingForWinner") : t("club.matchNotFullToStart"),
+    };
+  }
 
   const { error: updateError } = await sb
     .from("club_matches")
@@ -535,6 +657,23 @@ export async function finishClubMatchAction(input: {
   // jsonb stays bounded. Otherwise garbage flows straight into the RPC.
   if (input.winnerSide != null && input.winnerSide !== "a" && input.winnerSide !== "b") {
     return { error: t("club.invalidWinner") };
+  }
+  // A feeder match (whose winner is promoted into a chained "ผู้ชนะจากแมตช์ #N"
+  // slot) MUST record a winner. Finishing it with no result skips promotion and
+  // leaves the downstream match's placeholder side empty forever — un-startable.
+  if (input.winnerSide == null && match.winner_next_match_id != null) {
+    return { error: t("club.finishFeederNeedsWinner") };
+  }
+  // The chosen winner side must actually have players. An unresolved "ผู้ชนะจากแมตช์
+  // #N" placeholder (both slots NULL until its own feeder finishes) can't win —
+  // finishing it out of order would promote (NULL, NULL) into the next chained match
+  // and strand it. The UI only finishes in_progress matches (full roster); this guards
+  // a direct/out-of-order call.
+  if (
+    (input.winnerSide === "a" && match.side_a_player1 == null && match.side_a_player2 == null) ||
+    (input.winnerSide === "b" && match.side_b_player1 == null && match.side_b_player2 == null)
+  ) {
+    return { error: t("club.finishEmptySide") };
   }
   const games = input.games ?? [];
   if (!Array.isArray(games) || games.length > 9) {
@@ -722,7 +861,8 @@ export async function setClubMatchShuttlesAction(
  */
 export async function createClubManualMatchAction(input: {
   clubId: string;
-  court: string;
+  /** optional — omitted/blank = courtless (assign later, required before start) */
+  court?: string;
   sideA: string[];
   sideB: string[];
 }): Promise<{ ok: true; match: ClubMatch } | { error: string }> {
@@ -731,8 +871,7 @@ export async function createClubManualMatchAction(input: {
 
   const t = await getTranslations("actions");
   const { clubId, sideA, sideB } = input;
-  const courtName = input.court.trim();
-  if (!courtName) return { error: t("club.specifyCourtName") };
+  const courtName = input.court?.trim() ?? "";
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
@@ -746,9 +885,11 @@ export async function createClubManualMatchAction(input: {
   if (clubErr || !clubRow) return { error: t("club.clubNotFound") };
   const ppt = parseQueueSettings(clubRow.queue_settings).players_per_team;
 
-  // Court must be one of the club's named courts (when any are configured).
+  // Court (when given) must be one of the club's named courts (when any are configured).
   const courts = (clubRow.courts ?? []) as string[];
-  if (courts.length > 0 && !courts.includes(courtName)) return { error: t("club.courtNotInClub") };
+  if (courtName && courts.length > 0 && !courts.includes(courtName)) {
+    return { error: t("club.courtNotInClub") };
+  }
 
   // Partial roster allowed: reserve a match/court with as few as 1 player and fill the
   // rest later (setClubMatchPlayersAction). Starting is separately gated on a full
@@ -772,7 +913,7 @@ export async function createClubManualMatchAction(input: {
     .from("club_matches")
     .insert({
       club_id: clubId,
-      court: courtName,
+      court: courtName || null,
       side_a_player1: cleanA[0] ?? null,
       side_a_player2: cleanA[1] ?? null,
       side_b_player1: cleanB[0] ?? null,

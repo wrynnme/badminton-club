@@ -4,11 +4,56 @@ Format: `- [severity] title — context · repro · suggested fix`
 
 ## Open
 
-(no open bugs — อัปเดต 2026-07-06 หลังปิด P2 reorder∥start renumber.) Every finding from the 2026-06-09 whole-system core review (`docs/reviews/code-review-core-2026-06-09.html` — 1 P0 + 4 P1 + 23 P2) is closed — full records in Resolved.
+(no open bugs — อัปเดต 2026-07-07 หลังปิด P1 variety foursome-lock, ดู Resolved.) Every finding from the 2026-06-09 whole-system core review (`docs/reviews/code-review-core-2026-06-09.html` — 1 P0 + 4 P1 + 23 P2) is closed — full records in Resolved.
 
 The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open)**: `computeExpenseShares` ceil-per-head over-collects a few baht (100฿/3 → 34×3 = 102). By design — equal players pay the same whole baht, the organizer is never short, and it stays reconciled across the cost-breakdown table + ExpenseManager. A fair largest-remainder split was offered and declined (user, 2026-06-09).
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
+
+### 2026-07-07 (แก้ไข → ✅ FIXED) — ship-check re-review (4 finder + probe): P1-2 fix ไม่ครบ → แก้ครบทั้งชุดแล้ว
+
+**✅ Resolution (2026-07-07, "แก้ทั้งหมด" per user) — verified vitest 808/808 · tsc 0:**
+- **[P1] cross-lane + [P1] transitive P-vs-P double-book** (`batch-queue.ts`): แทน exclude เดิม (usedThisRound + prev ของ lane เดียว) ด้วย **`concurrentBase`** = union ของ **possible-occupants ทุก lane** ผ่าน helper ใหม่ `planOccupants(plans, index, memo)` ที่ resolve `winnerOf` ทั้ง chain (recursive DAG walk, memoised). ปิดทั้ง 2 คลาส: คนที่อาจถูก promote เข้า slot ของ lane ใดก็ตามในรอบเดียวกันจะไม่ถูก draft เป็น fixed. lane ที่ไม่มีคน safe เหลือ = ไม่เปิด (ถูกต้อง). **ผล:** winner_stays batch วางแผน **1 fixed game/คน/batch** (ธรรมชาติของ winner_stays static — เล่นต่อ = จบแมตช์แล้วสุ่มใหม่); ไม่มี double-book ทุก winner outcome.
+- **Test ที่เคย blind แก้แล้ว:** `assertNoConcurrentDoubleBooking` เขียนใหม่ให้ resolve `winnerOf` → possible-occupants disjoint (within-match = ไม่ P-vs-P, cross-round = ไม่ชนคอร์ด). **probe-first**: ยืนยัน fail บนโค้ดเก่าก่อนแก้. อัปเดต 3 test ที่ assert `>= N` เดิม (อิงบั๊ก over-generate) → assert count `=== 1` (semantics ถูก) + bump pool ให้ยัง exercise chain.
+- **[P2] even-division half-lock** (`batch-queue.ts:301`): `if (eligible.length < fillCount)` → **`<=`** (ตรง intent ของ comment เดิม; `<` พลาด boundary). pool==2×matchsize (8 คน doubles) เลิก lock: probe distinctFoursomes **2→14**, partnerships **12→28 (ครบทุกคู่)**, crossHalf **0→12**, fairness ยังถึง N. +1 regression test. trade: ยอม back-to-back 1 ครั้งที่ boundary (rest-spacing test ย้ายไป pool 12 ที่ยังถือ strict).
+- **[P2] roster-ghost / [P3] promote-null / [P3] feeder-null-RPC**: migration ใหม่ `20260707000400_club_match_promotion_guards.sql` (CREATE OR REPLACE 2 RPC, ไม่แตะ happy path) — finish: ไม่ promote empty-side (`v_w1 IS NOT NULL`) + reject null-winner บน feeder (RAISE); delete: ย้อน promotion (clear target slot ถ้ายัง pending + ถือ winner เดิมเป๊ะ, `IS NOT DISTINCT FROM` null-safe). + action guard ใน `finishClubMatchAction` (reject finish empty winner-side, key ใหม่ `club.finishEmptySide` th/en). **✅ migration applied prod 2026-07-07 (user-approved) + verified**: pg_proc ยืนยัน 5-arg finish มี feeder/empty-side guard, 4-arg wrapper delegate ไป 5-arg (guard บังคับทั้งคู่), delete มี inverse. Net-zero DO-block smoke (RAISE rollback): `feeder_null_rejected=t · promoted=t · ghost_reversed=t` · 0 SMOKE_ row เหลือ.
+- **[P3] 2 feeder ชี้ slot เดียว**: ปล่อยไว้ — guard `side IS NULL` กัน corruption อยู่แล้ว + generator ปัจจุบันสร้างไม่ได้ (slot 'a' เสมอ, 1 feeder/target).
+- **[P3 cleanup ×3]**: delegate (queue-preview dup formatter+pro-rate → shared helper / `embeddedReal` reuse / `sessionMinutes` hoist) — กำลังทำ.
+
+---
+
+### 2026-07-07 (แก้ไข) — ship-check re-review (4 finder + probe) พบ **P1-2 fix ไม่ครบ** — ⚠️ 2 P1 double-book ยังเปิดอยู่
+
+- **แก้คำกล่าวเดิม:** entry ด้านล่างเคยเขียน "2 P1 fixed" — **ผิดครึ่ง.** P1-1 (feeder no-result) แก้ถูก+พิสูจน์ browser จริง ✅. แต่ **P1-2 (double-book) แก้ไม่ครบ** — regression test `assertNoConcurrentDoubleBooking` (batch-queue.test.ts:91-99) วน `fixedIds()` เท่านั้น **มองไม่เห็นฝั่ง `winnerOf`** → test เขียวทั้งที่รูยังอยู่. (ซ้ำรอย MEMORY foursome-lock: green suite บน config ที่ trigger บั๊กไม่ได้ = over-claim.)
+- **Re-review (4 finder: variety core[probe] · actions+enum · migrations · cleanup), verified vs โค้ดจริง:**
+  - **[P1] cross-lane double-book** (`batch-queue.ts:449`): challenger `exclude` = `usedThisRound` + prev ของ lane **ตัวเอง** เท่านั้น ไม่กันผู้เล่นแมตช์รอบก่อนของ **lane อื่น** ซึ่งคือคนที่จะ promote เข้า `winnerOf` slot ของ lane อื่นในรอบเดียวกัน. Probe ยืนยัน pool 10/12, winner_stays, ≥2 court. Runtime: DB guard `club_player_busy` บล็อก start → แมตช์เริ่มไม่ได้ (ไม่ corrupt แต่แผนใช้ไม่ได้).
+  - **[P1] same-match P-vs-P** (`batch-queue.ts:450-451`): exclude loop ข้ามฝั่ง `winnerOf` (`if (side.kind==="players")`) → chain incumbent ที่อยู่ 2+ hop ก่อนหน้า (ตัว stayer จริง) ไม่ถูกกัน → draft เป็น challenger แมตช์เดียวกันได้ → promote แล้ว P vs P. Probe ยืนยัน **single-court** (setup ที่พบบ่อยสุด) pool 8/12/16 (42/62/82 violations).
+  - **[P2] even-division half-lock** (`batch-queue.ts:300-301`): pool == 2×match-size (8 คน doubles) → 2 foursome ตายตัวไม่เจอกันทั้งคืน (`if (eligible.length < fillCount) eligible = tier` ไม่เคย fire เพราะ eligible.length == fillCount เป๊ะ). Probe: distinctFoursomes=2, crossHalf=0. regression ทดสอบแค่ 12 คน. = คลาส foursome-lock ตาม MEMORY.
+  - **[P2] promotion ไม่มี inverse ใน `delete_club_match`** (`20260707000300` + delete RPC เดิม): ลบ feeder ที่ promote แล้ว → winner ค้างใน target side_a (roster ghost); redo ทับไม่ได้ (guard `side_a IS NULL` บรรทัด 89). เข้าถึงผ่าน "เลือกผู้ชนะผิด → ลบ → ทำใหม่".
+  - **[P3] RPC ไม่ reject null winner_side บน feeder** (guard อยู่แค่ TS layer; UI กันแล้ว) · **[P3] promote (NULL,NULL)** เมื่อ finish chain match ผิดลำดับผ่าน POST ตรง (UI กันแล้ว) · **[P3] 2 feeder ชี้ target+slot เดียว → winner ที่ 2 หายเงียบ** (generator ปัจจุบันไม่ทริกเกอร์) · **[P3 cleanup ×3]** queue-preview dup Bangkok formatter+pro-rate loop / `loadClubQueueContext` reimplement `embeddedReal` / `sessionMinutes` recompute ต่อ player.
+- **สถานะ:** branch **ยังไม่ merge** + generator **ยังไม่ขึ้น prod** (มีแต่ migration/RPC ที่ apply แล้ว) → **ยังไม่มีผู้ใช้เจอบั๊กนี้** จับได้ก่อน merge. Fix P1 = งาน design จริง (ต้อง exclude ทุกแหล่งที่อาจ promote เข้ารอบเดียวกัน; pool บางจะทำให้ lane ไม่เปิด = ถูกต้อง) — รอผู้ใช้ตัดสิน scope.
+
+### 2026-07-07 — ship-check feat/club-batch-queue (vs master) — ⚠️ 2 P1 + 4 P2/P3 found, ✅ 2 P1 fixed [ดู re-review ด้านบน — คำ "2 P1 fixed" ไม่แม่น]
+
+- Scope: `git diff master...HEAD` (35 files, +2997/-671). 4 finder angles (variety core · actions+enum · migrations · cleanup) → verified.
+- **[P1] fixed (2):**
+  - (1) **จบ feeder แบบ "ไม่มีผล" → แมตช์ถัดไปในสาย winner_stays ค้างถาวร.** ปุ่ม "ไม่มีผล" (`club-queue-panel.tsx:981`, `commitFinish(undefined)`) → `winner_side=NULL` → RPC ข้าม promotion → target side A ค้าง `(NULL,NULL)` เริ่มไม่ได้เงียบๆ. **Fix (no migration):** server guard ใน `finishClubMatchAction` (reject `winnerSide==null && match.winner_next_match_id!=null`, key ใหม่ `club.finishFeederNeedsWinner` th/en) + ซ่อนปุ่ม "ไม่มีผล" เมื่อเป็น feeder (`club-queue-panel.tsx`). `loadClubMatchForManage` เพิ่ม select `winner_next_match_id`.
+  - (2) **batch generator วางผู้เล่นซ้ำ 2 สนามพร้อมกัน (double-book)** เมื่อสนาม > คนที่เติมได้ (winner_stays/fair_winner_fallback, doubles, ≥2 court, pool บาง เช่น 6 คน/2 สนาม). opener/challenger ข้าม lane แชร์ผู้เล่น (fallback `batch-queue.ts:301` re-admit `justPlayed`; `planChallengerSide` ไม่ดู `justPlayed`). กันไว้ที่ DB (`trg_club_match_player_guard` + unique index) = ไม่ corrupt แต่แผนใช้ไม่ได้. **Fix:** thread per-round `usedThisRound` set เข้า `planFullMatch(exclude?)` + `planChallengerSide` exclude → lane ที่คนไม่พอไม่เปิด (planFullMatch คืน null). +2 regression tests (6 คน/2 สนาม + 8 คน/2 สนาม multi-round, per-round disjoint invariant).
+- **[P2/P3] deferred (log ไว้ ไม่บล็อก merge):**
+  - [P2] `queueTierKey` ทิ้ง secondary sort → variety สลับข้ามลำดับคิวได้ (`queue.ts:120`; บางส่วน by-design สำหรับ rest_longest, เคส FIFO null-position ไม่ตั้งใจ).
+  - [P2] 2 feeder ชี้ target+slot เดียวกัน → winner ตัวที่ 2 หายเงียบ (`...promote_winner.sql:89`; generator ปัจจุบันไม่ทริกเกอร์ — slot 'a' เสมอ, 1 feeder/target).
+  - [P3] `MAX_PLAN_ITERATIONS(500)` ตัดแผนก่อนครบ N ที่ 51+ คน N=20 singles (`batch-queue.ts`; เกินขนาดก๊วนจริง).
+  - [P3] ลบ feeder ที่จบแล้ว ไม่ย้อน promotion → roster ค้าง (`...promote_winner.sql:84`; ไม่ corrupt).
+- **[cleanup] applied (1):** legacy translator ซ้ำ 2 ที่ → shared `normalizeLegacyQueueValues()` ใน `queue-settings.ts` (ใช้โดย `parseQueueSettings` + `parsePresetConfig`). **Deferred (3, pre-existing micro-opt นอก scope การแก้ P1):** sequential awaits ใน `loadClubQueueContext` → Promise.all; formatter HH:MM ซ้ำ (`club-matches.ts` + `queue-preview.ts`); `sessionMinutes` recompute ต่อ player.
+- **Dead-item audit follow-up:** court_count / game_time_limit_min / score_a-b ที่ถูก flag เป็น "dead" — ตรวจแล้ว**ไม่ตายจริง**ทั้ง 3 (court_count = frozen fallback ใน resolveClubCourts; game_time_limit_min = over-time indicator ใน ElapsedTicker; score_a/b = อ่าน 1/232 row บน prod เป็น display fallback). สรุป keep ทั้งหมด.
+- **Gate:** tsc 0 · vitest **807/807** (+2 regression) · `next build` OK · i18n parity actions 235 / club 834.
+- **Browser smoke (Playwright จริง, net-zero, prod DB):** seed throwaway `SMOKE_FEEDER_club` (winner_stays, 2 court, 8 คน) + 3 matches — feeder(in_progress, `winner_next_match_id`→target) · normal(in_progress, ไม่มี pointer) · target(pending) — mint cookie `bc_session` เปิดหน้า `ล็อคคู่ + คิว`. **P1-1 ผ่าน 2 ทิศ:** feeder finish panel แสดงเฉพาะ "ฝั่ง A/B ชนะ" **ไม่มี** "จบแบบไม่ระบุผล" (ซ่อนถูก) · normal finish panel **มี** "จบแบบไม่ระบุผล" (count เจาะจง = 1). console 0 error. teardown → 0 row เหลือ (prof/club/player/match). **P1-2:** พิสูจน์ครบด้วย unit tests (pure `generateBatchQueue` deterministic — +2 regression 6/2 + 8/2 court, per-round disjoint invariant); browser generate ไม่รันเพราะ pure-function coverage แน่นกว่าและ browser พิสูจน์ได้ไม่มากกว่า unit. server guard (`finishClubMatchAction` reject `winnerSide==null && winner_next_match_id!=null`) = code+tsc-verified (UI ซ่อนปุ่มเลย ไม่มี path คลิกถึงใน browser).
+
+### 2026-07-07 — feat/club-batch-queue implementation (v0.19.0) — ✅ PASS
+
+- Implement batch queue "สุ่มคิว" ตาม plan ที่อนุมัติ (7 commits): migrations ×3 (court nullable · winner pointer · finish_club_match promotion — **ทั้งหมด applied prod + verified**, promotion live-tested net-zero ด้วย DO-block) · pure generator `batch-queue.ts` (20 tests) + `queue-preview.ts` (8 tests) · actions (generate/rebuild/start-court-gate/manual-court-optional) · UI (GenerateQueueDialog + placeholder side + re-roll + CourtSelect null) · e2e rework
+- **Gate:** tsc 0 · vitest **795/795** (baseline 767 + 28 ใหม่) · `next build` OK (BUILD_ID) · i18n parity th/en (club + actions) · **e2e 14/14 PASS** (club-flow 9 รวม 3 flow ใหม่: สุ่มคิว courtless + court gate + assign, จัดคิวใหม่คง court/position, winner chain placeholder → promotion ผ่าน UI จริง · race-hardening 5) · net-zero verified (SMOKE_* = 0 row)
+- e2e flake ที่แก้ระหว่างทาง: (1) option ชื่อ "สนาม 1" ไม่ใช่ "1"; (2) target select ด้วย nth(i) แทน "first unassigned" — UI stale ระหว่าง server write กับ router refresh ทำให้ retarget แถวแรกซ้ำ
 
 ### 2026-07-06 — ship-check (2 unpushed commits: preset payment receiver + R2 closure) — ⚠️ 2 P1 + 6 P2 found, ✅ all fixed (v0.18.2)
 
@@ -103,6 +148,10 @@ Dependency-only PR (ไม่มี app code diff) — bump 7 แพ็กเก
 - **Gate:** tsc 0 · vitest 760/760 · `next build` OK (BUILD_ID `WXM94uvuwaOoz7GuNiGA-`) · node_modules verified in-sync กับ lockfile ใหม่ (installed versions ตรง range ไม่ stale) · lockfile healthy (react/react-dom/next single-version, ไม่มี invalid/UNMET; มีแค่ `@emnapi`/`@napi-rs` WASM optional-deps extraneous ปกติ).
 - **Review:** ไม่มี app-code = ไม่มี logic finding; bump ทุกตัว semver-safe, major `@types/node` คุ้มด้วย tsc 0. simplify ข้าม (ไม่มีโค้ดแอป).
 - **Live browser smoke PASS (net-zero, public):** home (login card ฝัง) render — logo + navy #1447E6 primary + lucide icons + tailwind 4.3.2 CSS + `@line/liff` 2.29.1 init ครบ runtime · console 0 error (1 warning LIFF-endpoint บน localhost = คาดไว้).
+
+### 2026-07-07 — สุ่มคิว variety + รื้อ+สุ่มใหม่ (v0.20.0, feat/club-batch-queue) — ✅ PASS
+
+Batch-queue จับคู่หลากหลาย (partner+opponent, ถ่วงเท่ากัน) ใต้ priority ladder N-games > queue-mode > variety > skill-gap; tier-bounded window กัน rest-spacing พัง + remSum tiebreak กัน packing บาน. เพิ่ม `pair-history.ts` + `regenerateClubQueueAction` ("รื้อ+สุ่มใหม่", ลบ pending → gen ใหม่, ไม่แตะ in_progress/completed). **Gate:** tsc 0 · vitest 806/806 (30→31 files, +11: pair-history 8 + variety 3... รวม variety block 4) · `next build` OK (BUILD_ID `UtCHPzf_iJlzIEEWIIQRP`) · club.json parity 114 keys · **e2e club-flow 10/10** (รวมเทสใหม่: รื้อ+สุ่มใหม่ sweeps pending + completed untouched). ไม่มี migration (compute จาก rows เดิม). Clean run — no new bugs.
 
 ### 2026-07-01 — Codex verification after rules/font-token cleanup
 
@@ -579,6 +628,13 @@ Wave B/C findings (roster-wide gate, bulk overwrite, cross-device race, CSV upse
 All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during verification).
 
 ## Resolved
+
+### 2026-07-07 — [P1] สุ่มคิว variety foursome-lock (คนหารลงตัว → 3 แมตช์วนซ้ำ) — ✅ FIXED (v0.20.0 branch, ยังไม่ merge)
+- **context**: club MUGGLE `0a0130af-189f-466d-b440-a2bb21861711` (12 คน doubles, N=10, smart, skill+gap2, ล็อก 1 คู่) → คิว 30 ใบ = 3 แมตช์ตายตัววนซ้ำ 10 รอบ. ผู้เล่นถูกล็อกเป็นก๊วนย่อย 4 คน 3 กลุ่มถาวร.
+- **repro**: probe จำลอง config เป๊ะ + ลอง 5 setting (smart/rest/fifo × skill × lock × N) ทุกแบบได้ `distinctMatchups=3, maxPartnerRepeat=10` → บั๊กโค้ด ไม่ใช่ setting/ข้อมูลเก่า.
+- **root cause**: `queueTierKey` (rest/smart) คีย์ด้วย `last_finished_at` สังเคราะห์ (เพิ่มทีละแมตช์ในการจำลอง) → แต่ละแมตช์กลายเป็น tier ของตัวเอง → หน้าต่าง variety ถูกบีบเหลือ 4 คนเดิม → ก๊วนย่อยประกอบตัวเองซ้ำทุกรอบ. คนที่ "เล่นครบเท่ากัน" ควรเสมอภาค/สลับข้ามได้ แต่ tier ใช้ timestamp ต่อรอบ → over-segment.
+- **fix**: (1) `queueTierKey` rest/smart → คีย์ด้วย `games_played` (คนเล่นครบเท่ากัน = tier เดียว, variety สลับข้ามได้); (2) `planFullMatch` ใน `batch-queue.ts` ติดตาม `justPlayed` (ผู้เล่นแมตช์ก่อนหน้า) แล้วกันออกจากหน้าต่าง variety เพื่อรักษา rest-spacing (มี fallback: bench เล็กเกินก็ใช้ทั้ง tier). ผล post-fix (config เดิม): distinctMatchups **3→29**, partnerships **6→39**, adjacent-share **0**, คู่ล็อกยังซ้ำ 10 (ถูกต้อง — ล็อกไว้); ตัดล็อก → 30 แมตช์ไม่ซ้ำ maxRepeat 3.
+- **verify**: tsc 0 · vitest **807/807** (+ regression "even division + high N does not freeze into fixed foursomes"). fifo tier (position) ไม่แตะ. เทสเดิม rest-spacing/packing/locked-pair เขียวหมด.
 
 ### 2026-07-03 — mobile overflow ฟอร์มปรับแต่งใบเสร็จ (user-reported) + P1 regression จาก ship-check — FIXED บน develop (v0.16.1, ยังไม่ขึ้น prod)
 

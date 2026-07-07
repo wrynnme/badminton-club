@@ -42,21 +42,87 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
     expect(player?.level_id).toBe(level!.id);
   });
 
-  test("A1: 'ทุกสนาม' builds a match on every free court", async ({ page }) => {
+  test("สุ่มคิว: generates courtless matches; start blocked until a court is assigned", async ({ page }) => {
     await page.goto(QUEUE_URL);
-    await page.getByRole("button", { name: "ทุกสนาม" }).click();
+    await page.getByRole("button", { name: "สุ่มคิว" }).click();
 
-    // 2 courts × singles(2) with 4 players → 2 pending matches
-    await expect(page.getByRole("tab", { name: /รอแข่ง/ })).toContainText("2");
+    // N = 1 → 4 players singles → 2 matches covering everyone once
+    const minInput = page.getByRole("spinbutton").first();
+    await minInput.fill("1");
+    await page.getByRole("dialog").getByRole("button", { name: "สุ่มเพิ่มในคิว" }).click();
+    await expect(page.getByText(/สุ่มคิวแล้ว 2 แมตช์/)).toBeVisible();
+    // Single-page layout: sections replaced the tabs — count lives in the heading badge.
+    await expect(page.getByRole("heading", { name: /รอแข่ง/ })).toContainText("2");
 
+    // Generated rows are courtless in the DB…
     const sb = adminClient();
-    const { data } = await sb
+    const { data, error } = await sb
       .from("club_matches")
       .select("court,status")
       .eq("club_id", E2E.clubId);
+    expect(error).toBeNull();
     const pending = (data ?? []).filter((m) => m.status === "pending");
     expect(pending.length).toBe(2);
-    expect(new Set(pending.map((m) => m.court))).toEqual(new Set(E2E.courts));
+    expect(pending.every((m) => m.court === null)).toBe(true);
+
+    // …so every start button is the disabled "needs court" variant.
+    const needCourtButtons = page.getByRole("button", { name: "ต้องเลือกสนามก่อนเริ่ม" });
+    await expect(needCourtButtons).toHaveCount(2);
+    await expect(needCourtButtons.first()).toBeDisabled();
+
+    // Assign a court to each row. Target by index (nth) — "first unassigned"
+    // is unstable because the row's Select can render stale between the server
+    // write and the router refresh, which would retarget row 1 twice.
+    for (let i = 0; i < 2; i++) {
+      await page.getByRole("combobox", { name: "เปลี่ยนสนาม" }).nth(i).click();
+      await page.getByRole("option", { name: `สนาม ${E2E.courts[i]}`, exact: true }).click();
+      await expect
+        .poll(async () => {
+          const { data: rows } = await sb
+            .from("club_matches")
+            .select("court")
+            .eq("club_id", E2E.clubId)
+            .eq("status", "pending")
+            .not("court", "is", null);
+          return (rows ?? []).length;
+        })
+        .toBe(i + 1);
+    }
+
+    const { data: after } = await sb
+      .from("club_matches")
+      .select("court")
+      .eq("club_id", E2E.clubId)
+      .eq("status", "pending");
+    expect(new Set((after ?? []).map((m) => m.court))).toEqual(new Set(E2E.courts));
+    await page.reload();
+    await expect(page.getByRole("button", { name: /เริ่มแมตช์/ }).first()).toBeEnabled();
+  });
+
+  test("จัดคิวใหม่: re-roll keeps court + queue position", async ({ page }) => {
+    const sb = adminClient();
+    const { data: before, error } = await sb
+      .from("club_matches")
+      .select("id,court,queue_position")
+      .eq("club_id", E2E.clubId)
+      .eq("status", "pending")
+      .order("queue_position");
+    expect(error).toBeNull();
+    expect((before ?? []).length).toBe(2);
+    const target = before![1];
+
+    await page.goto(QUEUE_URL);
+    await page.getByRole("button", { name: "จัดคิวใหม่" }).last().click();
+    await expect(page.getByText("จัดคิวใหม่แล้ว")).toBeVisible();
+
+    const { data: after, error: afterError } = await sb
+      .from("club_matches")
+      .select("id,court,queue_position")
+      .eq("id", target.id)
+      .single();
+    expect(afterError).toBeNull();
+    expect(after?.court).toBe(target.court);
+    expect(after?.queue_position).toBe(target.queue_position);
   });
 
   test("A4: in-progress match shows 'เกินเวลา' once past game_time_limit", async ({ page }) => {
@@ -65,7 +131,7 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
     // start one pending match via the UI
     await page.goto(QUEUE_URL);
     await page.getByRole("button", { name: /เริ่มแมตช์/ }).first().click();
-    await expect(page.getByRole("tab", { name: /กำลังแข่ง/ })).toContainText("1");
+    await expect(page.getByRole("heading", { name: /กำลังแข่ง/ })).toContainText("1");
 
     // backdate beyond the 1-min limit (deterministic — no real wait), reload, assert badge
     await sb
@@ -75,17 +141,15 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
       .eq("status", "in_progress");
 
     await page.goto(QUEUE_URL);
-    await page.getByRole("tab", { name: /กำลังแข่ง/ }).click();
     await expect(page.getByText("เกินเวลา")).toBeVisible();
   });
 
   test("finish the match → moves to จบแล้ว", async ({ page }) => {
     await page.goto(QUEUE_URL);
-    await page.getByRole("tab", { name: /กำลังแข่ง/ }).click();
     await page.getByRole("button", { name: /จบแข่ง/ }).first().click();
     // winner-only finish (no per-set score required)
     await page.getByRole("button", { name: /ฝั่ง A ชนะ/ }).click();
-    await expect(page.getByRole("tab", { name: /จบแล้ว/ })).toContainText("1");
+    await expect(page.getByRole("heading", { name: /จบแล้ว/ })).toContainText("1");
 
     const sb = adminClient();
     const { data } = await sb
@@ -95,6 +159,153 @@ test.describe.serial("club queue — happy path + A1 + A4", () => {
       .eq("status", "completed");
     expect((data ?? []).length).toBe(1);
     expect(data?.[0]?.winner_side).toBe("a");
+  });
+
+  test("winner chain: placeholder renders → finishing the feeder fills the target", async ({ page }) => {
+    const sb = adminClient();
+
+    // Clear leftover pendings so the feeder's start button is unambiguous.
+    await sb.from("club_matches").delete().eq("club_id", E2E.clubId).eq("status", "pending");
+
+    const { data: playerRows, error: playersError } = await sb
+      .from("club_players")
+      .select("id, display_name")
+      .eq("club_id", E2E.clubId);
+    expect(playersError).toBeNull();
+    const idOf = (name: string) => playerRows!.find((p) => p.display_name === name)!.id as string;
+    const [p1, p2, p3] = [idOf(E2E.players[0]), idOf(E2E.players[1]), idOf(E2E.players[2])];
+
+    // Feeder (court 1, p1 vs p2) → target (courtless; side A = winner placeholder, side B = p3).
+    const { data: target, error: targetError } = await sb
+      .from("club_matches")
+      .insert({
+        club_id: E2E.clubId,
+        court: null,
+        side_a_player1: null,
+        side_b_player1: p3,
+        status: "pending",
+        queue_position: 21,
+      })
+      .select("id")
+      .single();
+    expect(targetError).toBeNull();
+    const { data: feeder, error: feederError } = await sb
+      .from("club_matches")
+      .insert({
+        club_id: E2E.clubId,
+        court: E2E.courts[0],
+        side_a_player1: p1,
+        side_b_player1: p2,
+        status: "pending",
+        queue_position: 20,
+        winner_next_match_id: target!.id,
+        winner_next_match_slot: "a",
+      })
+      .select("id")
+      .single();
+    expect(feederError).toBeNull();
+
+    // Placeholder side renders + the target can't start (waiting for the winner).
+    await page.goto(QUEUE_URL);
+    await expect(page.getByText(/ผู้ชนะจากคิวที่ 20/)).toBeVisible();
+
+    // Start + finish the feeder with side A (p1) winning → promotion fires in the RPC.
+    await page.getByRole("button", { name: /เริ่มแมตช์/ }).first().click();
+    await expect(page.getByRole("heading", { name: /กำลังแข่ง/ })).toContainText("1");
+    await page.getByRole("button", { name: /จบแข่ง/ }).first().click();
+    await page.getByRole("button", { name: /ฝั่ง A ชนะ/ }).click();
+
+    await expect
+      .poll(async () => {
+        const { data: filled } = await sb
+          .from("club_matches")
+          .select("side_a_player1")
+          .eq("id", target!.id)
+          .single();
+        return filled?.side_a_player1 ?? null;
+      })
+      .toBe(p1);
+
+    // Placeholder badge is gone once the side is real players.
+    await page.goto(QUEUE_URL);
+    await expect(page.getByText(/ผู้ชนะจากคิวที่/)).toHaveCount(0);
+
+    // Cleanup the chain rows (keep the club reusable for the remaining tests).
+    await sb.from("club_matches").delete().in("id", [feeder!.id, target!.id]);
+  });
+
+  test("รื้อ+สุ่มใหม่: sweeps pending and regenerates, leaves completed untouched", async ({ page }) => {
+    const sb = adminClient();
+
+    // Clean slate, then a known state: one completed (must survive the re-roll)
+    // + two courtless pending (must be swept and replaced by a fresh set).
+    await sb.from("club_matches").delete().eq("club_id", E2E.clubId);
+
+    const { data: playerRows, error: playersError } = await sb
+      .from("club_players")
+      .select("id, display_name")
+      .eq("club_id", E2E.clubId);
+    expect(playersError).toBeNull();
+    const idOf = (name: string) => playerRows!.find((p) => p.display_name === name)!.id as string;
+    const [p1, p2, p3, p4] = E2E.players.slice(0, 4).map(idOf);
+
+    const { data: completed, error: completedError } = await sb
+      .from("club_matches")
+      .insert({
+        club_id: E2E.clubId,
+        court: E2E.courts[0],
+        side_a_player1: p1,
+        side_b_player1: p2,
+        status: "completed",
+        winner_side: "a",
+        queue_position: 1,
+      })
+      .select("id")
+      .single();
+    expect(completedError).toBeNull();
+
+    const { data: seededPending, error: pendingError } = await sb
+      .from("club_matches")
+      .insert([
+        { club_id: E2E.clubId, court: null, side_a_player1: p3, side_b_player1: p4, status: "pending", queue_position: 2 },
+        { club_id: E2E.clubId, court: null, side_a_player1: p1, side_b_player1: p2, status: "pending", queue_position: 3 },
+      ])
+      .select("id");
+    expect(pendingError).toBeNull();
+    const oldPendingIds = (seededPending ?? []).map((r) => r.id as string);
+    expect(oldPendingIds.length).toBe(2);
+
+    // Re-roll from the dialog. N = 2 so everyone still needs a fresh game.
+    await page.goto(QUEUE_URL);
+    await page.getByRole("button", { name: "สุ่มคิว" }).click();
+    await page.getByRole("spinbutton").first().fill("2");
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "รื้อ+สุ่มใหม่" }).click();
+    await dialog.getByRole("button", { name: "รื้อแล้วสุ่มใหม่" }).click();
+    await expect(page.getByText(/สุ่มคิวใหม่แล้ว/)).toBeVisible();
+
+    // The completed match survives untouched…
+    const { data: stillCompleted, error: cErr } = await sb
+      .from("club_matches")
+      .select("status")
+      .eq("id", completed!.id)
+      .single();
+    expect(cErr).toBeNull();
+    expect(stillCompleted?.status).toBe("completed");
+
+    // …and the old pending rows are gone, replaced by a fresh non-empty set.
+    const { data: nowPending, error: pErr } = await sb
+      .from("club_matches")
+      .select("id")
+      .eq("club_id", E2E.clubId)
+      .eq("status", "pending");
+    expect(pErr).toBeNull();
+    const nowIds = new Set((nowPending ?? []).map((r) => r.id as string));
+    expect(nowIds.size).toBeGreaterThan(0);
+    for (const id of oldPendingIds) expect(nowIds.has(id)).toBe(false);
+
+    // Cleanup so later tests start from a clean club.
+    await sb.from("club_matches").delete().eq("club_id", E2E.clubId);
   });
 
   test("cost tab renders without error", async ({ page }) => {

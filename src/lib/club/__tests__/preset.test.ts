@@ -332,7 +332,7 @@ describe("parsePresetConfig — full valid config", () => {
       court_count: 4,
       players_per_team: 2,
       rotation_mode: "winner_stays",
-      queue_mode: "smart",
+      queue_mode: "level_match",
       co_admin_ids: ["a1b2c3d4-e5f6-4789-abcd-ef0123456710"],
       promptpay_id: "0812345678",
       promptpay_name: "ผู้รับเงิน",
