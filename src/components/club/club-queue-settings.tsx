@@ -293,7 +293,6 @@ export function ClubQueueSettings({
                   if (v === "rest_longest") return t("queueRestLongest");
                   if (v === "fifo") return t("queueFifo");
                   if (v === "level_match") return t("queueLevelMatch");
-                  if (v === "smart") return t("queueSmart");
                   return v;
                 }}
               </SelectValue>
@@ -304,7 +303,6 @@ export function ClubQueueSettings({
               </SelectItem>
               <SelectItem value="fifo">{t("queueFifo")}</SelectItem>
               <SelectItem value="level_match">{t("queueLevelMatch")}</SelectItem>
-              <SelectItem value="smart">{t("queueSmart")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -357,14 +355,12 @@ export function ClubQueueSettings({
                       <SelectTrigger id="qs-balance-strictness" className="w-44 h-8 text-sm">
                         <SelectValue>
                           {(v: string) => {
-                            if (v === "loose") return t("strictnessLoose");
                             if (v === "strict") return t("strictnessStrict");
                             return t("strictnessBalanced");
                           }}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="loose">{t("strictnessLoose")}</SelectItem>
                         <SelectItem value="balanced">{t("strictnessBalanced")}</SelectItem>
                         <SelectItem value="strict">{t("strictnessStrict")}</SelectItem>
                       </SelectContent>

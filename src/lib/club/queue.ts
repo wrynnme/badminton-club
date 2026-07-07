@@ -79,16 +79,16 @@ function cmpRestLongest(a: QueuePlayer, b: QueuePlayer): number {
 }
 
 /**
- * Order the pool to decide WHO plays next (not the side split).
- * level_match is handled separately (anchor + nearest-level), so this covers
- * fifo / rest_longest / smart (smart v1 = rest_longest; level only affects the split).
+ * Order the pool to decide WHO plays next (not the side split). fifo uses drag
+ * position; rest_longest and level_match both order by longest rest — level only
+ * affects the side split (see `useBalanced`), never who is picked.
  */
 export function orderPool(pool: QueuePlayer[], settings: ClubQueueSettings): QueuePlayer[] {
   const copy = [...pool];
   if (settings.queue_mode === "fifo") {
     copy.sort(cmpFifo);
   } else {
-    // rest_longest + smart(v1)
+    // rest_longest + level_match
     copy.sort(cmpRestLongest);
   }
   return copy;
@@ -100,7 +100,7 @@ export function orderPool(pool: QueuePlayer[], settings: ClubQueueSettings): Que
  * WITHIN a tier without ever putting a less-preferred player ahead of a more-
  * preferred one (queue-mode outranks variety).
  *
- * rest_longest / smart tier = games played so far. Everyone owed the same number
+ * rest_longest / level_match tier = games played so far. Everyone owed the same number
  * of games is equally entitled to the next match, so variety may mix them freely
  * — the KEY reason tiering here must NOT be the fine-grained finish timestamp:
  * keying on `last_finished_at` split every emitted match into its own tier, which
@@ -381,10 +381,9 @@ export function buildNextMatch(
 ): ProposedMatch | null {
   const ppt = settings.players_per_team;
   const hasLocks = ppt === 2 && lockedPairs.length > 0;
-  // skill matchmaking applies to level_match / smart when enabled
+  // skill matchmaking applies to level_match when enabled
   const useBalanced =
-    settings.skill_level_enabled &&
-    (settings.queue_mode === "level_match" || settings.queue_mode === "smart");
+    settings.skill_level_enabled && settings.queue_mode === "level_match";
 
   if (hasLocks) {
     const partnerOf = new Map<string, string>();

@@ -511,7 +511,7 @@ describe("generateBatchQueue — variety (partner / opponent spread)", () => {
     const pool = ids(12).map((id) => mkPlayer(id));
     const plans = generateBatchQueue({
       pool,
-      settings: settings({ queue_mode: "smart" }),
+      settings: settings({ queue_mode: "level_match" }),
       lockedPairs: [],
       remaining: remainingAll(pool, 6),
       laneCount: 1,

@@ -23,7 +23,7 @@ import {
  *  court_count      1–20 — used to generate courts array ["1".."N"]
  *  players_per_team 1 = เดี่ยว, 2 = คู่
  *  rotation_mode    fair_queue | winner_stays | fair_winner_fallback
- *  queue_mode       rest_longest | fifo | level_match | smart
+ *  queue_mode       rest_longest | fifo | level_match  (legacy "smart" → level_match)
  *  co_admin_ids     profile UUIDs to add as club_admins on apply
  *  regulars         seed club_players on apply (D4 decision: name + optional link)
  *  payment receiver PromptPay/bank receiver + receipt channel/theme defaults
@@ -47,7 +47,7 @@ export const ClubPresetConfigSchema = z.object({
   court_count: z.number().int().min(1).max(20).default(1),
   players_per_team: z.union([z.literal(1), z.literal(2)]).default(2),
   rotation_mode: z.enum(["fair_queue", "winner_stays", "fair_winner_fallback"]).default("fair_queue"),
-  queue_mode: z.enum(["rest_longest", "fifo", "level_match", "smart"]).default("rest_longest"),
+  queue_mode: z.enum(["rest_longest", "fifo", "level_match"]).default("rest_longest"),
   co_admin_ids: z.array(z.string()).default([]),
   promptpay_id: z.string().trim().max(40).nullable().default(null),
   promptpay_name: z.string().trim().max(80).nullable().default(null),
@@ -96,12 +96,16 @@ export function parsePresetConfig(raw: unknown): ClubPresetConfig {
     return DEFAULT_PRESET_CONFIG;
   }
 
-  const fast = ClubPresetConfigSchema.safeParse(raw);
+  // Legacy value translation: queue_mode "smart" folded into "level_match"
+  // (identical behaviour) so older presets keep working without a rewrite.
+  const rec: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+  if (rec.queue_mode === "smart") rec.queue_mode = "level_match";
+
+  const fast = ClubPresetConfigSchema.safeParse(rec);
   if (fast.success) return fast.data;
 
   const out: ClubPresetConfig = { ...DEFAULT_PRESET_CONFIG };
   const shape = ClubPresetConfigSchema.shape;
-  const rec = raw as Record<string, unknown>;
 
   for (const key of Object.keys(shape) as Array<keyof typeof shape>) {
     if (!(key in rec)) continue;
