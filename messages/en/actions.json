@@ -103,7 +103,8 @@
     "matchWaitingForWinner": "This match is waiting for a winner from an earlier match",
     "rebuildOnlyPending": "Only pending matches can be re-rolled",
     "rebuildNoPlayers": "Not enough free players to re-roll this match",
-    "rebuildNoSwap": "Everyone is already queued — no free player to swap in. Use Rebuild + reshuffle for the whole queue instead"
+    "rebuildNoSwap": "Everyone is already queued — no free player to swap in. Use Rebuild + reshuffle for the whole queue instead",
+    "rebuildSwapFailed": "Couldn't re-roll right now — please try again"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",
