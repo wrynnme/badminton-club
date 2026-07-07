@@ -1,4 +1,5 @@
 import type { ClubQueueSettings } from "./queue-settings";
+import { partnerPairCost, type PairHistory } from "./pair-history";
 
 /**
  * Pure rotation-queue logic for club sessions. No DB / no side effects so it is
@@ -48,7 +49,7 @@ const readyRank = (p: QueuePlayer): number => (p.notReady ? 1 : 0);
 /**
  * Rotation modes where a passed `stayingSide` keeps the winner on court.
  * `winner_stays` always; `fair_winner_fallback` only when the caller decides the
- * bench is too short and hands a stayingSide (see buildNextClubMatchAction).
+ * bench is too short and hands a stayingSide (see the winner_stays planning path).
  * `fair_queue` is absent → it ignores any stayingSide (both sides from the pool).
  */
 export function keepsWinner(mode: ClubQueueSettings["rotation_mode"]): boolean {
@@ -78,19 +79,45 @@ function cmpRestLongest(a: QueuePlayer, b: QueuePlayer): number {
 }
 
 /**
- * Order the pool to decide WHO plays next (not the side split).
- * level_match is handled separately (anchor + nearest-level), so this covers
- * fifo / rest_longest / smart (smart v1 = rest_longest; level only affects the split).
+ * Order the pool to decide WHO plays next (not the side split). fifo uses drag
+ * position; rest_longest and level_match both order by longest rest — level only
+ * affects the side split (see `useBalanced`), never who is picked.
  */
 export function orderPool(pool: QueuePlayer[], settings: ClubQueueSettings): QueuePlayer[] {
   const copy = [...pool];
   if (settings.queue_mode === "fifo") {
     copy.sort(cmpFifo);
   } else {
-    // rest_longest + smart(v1)
+    // rest_longest + level_match
     copy.sort(cmpRestLongest);
   }
   return copy;
+}
+
+/**
+ * The queue "tier" a player sits in. Players sharing a tier are interchangeable
+ * under the active queue_mode's PRIMARY ordering, so batch variety may reshuffle
+ * WITHIN a tier without ever putting a less-preferred player ahead of a more-
+ * preferred one (queue-mode outranks variety).
+ *
+ * rest_longest / level_match tier = games played so far. Everyone owed the same number
+ * of games is equally entitled to the next match, so variety may mix them freely
+ * — the KEY reason tiering here must NOT be the fine-grained finish timestamp:
+ * keying on `last_finished_at` split every emitted match into its own tier, which
+ * locked the pool into fixed foursomes on even divisions (12 players → 3 frozen
+ * groups) and defeated variety entirely. Rest-spacing (no back-to-back play) is
+ * enforced separately by the batch generator excluding the previous match's
+ * players from the variety window, not by the tier key.
+ *
+ * fifo tier = drag position (strict order, effectively one player per tier).
+ * Not-ready players are always their own worse tier.
+ */
+export function queueTierKey(p: QueuePlayer, settings: ClubQueueSettings): string {
+  const ready = readyRank(p);
+  if (settings.queue_mode === "fifo") {
+    return `${ready}|${p.position ?? "null"}`;
+  }
+  return `${ready}|${p.games_played}`;
 }
 
 /**
@@ -102,7 +129,7 @@ export function orderPool(pool: QueuePlayer[], settings: ClubQueueSettings): Que
  * - strict + ไม่พอคน  → คืน null (caller คืน null ต่อ = ไม่มีแมตช์)
  * - loose/balanced + ไม่พอคน → ผ่อนเพดาน เลือก nearest จาก candidate ทั้งหมด
  */
-function pickBalancedMatch(
+export function pickBalancedMatch(
   pool: QueuePlayer[],
   need: number,
   settings: ClubQueueSettings,
@@ -156,7 +183,11 @@ function pickBalancedMatch(
  * partition with the smallest max(|partner_gap_A|, |partner_gap_B|). This avoids
  * a [9,1] vs [5,5] split when a [6,4] vs [5,5] split achieves the same sum balance.
  */
-function splitSides(chosen: QueuePlayer[], settings: ClubQueueSettings): ProposedMatch {
+function splitSides(
+  chosen: QueuePlayer[],
+  settings: ClubQueueSettings,
+  history?: PairHistory,
+): ProposedMatch {
   const ppt = settings.players_per_team;
   let a: QueuePlayer[];
   let b: QueuePlayer[];
@@ -196,27 +227,78 @@ function splitSides(chosen: QueuePlayer[], settings: ClubQueueSettings): Propose
       const maxGap = (pa: QueuePlayer[], pb: QueuePlayer[]) =>
         Math.max(intraSideGap(pa), intraSideGap(pb));
 
-      let bestA = a;
-      let bestB = b;
-      let bestGap = maxGap(a, b);
-
-      for (const [pa, pb] of partitions) {
-        const sa = lvl(pa[0]) + lvl(pa[1]);
-        const sb = lvl(pb[0]) + lvl(pb[1]);
-        if (sa !== sb) continue; // skip unbalanced partitions
-        const g = maxGap(pa, pb);
-        if (g < bestGap) {
-          bestGap = g;
-          bestA = pa;
-          bestB = pb;
+      if (history) {
+        // Priority ladder: variety outranks skill-gap. Among equal-sum
+        // partitions, pick the one that repeats the fewest partnerships; use
+        // the intra-side gap only to break variety ties. Seed with the greedy
+        // (P3) result so gap-only ties resolve exactly as before.
+        const rep = (pa: QueuePlayer[], pb: QueuePlayer[]) =>
+          partnerPairCost(history, pa[0].id, pa[1].id) +
+          partnerPairCost(history, pb[0].id, pb[1].id);
+        let bestA = a;
+        let bestB = b;
+        let bestRep = rep(a, b);
+        let bestGap = maxGap(a, b);
+        for (const [pa, pb] of partitions) {
+          if (lvl(pa[0]) + lvl(pa[1]) !== lvl(pb[0]) + lvl(pb[1])) continue;
+          const r = rep(pa, pb);
+          const g = maxGap(pa, pb);
+          if (r < bestRep || (r === bestRep && g < bestGap)) {
+            bestRep = r;
+            bestGap = g;
+            bestA = pa;
+            bestB = pb;
+          }
         }
+        a = bestA;
+        b = bestB;
+      } else {
+        let bestA = a;
+        let bestB = b;
+        let bestGap = maxGap(a, b);
+
+        for (const [pa, pb] of partitions) {
+          const sa = lvl(pa[0]) + lvl(pa[1]);
+          const sb = lvl(pb[0]) + lvl(pb[1]);
+          if (sa !== sb) continue; // skip unbalanced partitions
+          const g = maxGap(pa, pb);
+          if (g < bestGap) {
+            bestGap = g;
+            bestA = pa;
+            bestB = pb;
+          }
+        }
+        a = bestA;
+        b = bestB;
       }
-      a = bestA;
-      b = bestB;
     }
   } else {
     a = chosen.slice(0, ppt);
     b = chosen.slice(ppt, ppt * 2);
+
+    // No skill balancing to constrain the split → variety is free to pick the
+    // partition (of the 4 chosen) that repeats the fewest partnerships. Seed
+    // with the positional split so no-repeat cases stay byte-for-byte identical.
+    if (history && ppt === 2 && chosen.length >= 4) {
+      const [q0, q1, q2, q3] = chosen;
+      const partitions: [QueuePlayer[], QueuePlayer[]][] = [
+        [[q0, q1], [q2, q3]],
+        [[q0, q2], [q1, q3]],
+        [[q0, q3], [q1, q2]],
+      ];
+      const rep = (pa: QueuePlayer[], pb: QueuePlayer[]) =>
+        partnerPairCost(history, pa[0].id, pa[1].id) +
+        partnerPairCost(history, pb[0].id, pb[1].id);
+      let bestRep = rep(a, b);
+      for (const [pa, pb] of partitions) {
+        const r = rep(pa, pb);
+        if (r < bestRep) {
+          bestRep = r;
+          a = pa;
+          b = pb;
+        }
+      }
+    }
   }
 
   return {
@@ -238,7 +320,7 @@ export type LockedPair = readonly [string, string];
  * player whose partner is absent, so every locked player reached here has its
  * partner present somewhere in `ordered`.
  */
-function takeSides(
+export function takeSides(
   ordered: QueuePlayer[],
   partnerOf: Map<string, string>,
   sidesNeeded: number,
@@ -295,13 +377,13 @@ export function buildNextMatch(
   settings: ClubQueueSettings,
   stayingSide?: MatchSide,
   lockedPairs: LockedPair[] = [],
+  history?: PairHistory,
 ): ProposedMatch | null {
   const ppt = settings.players_per_team;
   const hasLocks = ppt === 2 && lockedPairs.length > 0;
-  // skill matchmaking applies to level_match / smart when enabled
+  // skill matchmaking applies to level_match when enabled
   const useBalanced =
-    settings.skill_level_enabled &&
-    (settings.queue_mode === "level_match" || settings.queue_mode === "smart");
+    settings.skill_level_enabled && settings.queue_mode === "level_match";
 
   if (hasLocks) {
     const partnerOf = new Map<string, string>();
@@ -367,11 +449,11 @@ export function buildNextMatch(
   if (useBalanced) {
     const chosen = pickBalancedMatch(pool, need, settings);
     if (!chosen) return null;
-    return splitSides(chosen, settings);
+    return splitSides(chosen, settings, history);
   }
 
   const chosen = orderPool(pool, settings).slice(0, need);
-  return splitSides(chosen, settings);
+  return splitSides(chosen, settings, history);
 }
 
 /** The 4 side columns of a match (null = empty slot). */
@@ -438,20 +520,6 @@ export function isClubMatchFull(
     return m.side_a_player2 != null && m.side_b_player2 != null;
   }
   return true;
-}
-
-/**
- * Derive the winning side from a finished game's score.
- * Returns "a" / "b" for the higher score, or null on a tie (a recorded full
- * score should normally have a winner — callers may reject the tie at input).
- */
-export function deriveWinnerSide(
-  scoreA: number,
-  scoreB: number,
-): "a" | "b" | null {
-  if (scoreA > scoreB) return "a";
-  if (scoreB > scoreA) return "b";
-  return null;
 }
 
 // ─── winner_stays planning (multi-court aware) ──────────────────────────────────

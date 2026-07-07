@@ -33,6 +33,8 @@
     "invalidShuttleCount": "Invalid shuttle count",
     "invalidTotalCost": "Invalid total cost",
     "invalidWinner": "Invalid winner",
+    "finishFeederNeedsWinner": "This match feeds a winner into the next queued match, so you must pick a winner — \"no result\" isn't allowed here.",
+    "finishEmptySide": "The side you picked as winner has no players yet (it's waiting on the previous match's winner) — this match can't be finished until its roster is filled.",
     "cannotDeleteLastLevel": "At least one skill level must remain — cannot delete the last one",
     "levelAlreadyExists": "Level already exists",
     "levelNameRequired": "Level name is required",
@@ -93,7 +95,16 @@
     "billingVerifySaveFailed": "Failed to save slip verification settings",
     "invalidLevel": "Selected level is not in this club's level set",
     "updatePlayerNoFields": "No fields to update",
-    "bankReceiverIncomplete": "Bank receiver on the receipt is incomplete (bank name and account number required) — fix it in Cost tab > Receipt settings"
+    "bankReceiverIncomplete": "Bank receiver on the receipt is incomplete (bank name and account number required) — fix it in Cost tab > Receipt settings",
+    "generateNotEnoughPlayers": "Not enough eligible players to form a match",
+    "generateNothingToDo": "Everyone already has their target matches — nothing new to generate",
+    "generateFailed": "Failed to generate the queue — please try again",
+    "matchNeedsCourtToStart": "Select a court before starting the match",
+    "matchWaitingForWinner": "This match is waiting for a winner from an earlier match",
+    "rebuildOnlyPending": "Only pending matches can be re-rolled",
+    "rebuildNoPlayers": "Not enough free players to re-roll this match",
+    "rebuildNoSwap": "Everyone is already queued — no free player to swap in. Use Rebuild + reshuffle for the whole queue instead",
+    "rebuildSwapFailed": "Couldn't re-roll right now — please try again"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",

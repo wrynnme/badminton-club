@@ -48,3 +48,23 @@ uses only the **global** level set — do not conflate it with club `level_id`.
   payment receiver settings. It is intentionally narrower than the full receipt
   template: footer text, line-item visibility, and receipt logo are not part of the
   preset payment receiver snapshot.
+
+## Batch queue (สุ่มคิว)
+
+- **Batch queue / สุ่มคิว** — one press generates the session's whole set of pending
+  matches so every eligible player reaches their pro-rated minimum of **N** fixed
+  appearances. Generated matches are **courtless** (`club_matches.court = NULL`)
+  until a manager assigns a court; a match cannot start without one.
+- **Pro-rated target** — a player's personal minimum: N scaled by the fraction of
+  the club session they are present (declared start/end → check-in time → full
+  session), floored at 1. Late arrivals get proportionally fewer guaranteed games.
+- **Top-up** — re-pressing สุ่มคิว counts every existing fixed appearance
+  (pending + playing + finished) and generates only the shortfall. Never deletes.
+- **Lane (เลน)** — winner-stays generation splits into court-count parallel chains.
+  A lane is court-agnostic until courts are assigned.
+- **Winner placeholder (ผู้ชนะจากคิวที่ N)** — an empty match side wired to a feeder
+  match via `winner_next_match_id`/`winner_next_match_slot`. When the feeder
+  completes with a winner, `finish_club_match` copies the winning side in — unless
+  a manager already filled the side by hand (manual edits always win).
+- **Re-roll (จัดคิวใหม่)** — per-match button that re-picks a pending match's fixed
+  players from the freshest pool, keeping court, queue position and placeholders.
