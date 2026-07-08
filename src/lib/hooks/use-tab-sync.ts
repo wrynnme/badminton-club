@@ -1,30 +1,25 @@
 "use client";
 
-import {
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useTransition,
-} from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useProgress } from "@bprogress/next";
 
 /**
  * Syncs a tab selection with the ?tab= URL query parameter.
  *
- * - Reads the active tab from ?tab=; falls back to defaultTab when the param
- *   is absent, not in allTabs, or not in validTabs (currently-visible tabs).
- * - Strips an invalid ?tab= synchronously before paint via useLayoutEffect so
- *   the stale param is never visible for even one frame.
- * - Lazy-mounts: tracks which tabs have been visited so callers can defer
- *   rendering tab content until first visit.
- * - onChange writes ?tab=next (or strips the param when next === defaultTab)
- *   so the canonical default URL stays clean.
+ * The active tab is CLIENT state — switching tabs updates the URL via
+ * window.history.replaceState instead of router.replace, so it does NOT trigger
+ * an RSC refetch. The tabbed pages (/tournaments/[id], /t/[token], /clubs/[id])
+ * are force-dynamic and never read ?tab on the server, so a router.replace would
+ * re-run EVERY page data fetch (3–5s per click) just to change a client-only
+ * view. history.replaceState keeps the URL shareable/deep-linkable at zero
+ * server cost, so tab switches are instant.
  *
- * Note: useLayoutEffect does not run on the server — that is intentional
- * because ?tab= is client-only URL state.
+ * - Initial tab is read from ?tab= (deep-link); falls back to defaultTab when the
+ *   param is absent, unknown (allTabs), or not currently visible (validTabs).
+ * - Lazy-mounts: tracks visited tabs so callers can defer rendering content.
+ * - onChange writes ?tab=next (or strips it when next === defaultTab) so the
+ *   canonical default URL stays clean.
  */
 export function useTabSync<T extends string>(opts: {
   /** Exhaustive list of every possible tab ID (including conditionally hidden ones). */
@@ -36,59 +31,53 @@ export function useTabSync<T extends string>(opts: {
 }): { active: T; mounted: Set<T>; onChange: (next: string) => void } {
   const { allTabs, validTabs, defaultTab } = opts;
 
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const queryTab = searchParams.get("tab") as T | null;
+  const resolve = (raw: string | null): T =>
+    raw && allTabs.includes(raw as T) && validTabs.includes(raw as T)
+      ? (raw as T)
+      : defaultTab;
 
-  // Derive active tab: must be known (allTabs) AND currently visible (validTabs).
-  const active = useMemo<T>(() => {
-    if (queryTab && allTabs.includes(queryTab) && validTabs.includes(queryTab)) {
-      return queryTab;
-    }
-    return defaultTab;
-  }, [queryTab, allTabs, validTabs, defaultTab]);
+  // Active tab is client state, seeded once from the URL for deep-link support.
+  // (Reading searchParams in the initializer is SSR-safe: force-dynamic pages
+  // have the query available during server render, so hydration matches.)
+  const [active, setActive] = useState<T>(() => resolve(searchParams.get("tab")));
 
-  // Lazy-mount tracking: seed with both active AND defaultTab so the default
-  // tab's content is never null on first render even when ?tab= points elsewhere.
+  // Lazy-mount tracking: seed with active AND defaultTab so neither is ever null
+  // on first render even when ?tab= points elsewhere.
   const [mounted, setMounted] = useState<Set<T>>(
     () => new Set<T>([active, defaultTab])
   );
-  // Use a layout effect so the Set update is synchronous before paint.
-  useLayoutEffect(() => {
-    setMounted((prev) => (prev.has(active) ? prev : new Set([...prev, active])));
-  }, [active]);
 
-  // Strip invalid ?tab= synchronously before paint so the URL always matches
-  // the actually-rendered tab from the very first frame.
-  // strippedRef guards against firing router.replace twice when an unrelated
-  // parent re-render changes searchString while the same invalid queryTab is
-  // still present — prevents double history entries.
-  const strippedRef = useRef<string | null>(null);
-  const searchString = searchParams.toString();
-  useLayoutEffect(() => {
-    if (!queryTab) {
-      strippedRef.current = null;
-      return;
+  // If the visible-tab set shrinks and the active tab is no longer valid
+  // (a conditional tab disappeared), fall back to the default.
+  useEffect(() => {
+    if (!validTabs.includes(active)) setActive(defaultTab);
+  }, [validTabs, active, defaultTab]);
+
+  // On mount, reconcile the URL with the rendered tab (strip an absent/invalid/
+  // default ?tab=, or restore the canonical one) — via replaceState, no refetch.
+  const cleanedRef = useRef(false);
+  useEffect(() => {
+    if (cleanedRef.current) return;
+    cleanedRef.current = true;
+    const raw = searchParams.get("tab");
+    const wantParam = active !== defaultTab;
+    if (wantParam ? raw !== active : raw !== null) {
+      const params = new URLSearchParams(window.location.search);
+      if (wantParam) params.set("tab", String(active));
+      else params.delete("tab");
+      const qs = params.toString();
+      window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
     }
-    if (allTabs.includes(queryTab) && validTabs.includes(queryTab)) return;
-    if (strippedRef.current === queryTab) return; // already stripped this one
-    strippedRef.current = queryTab;
-    const params = new URLSearchParams(searchString);
-    params.delete("tab");
-    const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [queryTab, allTabs, validTabs, router, pathname, searchString]);
+  }, [active, defaultTab, pathname, searchParams]);
 
-  // Tab change triggers a router.replace; wrap it in startTransition so we can
-  // observe pending state via React, then drive the global @bprogress bar.
-  // This makes the top progress bar visible while the new tab's content
-  // (lazy chunks, Suspense boundaries) resolves.
+  // Drive the top @bprogress bar while a heavy tab's client render commits.
+  // startedRef ensures exactly one stop() per start().
   const progress = useProgress();
   const [isPending, startTransition] = useTransition();
   const startedRef = useRef(false);
-
   useEffect(() => {
     if (!isPending && startedRef.current) {
       progress.stop();
@@ -97,24 +86,23 @@ export function useTabSync<T extends string>(opts: {
   }, [isPending, progress]);
 
   const onChange = (next: string) => {
-    // No-op when clicking the already-active tab: skip router.replace + progress bar.
-    // Without this guard, same-tab clicks fire startTransition with an identical URL —
-    // useTransition stays pending (no work to do, no commit), so the cleanup effect
-    // never fires and the @bprogress bar hangs at the top of the page.
-    if (next === active) return;
+    const t = next as T;
+    // No-op on the already-active tab: without this, startTransition fires with no
+    // work to commit, isPending never toggles, and the progress bar hangs.
+    if (t === active) return;
 
-    const params = new URLSearchParams(searchParams.toString());
-    if (next === defaultTab) {
-      params.delete("tab");
-    } else {
-      params.set("tab", next);
-    }
+    // Update the URL bar WITHOUT router.replace → no RSC refetch on these
+    // force-dynamic pages (every page DB fetch would otherwise re-run per click).
+    const params = new URLSearchParams(window.location.search);
+    if (t === defaultTab) params.delete("tab");
+    else params.set("tab", String(t));
     const qs = params.toString();
+    window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
+
+    setMounted((prev) => (prev.has(t) ? prev : new Set([...prev, t])));
     progress.start();
     startedRef.current = true;
-    startTransition(() => {
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-    });
+    startTransition(() => setActive(t));
   };
 
   return { active, mounted, onChange };

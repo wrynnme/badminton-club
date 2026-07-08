@@ -37,19 +37,20 @@ export async function getGlobalLevelsAction(): Promise<Level[]> {
  */
 export async function getClubLevelsAction(clubId: string): Promise<Level[]> {
   const sb = await createAdminClient();
-  const { data: clubData } = await sb
+  // Fetch club-scoped AND global rows in ONE query, then prefer the club set when
+  // it exists (else fall back to global). Avoids the serial "query club, and if
+  // empty query global" round-trip on the common (non-customized) path. The DB
+  // sorts the combined set, so each filtered subset keeps the same order.
+  const { data } = await sb
     .from("levels")
     .select("*")
-    .eq("club_id", clubId)
+    .or(`club_id.eq.${clubId},club_id.is.null`)
     .order("sort_order", { ascending: true })
     .order("real", { ascending: true });
 
-  if (clubData && clubData.length > 0) {
-    return clubData as Level[];
-  }
-
-  // Not customized yet — fall back to the global set (same query as getGlobalLevelsAction).
-  return getGlobalLevelsAction();
+  const rows = (data ?? []) as Level[];
+  const clubRows = rows.filter((l) => l.club_id != null);
+  return clubRows.length > 0 ? clubRows : rows.filter((l) => l.club_id == null);
 }
 
 /**
