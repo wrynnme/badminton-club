@@ -68,7 +68,7 @@ export function ClubCostManager({ clubId, initial, hourlySlots }: Props) {
         shuttle_hourly: hourlySlots.length
           ? hourlySlots.map((_, i) => shuttleHourly[i] ?? 0)
           : initial.shuttle_hourly,
-        shuttle_total: Math.max(0, Math.floor(shuttleTotal || 0)),
+        shuttle_total: Math.min(9999, Math.max(0, Math.floor(shuttleTotal || 0))),
         court_gap_policy: gapPolicy,
       });
       if (res && "error" in res) {
@@ -256,6 +256,7 @@ export function ClubCostManager({ clubId, initial, hourlySlots }: Props) {
               <div className="relative max-w-[140px]">
                 <NumberInput
                   min={0}
+                  max={9999}
                   step={1}
                   value={shuttleTotal}
                   onValueChange={setShuttleTotal}

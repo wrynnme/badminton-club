@@ -517,8 +517,9 @@ export async function bulkSetClubPlayerStatusAction(input: {
 }
 
 const BulkSessionSchema = z.object({
-  start_time: z.string().optional(),
-  end_time: z.string().optional(),
+  // "HH:MM" or "" (= clear to null). Reject other garbage before it hits the `time` column.
+  start_time: z.string().regex(TIME_RE).or(z.literal("")).optional(),
+  end_time: z.string().regex(TIME_RE).or(z.literal("")).optional(),
 });
 
 /**
@@ -616,8 +617,8 @@ const UpdatePlayerDetailsSchema = z.object({
   display_name: z.string().trim().min(1).max(60).optional(), // undefined = untouched
   level_id: z.string().uuid().nullable().optional(), // null = "ไม่มีระดับ" (clear)
   note: z.string().trim().max(500).nullable().optional(), // "" / null = clear
-  start_time: z.string().optional().nullable(), // "HH:MM" | "" | null → null = use club window
-  end_time: z.string().optional().nullable(),
+  start_time: z.string().regex(TIME_RE).or(z.literal("")).optional().nullable(), // "HH:MM" | "" | null → null = use club window
+  end_time: z.string().regex(TIME_RE).or(z.literal("")).optional().nullable(),
 });
 
 export type UpdateClubPlayerDetailsInput = z.infer<typeof UpdatePlayerDetailsSchema>;

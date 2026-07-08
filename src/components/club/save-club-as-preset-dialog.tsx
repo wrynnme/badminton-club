@@ -147,7 +147,13 @@ export function SaveClubAsPresetDialog({
               <Label htmlFor="preset-target">{t("targetLabel")}</Label>
               <Select value={targetId} onValueChange={onTargetChange}>
                 <SelectTrigger id="preset-target" className="w-full">
-                  <SelectValue />
+                  <SelectValue>
+                    {(value) =>
+                      value === NEW_PRESET
+                        ? t("targetNew")
+                        : (presets.find((preset) => preset.id === value)?.name ?? t("targetNew"))
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NEW_PRESET}>{t("targetNew")}</SelectItem>
