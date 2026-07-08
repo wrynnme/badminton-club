@@ -60,7 +60,7 @@ export function ClubLockedPairs({
   return (
     <Card>
       <Collapsible open={open} onOpenChange={setOpen}>
-        <CardHeader className="pb-3">
+        <CardHeader>
           <CollapsibleTrigger
             render={
               <button
@@ -86,7 +86,7 @@ export function ClubLockedPairs({
         </CardHeader>
 
         <CollapsibleContent>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 py-3">
             {/* Create form — canManage only */}
             {canManage && (
               <CreateLockForm

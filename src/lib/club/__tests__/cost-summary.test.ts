@@ -10,6 +10,7 @@ const baseClub: SummaryInput["club"] = {
   shuttle_split: "even",
   shuttle_price: 10,
   shuttle_hourly: [],
+  shuttle_total: 0,
   start_time: "19:00",
   end_time: "21:00",
   court_gap_policy: "spread",

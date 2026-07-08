@@ -16,13 +16,17 @@ export async function SiteHeader() {
   return (
     <header className="border-b">
       <div className="mx-auto max-w-5xl px-4 h-14 flex items-center justify-between">
-        <Link href="/" className="font-bold text-lg flex items-center gap-2">
-          <BrandLogo className="h-7 w-auto" priority />
-          <span>{t("brand")}</span>
-          <Badge variant="outline" className="text-xs font-mono font-normal hidden sm:inline-flex">
-            v{process.env.NEXT_PUBLIC_APP_VERSION} ({process.env.NEXT_PUBLIC_GIT_COMMIT})
-          </Badge>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/" className="font-bold text-lg flex items-center gap-2">
+            <BrandLogo className="h-7 w-auto" priority />
+            <span>{t("brand")}</span>
+          </Link>
+          <Link href="/whats-new" aria-label={t("whatsNew")}>
+            <Badge variant="outline" className="text-xs font-mono font-normal hidden sm:inline-flex">
+              v{process.env.NEXT_PUBLIC_APP_VERSION} ({process.env.NEXT_PUBLIC_GIT_COMMIT})
+            </Badge>
+          </Link>
+        </div>
         <nav className="hidden sm:flex items-center gap-2">
           <Link href="/clubs">
             <Button variant="ghost" size="sm">{t("clubs")}</Button>
