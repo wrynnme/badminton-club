@@ -4,7 +4,7 @@
 
 **Stack**: Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1 · Supabase (Postgres + RLS) · LINE Login · next-intl (TH/EN, cookie-based) · @bprogress/next (nav progress) · @dnd-kit · Anuphan font
 
-**เวอร์ชันล่าสุด**: v0.17.1 — เอาป้าย LIVE ออกจากหน้าก๊วน/ทัวร์นาเมนต์ โดย realtime ยังอัปเดตเบื้องหลังเหมือนเดิม (source เดียว: `src/lib/changelog.ts`, mirror ที่ `CHANGELOG.md`)
+**เวอร์ชันล่าสุด**: v0.20.0 — สุ่มคิวแบบหลากหลาย (variety-aware batch queue) + ปุ่ม "รื้อ+สุ่มใหม่" · ปุ่ม "จัดคิวใหม่" รายใบสลับผู้เล่นข้ามแมตช์เมื่อคนเต็มคิว (source เดียว: `src/lib/changelog.ts`, mirror ที่ `CHANGELOG.md`)
 
 **Deployed** (กลยุทธ์ branch: feature → `develop` [CI gate] → `master` [prod]):
 - Production: https://kuanbad.vercel.app (**master** branch)
@@ -228,6 +228,7 @@ src/
 ### ก๊วนแบด (Club)
 
 - ✅ Rotation queue (fair_queue / winner_stays / fair_winner_fallback) · multi-court · locked pairs · build-all-courts
+- ✅ Batch queue "สุ่มคิว" (variety-aware — จับเพื่อนร่วมทีม/คู่ต่อสู้หลากหลาย) · "รื้อ+สุ่มใหม่" · per-match "จัดคิวใหม่" (cross-match side-swap เมื่อคนเต็มคิว)
 - ✅ Check-in + `not_ready_action` · game-time over-time indicator
 - ✅ Per-club skill levels + level-based matchmaking + roster level editing after signup
 - ✅ Reserve / waiting list (สำรอง) · co-admin · preset · import from message · realtime

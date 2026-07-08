@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-07 (ตรวจสอบ → ✅ ไม่ใช่บั๊ก) — dead-code audit: 3 field ที่ถูก flag "dead" ยัง LIVE บน prod (ห้ามลบ)
+
+audit/grill-me เคย flag 3 field เป็น drop candidate — trace read path + query prod ยืนยัน **ทั้งหมดยังใช้จริง (false positive)**; ไม่แก้โค้ด/ไม่ migration:
+- **`queue_settings.court_count`** — frozen legacy fallback ผ่าน `resolveClubCourts()` (`club-matches.ts` / `clubs/[id]/page.tsx` / `c/[id]/page.tsx`) + ใช้เต็มใน preset flow (`preset.ts`/`club-presets.ts`/`preset-form.tsx`). **prod: 3/8 ก๊วน มี `clubs.courts` ว่าง → พึ่ง fallback 100%** → ลบ = 37.5% ก๊วนสนามหาย.
+- **`club_matches.score_a`/`score_b`** — แถวใหม่ null (ใช้ `games` jsonb) แต่ `club-queue-panel.tsx:144,1039` อ่านเป็น display fallback แถวเก่า. **prod: 1/186 แถว non-null.**
+- **tournament `matches.team_a_score`/`team_b_score`** — ไม่ใช่ legacy: เขียนทุก score record (RPC `record_match_score` + walkover paths) + อ่าน 8+ จุด (csv export / bracket / tv / dashboard / match-row memo comparator). แกน denormalized games-won.
+- **บทเรียน (ตรงกับ code-review ที่เคยกัน court_count ไว้):** อย่าลบตาม label — trace resolver + เช็ค prod data ก่อนเสมอ ("ไม่เขียนแล้ว" ≠ "ไม่อ่านแล้ว"). บันทึก false-positive ที่ auto-memory `dead-code-audit-false-positives.md` กัน re-trace.
+
 ### 2026-07-07 (แก้ไข → ✅ FIXED) — reroll "จัดคิวใหม่" no-op เมื่อ roster เต็มคิว + ship-check PR #18
 
 - **[P2 UX] ปุ่ม "จัดคิวใหม่" รายใบคืน ok แต่ไม่เปลี่ยนอะไร เมื่อทุกคนถูกจัดลงคิวหมด** (`rebuildClubPendingMatchAction`): free-pool ของ reroll = ผู้เล่นของแมตช์เอง (0 คนว่าง) → สุ่มได้ชุดเดิม → toast success ปลอม. **repro:** club 0a0130af (12 คน, fair_winner_fallback, 4 pending, 0 free). **Fix:** free-pool reroll เดิม → ถ้า matchup ไม่เปลี่ยน → **cross-match side-swap** (`planRerollSwap` + RPC `swap_club_match_sides` atomic) — 2 แมตช์ได้คู่ใหม่ ทุกคนเล่นครบเท่าเดิม; สลับไม่ได้ → `rebuildNoSwap` ชี้ "รื้อ+สุ่มใหม่"; toast แยก "สลับผู้เล่นกับอีกคิวแล้ว".

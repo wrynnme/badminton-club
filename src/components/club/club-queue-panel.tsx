@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactElement } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronDown, ChevronUp, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock, RotateCcw } from "lucide-react";
+import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock, RotateCcw, Flag } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -27,6 +27,7 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -143,17 +144,6 @@ function clubScoreParts(m: ClubMatch): { a: number; b: number } | null {
   }
   if (m.score_a != null && m.score_b != null) return { a: m.score_a, b: m.score_b };
   return null;
-}
-
-// The 4 player slots as inline-edit state, derived from a match row (null → "" so the
-// combobox shows its placeholder). Shared by the seed, the re-sync effect, and the revert.
-function slotsFromMatch(m: ClubMatch) {
-  return {
-    a1: m.side_a_player1 ?? "",
-    a2: m.side_a_player2 ?? "",
-    b1: m.side_b_player1 ?? "",
-    b2: m.side_b_player2 ?? "",
-  };
 }
 
 // ─── Elapsed ticker — updates every second for a single in_progress match ────
@@ -419,7 +409,9 @@ function PendingRow({
   match,
   nameMap,
   players,
-  playersPerTeam,
+  settings,
+  clubId,
+  matches,
   courts,
   canManage,
   onRefresh,
@@ -430,7 +422,9 @@ function PendingRow({
   match: ClubMatch;
   nameMap: Map<string, string>;
   players: { id: string; display_name: string }[];
-  playersPerTeam: number;
+  settings: ClubQueueSettings;
+  clubId: string;
+  matches: ClubMatch[];
   courts: string[];
   canManage: boolean;
   onRefresh: () => void;
@@ -441,43 +435,18 @@ function PendingRow({
   feederByTarget: Map<string, ClubMatch>;
 }) {
   const t = useTranslations("club.queuePanel");
+  const ppt = settings.players_per_team;
   const [startBusy, startTransition] = useTransition();
   const [cancelBusy, cancelTransition] = useTransition();
-  const [editBusy, editTransition] = useTransition();
   const [rerollBusy, rerollTransition] = useTransition();
-
-  // Local slot state for inline editing (manager only). Seeded from the match row and
-  // re-synced when the server row changes (a persist or an external realtime / 30s refresh)
-  // — but NOT while a local optimistic edit is in flight (editBusyRef), or a refresh
-  // landing mid-edit would flicker the just-picked slot back to its old value.
-  const [slots, setSlots] = useState(() => slotsFromMatch(match));
-  const editBusyRef = useRef(false);
-  editBusyRef.current = editBusy;
-  useEffect(() => {
-    if (editBusyRef.current) return;
-    setSlots(slotsFromMatch(match));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [match.side_a_player1, match.side_a_player2, match.side_b_player1, match.side_b_player2]);
 
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
   const sideB = resolveSide(match.side_b_player1, match.side_b_player2, nameMap);
-  // Fullness from the LIVE local slots (manager) so the "เริ่ม" button flips the instant
-  // the roster completes — before the persist round-trip lands. Read-only uses the row.
-  const isMatchFull = isClubMatchFull(
-    canManage
-      ? {
-          side_a_player1: slots.a1 || null,
-          side_a_player2: slots.a2 || null,
-          side_b_player1: slots.b1 || null,
-          side_b_player2: slots.b2 || null,
-        }
-      : match,
-    playersPerTeam,
-  );
+  const isMatchFull = isClubMatchFull(match, ppt);
 
   // A side is a LIVE "winner of" placeholder when both its player slots are empty AND a
   // still-active feeder match points its winner here — distinct from an ordinary empty
-  // slot (which is editable). Rendered as a badge instead of InlinePlayerSlots.
+  // slot. Shown read-only as a "winner of #N" label; the edit dialog (✎) locks it.
   const feederA = feederByTarget.get(`${match.id}:a`);
   const feederB = feederByTarget.get(`${match.id}:b`);
   const placeholderA = match.side_a_player1 == null && match.side_a_player2 == null && !!feederA;
@@ -499,35 +468,6 @@ function PendingRow({
       : !isMatchFull
         ? t("startNeedsFullTooltip")
         : t("startTooltip", { court: match.court });
-
-  type SlotKey = "a1" | "a2" | "b1" | "b2";
-  // Options for one slot: every club player except those already placed in this match's
-  // OTHER slots — the autocomplete never offers a player already in the match.
-  function optionsFor(self: SlotKey) {
-    const used = new Set<string>();
-    (["a1", "a2", "b1", "b2"] as SlotKey[]).forEach((k) => {
-      if (k !== self && slots[k]) used.add(slots[k]);
-    });
-    return players.filter((p) => !used.has(p.id));
-  }
-
-  // Pick / change / clear a slot inline → persist the whole roster immediately. Optimistic
-  // (the slot updates instantly); on error, toast + revert to the server row.
-  function changeSlot(self: SlotKey, id: string) {
-    const next = { ...slots, [self]: id };
-    setSlots(next);
-    const sideAArr = (playersPerTeam === 2 ? [next.a1, next.a2] : [next.a1]).filter(Boolean);
-    const sideBArr = (playersPerTeam === 2 ? [next.b1, next.b2] : [next.b1]).filter(Boolean);
-    editTransition(async () => {
-      const res = await setClubMatchPlayersAction({ matchId: match.id, sideA: sideAArr, sideB: sideBArr });
-      if ("error" in res) {
-        toast.error(res.error);
-        setSlots(slotsFromMatch(match)); // revert optimistic edit to server truth
-      } else {
-        onRefresh();
-      }
-    });
-  }
 
   function handleStart() {
     startTransition(async () => {
@@ -594,42 +534,41 @@ function PendingRow({
         onRefresh={onRefresh}
         badgeClassName="shrink-0 text-xs"
       />
-      {canManage ? (
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-          {placeholderA ? (
-            <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
-              {feederLabel(feederA!)}
-            </Badge>
-          ) : (
-            <>
-              <InlinePlayerSlot value={slots.a1} options={optionsFor("a1")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("a1", id)} />
-              {playersPerTeam === 2 && (
-                <InlinePlayerSlot value={slots.a2} options={optionsFor("a2")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("a2", id)} />
-              )}
-            </>
-          )}
-          <span className="px-0.5 text-xs text-muted-foreground">vs</span>
-          {placeholderB ? (
-            <Badge variant="outline" className="text-xs font-normal text-muted-foreground">
-              {feederLabel(feederB!)}
-            </Badge>
-          ) : (
-            <>
-              <InlinePlayerSlot value={slots.b1} options={optionsFor("b1")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("b1", id)} />
-              {playersPerTeam === 2 && (
-                <InlinePlayerSlot value={slots.b2} options={optionsFor("b2")} nameMap={nameMap} disabled={editBusy} onPick={(id) => changeSlot("b2", id)} />
-              )}
-            </>
-          )}
-        </div>
-      ) : (
-        <span className="flex-1 text-sm truncate">
-          {placeholderA ? feederLabel(feederA!) : sideA} <span className="text-muted-foreground">vs</span>{" "}
-          {placeholderB ? feederLabel(feederB!) : sideB}
-        </span>
-      )}
+      {/* Read-only lineup — editing moves to the ✎ dialog. Placeholder sides show the
+          "winner of #N" label instead of names. */}
+      <span className="min-w-0 flex-1 text-sm truncate">
+        {placeholderA ? feederLabel(feederA!) : sideA}{" "}
+        <span className="text-muted-foreground">vs</span>{" "}
+        {placeholderB ? feederLabel(feederB!) : sideB}
+      </span>
       {canManage && (
         <div className="flex items-center gap-1 shrink-0">
+          {!(placeholderA && placeholderB) && (
+            <MatchFormDialog
+              mode="edit"
+              match={match}
+              clubId={clubId}
+              players={players}
+              settings={settings}
+              courts={courts}
+              matches={matches}
+              onRefresh={onRefresh}
+              placeholderA={placeholderA}
+              placeholderB={placeholderB}
+              feederLabelA={placeholderA ? feederLabel(feederA!) : undefined}
+              feederLabelB={placeholderB ? feederLabel(feederB!) : undefined}
+              trigger={
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={t("editMatchAria")}
+                  title={t("editMatchTooltip")}
+                >
+                  <PenLine className="h-3.5 w-3.5" />
+                </Button>
+              }
+            />
+          )}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -637,7 +576,7 @@ function PendingRow({
                   size="sm"
                   variant="default"
                   className="h-7 px-2"
-                  disabled={startBusy || editBusy || !isMatchFull || !match.court || hasLivePlaceholder}
+                  disabled={startBusy || !isMatchFull || !match.court || hasLivePlaceholder}
                   onClick={handleStart}
                   aria-label={startDisabledReason}
                 >
@@ -692,7 +631,9 @@ function SortablePendingRow({
   match,
   nameMap,
   players,
-  playersPerTeam,
+  settings,
+  clubId,
+  matches,
   courts,
   onRefresh,
   rowNumber,
@@ -701,7 +642,9 @@ function SortablePendingRow({
   match: ClubMatch;
   nameMap: Map<string, string>;
   players: { id: string; display_name: string }[];
-  playersPerTeam: number;
+  settings: ClubQueueSettings;
+  clubId: string;
+  matches: ClubMatch[];
   courts: string[];
   onRefresh: () => void;
   rowNumber: number;
@@ -722,7 +665,9 @@ function SortablePendingRow({
         match={match}
         nameMap={nameMap}
         players={players}
-        playersPerTeam={playersPerTeam}
+        settings={settings}
+        clubId={clubId}
+        matches={matches}
         courts={courts}
         canManage
         onRefresh={onRefresh}
@@ -758,6 +703,11 @@ function InProgressRow({
   // Per-set score rows (strings while editing). Starts with one blank set; leaving
   // every set blank finishes winner-only (no score recorded), preserving the quick path.
   const [games, setGames] = useState<{ a: string; b: string }[]>([{ a: "", b: "" }]);
+
+  // Reset to a single blank set each time the finish dialog opens (fresh entry).
+  useEffect(() => {
+    if (finishOpen) setGames([{ a: "", b: "" }]);
+  }, [finishOpen]);
 
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
   const sideB = resolveSide(match.side_b_player1, match.side_b_player2, nameMap);
@@ -843,13 +793,9 @@ function InProgressRow({
                     variant="outline"
                     className="h-7 px-2 shrink-0"
                     disabled={finishBusy}
-                    onClick={() => setFinishOpen((o) => !o)}
+                    onClick={() => setFinishOpen(true)}
                   >
-                    {finishOpen ? (
-                      <ChevronUp className="h-3.5 w-3.5" />
-                    ) : (
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    )}
+                    <Flag className="h-3.5 w-3.5" />
                     <span className="text-xs ml-1">{t("finishButton")}</span>
                   </Button>
                 }
@@ -861,138 +807,156 @@ function InProgressRow({
         )}
       </div>
 
-      {finishOpen && canManage && (
-        <div className="mt-2 ml-2 flex flex-col gap-2">
-          {/* คะแนนแต่ละเซ็ต — เพิ่ม/ลบเซ็ตได้ (กรอกหรือไม่ก็ได้) */}
-          <span className="text-xs text-muted-foreground">{t("scoreLabel")}</span>
-          {games.map((row, i) => (
-            <div key={i} className="flex items-center gap-1.5">
-              <span className="text-xs text-muted-foreground shrink-0 w-12">
-                {t("setLabel", { n: i + 1 })}
-              </span>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={99}
-                value={row.a}
-                onChange={(e) => setGameVal(i, "a", e.target.value)}
-                disabled={finishBusy}
-                aria-label={t("scoreAriaLabel", { side: sideA })}
-                className="h-7 w-14 text-center text-xs"
-              />
-              <span className="text-xs text-muted-foreground">:</span>
-              <Input
-                type="number"
-                inputMode="numeric"
-                min={0}
-                max={99}
-                value={row.b}
-                onChange={(e) => setGameVal(i, "b", e.target.value)}
-                disabled={finishBusy}
-                aria-label={t("scoreAriaLabel", { side: sideB })}
-                className="h-7 w-14 text-center text-xs"
-              />
-              {games.length > 1 && (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 shrink-0 text-muted-foreground"
-                        disabled={finishBusy}
-                        onClick={() => removeGame(i)}
-                        aria-label={t("removeSetAriaLabel", { n: i + 1 })}
-                      >
-                        <X className="h-3.5 w-3.5" />
-                      </Button>
-                    }
+      {canManage && (
+        <Dialog open={finishOpen} onOpenChange={setFinishOpen}>
+          <DialogContent className="sm:max-w-sm max-h-[90dvh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{t("finishDialogTitle")}</DialogTitle>
+              <DialogDescription className="text-xs">
+                {sideA} vs {sideB}
+              </DialogDescription>
+            </DialogHeader>
+
+            {/* คะแนนแต่ละเซ็ต — เพิ่ม/ลบเซ็ตได้ (กรอกหรือไม่ก็ได้) */}
+            <div className="space-y-2">
+              <span className="block text-xs text-muted-foreground">{t("scoreLabel")}</span>
+              {games.map((row, i) => (
+                <div key={i} className="flex items-center gap-1.5">
+                  <span className="text-xs text-muted-foreground shrink-0 w-12">
+                    {t("setLabel", { n: i + 1 })}
+                  </span>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={99}
+                    value={row.a}
+                    onChange={(e) => setGameVal(i, "a", e.target.value)}
+                    disabled={finishBusy}
+                    aria-label={t("scoreAriaLabel", { side: sideA })}
+                    className="h-8 w-16 text-center text-sm"
                   />
-                  <TooltipContent>{t("removeSetTooltip")}</TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-          ))}
-          <div>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    disabled={finishBusy || games.length >= 9}
-                    onClick={addGame}
-                  >
-                    <Plus className="h-3 w-3 mr-1" />
-                    {t("addSetButton")}
-                  </Button>
-                }
-              />
-              <TooltipContent>{t("addSetTooltip")}</TooltipContent>
-            </Tooltip>
-          </div>
-          {/* เลือกผู้ชนะเพื่อจบ — บันทึกเซ็ตที่กรอก พร้อมผู้ชนะที่เลือก (เลือกเอง) */}
-          <span className="text-xs text-muted-foreground">{t("pickWinnerLabel")}</span>
-          <div className="flex flex-wrap gap-2">
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
+                  <span className="text-xs text-muted-foreground">:</span>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={99}
+                    value={row.b}
+                    onChange={(e) => setGameVal(i, "b", e.target.value)}
                     disabled={finishBusy}
-                    onClick={() => commitFinish("a")}
-                  >
-                    <Trophy className="h-3 w-3 mr-1" />
-                    {t("sideAWins")}
-                  </Button>
-                }
-              />
-              <TooltipContent>{t("sideAWinsTooltip", { name: sideA })}</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    disabled={finishBusy}
-                    onClick={() => commitFinish("b")}
-                  >
-                    <Trophy className="h-3 w-3 mr-1" />
-                    {t("sideBWins")}
-                  </Button>
-                }
-              />
-              <TooltipContent>{t("sideBWinsTooltip", { name: sideB })}</TooltipContent>
-            </Tooltip>
-            {/* A feeder match must promote a winner into its chained target, so
-                "no result" is hidden — finishing it winnerless would strand the
-                downstream "ผู้ชนะจากแมตช์ #N" match (server also rejects it). */}
-            {match.winner_next_match_id == null && (
+                    aria-label={t("scoreAriaLabel", { side: sideB })}
+                    className="h-8 w-16 text-center text-sm"
+                  />
+                  {games.length > 1 && (
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8 shrink-0 text-muted-foreground"
+                            disabled={finishBusy}
+                            onClick={() => removeGame(i)}
+                            aria-label={t("removeSetAriaLabel", { n: i + 1 })}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        }
+                      />
+                      <TooltipContent>{t("removeSetTooltip")}</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
+              ))}
               <Tooltip>
                 <TooltipTrigger
                   render={
                     <Button
                       size="sm"
-                      variant="ghost"
-                      className="h-7 text-xs"
-                      disabled={finishBusy}
-                      onClick={() => commitFinish(undefined)}
+                      variant="outline"
+                      className="h-8 text-xs"
+                      disabled={finishBusy || games.length >= 9}
+                      onClick={addGame}
                     >
-                      {t("noResult")}
+                      <Plus className="h-3 w-3 mr-1" />
+                      {t("addSetButton")}
                     </Button>
                   }
                 />
-                <TooltipContent>{t("noResultTooltip")}</TooltipContent>
+                <TooltipContent>{t("addSetTooltip")}</TooltipContent>
               </Tooltip>
-            )}
-          </div>
-        </div>
+            </div>
+
+            {/* เลือกผู้ชนะเพื่อจบ — บันทึกเซ็ตที่กรอก พร้อมผู้ชนะที่เลือก (เลือกเอง) */}
+            <div className="space-y-2">
+              <span className="block text-xs text-muted-foreground">{t("pickWinnerLabel")}</span>
+              <div className="flex flex-wrap gap-2">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 flex-1 min-w-[130px] text-sm"
+                        disabled={finishBusy}
+                        onClick={() => commitFinish("a")}
+                      >
+                        <Trophy className="h-3.5 w-3.5 mr-1 shrink-0" />
+                        <span className="truncate">{t("winnerWinsButton", { name: sideA })}</span>
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>{t("sideAWinsTooltip", { name: sideA })}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-9 flex-1 min-w-[130px] text-sm"
+                        disabled={finishBusy}
+                        onClick={() => commitFinish("b")}
+                      >
+                        <Trophy className="h-3.5 w-3.5 mr-1 shrink-0" />
+                        <span className="truncate">{t("winnerWinsButton", { name: sideB })}</span>
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>{t("sideBWinsTooltip", { name: sideB })}</TooltipContent>
+                </Tooltip>
+              </div>
+              {/* A feeder match must promote a winner into its chained target, so
+                  "no result" is hidden — finishing it winnerless would strand the
+                  downstream "ผู้ชนะจากแมตช์ #N" match (server also rejects it). */}
+              {match.winner_next_match_id == null && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 w-full text-xs"
+                        disabled={finishBusy}
+                        onClick={() => commitFinish(undefined)}
+                      >
+                        {t("noResult")}
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>{t("noResultTooltip")}</TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+
+            <DialogFooter>
+              <DialogClose render={
+                <Button variant="outline" disabled={finishBusy}>{t("finishDialogCancel")}</Button>
+              } />
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
@@ -1151,13 +1115,20 @@ function sideKey(ids: (string | null | undefined)[]): string {
   return ids.filter(Boolean).slice().sort().join("|");
 }
 
-function ManualMatchDialog({
+function MatchFormDialog({
   clubId,
   players,
   settings,
   courts,
   matches,
   onRefresh,
+  mode = "create",
+  match,
+  placeholderA = false,
+  placeholderB = false,
+  feederLabelA,
+  feederLabelB,
+  trigger,
 }: {
   clubId: string;
   players: { id: string; display_name: string }[];
@@ -1165,28 +1136,62 @@ function ManualMatchDialog({
   courts: string[];
   matches: ClubMatch[];
   onRefresh: () => void;
+  mode?: "create" | "edit";
+  match?: ClubMatch;
+  /** edit mode — a side that is a live "winner of #N" placeholder is locked (shown as a
+   *  read-only label, excluded from submit). Always false in create mode. */
+  placeholderA?: boolean;
+  placeholderB?: boolean;
+  feederLabelA?: string;
+  feederLabelB?: string;
+  /** custom trigger (the ✎ button for edit); defaults to the "เพิ่มแมตช์เอง" button. */
+  trigger?: ReactElement;
 }) {
   const t = useTranslations("club.queuePanel");
   const ppt = settings.players_per_team;
+  const isEdit = mode === "edit";
   const [open, setOpen] = useState(false);
   const [busy, startTransition] = useTransition();
 
-  const [court, setCourt] = useState(() => firstFreeCourt(courts, matches));
-  const [sideA1, setSideA1] = useState(UNSET);
-  const [sideA2, setSideA2] = useState(UNSET);
-  const [sideB1, setSideB1] = useState(UNSET);
-  const [sideB2, setSideB2] = useState(UNSET);
+  const [court, setCourt] = useState(() =>
+    isEdit && match ? match.court ?? UNSET : firstFreeCourt(courts, matches),
+  );
+  const [sideA1, setSideA1] = useState(isEdit && match ? match.side_a_player1 ?? UNSET : UNSET);
+  const [sideA2, setSideA2] = useState(isEdit && match ? match.side_a_player2 ?? UNSET : UNSET);
+  const [sideB1, setSideB1] = useState(isEdit && match ? match.side_b_player1 ?? UNSET : UNSET);
+  const [sideB2, setSideB2] = useState(isEdit && match ? match.side_b_player2 ?? UNSET : UNSET);
 
-  // Latest matches read by the snap effect without being a dependency — occupancy
-  // churning every 30s refresh must NOT re-run the effect (it would re-pick a free
-  // court and could jump the selection on a background refresh while the dialog is open).
+  // Latest matches read by the snap/seed effects without being a dependency — occupancy
+  // churning every 30s refresh must NOT re-run them (it would re-pick a free court and
+  // could jump the selection on a background refresh while the dialog is open).
   const matchesRef = useRef(matches);
   matchesRef.current = matches;
 
-  // The dialog stays mounted across refreshes, so `court` can outlive its court if
-  // the list changes (e.g. a court renamed/removed in Settings). Snap back to a valid
-  // court rather than submitting a stale name. Depends only on courts/court; reads
-  // matches via ref so only an actual court removal (not occupancy) moves the selection.
+  // Reseed on every open so the form reflects the current match (edit) / a fresh free
+  // court (create), even if a background refresh changed things while it was closed.
+  // Derived-value reset — NOT bare setState — so reusing the instance for a just-updated
+  // match can't show stale data.
+  useEffect(() => {
+    if (!open) return;
+    if (isEdit && match) {
+      setCourt(match.court ?? UNSET);
+      setSideA1(match.side_a_player1 ?? UNSET);
+      setSideA2(match.side_a_player2 ?? UNSET);
+      setSideB1(match.side_b_player1 ?? UNSET);
+      setSideB2(match.side_b_player2 ?? UNSET);
+    } else {
+      setCourt(firstFreeCourt(courts, matchesRef.current));
+      setSideA1(UNSET);
+      setSideA2(UNSET);
+      setSideB1(UNSET);
+      setSideB2(UNSET);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // The dialog stays mounted across refreshes, so `court` can outlive its court if the
+  // list changes (a court renamed/removed in Settings). Snap a stale non-empty court back
+  // to a valid one; "" (courtless) is a valid state and left alone.
   useEffect(() => {
     if (court && !courts.includes(court)) setCourt(firstFreeCourt(courts, matchesRef.current));
   }, [courts, court]);
@@ -1211,6 +1216,7 @@ function ManualMatchDialog({
     const b = sideKey(sideB);
     return matches
       .filter((m) => {
+        if (m.id === match?.id) return false; // exclude the match being edited itself
         if (m.status === "cancelled") return false;
         const ma = sideKey([m.side_a_player1, m.side_a_player2]);
         const mb = sideKey([m.side_b_player1, m.side_b_player2]);
@@ -1221,7 +1227,7 @@ function ManualMatchDialog({
           new Date(y.ended_at ?? y.created_at).getTime() -
           new Date(x.ended_at ?? x.created_at).getTime(),
       );
-  }, [matches, sideA1, sideA2, sideB1, sideB2, ppt]);
+  }, [matches, match?.id, sideA1, sideA2, sideB1, sideB2, ppt]);
 
   const lastMeetingLabel = useMemo(() => {
     const last = priorMeetings[0];
@@ -1246,17 +1252,9 @@ function ManualMatchDialog({
     return t("priorNoResult");
   }, [priorMeetings, nameMap, t]);
 
-  function reset() {
-    setCourt(firstFreeCourt(courts, matches));
-    setSideA1(UNSET);
-    setSideA2(UNSET);
-    setSideB1(UNSET);
-    setSideB2(UNSET);
-  }
-
   function handleSubmit() {
-    const sideA = (ppt === 2 ? [sideA1, sideA2] : [sideA1]).filter(Boolean);
-    const sideB = (ppt === 2 ? [sideB1, sideB2] : [sideB1]).filter(Boolean);
+    const sideA = placeholderA ? [] : (ppt === 2 ? [sideA1, sideA2] : [sideA1]).filter(Boolean);
+    const sideB = placeholderB ? [] : (ppt === 2 ? [sideB1, sideB2] : [sideB1]).filter(Boolean);
     const all = [...sideA, ...sideB];
 
     // Partial roster allowed: reserve a court with as few as 1 player, fill the rest
@@ -1271,41 +1269,42 @@ function ManualMatchDialog({
     }
 
     startTransition(async () => {
-      const res = await createClubManualMatchAction({
-        clubId,
-        court,
-        sideA,
-        sideB,
-      });
+      // court is always sent (name or "" for courtless); edit updates players + court in
+      // one row UPDATE, create inserts a fresh pending match.
+      const res =
+        isEdit && match
+          ? await setClubMatchPlayersAction({ matchId: match.id, sideA, sideB, court })
+          : await createClubManualMatchAction({ clubId, court, sideA, sideB });
       if ("error" in res) {
         toast.error(res.error);
-      } else {
-        toast.success(t("toastManualAdded"));
-        reset();
-        setOpen(false);
-        onRefresh();
+        return;
       }
+      toast.success(isEdit ? t("toastMatchUpdated") : t("toastManualAdded"));
+      setOpen(false);
+      onRefresh();
     });
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button size="sm" variant="outline" className="h-8 text-xs gap-1">
-            <PenLine className="h-3.5 w-3.5" />
-            {t("addManualMatch")}
-          </Button>
+          trigger ?? (
+            <Button size="sm" variant="outline" className="h-8 text-xs gap-1">
+              <PenLine className="h-3.5 w-3.5" />
+              {t("addManualMatch")}
+            </Button>
+          )
         }
       />
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>{t("manualDialogTitle")}</DialogTitle>
+          <DialogTitle>{isEdit ? t("editDialogTitle") : t("manualDialogTitle")}</DialogTitle>
           <p className="text-xs text-muted-foreground">{t("manualPartialHint")}</p>
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Court — toggle grid showing live occupancy (occupied courts stay selectable) */}
+          {/* Court — toggle grid; tap the selected court again to clear (courtless) */}
           <div className="space-y-1.5">
             <Label id="mm-court-label" className="text-sm font-medium">{t("manualCourtLabel")}</Label>
             {courts.length === 0 ? (
@@ -1313,86 +1312,105 @@ function ManualMatchDialog({
                 {t("manualNoCourts")}
               </p>
             ) : (
-              <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby="mm-court-label">
-                {courts.map((c) => {
-                  const occ = occupiedByCourt.get(c);
-                  const selected = court === c;
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setCourt(c)}
-                      aria-pressed={selected}
-                      className={cn(
-                        "flex flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
-                        selected
-                          ? "border-primary bg-primary/10 ring-1 ring-primary"
-                          : "border-border hover:border-primary/50 hover:bg-muted/50",
-                      )}
-                    >
-                      <span className="flex w-full items-center gap-1.5 text-sm font-medium">
-                        {t("courtSelectItem", { court: c })}
-                        {selected && <Check className="h-3.5 w-3.5 text-primary" />}
-                      </span>
-                      {occ ? (
-                        <span className="line-clamp-2 text-[11px] leading-tight text-warning-foreground">
-                          {t("manualCourtOccupied", { players: `${resolveSide(occ.side_a_player1, occ.side_a_player2, nameMap)} vs ${resolveSide(occ.side_b_player1, occ.side_b_player2, nameMap)}` })}
+              <>
+                <div className="grid grid-cols-2 gap-2" role="group" aria-labelledby="mm-court-label">
+                  {courts.map((c) => {
+                    const occ = occupiedByCourt.get(c);
+                    const selected = court === c;
+                    return (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setCourt(selected ? UNSET : c)}
+                        aria-pressed={selected}
+                        className={cn(
+                          "flex flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors",
+                          selected
+                            ? "border-primary bg-primary/10 ring-1 ring-primary"
+                            : "border-border hover:border-primary/50 hover:bg-muted/50",
+                        )}
+                      >
+                        <span className="flex w-full items-center gap-1.5 text-sm font-medium">
+                          {t("courtSelectItem", { court: c })}
+                          {selected && <Check className="h-3.5 w-3.5 text-primary" />}
                         </span>
-                      ) : (
-                        <span className="text-[11px] leading-tight text-muted-foreground">
-                          {t("manualCourtFree")}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+                        {occ ? (
+                          <span className="line-clamp-2 text-[11px] leading-tight text-warning-foreground">
+                            {t("manualCourtOccupied", { players: `${resolveSide(occ.side_a_player1, occ.side_a_player2, nameMap)} vs ${resolveSide(occ.side_b_player1, occ.side_b_player2, nameMap)}` })}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] leading-tight text-muted-foreground">
+                            {t("manualCourtFree")}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[11px] leading-tight text-muted-foreground">{t("courtOptionalHint")}</p>
+              </>
             )}
           </div>
 
           {/* Side A */}
           <div className="space-y-2">
             <p className="text-sm font-medium">{t("manualSideA")}</p>
-            <PlayerSelect
-              id="mm-sideA1"
-              label={ppt === 2 ? t("manualPlayer1") : t("manualPlayer")}
-              value={sideA1}
-              onChange={setSideA1}
-              players={players}
-              nameMap={nameMap}
-            />
-            {ppt === 2 && (
-              <PlayerSelect
-                id="mm-sideA2"
-                label={t("manualPlayer2")}
-                value={sideA2}
-                onChange={setSideA2}
-                players={players}
-                nameMap={nameMap}
-              />
+            {placeholderA ? (
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                {feederLabelA}
+              </div>
+            ) : (
+              <>
+                <PlayerSelect
+                  id="mm-sideA1"
+                  label={ppt === 2 ? t("manualPlayer1") : t("manualPlayer")}
+                  value={sideA1}
+                  onChange={setSideA1}
+                  players={players}
+                  nameMap={nameMap}
+                />
+                {ppt === 2 && (
+                  <PlayerSelect
+                    id="mm-sideA2"
+                    label={t("manualPlayer2")}
+                    value={sideA2}
+                    onChange={setSideA2}
+                    players={players}
+                    nameMap={nameMap}
+                  />
+                )}
+              </>
             )}
           </div>
 
           {/* Side B */}
           <div className="space-y-2">
             <p className="text-sm font-medium">{t("manualSideB")}</p>
-            <PlayerSelect
-              id="mm-sideB1"
-              label={ppt === 2 ? t("manualPlayer1") : t("manualPlayer")}
-              value={sideB1}
-              onChange={setSideB1}
-              players={players}
-              nameMap={nameMap}
-            />
-            {ppt === 2 && (
-              <PlayerSelect
-                id="mm-sideB2"
-                label={t("manualPlayer2")}
-                value={sideB2}
-                onChange={setSideB2}
-                players={players}
-                nameMap={nameMap}
-              />
+            {placeholderB ? (
+              <div className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                {feederLabelB}
+              </div>
+            ) : (
+              <>
+                <PlayerSelect
+                  id="mm-sideB1"
+                  label={ppt === 2 ? t("manualPlayer1") : t("manualPlayer")}
+                  value={sideB1}
+                  onChange={setSideB1}
+                  players={players}
+                  nameMap={nameMap}
+                />
+                {ppt === 2 && (
+                  <PlayerSelect
+                    id="mm-sideB2"
+                    label={t("manualPlayer2")}
+                    value={sideB2}
+                    onChange={setSideB2}
+                    players={players}
+                    nameMap={nameMap}
+                  />
+                )}
+              </>
             )}
           </div>
 
@@ -1419,94 +1437,14 @@ function ManualMatchDialog({
             variant={priorMeetings.length > 0 ? "destructive" : "default"}
           >
             {busy
-              ? t("manualDialogCreating")
+              ? isEdit ? t("editDialogSaving") : t("manualDialogCreating")
               : priorMeetings.length > 0
                 ? t("manualDialogSubmitConfirm")
-                : t("manualDialogSubmit")}
+                : isEdit ? t("editDialogSubmit") : t("manualDialogSubmit")}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
-}
-
-// ─── Inline player slot (pending match) ───────────────────────────────────────
-// A compact autocomplete for ONE match slot. `options` is pre-filtered by the parent
-// to exclude players already placed in this match's other slots (no dupes). Picking an
-// item — or the "clear" item — calls onPick, which persists the whole roster immediately.
-// No dialog: the manager edits the lineup right in the queue row.
-function InlinePlayerSlot({
-  value,
-  options,
-  nameMap,
-  disabled,
-  onPick,
-}: {
-  value: string;
-  options: { id: string; display_name: string }[];
-  nameMap: Map<string, string>;
-  disabled?: boolean;
-  onPick: (id: string) => void;
-}) {
-  const t = useTranslations("club.queuePanel");
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-
-  const selectedName = value ? (nameMap.get(value) ?? value) : "";
-  const q = query.trim().toLowerCase();
-  const filtered = q ? options.filter((p) => p.display_name.toLowerCase().includes(q)) : options;
-
-  return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setQuery(""); }}>
-      <PopoverTrigger
-        render={
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            role="combobox"
-            aria-expanded={open}
-            aria-label={t("slotEditAria")}
-            disabled={disabled}
-            className="h-7 max-w-[8rem] min-w-[4.5rem] justify-between gap-1 px-2 text-xs font-normal"
-          >
-            <span className={`truncate ${selectedName ? "" : "text-muted-foreground"}`}>
-              {selectedName || t("manualSelectPlayer")}
-            </span>
-            <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
-          </Button>
-        }
-      />
-      <PopoverContent className="w-(--anchor-width) min-w-44 p-0" align="start">
-        <Command shouldFilter={false}>
-          <CommandInput placeholder={t("manualSearchPlaceholder")} value={query} onValueChange={setQuery} />
-          <CommandList>
-            <CommandEmpty>{t("manualNoPlayer")}</CommandEmpty>
-            <CommandGroup>
-              {value && (
-                <CommandItem
-                  value="__clear__"
-                  className="text-muted-foreground"
-                  onSelect={() => { onPick(""); setOpen(false); setQuery(""); }}
-                >
-                  {t("slotClearOption")}
-                </CommandItem>
-              )}
-              {filtered.map((p) => (
-                <CommandItem
-                  key={p.id}
-                  value={p.id}
-                  onSelect={() => { onPick(p.id); setOpen(false); setQuery(""); }}
-                >
-                  <span className="flex-1 truncate">{p.display_name}</span>
-                  {value === p.id && <Check className="h-4 w-4 shrink-0" />}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
   );
 }
 
@@ -1698,7 +1636,7 @@ export function ClubQueuePanel({
                 batchMinMatches={batchMinMatches ?? 3}
                 onRefresh={onRefresh}
               />
-              <ManualMatchDialog
+              <MatchFormDialog
                 clubId={clubId}
                 players={players}
                 settings={settings}
@@ -1743,7 +1681,9 @@ export function ClubQueuePanel({
                         match={m}
                         nameMap={nameMap.current}
                         players={players}
-                        playersPerTeam={settings.players_per_team}
+                        settings={settings}
+                        clubId={clubId}
+                        matches={matches}
                         courts={courts}
                         onRefresh={onRefresh}
                         rowNumber={i + 1}
@@ -1760,7 +1700,9 @@ export function ClubQueuePanel({
                   match={m}
                   nameMap={nameMap.current}
                   players={players}
-                  playersPerTeam={settings.players_per_team}
+                  settings={settings}
+                  clubId={clubId}
+                  matches={matches}
                   courts={courts}
                   canManage={false}
                   onRefresh={onRefresh}

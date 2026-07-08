@@ -35,6 +35,9 @@ export type Club = {
   // Per-hour shuttle COUNT, one entry per 1-hour session slot (slot order from
   // sessionHourSlots(start_time,end_time)). Used only when shuttle_split="by_time".
   shuttle_hourly: number[];
+  // Manual total shuttle count for shuttle_split="even" (0 = derive from match
+  // shuttles_used — i.e. count from actual games played).
+  shuttle_total: number;
   court_gap_policy: GapPolicy;
   // Rotation-queue config (raw jsonb; parse via parseQueueSettings in queue-settings.ts)
   queue_settings: Record<string, unknown>;
@@ -86,7 +89,7 @@ export type ClubPlayer = {
   // Cost split inputs — per-player session window + games played
   start_time: string | null; // "HH:MM:SS" or null = use club window
   end_time: string | null;
-  games_played: number; // manual pre-queue fallback; auto-incremented from completed club_matches once rotation queue is used
+  games_played: number; // auto-derived: finish_club_match RPC does +1, delete_club_match −1 (floor 0); no manual entry
   last_finished_at: string | null; // ISO; rest-ordering input for queue_mode='rest_longest'
   discount: number; // per-player discount subtracted from the cost-breakdown grand total
   paid_at: string | null; // ISO when the player paid (null = unpaid); set by manager during collection

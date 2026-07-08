@@ -13,8 +13,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { kickPlayerAction } from "@/lib/actions/club-players";
 
 export function KickButton({
@@ -49,18 +53,22 @@ export function KickButton({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-destructive hover:text-destructive"
-            aria-label={t("ariaLabel")}
-          >
-            <UserMinus className="h-3.5 w-3.5" />
-          </Button>
-        }
-      />
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-destructive hover:text-destructive"
+              aria-label={t("ariaLabel")}
+              onClick={() => setOpen(true)}
+            >
+              <UserMinus className="h-3.5 w-3.5" />
+            </Button>
+          }
+        />
+        <TooltipContent>{t("tooltip")}</TooltipContent>
+      </Tooltip>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

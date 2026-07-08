@@ -39,14 +39,6 @@ const GuestSchema = guestSchema("name_required", "name_too_long");
 
 export type AddGuestInput = z.infer<typeof GuestSchema>;
 
-const PlayerSessionSchema = z.object({
-  start_time: z.string().optional().nullable(), // "HH:MM" | "" | null → null = use club window
-  end_time: z.string().optional().nullable(),
-  games_played: z.coerce.number().int().min(0).max(500),
-});
-
-export type PlayerSessionInput = z.infer<typeof PlayerSessionSchema>;
-
 /**
  * Owner / co-admin adds a guest player to the club — a name-only row with
  * profile_id = NULL (no LINE account needed). The UNIQUE(club_id, profile_id)
@@ -88,41 +80,6 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
   }
 
   revalidatePath(`/clubs/${parsed.data.club_id}`);
-  return { ok: true };
-}
-
-/** Owner / co-admin sets a player's session window + games played (cost-split inputs). */
-export async function updateClubPlayerSessionAction(
-  clubId: string,
-  playerId: string,
-  input: PlayerSessionInput,
-) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-
-  const t = await getTranslations("actions");
-  const parsed = PlayerSessionSchema.safeParse(input);
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
-  }
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
-    return { error: t("club.noPermission") };
-  }
-
-  const { error } = await sb
-    .from("club_players")
-    .update({
-      start_time: parsed.data.start_time?.trim() || null,
-      end_time: parsed.data.end_time?.trim() || null,
-      games_played: parsed.data.games_played,
-    })
-    .eq("id", playerId)
-    .eq("club_id", clubId);
-  if (error) return { error: error.message };
-
-  revalidatePath(`/clubs/${clubId}`);
   return { ok: true };
 }
 
@@ -562,7 +519,6 @@ export async function bulkSetClubPlayerStatusAction(input: {
 const BulkSessionSchema = z.object({
   start_time: z.string().optional(),
   end_time: z.string().optional(),
-  games_played: z.coerce.number().int().min(0).max(500).optional(),
 });
 
 /**
@@ -575,7 +531,6 @@ export async function bulkUpdateClubPlayerSessionAction(input: {
   playerIds: string[];
   start_time?: string;
   end_time?: string;
-  games_played?: number;
 }): Promise<{ ok: true; count: number } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -587,7 +542,6 @@ export async function bulkUpdateClubPlayerSessionAction(input: {
   const parsed = BulkSessionSchema.safeParse({
     start_time: input.start_time,
     end_time: input.end_time,
-    games_played: input.games_played,
   });
   if (!parsed.success) return { error: t("club.invalidData") };
 
@@ -597,8 +551,6 @@ export async function bulkUpdateClubPlayerSessionAction(input: {
     patch.start_time = parsed.data.start_time?.trim() || null;
   if (input.end_time !== undefined)
     patch.end_time = parsed.data.end_time?.trim() || null;
-  if (input.games_played !== undefined)
-    patch.games_played = parsed.data.games_played;
 
   if (Object.keys(patch).length === 0)
     return { error: t("club.bulkSessionNoFields") };
@@ -664,6 +616,8 @@ const UpdatePlayerDetailsSchema = z.object({
   display_name: z.string().trim().min(1).max(60).optional(), // undefined = untouched
   level_id: z.string().uuid().nullable().optional(), // null = "ไม่มีระดับ" (clear)
   note: z.string().trim().max(500).nullable().optional(), // "" / null = clear
+  start_time: z.string().optional().nullable(), // "HH:MM" | "" | null → null = use club window
+  end_time: z.string().optional().nullable(),
 });
 
 export type UpdateClubPlayerDetailsInput = z.infer<typeof UpdatePlayerDetailsSchema>;
@@ -683,7 +637,7 @@ export async function updateClubPlayerDetailsAction(
   const t = await getTranslations("actions");
   const parsed = UpdatePlayerDetailsSchema.safeParse(input);
   if (!parsed.success) return { error: t("club.invalidData") };
-  const { club_id, player_id, display_name, level_id, note } = parsed.data;
+  const { club_id, player_id, display_name, level_id, note, start_time, end_time } = parsed.data;
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, club_id, session.profileId)))
@@ -709,6 +663,10 @@ export async function updateClubPlayerDetailsAction(
   if (display_name !== undefined) patch.display_name = display_name;
   if (level_id !== undefined) patch.level_id = level_id; // null clears
   if (note !== undefined) patch.note = note || null; // "" → null
+  // Session-window overrides folded into this one atomic row update (games_played
+  // stays owned by the session/bulk action — untouched here). "" / null → clear.
+  if (start_time !== undefined) patch.start_time = start_time?.trim() || null;
+  if (end_time !== undefined) patch.end_time = end_time?.trim() || null;
 
   if (Object.keys(patch).length === 0)
     return { error: t("club.updatePlayerNoFields") };

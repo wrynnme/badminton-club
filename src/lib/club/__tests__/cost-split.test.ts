@@ -281,6 +281,57 @@ describe("computeClubSplit — shuttle even (per-shuttle price)", () => {
     expect(rows.map((r) => r.shuttle)).toEqual([7, 7, 7]);
     expect(rows.reduce((s, r) => s + r.shuttle, 0)).toBe(21);
   });
+
+  it("manual shuttleTotal (> 0) overrides the match-derived count", () => {
+    // override 30 shuttles × 10 = 300 ÷ 3 = 100 each — ignores the 3 played shuttles.
+    const r = byId(
+      computeClubSplit(
+        base({
+          courtFee: 0,
+          shuttleSplit: "even",
+          shuttlePrice: 10,
+          shuttleTotal: 30,
+          matches: [{ playerIds: ["A", "B"], shuttles: 3 }],
+        }),
+      ),
+    );
+    expect([r.A.shuttle, r.B.shuttle, r.C.shuttle]).toEqual([100, 100, 100]);
+  });
+
+  it("shuttleTotal 0 falls back to the match-derived count (0 = not set)", () => {
+    // Σ matches (3) × 20 ÷ 3 = 20 each — the explicit 0 does not zero the bill.
+    const r = byId(
+      computeClubSplit(
+        base({
+          courtFee: 0,
+          shuttleSplit: "even",
+          shuttlePrice: 20,
+          shuttleTotal: 0,
+          matches: [{ playerIds: ["A", "B", "C"], shuttles: 3 }],
+        }),
+      ),
+    );
+    expect([r.A.shuttle, r.B.shuttle, r.C.shuttle]).toEqual([20, 20, 20]);
+  });
+
+  it("manual shuttleTotal bills shuttles with NO matches (no rotation queue used)", () => {
+    // 30 × 10 ÷ 3 = 100 each even though no match was recorded.
+    const r = byId(
+      computeClubSplit(
+        base({ courtFee: 0, shuttleSplit: "even", shuttlePrice: 10, shuttleTotal: 30, matches: [] }),
+      ),
+    );
+    expect([r.A.shuttle, r.B.shuttle, r.C.shuttle]).toEqual([100, 100, 100]);
+  });
+
+  it("manual shuttleTotal with price 0 → 0 (count needs a price)", () => {
+    const r = byId(
+      computeClubSplit(
+        base({ courtFee: 0, shuttleSplit: "even", shuttlePrice: 0, shuttleTotal: 40, matches: [] }),
+      ),
+    );
+    expect(r.A.shuttle).toBe(0);
+  });
 });
 
 describe("computeClubSplit — combined + rounding", () => {
