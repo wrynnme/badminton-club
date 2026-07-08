@@ -408,6 +408,7 @@ export default async function ClubDetailPage({
                     shuttle_split: club.shuttle_split,
                     shuttle_price: club.shuttle_price,
                     shuttle_hourly: club.shuttle_hourly ?? [],
+                    shuttle_total: club.shuttle_total ?? 0,
                     court_gap_policy: club.court_gap_policy,
                   }}
                   hourlySlots={buildHourlyShuttleSlots(club, players)}
@@ -460,7 +461,7 @@ export default async function ClubDetailPage({
             <div className="space-y-4">
               {canManage && session && !session.isGuest && (
                 <Card>
-                  <CardContent className="pt-4">
+                  <CardContent>
                     <SaveClubAsPresetDialog
                       clubId={club.id}
                       defaultName={club.name}

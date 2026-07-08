@@ -41,6 +41,9 @@ export type SplitInput = {
   /** Shuttle COUNT per 1-hour session slot (slot order = sessionHourSlots). Used only
    *  when shuttleSplit="by_time"; entries beyond the slot count are ignored, missing = 0. */
   shuttleHourly?: number[];
+  /** Manual total shuttle COUNT for shuttleSplit="even". When > 0 it overrides the
+   *  match-derived count; 0/undefined falls back to Σ matches' shuttles. */
+  shuttleTotal?: number;
 };
 
 export type SplitRow = {
@@ -275,9 +278,12 @@ function computeShuttle(input: SplitInput): Map<string, number> {
   }
 
   if (shuttleSplit === "even") {
-    // Σ shuttles across all matches × price, split EQUALLY among every player
-    // (regardless of who played which match / how many games).
-    const totalShuttles = matches.reduce((s, m) => s + Math.max(0, m.shuttles), 0);
+    // Total shuttle count × price, split EQUALLY among every player (regardless of
+    // who played which match / how many games). Count = the manual `shuttleTotal`
+    // when the organizer set one (> 0), else Σ every match's shuttles (from play).
+    const gameCount = matches.reduce((s, m) => s + Math.max(0, m.shuttles), 0);
+    const override = input.shuttleTotal ?? 0;
+    const totalShuttles = override > 0 ? override : gameCount;
     if (totalShuttles <= 0) return out;
     const share = (totalShuttles * price) / n;
     for (const p of players) out.set(p.id, share);

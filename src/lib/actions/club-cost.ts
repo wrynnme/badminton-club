@@ -14,6 +14,8 @@ const CostConfigSchema = z.object({
   shuttle_price: z.coerce.number().min(0).max(100_000),
   // Per-hour shuttle count (shuttle_split="by_time"); one entry per session hour-slot.
   shuttle_hourly: z.array(z.coerce.number().int().min(0).max(999)).max(48).default([]),
+  // Manual total shuttle count for shuttle_split="even" (0 = derive from matches).
+  shuttle_total: z.coerce.number().int().min(0).max(9999).default(0),
   court_gap_policy: z.enum(["spread", "owner", "ignore"]),
 });
 

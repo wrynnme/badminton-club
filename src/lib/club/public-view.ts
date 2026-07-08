@@ -36,6 +36,7 @@ export function toPublicClub(club: Club): Club {
     court_fee: 0,
     shuttle_price: 0,
     shuttle_hourly: [],
+    shuttle_total: 0,
     total_cost: 0,
     notes: null,
     shuttle_info: null,

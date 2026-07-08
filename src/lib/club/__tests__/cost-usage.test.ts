@@ -187,3 +187,76 @@ describe("computeClubCostRows — by_time usage + total reconcile", () => {
     expect(totalShuttlesUsed).toBe(12);
   });
 });
+
+describe("computePlayerUsage — even (manual total)", () => {
+  const club = {
+    start_time: "18:00",
+    end_time: "21:00",
+    shuttle_split: "even",
+    shuttle_total: 40,
+  } as Club;
+  const players = [
+    { id: "A", start_time: null, end_time: null }, // full 3h
+    { id: "B", start_time: "19:00", end_time: "21:00" }, // 2h — still credited full 40
+  ] as ClubPlayer[];
+
+  function m(ids: (string | null)[], shuttles: number): ClubMatch {
+    return {
+      status: "completed",
+      side_a_player1: ids[0] ?? null,
+      side_a_player2: ids[1] ?? null,
+      side_b_player1: ids[2] ?? null,
+      side_b_player2: ids[3] ?? null,
+      shuttles_used: shuttles,
+    } as ClubMatch;
+  }
+
+  it("credits the full manual total to every player, ignoring matches (mirrors by_time)", () => {
+    const usage = computePlayerUsage({ club, players, matches: [m(["A", "B"], 3)] });
+    expect(usage.get("A")).toEqual({ hours: 3, shuttles: 40 });
+    expect(usage.get("B")).toEqual({ hours: 2, shuttles: 40 }); // full 40 despite only 2h
+  });
+
+  it("shuttle_total 0 falls back to match-derived usage", () => {
+    const usage = computePlayerUsage({
+      club: { ...club, shuttle_total: 0 } as Club,
+      players,
+      matches: [m(["A", "B"], 3)],
+    });
+    expect(usage.get("A")?.shuttles).toBe(3);
+    expect(usage.get("B")?.shuttles).toBe(3);
+  });
+});
+
+describe("computeClubCostRows — even manual total (column + footer)", () => {
+  const club = {
+    owner_id: "owner",
+    court_fee: 0,
+    court_split: "even",
+    shuttle_split: "even",
+    shuttle_price: 10,
+    shuttle_total: 40,
+    start_time: "18:00",
+    end_time: "21:00",
+    court_gap_policy: "spread",
+  } as Club;
+  const players = [
+    { id: "A", profile_id: null, start_time: null, end_time: null, games_played: 0, discount: 0 },
+    { id: "B", profile_id: null, start_time: null, end_time: null, games_played: 0, discount: 0 },
+  ] as ClubPlayer[];
+
+  it("shuttles column = manual total per player; footer = manual total; cost splits it evenly", () => {
+    const { rows, totalShuttle, totalShuttlesUsed } = computeClubCostRows({
+      club,
+      players,
+      matches: [], // no queue used — bill the manual 40 shuttles
+      expenses: [],
+    });
+    const byId = Object.fromEntries(rows.map((r) => [r.playerId, r]));
+    // cost 40 × 10 = 400 ÷ 2 = 200 each; display column = 40 each (full credit)
+    expect(byId.A).toMatchObject({ shuttles: 40, shuttle: 200 });
+    expect(byId.B).toMatchObject({ shuttles: 40, shuttle: 200 });
+    expect(totalShuttle).toBe(400);
+    expect(totalShuttlesUsed).toBe(40); // footer = the manual total (like by_time)
+  });
+});

@@ -981,15 +981,19 @@ export async function createClubManualMatchAction(input: {
 }
 
 /**
- * Owner / co-admin edits the players of a PENDING match (fill in a partial roster,
- * swap players, or clear a slot). Only pending matches are editable — once started,
- * the roster is frozen. sideA/sideB are 0..ppt ids each; ≥1 player overall. Empty
- * slots become null (the match stays in the queue but can't START until full).
+ * Owner / co-admin edits the players (and optionally the court) of a PENDING match:
+ * fill in a partial roster, swap players, clear a slot, or reassign / clear the court.
+ * Only pending matches are editable — once started, the roster is frozen. sideA/sideB
+ * are 0..ppt ids each; ≥1 player overall. Empty slots become null (the match stays in
+ * the queue but can't START until full). `court`: omit the key = leave the court as-is;
+ * pass a name = set it (must be a club court); pass "" / null = clear to courtless. A
+ * single-row UPDATE, so players + court commit atomically (no double-write).
  */
 export async function setClubMatchPlayersAction(input: {
   matchId: string;
   sideA: string[];
   sideB: string[];
+  court?: string | null;
 }): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -1001,10 +1005,10 @@ export async function setClubMatchPlayersAction(input: {
 
   const t = await getTranslations("actions");
 
-  // Load players_per_team to bound each side's size.
+  // Load players_per_team (side sizing) + named courts (validate the court, when given).
   const { data: clubRow } = await sb
     .from("clubs")
-    .select("queue_settings")
+    .select("queue_settings, courts")
     .eq("id", match.club_id)
     .single();
   const ppt = parseQueueSettings(clubRow?.queue_settings ?? {}).players_per_team;
@@ -1012,6 +1016,19 @@ export async function setClubMatchPlayersAction(input: {
   const resolved = await resolveMatchSides(sb, match.club_id, input.sideA, input.sideB, ppt, t);
   if ("error" in resolved) return { error: resolved.error };
   const { cleanA, cleanB } = resolved;
+
+  // Court is optional: only touch it when the key is present. A blank/null clears to
+  // courtless; a name must be one of the club's named courts (when any are configured).
+  // Pending rows carry no court-occupancy constraint (the unique index is in_progress
+  // only), so this can't collide.
+  const courtProvided = input.court !== undefined;
+  const courtName = (input.court ?? "").trim();
+  if (courtProvided && courtName) {
+    const courts = (clubRow?.courts ?? []) as string[];
+    if (courts.length > 0 && !courts.includes(courtName)) {
+      return { error: t("club.courtNotInClub") };
+    }
+  }
 
   // Only a pending match's roster is editable. The status filter no-ops (0 rows) for
   // in_progress/completed/cancelled → reported as matchCannotEditPlayers (also covers
@@ -1023,6 +1040,7 @@ export async function setClubMatchPlayersAction(input: {
       side_a_player2: cleanA[1] ?? null,
       side_b_player1: cleanB[0] ?? null,
       side_b_player2: cleanB[1] ?? null,
+      ...(courtProvided ? { court: courtName || null } : {}),
     })
     .eq("id", input.matchId)
     .eq("status", "pending")

@@ -26,6 +26,7 @@ type Props = {
     shuttle_split: ShuttleSplit;
     shuttle_price: number;
     shuttle_hourly: number[];
+    shuttle_total: number;
     court_gap_policy: GapPolicy;
   };
   /** 1-hour session slots (label + headcount) for the by_time shuttle-count input. */
@@ -42,6 +43,8 @@ export function ClubCostManager({ clubId, initial, hourlySlots }: Props) {
   const [courtSplit, setCourtSplit] = useState<CourtSplit>(initial.court_split);
   const [shuttleSplit, setShuttleSplit] = useState<ShuttleSplit>(initial.shuttle_split);
   const [shuttlePrice, setShuttlePrice] = useState(initial.shuttle_price);
+  // Manual total shuttle count for the "even" split (0 = derive from games played).
+  const [shuttleTotal, setShuttleTotal] = useState(initial.shuttle_total);
   const [gapPolicy, setGapPolicy] = useState<GapPolicy>(initial.court_gap_policy);
   // Per-hour shuttle counts, indexed by slot. Held dense over hourlySlots so the
   // total + save payload never hit a sparse-array NaN if the session window changes.
@@ -65,6 +68,7 @@ export function ClubCostManager({ clubId, initial, hourlySlots }: Props) {
         shuttle_hourly: hourlySlots.length
           ? hourlySlots.map((_, i) => shuttleHourly[i] ?? 0)
           : initial.shuttle_hourly,
+        shuttle_total: Math.min(9999, Math.max(0, Math.floor(shuttleTotal || 0))),
         court_gap_policy: gapPolicy,
       });
       if (res && "error" in res) {
@@ -78,7 +82,7 @@ export function ClubCostManager({ clubId, initial, hourlySlots }: Props) {
 
   return (
     <Card>
-      <Collapsible open={open} onOpenChange={setOpen}>
+      <Collapsible open={open} onOpenChange={setOpen} className="space-y-2">
         <CardHeader>
           <CollapsibleTrigger
             render={
@@ -204,6 +208,15 @@ export function ClubCostManager({ clubId, initial, hourlySlots }: Props) {
             <Button
               type="button"
               size="sm"
+              variant={shuttleSplit === "by_time" ? "default" : "outline"}
+              onClick={() => setShuttleSplit("by_time")}
+              className="h-7 text-xs"
+            >
+              {t("splitByHour")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
               variant={shuttleSplit === "per_match" ? "default" : "outline"}
               onClick={() => setShuttleSplit("per_match")}
               className="h-7 text-xs"
@@ -218,15 +231,6 @@ export function ClubCostManager({ clubId, initial, hourlySlots }: Props) {
               className="h-7 text-xs"
             >
               {t("splitPerMatch")}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={shuttleSplit === "by_time" ? "default" : "outline"}
-              onClick={() => setShuttleSplit("by_time")}
-              className="h-7 text-xs"
-            >
-              {t("splitByHour")}
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -243,6 +247,28 @@ export function ClubCostManager({ clubId, initial, hourlySlots }: Props) {
               </>
             )}
           </p>
+
+          {/* Manual total shuttle count — only when shuttle_split === "even".
+              0 = derive the count from actual games played. */}
+          {shuttleSplit === "even" && (
+            <div className="space-y-2 pl-3 border-l-2 border-muted">
+              <Label className="text-sm font-medium">{t("shuttleEvenCountLabel")}</Label>
+              <div className="relative max-w-[140px]">
+                <NumberInput
+                  min={0}
+                  max={9999}
+                  step={1}
+                  value={shuttleTotal}
+                  onValueChange={setShuttleTotal}
+                  className="pr-8 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                />
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">
+                  {t("hourlyUnit")}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">{t("shuttleEvenCountHint")}</p>
+            </div>
+          )}
 
           {/* Per-hour shuttle counts — only when shuttle_split === "by_time" */}
           {shuttleSplit === "by_time" && (

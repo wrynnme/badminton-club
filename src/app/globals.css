@@ -65,6 +65,9 @@
 /* Base: neutral gray. Brand accents: --primary (blue) + orange --brand (#F18303).
    --accent stays a subtle neutral (shadcn hover/selected role). */
 :root {
+  /* Native form-control UI (date/time/number pickers, spinners, scrollbars) follows
+     the app theme — the calendar icon in a date input goes light in dark mode, etc. */
+  color-scheme: light;
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
@@ -128,6 +131,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

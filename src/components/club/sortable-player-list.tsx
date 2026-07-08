@@ -62,7 +62,6 @@ import { KickButton } from "@/components/club/kick-button";
 import {
   reorderPlayersAction,
   toggleCheckInAction,
-  updateClubPlayerSessionAction,
   updateClubPlayerDetailsAction,
   bulkSetClubPlayerLevelAction,
   promoteClubReserveAction,
@@ -152,144 +151,6 @@ function CheckInButton({
   );
 }
 
-// ─── Session editor (inline, canManage only) ──────────────────────────────────
-
-function SessionEditor({
-  player,
-  clubId,
-  sessionStart,
-  sessionEnd,
-}: {
-  player: ClubPlayer;
-  clubId: string;
-  sessionStart?: string;
-  sessionEnd?: string;
-}) {
-  const t = useTranslations("club.playerList");
-  const router = useProgressRouter();
-  const [open, setOpen] = useState(false);
-  const [pending, start] = useTransition();
-
-  const clubStartPlaceholder = sessionStart?.slice(0, 5) ?? "";
-  const clubEndPlaceholder = sessionEnd?.slice(0, 5) ?? "";
-
-  // Pre-fill with the player's override, else the club's full window (not blank).
-  const [startVal, setStartVal] = useState(player.start_time?.slice(0, 5) ?? clubStartPlaceholder);
-  const [endVal, setEndVal] = useState(player.end_time?.slice(0, 5) ?? clubEndPlaceholder);
-  const [games, setGames] = useState(player.games_played);
-
-  // Resync from parent when the editor is CLOSED. While open, a background
-  // router.refresh() (30s auto-refresh) must not clobber the admin's in-progress edit.
-  useEffect(() => {
-    if (open) return;
-    setStartVal(player.start_time?.slice(0, 5) ?? clubStartPlaceholder);
-    setEndVal(player.end_time?.slice(0, 5) ?? clubEndPlaceholder);
-    setGames(player.games_played);
-  }, [open, player.start_time, player.end_time, player.games_played, clubStartPlaceholder, clubEndPlaceholder]);
-
-  function handleSave() {
-    start(async () => {
-      const res = await updateClubPlayerSessionAction(clubId, player.id, {
-        // A value equal to the club window means "no override" → store null so the
-        // partial-session label only shows when the player truly differs.
-        start_time: startVal && startVal !== clubStartPlaceholder ? startVal : null,
-        end_time: endVal && endVal !== clubEndPlaceholder ? endVal : null,
-        games_played: games,
-      });
-      if (res && "error" in res) {
-        toast.error(res.error);
-      } else {
-        toast.success(t("sessionEditorSaved"));
-        router.refresh();
-        setOpen(false);
-      }
-    });
-  }
-
-  if (!open) {
-    // Show a subtle summary when anything non-default is set
-    const hasOverride = player.start_time || player.end_time || player.games_played > 0;
-    return (
-      <Button
-        size="xs"
-        variant="ghost"
-        className="text-muted-foreground h-6 px-1.5 text-xs"
-        onClick={() => setOpen(true)}
-        title={t("sessionEditorTitle")}
-      >
-        <Clock className="h-3 w-3" />
-        {hasOverride ? (
-          <span className="ml-0.5 tabular-nums">
-            {player.games_played > 0 ? `${player.games_played}g` : ""}
-            {player.start_time || player.end_time ? " ⏱" : ""}
-          </span>
-        ) : null}
-      </Button>
-    );
-  }
-
-  return (
-    <div className="mt-1.5 flex flex-wrap items-end gap-2 rounded-md border bg-muted/30 p-2 text-xs">
-      <div className="flex flex-col gap-0.5">
-        <Label className="text-[10px] text-muted-foreground">{t("sessionEditorStart")}</Label>
-        <Input
-          type="time"
-          value={startVal}
-          placeholder={clubStartPlaceholder}
-          onChange={(e) => setStartVal(e.target.value)}
-          className="h-7 w-[100px] text-xs"
-        />
-      </div>
-      <div className="flex flex-col gap-0.5">
-        <Label className="text-[10px] text-muted-foreground">{t("sessionEditorEnd")}</Label>
-        <Input
-          type="time"
-          value={endVal}
-          placeholder={clubEndPlaceholder}
-          onChange={(e) => setEndVal(e.target.value)}
-          className="h-7 w-[100px] text-xs"
-        />
-      </div>
-      <div className="flex flex-col gap-0.5">
-        <Label className="text-[10px] text-muted-foreground">{t("sessionEditorGames")}</Label>
-        <Input
-          type="number"
-          min={0}
-          max={500}
-          value={games}
-          onChange={(e) => setGames(Math.max(0, parseInt(e.target.value, 10) || 0))}
-          className="h-7 w-[64px] text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-        />
-      </div>
-      <div className="flex items-end gap-1 pb-0.5">
-        <Button
-          type="button"
-          size="xs"
-          disabled={pending}
-          onClick={handleSave}
-          className="h-7 text-xs"
-        >
-          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : t("sessionEditorSave")}
-        </Button>
-        <Button
-          type="button"
-          size="xs"
-          variant="ghost"
-          className="h-7 text-xs"
-          onClick={() => setOpen(false)}
-        >
-          {t("sessionEditorCancel")}
-        </Button>
-      </div>
-      {(clubStartPlaceholder || clubEndPlaceholder) && (
-        <p className="w-full text-[10px] text-muted-foreground">
-          {t("sessionEditorClubWindow", { start: clubStartPlaceholder, end: clubEndPlaceholder })}
-        </p>
-      )}
-    </div>
-  );
-}
-
 // ─── Edit control (canManage only) ────────────────────────────────────────────
 
 function EditButton({ onOpen }: { onOpen: () => void }) {
@@ -315,99 +176,54 @@ function EditButton({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-/**
- * Inline quick level picker shown in the row for managers (non-managers see a
- * static Badge instead). Saves on change; reverts on error. Resyncs from props
- * only while closed + idle so a background refresh can't clobber an edit.
- */
-function LevelQuickSelect({
-  player,
-  clubId,
-  levels,
-}: {
-  player: ClubPlayer;
-  clubId: string;
-  levels?: Level[];
-}) {
-  const t = useTranslations("club.playerList");
-  const router = useProgressRouter();
-  const [value, setValue] = useState(player.level_id ?? NONE_SENTINEL);
-  const [open, setOpen] = useState(false);
-  const [pending, start] = useTransition();
-
-  useEffect(() => {
-    if (open || pending) return;
-    setValue(player.level_id ?? NONE_SENTINEL);
-  }, [open, pending, player.level_id]);
-
-  function handleChange(next: string) {
-    const prev = value;
-    setValue(next); // optimistic
-    start(async () => {
-      const res = await updateClubPlayerDetailsAction({
-        club_id: clubId,
-        player_id: player.id,
-        level_id: next === NONE_SENTINEL ? null : next,
-      });
-      if (res && "error" in res) {
-        toast.error(res.error);
-        setValue(prev); // revert
-      } else {
-        toast.success(t("levelSaved"));
-        router.refresh();
-      }
-    });
-  }
-
-  return (
-    <Select
-      value={value}
-      open={open}
-      onOpenChange={setOpen}
-      onValueChange={(v) => {
-        if (v) handleChange(v);
-      }}
-      disabled={pending}
-    >
-      <SelectTrigger
-        size="sm"
-        className="h-6 w-auto max-w-[96px] gap-1 px-2 text-xs"
-        aria-label={t("levelSelectAriaLabel", { name: player.display_name })}
-      >
-        <SelectValue>{(v: string) => levelTriggerLabel(levels, v, t("levelNone"))}</SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={NONE_SENTINEL}>{t("levelNone")}</SelectItem>
-        {(levels ?? []).map((l) => (
-          <SelectItem key={l.id} value={l.id}>
-            {l.label} ({l.real})
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
-
-/** Inline "edit player" form (expands below the row). Name is guest-only; level
- * and note apply to every player. One partial-patch call. */
+/** "Edit player" dialog. Name is guest-only; level, note, and the session-window
+ * override (start/end time) apply to every player. One partial-patch call folds
+ * all fields into a single row update. games_played stays owned by the bulk
+ * session dialog. Reseeds from props on open so a background 30s refresh (or the
+ * same row reused for another player) can't show stale field values. */
 function EditPlayerForm({
   player,
   clubId,
   levels,
-  onClose,
+  sessionStart,
+  sessionEnd,
+  open,
+  onOpenChange,
 }: {
   player: ClubPlayer;
   clubId: string;
   levels?: Level[];
-  onClose: () => void;
+  sessionStart?: string;
+  sessionEnd?: string;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
 }) {
   const t = useTranslations("club.playerList");
   const router = useProgressRouter();
   const isGuest = player.profile_id == null;
+
+  const clubStartPlaceholder = sessionStart?.slice(0, 5) ?? "";
+  const clubEndPlaceholder = sessionEnd?.slice(0, 5) ?? "";
+
   const [name, setName] = useState(player.display_name);
   const [level, setLevel] = useState(player.level_id ?? NONE_SENTINEL);
   const [note, setNote] = useState(player.note ?? "");
+  // Pre-fill time with the player's override, else the club's full window (not blank).
+  const [startVal, setStartVal] = useState(player.start_time?.slice(0, 5) ?? clubStartPlaceholder);
+  const [endVal, setEndVal] = useState(player.end_time?.slice(0, 5) ?? clubEndPlaceholder);
   const [pending, start] = useTransition();
+
+  // Reseed on open only — while closed, a background refresh must not clobber
+  // an in-progress edit; on open we want the freshest server values.
+  useEffect(() => {
+    if (!open) return;
+    setName(player.display_name);
+    setLevel(player.level_id ?? NONE_SENTINEL);
+    setNote(player.note ?? "");
+    setStartVal(player.start_time?.slice(0, 5) ?? clubStartPlaceholder);
+    setEndVal(player.end_time?.slice(0, 5) ?? clubEndPlaceholder);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   function handleSave() {
     const trimmedName = name.trim();
@@ -419,75 +235,113 @@ function EditPlayerForm({
         ...(isGuest ? { display_name: trimmedName } : {}),
         level_id: level === NONE_SENTINEL ? null : level,
         note: note.trim() || null,
+        // A value equal to the club window means "no override" → store null so the
+        // partial-session label only shows when the player truly differs.
+        start_time: startVal && startVal !== clubStartPlaceholder ? startVal : null,
+        end_time: endVal && endVal !== clubEndPlaceholder ? endVal : null,
       });
       if (res && "error" in res) {
         toast.error(res.error);
       } else {
         toast.success(t("editSaved"));
         router.refresh();
-        onClose();
+        onOpenChange(false);
       }
     });
   }
 
   return (
-    <div className="mt-1.5 flex flex-col gap-2 rounded-md border bg-muted/30 p-2 text-xs">
-      {isGuest && (
-        <div className="flex flex-col gap-0.5">
-          <Label className="text-[10px] text-muted-foreground">{t("renameLabel")}</Label>
-          <Input
-            autoFocus
-            value={name}
-            maxLength={60}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") onClose();
-            }}
-            className="h-7 text-xs"
-          />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t("editTitle")}</DialogTitle>
+          <DialogDescription className="text-xs">{player.display_name}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-1">
+          {isGuest && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">{t("renameLabel")}</Label>
+              <Input
+                autoFocus
+                value={name}
+                maxLength={60}
+                onChange={(e) => setName(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+          )}
+
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">{t("editLevelLabel")}</Label>
+            <Select value={level} onValueChange={(v) => { if (v) setLevel(v); }}>
+              <SelectTrigger size="sm" className="h-8 w-full text-sm">
+                <SelectValue>{(v: string) => levelTriggerLabel(levels, v, t("levelNone"))}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE_SENTINEL}>{t("levelNone")}</SelectItem>
+                {(levels ?? []).map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.label} ({l.real})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Session window override — start / end time */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">{t("sessionEditorStart")}</Label>
+              <Input
+                type="time"
+                value={startVal}
+                placeholder={clubStartPlaceholder}
+                onChange={(e) => setStartVal(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">{t("sessionEditorEnd")}</Label>
+              <Input
+                type="time"
+                value={endVal}
+                placeholder={clubEndPlaceholder}
+                onChange={(e) => setEndVal(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+          </div>
+          {(clubStartPlaceholder || clubEndPlaceholder) && (
+            <p className="text-[11px] text-muted-foreground">
+              {t("sessionEditorClubWindow", { start: clubStartPlaceholder, end: clubEndPlaceholder })}
+            </p>
+          )}
+
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">{t("editNoteLabel")}</Label>
+            <Textarea
+              value={note}
+              maxLength={500}
+              rows={2}
+              onChange={(e) => setNote(e.target.value)}
+              className="text-sm"
+            />
+          </div>
         </div>
-      )}
-      <div className="flex flex-col gap-0.5">
-        <Label className="text-[10px] text-muted-foreground">{t("editLevelLabel")}</Label>
-        <Select value={level} onValueChange={(v) => { if (v) setLevel(v); }}>
-          <SelectTrigger size="sm" className="h-7 w-full text-xs">
-            <SelectValue>{(v: string) => levelTriggerLabel(levels, v, t("levelNone"))}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE_SENTINEL}>{t("levelNone")}</SelectItem>
-            {(levels ?? []).map((l) => (
-              <SelectItem key={l.id} value={l.id}>
-                {l.label} ({l.real})
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="flex flex-col gap-0.5">
-        <Label className="text-[10px] text-muted-foreground">{t("editNoteLabel")}</Label>
-        <Textarea
-          value={note}
-          maxLength={500}
-          rows={2}
-          onChange={(e) => setNote(e.target.value)}
-          className="text-xs"
-        />
-      </div>
-      <div className="flex items-center gap-1">
-        <Button
-          type="button"
-          size="xs"
-          disabled={pending || (isGuest && !name.trim())}
-          onClick={handleSave}
-          className="h-7 text-xs"
-        >
-          {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : t("renameSave")}
-        </Button>
-        <Button type="button" size="xs" variant="ghost" className="h-7 text-xs" onClick={onClose}>
-          {t("renameCancel")}
-        </Button>
-      </div>
-    </div>
+
+        <DialogFooter className="gap-2">
+          <DialogClose render={
+            <Button variant="outline" disabled={pending}>{t("renameCancel")}</Button>
+          } />
+          <Button onClick={handleSave} disabled={pending || (isGuest && !name.trim())}>
+            {pending
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />{t("renameSave")}</>
+              : t("renameSave")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -521,18 +375,14 @@ function BulkSessionDialog({
   const [startVal, setStartVal] = useState("");
   const [enableEnd, setEnableEnd] = useState(false);
   const [endVal, setEndVal] = useState("");
-  const [enableGames, setEnableGames] = useState(false);
-  const [games, setGames] = useState(0);
-
   // Reset fields each time the dialog opens.
   useEffect(() => {
     if (!open) return;
     setEnableStart(false); setStartVal("");
     setEnableEnd(false); setEndVal("");
-    setEnableGames(false); setGames(0);
   }, [open]);
 
-  const noneEnabled = !enableStart && !enableEnd && !enableGames;
+  const noneEnabled = !enableStart && !enableEnd;
 
   function handleSubmit() {
     start(async () => {
@@ -541,11 +391,9 @@ function BulkSessionDialog({
         playerIds: string[];
         start_time?: string;
         end_time?: string;
-        games_played?: number;
       } = { clubId, playerIds };
       if (enableStart) payload.start_time = startVal;
       if (enableEnd) payload.end_time = endVal;
-      if (enableGames) payload.games_played = games;
 
       const res = await bulkUpdateClubPlayerSessionAction(payload);
       if ("error" in res) {
@@ -608,26 +456,6 @@ function BulkSessionDialog({
             />
           </div>
 
-          {/* Games */}
-          <div className="flex items-center gap-3">
-            <Checkbox
-              checked={enableGames}
-              onCheckedChange={(v) => setEnableGames(!!v)}
-              id="bulk-games-enable"
-            />
-            <label htmlFor="bulk-games-enable" className="flex-1 cursor-pointer font-medium">
-              {t("sessionFieldGames")}
-            </label>
-            <Input
-              type="number"
-              min={0}
-              max={500}
-              value={games}
-              disabled={!enableGames}
-              onChange={(e) => setGames(Math.max(0, parseInt(e.target.value, 10) || 0))}
-              className="h-8 w-[80px] text-xs [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
         </div>
 
         <DialogFooter className="gap-2">
@@ -1061,41 +889,33 @@ function PlayerRowBody({
         {dragHandle}
         <span className="text-muted-foreground w-6 tabular-nums">{positionLabel}</span>
         <span className="font-medium">{player.display_name}</span>
-        {canManage && <EditButton onOpen={() => setEditOpen(true)} />}
-        {canManage ? (
-          <LevelQuickSelect player={player} clubId={clubId} levels={levels} />
-        ) : (
-          (() => {
-            const label = player.level_id ? levels?.find((l) => l.id === player.level_id)?.label : undefined;
-            return label ? <Badge variant="outline">{label}</Badge> : null;
-          })()
-        )}
+        {(() => {
+          // Read-only level badge for everyone; managers edit it via the ✎ dialog.
+          const label = player.level_id ? levels?.find((l) => l.id === player.level_id)?.label : undefined;
+          return label ? <Badge variant="outline">{label}</Badge> : null;
+        })()}
         {player.note && (
           <span className="text-muted-foreground text-xs hidden sm:inline">— {player.note}</span>
         )}
 
         <span className="ml-auto flex items-center gap-1.5">
-          {canManage && (
-            <SessionEditor
-              player={player}
-              clubId={clubId}
-              sessionStart={sessionStart}
-              sessionEnd={sessionEnd}
-            />
-          )}
           <CheckInButton player={player} clubId={clubId} canToggle={canManage} />
+          {canManage && <EditButton onOpen={() => setEditOpen(true)} />}
           {isSelf && <LeaveButton clubId={clubId} />}
           {canManage && !isSelf && <KickButton clubId={clubId} playerId={player.id} playerName={player.display_name} />}
         </span>
       </div>
 
-      {/* Edit form — expands below main row */}
-      {canManage && editOpen && (
+      {/* Edit dialog — portal-mounted; opened by the ✎ button */}
+      {canManage && (
         <EditPlayerForm
           player={player}
           clubId={clubId}
           levels={levels}
-          onClose={() => setEditOpen(false)}
+          sessionStart={sessionStart}
+          sessionEnd={sessionEnd}
+          open={editOpen}
+          onOpenChange={setEditOpen}
         />
       )}
 

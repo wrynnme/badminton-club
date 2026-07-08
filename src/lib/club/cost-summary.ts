@@ -32,6 +32,7 @@ type ClubCostFields = Pick<
   | "shuttle_split"
   | "shuttle_price"
   | "shuttle_hourly"
+  | "shuttle_total"
   | "start_time"
   | "end_time"
   | "court_gap_policy"
@@ -74,6 +75,7 @@ export function buildClubSplitInput(
     shuttleSplit: club.shuttle_split,
     shuttlePrice: club.shuttle_price,
     shuttleHourly: club.shuttle_hourly,
+    shuttleTotal: club.shuttle_total,
     matches: splitMatches,
     sessionStart: club.start_time,
     sessionEnd: club.end_time,
@@ -209,10 +211,11 @@ export type PlayerUsage = { hours: number; shuttles: number };
  * cost basis so the usage column lines up with the cost column:
  *  - by_time → each present player credited the slot's hourly count (via
  *    hourlySlotPresence — the SAME presence the by_time cost split uses);
+ *  - even + manual total (> 0) → every player credited the full manual count;
  *  - else → summed over the in_progress+completed matches the player joined.
  */
 export function computePlayerUsage(input: {
-  club: Pick<Club, "start_time" | "end_time" | "shuttle_split" | "shuttle_hourly">;
+  club: Pick<Club, "start_time" | "end_time" | "shuttle_split" | "shuttle_hourly" | "shuttle_total">;
   players: Pick<ClubPlayer, "id" | "start_time" | "end_time">[];
   matches: Pick<
     ClubMatch,
@@ -249,6 +252,19 @@ export function computePlayerUsage(input: {
         if (u) u.shuttles += count;
       }
     });
+    return usage;
+  }
+
+  // even + manual total → credit the whole manual count to every player (a usage
+  // display mirroring by_time's full-credit rule; the even cost splits equally
+  // regardless of presence). 0 = fall through to the match-derived count below.
+  const evenTotal =
+    input.club.shuttle_split === "even" ? Math.max(0, input.club.shuttle_total ?? 0) : 0;
+  if (evenTotal > 0) {
+    for (const p of input.players) {
+      const u = usage.get(p.id);
+      if (u) u.shuttles = evenTotal;
+    }
     return usage;
   }
 
@@ -335,9 +351,11 @@ export function computeClubCostRows(input: {
           (s, _slot, i) => s + Math.max(0, input.club.shuttle_hourly?.[i] ?? 0),
           0,
         )
-      : input.matches
-          .filter((m) => m.status === "in_progress" || m.status === "completed")
-          .reduce((s, m) => s + m.shuttles_used, 0);
+      : input.club.shuttle_split === "even" && (input.club.shuttle_total ?? 0) > 0
+        ? Math.max(0, input.club.shuttle_total ?? 0)
+        : input.matches
+            .filter((m) => m.status === "in_progress" || m.status === "completed")
+            .reduce((s, m) => s + m.shuttles_used, 0);
 
   return {
     rows,

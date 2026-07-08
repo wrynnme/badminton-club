@@ -10,6 +10,31 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-08 (แก้ไข → ✅ FIXED) — dropdown "ปลายทาง" ในไดอะล็อกบันทึกพรีเซ็ตโชว์ค่าดิบ `__new__`
+
+- **[P2 UI] `save-club-as-preset-dialog.tsx`**: trigger ของ Select "ปลายทาง" โชว์ `__new__` (sentinel ดิบ) แทน "สร้างพรีเซ็ตใหม่". **root cause:** Base UI `Select.Value` เมื่อไม่ส่ง children function จะ render `value` ดิบ (label ของ item ยังไม่ mount ตอน trigger paint) — i18n key `savePresetFromClub.targetNew` มีอยู่ถูกต้องทั้ง th/en แต่ `<SelectValue />` ไม่ได้แมป. **repro:** เปิด "บันทึกก๊วนนี้เป็นพรีเซ็ต" → ช่องปลายทางโชว์ `__new__`. **fix:** ใส่ children function `(value) => value === NEW_PRESET ? t("targetNew") : presetName` แมป value→label (Base UI API รองรับ `children?: (value) => ReactNode`). ไม่แตะ i18n/schema. tsc 0.
+
+### 2026-07-08 (ship-check PR #20 → ✅ ผ่าน) — v0.21.0 cost/queue UX
+
+- **scope:** PR #20 (`feat/club-v0.21.0-cost-queue-ux` → develop). Phase 0: tsc 0 · vitest 825/825. Phase 1 code-review: 0 P0 · 0 P1 · **2 P2** (fail-safe ทั้งคู่) — แก้ทั้ง 2:
+  - `club-cost.ts` + `club-cost-manager.tsx`: `shuttle_total` `.max(9999)` เดิม reject → clamp ฝั่ง client (`max={9999}` + `Math.min(9999, …)` ตอน save) กันทั้งฟอร์ม cost save ล่มเมื่อพิมพ์ >9999.
+  - `club-players.ts`: `start_time`/`end_time` ใน `UpdatePlayerDetailsSchema` + `BulkSessionSchema` เพิ่ม `.regex(TIME_RE).or(z.literal(""))` (คง semantic `""`→null clear).
+- **Phase 2.5:** i18n parity club 836/836 · `next build` OK.
+- **Phase 3 browser smoke (net-zero prod, cookie-auth):** seed club(even/price10) + 4 ผู้เล่น + 1 แมตช์(shuttles=5):
+  - override: `shuttle_total`=40 → ลูก=40, ค่าลูก=100/คน (40×10÷4), footer ลูก=40 · DB ยืนยัน 40 ✓
+  - fallback: `shuttle_total`=0 → ลูก=5 (จากแมตช์จริง), ค่าลูก=13/คน (ceil 5×10÷4) ✓
+  - ปุ่ม shuttle เรียง หารเท่า·ตามชั่วโมง·ต่อลูก·ต่อแมตช์ + even-count input/hint แสดง ✓
+  - preset "ปลายทาง" dropdown = "สร้างพรีเซ็ตใหม่" (ไม่มี `__new__` ดิบ) ✓
+  - badge → `/whats-new` ✓ · console 0 error · teardown 0 row เหลือ ✓
+
+### 2026-07-07 (ตรวจสอบ → ✅ ไม่ใช่บั๊ก) — dead-code audit: 3 field ที่ถูก flag "dead" ยัง LIVE บน prod (ห้ามลบ)
+
+audit/grill-me เคย flag 3 field เป็น drop candidate — trace read path + query prod ยืนยัน **ทั้งหมดยังใช้จริง (false positive)**; ไม่แก้โค้ด/ไม่ migration:
+- **`queue_settings.court_count`** — frozen legacy fallback ผ่าน `resolveClubCourts()` (`club-matches.ts` / `clubs/[id]/page.tsx` / `c/[id]/page.tsx`) + ใช้เต็มใน preset flow (`preset.ts`/`club-presets.ts`/`preset-form.tsx`). **prod: 3/8 ก๊วน มี `clubs.courts` ว่าง → พึ่ง fallback 100%** → ลบ = 37.5% ก๊วนสนามหาย.
+- **`club_matches.score_a`/`score_b`** — แถวใหม่ null (ใช้ `games` jsonb) แต่ `club-queue-panel.tsx:144,1039` อ่านเป็น display fallback แถวเก่า. **prod: 1/186 แถว non-null.**
+- **tournament `matches.team_a_score`/`team_b_score`** — ไม่ใช่ legacy: เขียนทุก score record (RPC `record_match_score` + walkover paths) + อ่าน 8+ จุด (csv export / bracket / tv / dashboard / match-row memo comparator). แกน denormalized games-won.
+- **บทเรียน (ตรงกับ code-review ที่เคยกัน court_count ไว้):** อย่าลบตาม label — trace resolver + เช็ค prod data ก่อนเสมอ ("ไม่เขียนแล้ว" ≠ "ไม่อ่านแล้ว"). บันทึก false-positive ที่ auto-memory `dead-code-audit-false-positives.md` กัน re-trace.
+
 ### 2026-07-07 (แก้ไข → ✅ FIXED) — reroll "จัดคิวใหม่" no-op เมื่อ roster เต็มคิว + ship-check PR #18
 
 - **[P2 UX] ปุ่ม "จัดคิวใหม่" รายใบคืน ok แต่ไม่เปลี่ยนอะไร เมื่อทุกคนถูกจัดลงคิวหมด** (`rebuildClubPendingMatchAction`): free-pool ของ reroll = ผู้เล่นของแมตช์เอง (0 คนว่าง) → สุ่มได้ชุดเดิม → toast success ปลอม. **repro:** club 0a0130af (12 คน, fair_winner_fallback, 4 pending, 0 free). **Fix:** free-pool reroll เดิม → ถ้า matchup ไม่เปลี่ยน → **cross-match side-swap** (`planRerollSwap` + RPC `swap_club_match_sides` atomic) — 2 แมตช์ได้คู่ใหม่ ทุกคนเล่นครบเท่าเดิม; สลับไม่ได้ → `rebuildNoSwap` ชี้ "รื้อ+สุ่มใหม่"; toast แยก "สลับผู้เล่นกับอีกคิวแล้ว".
