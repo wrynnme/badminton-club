@@ -144,39 +144,6 @@ export async function replyMessage(
 }
 
 // ---------------------------------------------------------------------------
-// getMessageContent
-// ---------------------------------------------------------------------------
-
-/**
- * Download binary content (e.g. a slip image) sent by a user to the bot.
- * Returns a Buffer on success, null on missing token or API error.
- */
-export async function getMessageContent(messageId: string): Promise<Buffer | null> {
-  const token = process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN;
-  if (!token) return null;
-
-  try {
-    const res = await fetch(
-      `https://api-data.line.me/v2/bot/message/${messageId}/content`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    );
-
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error("[LINE-CLUB] getMessageContent API error:", res.status, errBody);
-      return null;
-    }
-
-    return Buffer.from(await res.arrayBuffer());
-  } catch (err) {
-    console.error("[LINE-CLUB] getMessageContent exception:", err);
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // verifyLineSignature
 // ---------------------------------------------------------------------------
 

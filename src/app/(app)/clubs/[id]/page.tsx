@@ -22,7 +22,6 @@ import { ClubVisibilityControls } from "@/components/club/club-visibility-contro
 import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
 import { ClubPaymentCollector } from "@/components/club/club-payment-collector";
-import { ClubSlipReview, type ReviewItem } from "@/components/club/club-slip-review";
 import { HourlyHeadcount } from "@/components/club/hourly-headcount";
 import { ClubQueueSettings } from "@/components/club/club-queue-settings";
 import { ClubCourtManager } from "@/components/club/club-court-manager";
@@ -32,7 +31,6 @@ import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
 import { ClubLiveWrapper } from "@/components/club/club-live-wrapper";
 import { SaveClubAsPresetDialog } from "@/components/club/save-club-as-preset-dialog";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
-import { parseBillingVerifySettings } from "@/lib/club/billing-verify-settings";
 import { hasBankReceiver, parseReceiptTemplate } from "@/lib/club/receipt";
 import { resolveClubCourts } from "@/lib/club/courts";
 import { ClubInfoRow } from "@/components/club/club-info-row";
@@ -63,7 +61,7 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes, lineRes, slipRowsRes] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes, lineRes] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -113,15 +111,6 @@ export default async function ClubDetailPage({
       .from("club_players")
       .select("id, profile:profiles!club_players_profile_id_fkey(line_user_id)")
       .eq("club_id", id),
-    // Manual slip-review rows (cost tab). Fold the SELECT into the wave so it adds
-    // no serial hop; signed URLs are still generated below, but only when there
-    // are rows to review (common case: none → zero extra work).
-    sb
-      .from("club_payment_slips")
-      .select("id, club_player_id, image_path, amount_detected, created_at")
-      .eq("club_id", id)
-      .eq("verify_status", "manual")
-      .order("created_at", { ascending: false }),
   ]);
 
   const owner = ownerRes.data;
@@ -171,53 +160,7 @@ export default async function ClubDetailPage({
     (row) => ({ id: row.id as string, name: row.name as string }),
   );
 
-  // ── Slip review queue (manual verify_status) ─────────────────────────────
-  // canManage is guaranteed true below this point (redirect fires above for others).
-  let slipReviewItems: ReviewItem[] = [];
-  {
-    const slipRows = slipRowsRes.data;
-
-    if (slipRows && slipRows.length > 0) {
-      // Batch signed URLs for private slip images (10-min expiry = 600s).
-      const paths = slipRows
-        .map((s) => s.image_path)
-        .filter((p): p is string => p !== null);
-      const signedUrlMap = new Map<string, string>();
-      if (paths.length > 0) {
-        const { data: signed } = await sb.storage
-          .from("payment-slips")
-          .createSignedUrls(paths, 600);
-        (signed ?? []).forEach((entry) => {
-          if (entry.signedUrl && entry.path)
-            signedUrlMap.set(entry.path, entry.signedUrl);
-        });
-      }
-
-      const playerById = new Map(players.map((p) => [p.id, p]));
-
-      slipReviewItems = slipRows.map((slip) => {
-        const player = slip.club_player_id
-          ? playerById.get(slip.club_player_id)
-          : undefined;
-        const signedUrl =
-          slip.image_path ? (signedUrlMap.get(slip.image_path) ?? null) : null;
-        return {
-          slipId: slip.id,
-          signedUrl,
-          playerName: player?.display_name ?? "—",
-          amountDetected:
-            typeof slip.amount_detected === "number"
-              ? slip.amount_detected
-              : null,
-          billAmount: player?.bill_amount ?? null,
-          createdAt: slip.created_at,
-        };
-      });
-    }
-  }
-
   const queueSettings = parseQueueSettings(club.queue_settings);
-  const billingVerifySettings = parseBillingVerifySettings(club.billing_verify_settings);
 
   // Named courts (clubs.courts), else a legacy ['1'..'N'] fallback (see resolveClubCourts).
   const clubCourts = resolveClubCourts(club.courts, queueSettings.court_count);
@@ -448,11 +391,7 @@ export default async function ClubDetailPage({
                   expenses={expenses}
                   qrLogoUrl={resolveQrLogoUrl(appSettings)}
                   lineReachableIds={lineReachableIds}
-                  billingVerifySettings={billingVerifySettings}
                 />
-              )}
-              {canManage && (
-                <ClubSlipReview clubId={club.id} items={slipReviewItems} />
               )}
             </div>
           }
