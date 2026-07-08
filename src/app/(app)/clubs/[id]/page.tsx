@@ -52,17 +52,18 @@ export default async function ClubDetailPage({
 }) {
   const { id } = await params;
   const sb = await createAdminClient();
-  const session = await getSession();
-
-  const { data: club } = await sb
-    .from("clubs")
-    .select("*")
-    .eq("id", id)
-    .single();
+  // getSession() does its own profiles round-trip (session_version check), so run
+  // it in parallel with the club fetch instead of serially (matches the tournament
+  // page's Promise.all([getSession(), …]) pattern).
+  const [session, clubRes] = await Promise.all([
+    getSession(),
+    sb.from("clubs").select("*").eq("id", id).single(),
+  ]);
+  const club = clubRes.data;
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes, lineRes, slipRowsRes] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -105,6 +106,22 @@ export default async function ClubDetailPage({
           .eq("owner_id", session.profileId)
           .order("created_at", { ascending: false })
       : Promise.resolve({ data: null }),
+    // Line reachability for ClubPaymentCollector (cost tab). Narrow join fetched
+    // in-wave (parallel) instead of a serial post-wave lookup; this array stays
+    // server-side — only the derived id list ships to the client, never line_user_id.
+    sb
+      .from("club_players")
+      .select("id, profile:profiles!club_players_profile_id_fkey(line_user_id)")
+      .eq("club_id", id),
+    // Manual slip-review rows (cost tab). Fold the SELECT into the wave so it adds
+    // no serial hop; signed URLs are still generated below, but only when there
+    // are rows to review (common case: none → zero extra work).
+    sb
+      .from("club_payment_slips")
+      .select("id, club_player_id, image_path, amount_detected, created_at")
+      .eq("club_id", id)
+      .eq("verify_status", "manual")
+      .order("created_at", { ascending: false }),
   ]);
 
   const owner = ownerRes.data;
@@ -125,26 +142,13 @@ export default async function ClubDetailPage({
     added_at: r.added_at,
   }));
 
-  // Derive which players have a linked LINE account — used by ClubPaymentCollector
-  // to show reachability badges and enable the "Bill via LINE" button.
-  // Only ship the derived id list (not line_user_id) to the client.
-  const profileIds = players
-    .map((p) => p.profile_id)
-    .filter((pid): pid is string => pid !== null);
-
-  let lineReachableIds: string[] = [];
-  if (profileIds.length > 0) {
-    const { data: profileRows } = await sb
-      .from("profiles")
-      .select("id, line_user_id")
-      .in("id", profileIds);
-    const profileHasLine = new Set(
-      (profileRows ?? []).filter((r) => r.line_user_id).map((r) => r.id),
-    );
-    lineReachableIds = players
-      .filter((p) => p.profile_id && profileHasLine.has(p.profile_id))
-      .map((p) => p.id);
-  }
+  // Which players have a linked LINE account — used by ClubPaymentCollector for
+  // reachability badges + the "Bill via LINE" button. lineRes is fetched in the
+  // wave above; only the derived id list (never line_user_id) reaches the client.
+  type LineRow = { id: string; profile: { line_user_id: string | null } | null };
+  const lineReachableIds: string[] = ((lineRes.data ?? []) as unknown as LineRow[])
+    .filter((r) => r.profile?.line_user_id)
+    .map((r) => r.id);
 
   const joined = players.length;
   const activeCount = players.filter((p) => p.status === "active").length;
@@ -171,12 +175,7 @@ export default async function ClubDetailPage({
   // canManage is guaranteed true below this point (redirect fires above for others).
   let slipReviewItems: ReviewItem[] = [];
   {
-    const { data: slipRows } = await sb
-      .from("club_payment_slips")
-      .select("id, club_player_id, image_path, amount_detected, created_at")
-      .eq("club_id", id)
-      .eq("verify_status", "manual")
-      .order("created_at", { ascending: false });
+    const slipRows = slipRowsRes.data;
 
     if (slipRows && slipRows.length > 0) {
       // Batch signed URLs for private slip images (10-min expiry = 600s).
