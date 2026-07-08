@@ -54,7 +54,6 @@ import { pushClubBillsAction } from "@/lib/actions/club-billing";
 import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import { GeneratedQr } from "@/components/club/generated-qr";
-import { ClubSlipVerifyConfig } from "@/components/club/club-slip-verify-config";
 import {
   baht,
   buildSlipMeta,
@@ -63,7 +62,6 @@ import {
   renderSlipBlob,
   shareOrDownload,
 } from "@/components/club/club-slip-card";
-import type { ClubBillingVerifySettings } from "@/lib/club/billing-verify-settings";
 import type { ClubCostRow } from "@/lib/club/cost-summary";
 
 type Props = {
@@ -76,11 +74,9 @@ type Props = {
   qrLogoUrl: string | null;
   /** club_players.id values whose linked profile has a non-null line_user_id. */
   lineReachableIds: string[];
-  /** Parsed billing_verify_settings from clubs table. */
-  billingVerifySettings: ClubBillingVerifySettings;
 };
 
-export function ClubPaymentCollector({ clubId, club, players, matches, expenses, qrLogoUrl, lineReachableIds, billingVerifySettings }: Props) {
+export function ClubPaymentCollector({ clubId, club, players, matches, expenses, qrLogoUrl, lineReachableIds }: Props) {
   const t = useTranslations("club.payment");
   const tSlip = useTranslations("club.slip");
   const locale = useLocale();
@@ -176,11 +172,6 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
           initialName={club.promptpay_name ?? ""}
           initialQrImage={qrImage ?? ""}
           configured={ppConfigured}
-        />
-
-        <ClubSlipVerifyConfig
-          clubId={clubId}
-          initial={billingVerifySettings}
         />
 
         <ReceiptTemplateEditor

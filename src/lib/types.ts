@@ -51,8 +51,9 @@ export type Club = {
   promptpay_id: string | null;
   promptpay_name: string | null;
   promptpay_qr_image: string | null; // uploaded QR image URL (alternative to promptpay_id)
-  // Per-club slip-verification config (raw jsonb; parse via parseBillingVerifySettings).
-  // Default: { mode: "manual" } — no automatic verify until the owner opts in to byok.
+  // DEPRECATED — the slip-verification feature was removed. This raw jsonb column
+  // still exists in the DB (its DROP is deferred to a separate migration); nothing
+  // reads it anymore. Field kept so the type mirrors the live schema until the drop.
   billing_verify_settings: Record<string, unknown>;
   // Per-club receipt customization (#11/#12; raw jsonb, parse via parseReceiptTemplate
   // in club/receipt.ts). Default {} → DEFAULT_RECEIPT_TEMPLATE (current slip layout,
