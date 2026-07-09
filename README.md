@@ -42,7 +42,7 @@ npm run dev
 
 ## Supabase MCP (Claude Code)
 
-ใช้ Claude.ai Supabase connector สำหรับ Supabase MCP. `.mcp.json` ใน repo เก็บเฉพาะ MCP ที่ไม่ต้องมี OAuth แยกต่อโปรเจกต์ เพื่อไม่ให้ repo-scoped server ไป shadow connector ที่ล็อกอินไว้แล้ว.
+`.mcp.json` ในrepo กำหนด MCP server ทั้งหมด (supabase · vercel · shadcn) — โปรเจกต์นี้ไม่ใช้ claude.ai connector. ตัว HTTP (supabase/vercel) ต้อง auth ครั้งเดียวต่อเครื่องด้วย `claude mcp login supabase` / `claude mcp login vercel`. อย่าเปิด claude.ai connector ของ Supabase/Vercel ซ้ำ เพราะจะ shadow กันจน MCP ดูเหมือนพัง.
 
 ```bash
 npx skills add supabase/agent-skills   # ติดตั้งครั้งเดียวต่อเครื่อง

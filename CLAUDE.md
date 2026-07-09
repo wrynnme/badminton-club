@@ -61,7 +61,7 @@ Use `@AGENTS.md` for security, reversibility gates, scope drift, learning captur
 ## Stack
 
 - Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1
-- Supabase (Postgres + RLS) — MCP through the Claude.ai Supabase connector
+- Supabase (Postgres + RLS) — MCP via repo `.mcp.json` (repo-scoped HTTP server)
 - Auth: LINE Login only (HMAC-signed `bc_session` cookie, no Supabase Auth). Guest signup removed v0.14.0 (2026-06-24) — `isGuest` field + gates kept for legacy cookies; viewers use public links, owners add guest *players* to rosters.
 - i18n: `next-intl` 4.x, cookie-based TH/EN (no URL routing) — shared rules live in `@AGENTS.md`
 - Font: Google Font Anuphan (`thai` + `latin` subsets)
@@ -238,11 +238,13 @@ Use `@AGENTS.md` for security, reversibility gates, scope drift, learning captur
 
 ## MCP Servers
 
-- **claude.ai Supabase connector**: apply migrations, run SQL, list tables — use `apply_migration` for all DDL
-- **shadcn**: browse and add components (`.mcp.json`)
-- **claude.ai Vercel connector**: Vercel project/deployment tools when needed
+All MCP servers are defined in repo `.mcp.json` (project scope) — the claude.ai connectors are not used for this project.
 
-Do not add repo-scoped Supabase or Vercel HTTP entries unless you also complete their separate OAuth flow. Project-scoped entries take precedence over the already-authenticated `claude.ai` connectors and can make MCP look broken.
+- **supabase** (HTTP): apply migrations, run SQL, list tables — use `apply_migration` for all DDL. Needs OAuth: run `claude mcp login supabase` once per machine.
+- **vercel** (HTTP): Vercel project/deployment tools. Needs OAuth: run `claude mcp login vercel`.
+- **shadcn**: browse and add components (stdio, no auth).
+
+Do not enable the claude.ai Supabase/Vercel connectors alongside these — two servers for the same backend shadow each other and make MCP look broken.
 
 ## Agent Skills
 
