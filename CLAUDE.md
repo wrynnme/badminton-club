@@ -246,6 +246,8 @@ All MCP servers are defined in repo `.mcp.json` (project scope) — the claude.a
 
 Do not enable the claude.ai Supabase/Vercel connectors alongside these — two servers for the same backend shadow each other and make MCP look broken.
 
+**GitHub:** ใช้ `gh` CLI (authenticated as `wrynnme` ในเครื่องนี้แล้ว) สำหรับงาน GitHub ทั้งหมด — PR / issue / review / API. อย่าใช้ github MCP plugin (`api.githubcopilot.com/mcp`) — มันต้องตั้ง `GITHUB_PERSONAL_ACCESS_TOKEN` env เองและ 400 เมื่อไม่มี token; `gh` พร้อมใช้ทันทีไม่ต้อง setup เพิ่ม.
+
 ## Agent Skills
 
 Run once per machine: `npx skills add supabase/agent-skills`
