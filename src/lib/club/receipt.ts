@@ -3,8 +3,8 @@ import { z } from "zod";
 /**
  * Receipt template — owner-configured presentation + payment config for the club
  * payment slip (#11/#12). Stored on the standalone `clubs.receipt_template jsonb`
- * column (mirrors `tournaments.prize_template`, NOT inside `queue_settings`/
- * `billing_verify_settings`). Validated app-side by `ReceiptTemplateSchema`.
+ * column (mirrors `tournaments.prize_template`, NOT inside `queue_settings`).
+ * Validated app-side by `ReceiptTemplateSchema`.
  *
  * Default `'{}'` (unset) → `parseReceiptTemplate` returns `DEFAULT_RECEIPT_TEMPLATE`,
  * which reproduces today's slip exactly (all line items shown, PromptPay only, no

@@ -419,7 +419,11 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 - **Collapse default flip (2026-06-18):** `club-cost-manager.tsx` + `club-locked-pairs.tsx` เปลี่ยน `useState(true)`→`useState(false)` → การ์ด "ตั้งค่าแบ่งค่าใช้จ่าย" + "ล็อคคู่" **default ยุบ** (ลด noise หน้าจอ; กดขยายเองได้).
 - gates: tsc 0 · vitest 654/654 · next build pass · **live-smoke PASS** (Playwright owner-cookie net-zero — QR render + ยอด ฿140 ตรง computeClubCostRows + console 0 err; live-smoke จับ+แก้ QR-blank bug).
 
-### Auto-billing via LINE — ✅ code DONE (Hybrid: บอท push บิล → ผู้เล่นส่งสลิป → verify อัตโนมัติ + fallback เจ้าของยืนยัน) — รอ LINE bot live-test ลูปจริง
+### Auto-billing via LINE — ❌ INBOUND SLIP-VERIFY REMOVED 2026-07-09 (v0.22.0)
+
+> **ลบระบบ "ยืนยันสลิปขาเข้า" ทั้งหมด (PR #23):** คิวตรวจสลิป (`club-slip-review`), auto-verify byok EasySlip/SlipOK (`slip-verify.ts`), config โหมด (`billing-verify-settings.ts` / `club-slip-verify-config.tsx`), actions `confirmSlipAction`/`rejectSlipAction`/`updateClubBillingVerifySettingsAction`, และการรับรูปสลิปใน LINE webhook (`route.ts` เหลือแค่ verify-signature + ack 200). เจ้าของก๊วนตรวจ/กด "จ่ายแล้ว" เองผ่าน `toggleClubPlayerPaidAction` แทน. **ยังคง:** push บิล LINE (`pushClubBillsAction`), PromptPay QR, ใบเสร็จ `SlipCard` ขาออก + ดาวน์โหลด. dead i18n keys ลบแล้ว (`club.payment.review*`/`verify*`, `actions.club.billingVerify*`). **DROP schema done 2026-07-09:** Storage API ลบ bucket `payment-slips` (0 objects at preflight) แล้ว migration `20260709001634_drop_club_slip_verify_schema` ลบตาราง `club_payment_slips` + `club_billing_secrets`, คอลัมน์ `clubs.billing_verify_settings`, และ field `billing_verify_settings` บน `Club` type. เนื้อหา Phase 1/2/3 ด้านล่างเก็บเป็นบันทึกประวัติเท่านั้น.
+
+### (ประวัติ) Auto-billing via LINE — code DONE (Hybrid: บอท push บิล → ผู้เล่นส่งสลิป → verify อัตโนมัติ + fallback เจ้าของยืนยัน)
 
 แผนเต็ม: `~/.claude/plans/immutable-sparking-boole.md`. **Phase 1 (push บิล) + Phase 2 (webhook รับสลิป + verify) + Phase 3 (review queue ให้เจ้าของยืนยัน manual) — ✅ DONE code+gate (2026-06-19).** ยังต้องตั้ง LINE bot + slip-verify provider เพื่อ live-test ลูป push/verify จริง (Phase 3 review live-smoke แล้ว).
 
