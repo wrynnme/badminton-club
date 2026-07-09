@@ -42,7 +42,7 @@ npm run dev
 
 ## Supabase MCP (Claude Code)
 
-`.mcp.json` อยู่ใน repo — Claude Code เชื่อม Supabase อัตโนมัติ
+ใช้ Claude.ai Supabase connector สำหรับ Supabase MCP. `.mcp.json` ใน repo เก็บเฉพาะ MCP ที่ไม่ต้องมี OAuth แยกต่อโปรเจกต์ เพื่อไม่ให้ repo-scoped server ไป shadow connector ที่ล็อกอินไว้แล้ว.
 
 ```bash
 npx skills add supabase/agent-skills   # ติดตั้งครั้งเดียวต่อเครื่อง

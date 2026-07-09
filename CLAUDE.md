@@ -1,12 +1,11 @@
 @AGENTS.md
-@.claude/agent-operating-rules.md
 @MEMORY.md
 
 # Project Operating Rules
 
 ## Rules
 
-Shared repo rules live in `@AGENTS.md`. Universal Claude-agent mechanics — JSON envelope, gates, handoff contract, observability, security, anti-hallucination, loop prevention, cost discipline, testing/deployment — are loaded from `@.claude/agent-operating-rules.md`.
+Shared repo rules live in `@AGENTS.md`. Universal Claude-agent mechanics — JSON envelope, gates, handoff contract, observability, security, anti-hallucination, loop prevention, cost discipline, testing/deployment — are documented in `.claude/agent-operating-rules.md`. That file is **no longer always-loaded** (to save context); read it on demand when orchestrating or when the envelope / handoff-contract / telemetry-schema format is needed. The safety-critical prohibitions, reversibility gates, and security requirements remain always-on in `@AGENTS.md` and `~/.claude/CLAUDE.md`.
 
 This file now contains Claude Code-specific delegation rules plus deep project context. Do not duplicate shared workflow/security/i18n/component rules here; update `AGENTS.md` instead.
 
@@ -62,7 +61,7 @@ Use `@AGENTS.md` for security, reversibility gates, scope drift, learning captur
 ## Stack
 
 - Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1
-- Supabase (Postgres + RLS) — MCP connected via `.mcp.json`
+- Supabase (Postgres + RLS) — MCP through the Claude.ai Supabase connector
 - Auth: LINE Login only (HMAC-signed `bc_session` cookie, no Supabase Auth). Guest signup removed v0.14.0 (2026-06-24) — `isGuest` field + gates kept for legacy cookies; viewers use public links, owners add guest *players* to rosters.
 - i18n: `next-intl` 4.x, cookie-based TH/EN (no URL routing) — shared rules live in `@AGENTS.md`
 - Font: Google Font Anuphan (`thai` + `latin` subsets)
@@ -239,8 +238,11 @@ Use `@AGENTS.md` for security, reversibility gates, scope drift, learning captur
 
 ## MCP Servers
 
-- **supabase**: apply migrations, run SQL, list tables — use `apply_migration` for all DDL
-- **shadcn**: browse and add components
+- **claude.ai Supabase connector**: apply migrations, run SQL, list tables — use `apply_migration` for all DDL
+- **shadcn**: browse and add components (`.mcp.json`)
+- **claude.ai Vercel connector**: Vercel project/deployment tools when needed
+
+Do not add repo-scoped Supabase or Vercel HTTP entries unless you also complete their separate OAuth flow. Project-scoped entries take precedence over the already-authenticated `claude.ai` connectors and can make MCP look broken.
 
 ## Agent Skills
 
