@@ -170,7 +170,6 @@ export default async function PublicClubPage({
                 canManage={false}
                 clubStart={club.start_time.slice(0, 5)}
                 clubEnd={club.end_time.slice(0, 5)}
-                batchMinMatches={queueSettings.batch_min_matches}
               />
             </div>
           }

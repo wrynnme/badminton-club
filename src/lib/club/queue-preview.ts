@@ -25,9 +25,8 @@ export type PreviewRow = {
 /**
  * Client-side mirror of generateClubQueueAction's per-player target math (informational
  * preview only — the server recomputes authoritatively at submit time), used by
- * GenerateQueueDialog. Eligibility mirrors the server's check-in gate; not_ready_action
- * nuance is ignored here since it only affects draft ordering, not who counts toward
- * "eligible for the preview".
+ * GenerateQueueDialog. Eligibility mirrors the server's check-in gate: checked-in
+ * players only when anyone has checked in, else the whole active roster.
  *
  * Kept in a framework-free lib module (not the "use client" dialog file) so it can be
  * unit tested directly — importing anything under `@/lib/actions/*` ("use server" files,

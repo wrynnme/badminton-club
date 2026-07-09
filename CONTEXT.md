@@ -68,3 +68,15 @@ uses only the **global** level set — do not conflate it with club `level_id`.
   a manager already filled the side by hand (manual edits always win).
 - **Re-roll (จัดคิวใหม่)** — per-match button that re-picks a pending match's fixed
   players from the freshest pool, keeping court, queue position and placeholders.
+- **Meet (เจอ)** — two players *meet* in one match when they share the court, whether
+  as partners or as opponents. Per match a player meets `2·players_per_team − 1`
+  others: doubles = 3 (one partner + two opponents), singles = 1 (the opponent).
+- **Check-in gate** — สุ่มคิว draws only from **checked-in** roster players whenever
+  at least one active player has checked in; if nobody has checked in, the whole
+  active roster is eligible (safety fallback). Independent of `not_ready_action` —
+  that setting governs the live per-court rotation, not the batch pool.
+- **Suggested target (N)** — the recommended per-player game count so everyone meets
+  everyone once, given **M** eligible (checked-in) players: `ceil((M−1) / meet-per-match)`.
+  The floor value is the largest N that still guarantees *no repeat meeting*; the ceil
+  value is the smallest N that *covers everyone* (its tail may repeat once). สุ่มคิว
+  offers ceil as the default and shows the floor–ceil range.

@@ -1459,7 +1459,6 @@ export function ClubQueuePanel({
   canManage,
   clubStart,
   clubEnd,
-  batchMinMatches,
 }: {
   clubId: string;
   matches: ClubMatch[];
@@ -1477,7 +1476,6 @@ export function ClubQueuePanel({
   /** "HH:MM" club session window — used by GenerateQueueDialog's pro-rated target preview. */
   clubStart?: string;
   clubEnd?: string;
-  batchMinMatches?: number;
 }) {
   const t = useTranslations("club.queuePanel");
   const router = useRouter();
@@ -1633,7 +1631,7 @@ export function ClubQueuePanel({
                 matches={matches}
                 clubStart={clubStart ?? "00:00"}
                 clubEnd={clubEnd ?? "23:59"}
-                batchMinMatches={batchMinMatches ?? 3}
+                playersPerTeam={settings.players_per_team}
                 onRefresh={onRefresh}
               />
               <MatchFormDialog

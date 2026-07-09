@@ -137,9 +137,9 @@ type QueueContext = {
 
 /**
  * Shared pool assembly for the batch-queue actions: settings + named courts +
- * active roster (check-in gate / not_ready_action applied, level resolved via
- * the levels FK) + busy-player set + locked pairs. Mirrors the eligibility
- * rules of the per-court builder.
+ * active roster (check-in HARD gate: checked-in only whenever anyone is checked
+ * in, else whole roster — level resolved via the levels FK) + busy-player set +
+ * locked pairs. Mirrors the check-in eligibility rule in queue-preview.ts.
  */
 async function loadClubQueueContext(
   sb: Awaited<ReturnType<typeof createAdminClient>>,
@@ -176,12 +176,13 @@ async function loadClubQueueContext(
     }
   }
 
+  // Check-in hard gate: whenever ANYONE has checked in, สุ่มคิว + re-roll draw only
+  // from checked-in players. Nobody checked in yet → the whole active roster is
+  // eligible (safety fallback). Mirrors the same check-in rule in queue-preview.ts.
   const anyCheckedIn = allPlayers.some((p) => p.checked_in_at != null);
   const isNotReady = (p: (typeof allPlayers)[number]) =>
     anyCheckedIn && p.checked_in_at == null;
-  const eligible = allPlayers.filter(
-    (p) => !(isNotReady(p) && settings.not_ready_action === "skip"),
-  );
+  const eligible = allPlayers.filter((p) => !isNotReady(p));
 
   const pool: QueuePlayer[] = eligible.map((p) => ({
     id: p.id,
@@ -253,14 +254,6 @@ export async function generateClubQueueAction(
 
   const ctx = await loadClubQueueContext(sb, clubId, t);
   if ("error" in ctx) return ctx;
-
-  // Remember the organizer's N as the dialog default for next time.
-  if (ctx.settings.batch_min_matches !== parsed.data.minMatches) {
-    await sb
-      .from("clubs")
-      .update({ queue_settings: { ...ctx.settings, batch_min_matches: parsed.data.minMatches } })
-      .eq("id", clubId);
-  }
 
   // Top-up: everything already scheduled or played this session counts.
   const { data: allMatches, error: matchesError } = await sb
@@ -467,7 +460,12 @@ export async function rebuildClubPendingMatchAction(
     (p) => (!ctx.activePlayerIds.has(p.id) || own.has(p.id)) && !feederIds.has(p.id),
   );
 
-  let update: Record<string, string | null>;
+  // Try to re-roll a fresh side/match from the pool. When the checked-in pool is
+  // too small to form one, `update` stays null and we FALL THROUGH to the
+  // whole-side cross-match swap below — that rescue reshuffles already-queued
+  // sides and needs no free players, so it must not be pre-empted by an early
+  // "no players" return (regression the hard check-in gate would otherwise cause).
+  let update: Record<string, string | null> | null = null;
   if (placeholderSlot) {
     const partnerOf = new Map<string, string>();
     if (ppt === 2) {
@@ -482,56 +480,61 @@ export async function rebuildClubPendingMatchAction(
       return partner == null || poolIds.has(partner);
     });
     const sides = takeSides(orderPool(selectable, ctx.settings), partnerOf, 1, ppt);
-    if (!sides) return { error: t("club.rebuildNoPlayers") };
-    const side = sides[0];
-    update =
-      placeholderSlot === "a"
-        ? { side_b_player1: side.player1, side_b_player2: side.player2 ?? null }
-        : { side_a_player1: side.player1, side_a_player2: side.player2 ?? null };
+    if (sides) {
+      const side = sides[0];
+      update =
+        placeholderSlot === "a"
+          ? { side_b_player1: side.player1, side_b_player2: side.player2 ?? null }
+          : { side_a_player1: side.player1, side_a_player2: side.player2 ?? null };
+    }
   } else {
     const proposed = buildNextMatch(pool, ctx.settings, undefined, ctx.lockedPairs);
-    if (!proposed) return { error: t("club.rebuildNoPlayers") };
-    update = {
-      side_a_player1: proposed.sideA.player1,
-      side_a_player2: proposed.sideA.player2 ?? null,
-      side_b_player1: proposed.sideB.player1,
-      side_b_player2: proposed.sideB.player2 ?? null,
-    };
+    if (proposed) {
+      update = {
+        side_a_player1: proposed.sideA.player1,
+        side_a_player2: proposed.sideA.player2 ?? null,
+        side_b_player1: proposed.sideB.player1,
+        side_b_player2: proposed.sideB.player2 ?? null,
+      };
+    }
   }
 
   // Did the free-pool re-roll actually change the MATCHUP (not just the player
   // set)? With free players a rester rotates in. Even with the same faces,
   // buildNextMatch may re-pair them (A+B / C+D → A+C / B+D) — a fresh matchup
-  // worth keeping. Only when the two sides are identical do we fall through to a
-  // cross-match swap instead of a misleading no-op "success".
-  const sideKey = (p1: string | null | undefined, p2: string | null | undefined) =>
-    [p1, p2].filter((x): x is string => x != null).sort().join(",");
-  const pick = (key: keyof typeof update, fallback: string | null) =>
-    key in update ? update[key] : fallback;
-  const curMatchup = [
-    sideKey(match.side_a_player1, match.side_a_player2),
-    sideKey(match.side_b_player1, match.side_b_player2),
-  ]
-    .sort()
-    .join("|");
-  const newMatchup = [
-    sideKey(pick("side_a_player1", match.side_a_player1), pick("side_a_player2", match.side_a_player2)),
-    sideKey(pick("side_b_player1", match.side_b_player1), pick("side_b_player2", match.side_b_player2)),
-  ]
-    .sort()
-    .join("|");
+  // worth keeping. When nothing could be built (update null) or the two sides are
+  // identical, we fall through to a cross-match swap instead of returning early.
+  if (update) {
+    const upd = update;
+    const sideKey = (p1: string | null | undefined, p2: string | null | undefined) =>
+      [p1, p2].filter((x): x is string => x != null).sort().join(",");
+    const pick = (key: keyof typeof upd, fallback: string | null) =>
+      key in upd ? upd[key] : fallback;
+    const curMatchup = [
+      sideKey(match.side_a_player1, match.side_a_player2),
+      sideKey(match.side_b_player1, match.side_b_player2),
+    ]
+      .sort()
+      .join("|");
+    const newMatchup = [
+      sideKey(pick("side_a_player1", match.side_a_player1), pick("side_a_player2", match.side_a_player2)),
+      sideKey(pick("side_b_player1", match.side_b_player1), pick("side_b_player2", match.side_b_player2)),
+    ]
+      .sort()
+      .join("|");
 
-  if (curMatchup !== newMatchup) {
-    const { data: updated, error: updateError } = await sb
-      .from("club_matches")
-      .update(update)
-      .eq("id", matchId)
-      .eq("status", "pending")
-      .select("id");
-    if (updateError) return { error: updateError.message };
-    if (!updated || updated.length === 0) return { error: t("club.rebuildOnlyPending") };
-    revalidatePath(`/clubs/${match.club_id}`);
-    return { ok: true };
+    if (curMatchup !== newMatchup) {
+      const { data: updated, error: updateError } = await sb
+        .from("club_matches")
+        .update(upd)
+        .eq("id", matchId)
+        .eq("status", "pending")
+        .select("id");
+      if (updateError) return { error: updateError.message };
+      if (!updated || updated.length === 0) return { error: t("club.rebuildOnlyPending") };
+      revalidatePath(`/clubs/${match.club_id}`);
+      return { ok: true };
+    }
   }
 
   // Nobody free to rotate in → swap a whole side with another pending match so
