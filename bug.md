@@ -10,6 +10,13 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-09 (schema cleanup → ✅ APPLIED) — remove retired inbound slip-verify DB/storage
+
+- User approved destructive cleanup. Preflight: `payment-slips` bucket existed with 0 objects. Supabase docs require Storage API deletion (not SQL) for storage files/buckets, so bucket was deleted via `supabase-js` Storage API.
+- Migration `20260709001634_drop_club_slip_verify_schema` applied to linked Supabase via `supabase db query --linked` (CLI `db push/list` path needed DB password / resolved workdir oddly, so SQL file was applied directly and `supabase_migrations.schema_migrations` was recorded manually).
+- Verified prod: `club_payment_slips` absent · `club_billing_secrets` absent · `clubs.billing_verify_settings` absent · `payment-slips` bucket absent · migration record present.
+- Code cleanup: removed `Club.billing_verify_settings`, public-view redaction/test fixture, deprecated `.env.example` `SLIP_VERIFY_*` comments; `spec.md` updated. Gates: `npm run typecheck` pass · public-view targeted vitest 5/5 · `npm test` 784/784 · `npm run build` pass.
+
 ### 2026-07-08 (แก้ไข → ✅ FIXED) — dropdown "ปลายทาง" ในไดอะล็อกบันทึกพรีเซ็ตโชว์ค่าดิบ `__new__`
 
 - **[P2 UI] `save-club-as-preset-dialog.tsx`**: trigger ของ Select "ปลายทาง" โชว์ `__new__` (sentinel ดิบ) แทน "สร้างพรีเซ็ตใหม่". **root cause:** Base UI `Select.Value` เมื่อไม่ส่ง children function จะ render `value` ดิบ (label ของ item ยังไม่ mount ตอน trigger paint) — i18n key `savePresetFromClub.targetNew` มีอยู่ถูกต้องทั้ง th/en แต่ `<SelectValue />` ไม่ได้แมป. **repro:** เปิด "บันทึกก๊วนนี้เป็นพรีเซ็ต" → ช่องปลายทางโชว์ `__new__`. **fix:** ใส่ children function `(value) => value === NEW_PRESET ? t("targetNew") : presetName` แมป value→label (Base UI API รองรับ `children?: (value) => ReactNode`). ไม่แตะ i18n/schema. tsc 0.
