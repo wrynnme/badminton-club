@@ -56,6 +56,9 @@ supabase/.temp/
 # codex (tooling-local config — mirrors .claude / .agents)
 /.codex
 
+# superset (workspace-local setup/teardown config)
+/.superset
+
 # playwright-mcp smoke artifacts (snapshots / console logs)
 .playwright-mcp/
 
