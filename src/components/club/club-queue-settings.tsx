@@ -393,39 +393,6 @@ export function ClubQueueSettings({
           onChange={(v) => update("game_time_limit_min", v)}
         />
 
-        {/* Not ready action — check-in is the readiness signal */}
-        <div className="flex items-center justify-between gap-3 py-1.5">
-          <div className="space-y-0.5 leading-tight min-w-0">
-            <Label htmlFor="qs-not-ready" className="text-sm font-medium">
-              {t("notReadyLabel")}
-            </Label>
-            <p className="text-xs text-muted-foreground">
-              {t("notReadyDesc")}
-            </p>
-          </div>
-          <Select
-            value={settings.not_ready_action}
-            onValueChange={(v) =>
-              update(
-                "not_ready_action",
-                v as ClubQueueSettings["not_ready_action"],
-              )
-            }
-          >
-            <SelectTrigger id="qs-not-ready" className="w-36 h-8 text-sm">
-              <SelectValue>
-                {(v: string) =>
-                  v === "requeue" ? t("notReadyRequeue") : t("notReadySkip")
-                }
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="skip">{t("notReadySkip")}</SelectItem>
-              <SelectItem value="requeue">{t("notReadyRequeue")}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         {/* Realtime auto-refresh */}
         <ToggleRow
           id="qs-realtime"

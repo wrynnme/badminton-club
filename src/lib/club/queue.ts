@@ -24,10 +24,11 @@ export type QueuePlayer = {
   /** ISO timestamp a player last finished a game; null = never played (= longest rest) */
   last_finished_at: string | null;
   /**
-   * Not-ready = not checked in, kept in the pool only under the `requeue`
-   * not_ready_action policy. Such players sort BEHIND every ready player in all
-   * ordering paths, so they're drafted only when ready players run short.
-   * Absent / false = ready. (`skip` policy filters them out before this point.)
+   * Not-ready = not checked in. When set, sorts BEHIND every ready player in all
+   * ordering paths (via readyRank), so such players are drafted only when ready
+   * players run short. Absent / false = ready. The batch pool
+   * (loadClubQueueContext) currently hard-excludes not-checked-in players, so this
+   * stays a general ordering primitive rather than being set by that caller.
    */
   notReady?: boolean;
 };

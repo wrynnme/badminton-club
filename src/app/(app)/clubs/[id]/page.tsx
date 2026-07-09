@@ -316,7 +316,6 @@ export default async function ClubDetailPage({
                 canManage={canManage}
                 clubStart={String(club.start_time).slice(0, 5)}
                 clubEnd={String(club.end_time).slice(0, 5)}
-                batchMinMatches={queueSettings.batch_min_matches}
               />
             </div>
           }

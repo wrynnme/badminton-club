@@ -19,10 +19,6 @@ import { z } from "zod";
  *                       (legacy "smart" = level_match — parseQueueSettings แปลงให้อัตโนมัติ)
  *  skill_level_enabled  ใช้ระดับฝีมือใน level_match + ตอนลงชื่อ
  *  game_time_limit_min  จำกัดเวลา/เกม (0 = ไม่จำกัด) — UI hint สำหรับ referee
- *  not_ready_action     ใช้ "เช็คอิน" เป็นตัวบอกความพร้อม (ready = เช็คอินแล้ว). จะทำ
- *                       อย่างไรกับคนที่ยังไม่เช็คอินตอนจัดแมตช์ — `skip` ตัดออกจาก pool
- *                       (default · = พฤติกรรมเดิม) | `requeue` ยังดึงได้แต่ต่อท้ายคิว
- *                       (ลงเฉพาะเมื่อคนเช็คอินไม่พอ). มีผลเฉพาะตอนมีคนเช็คอินแล้วอย่างน้อย 1 คน
  *  winner_stays_max     winner_stays: ชนะติดกันได้กี่เกมก่อนบังคับพัก (0 = ไม่จำกัด)
  *  max_skill_gap        ระยะห่างระดับสูงสุดที่ยอมรับระหว่างผู้เล่นในแมตช์เดียวกัน
  *                       (0 = ไม่จำกัด — พฤติกรรมเดิม); ใช้กับ level_match
@@ -34,8 +30,6 @@ import { z } from "zod";
  *  realtime_enabled     true = หน้าก๊วน subscribe Realtime broadcast (topic `club:<id>`)
  *                       → คิว/ผู้เล่นอัปเดตสดข้ามอุปกรณ์โดยไม่ต้องรีเฟรช (default true,
  *                       mirror tournaments.settings.realtime_enabled). ปิด = manual refresh
- *  batch_min_matches    "สุ่มคิว": ขั้นต่ำแมตช์/คน (N) ครั้งล่าสุดที่เจ้าของกรอกใน dialog —
- *                       จำไว้เป็น default ครั้งถัดไป; เป้าจริงต่อคนถูก pro-rate ตามเวลาที่อยู่
  */
 export const ClubQueueSettingsSchema = z.object({
   court_count: z.number().int().min(1).max(20).default(1),
@@ -44,13 +38,11 @@ export const ClubQueueSettingsSchema = z.object({
   queue_mode: z.enum(["rest_longest", "fifo", "level_match"]).default("rest_longest"),
   skill_level_enabled: z.boolean().default(false),
   game_time_limit_min: z.number().int().min(0).max(120).default(0),
-  not_ready_action: z.enum(["requeue", "skip"]).default("skip"),
   winner_stays_max: z.number().int().min(0).max(20).default(2),
   max_skill_gap: z.number().min(0).max(20).default(0),
   balance_strictness: z.enum(["balanced", "strict"]).default("balanced"),
   balance_locked_pairs: z.boolean().default(false),
   realtime_enabled: z.boolean().default(true),
-  batch_min_matches: z.number().int().min(1).max(20).default(3),
 });
 
 export type ClubQueueSettings = z.infer<typeof ClubQueueSettingsSchema>;

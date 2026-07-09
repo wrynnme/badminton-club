@@ -144,6 +144,32 @@ export function computePlayerTargets(
   return out;
 }
 
+// ─── Suggested target (N) ─────────────────────────────────────────────────────
+
+/**
+ * Suggested per-player game count ("N") for สุ่มคิว so every eligible player
+ * MEETS everyone once. A player meets `meetPerMatch = 2·ppt − 1` others per match
+ * (doubles = 3: one partner + two opponents; singles = 1: the opponent). With M
+ * eligible players each must meet M−1 others:
+ *   floor = largest N that still guarantees NO repeat meeting = floor((M−1)/meetPerMatch)
+ *   ceil  = smallest N that COVERS everyone (its tail may repeat once) = ceil(…)
+ * Both clamped to the dialog's 1..20 range (everyone gets at least one game).
+ * Court count is irrelevant — this is a per-player meeting count, not a round count.
+ */
+export function suggestBatchTarget(
+  eligibleCount: number,
+  playersPerTeam: 1 | 2,
+): { meetPerMatch: number; floor: number; ceil: number } {
+  const meetPerMatch = 2 * playersPerTeam - 1;
+  const others = Math.max(0, eligibleCount - 1);
+  const clamp = (n: number) => Math.min(20, Math.max(1, n));
+  return {
+    meetPerMatch,
+    floor: clamp(Math.floor(others / meetPerMatch)),
+    ceil: clamp(Math.ceil(others / meetPerMatch)),
+  };
+}
+
 // ─── Existing-appearance counting (top-up semantics) ─────────────────────────
 
 export type BatchCountableMatch = {

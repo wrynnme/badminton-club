@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { useForm } from "@tanstack/react-form";
 import * as z from "zod";
@@ -14,7 +14,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,6 +32,7 @@ import {
   regenerateClubQueueAction,
 } from "@/lib/actions/club-matches";
 import { buildPreviewRows, type PreviewPlayer } from "@/lib/club/queue-preview";
+import { suggestBatchTarget } from "@/lib/club/batch-queue";
 import type { ClubMatch } from "@/lib/types";
 
 export function GenerateQueueDialog({
@@ -41,7 +41,7 @@ export function GenerateQueueDialog({
   matches,
   clubStart,
   clubEnd,
-  batchMinMatches,
+  playersPerTeam,
   onRefresh,
 }: {
   clubId: string;
@@ -49,7 +49,7 @@ export function GenerateQueueDialog({
   matches: ClubMatch[];
   clubStart: string;
   clubEnd: string;
-  batchMinMatches: number;
+  playersPerTeam: 1 | 2;
   onRefresh: () => void;
 }) {
   const t = useTranslations("club.queuePanel");
@@ -61,6 +61,23 @@ export function GenerateQueueDialog({
     () => players.filter((p) => p.status === "active"),
     [players],
   );
+
+  // Eligible = checked-in players when anyone has checked in, else the whole active
+  // roster (mirrors the check-in hard gate in loadClubQueueContext / queue-preview).
+  const eligibleCount = useMemo(() => {
+    const checkedIn = activePlayers.filter((p) => p.checked_in_at != null).length;
+    return checkedIn > 0 ? checkedIn : activePlayers.length;
+  }, [activePlayers]);
+
+  // Recommended N so everyone meets everyone once. ceil is the pre-filled default.
+  const suggested = useMemo(
+    () => suggestBatchTarget(eligibleCount, playersPerTeam),
+    [eligibleCount, playersPerTeam],
+  );
+  const suggestRange =
+    suggested.floor === suggested.ceil
+      ? `${suggested.ceil}`
+      : `${suggested.floor}–${suggested.ceil}`;
 
   const pendingCount = useMemo(
     () => matches.filter((m) => m.status === "pending").length,
@@ -80,7 +97,7 @@ export function GenerateQueueDialog({
   );
 
   const form = useForm({
-    defaultValues: { minMatches: batchMinMatches },
+    defaultValues: { minMatches: suggested.ceil },
     validators: { onSubmit: schema },
     onSubmit: async ({ value }) => {
       startTransition(async () => {
@@ -96,14 +113,18 @@ export function GenerateQueueDialog({
     },
   });
 
-  // Reset to the latest remembered default whenever the dialog (re)opens.
+  // Reset to the freshly-computed suggested target only when the dialog TRANSITIONS
+  // open (false→true). Depending on suggested.ceil here would re-fire mid-session
+  // whenever a check-in change recomputes it — silently wiping a manually-typed N.
+  const wasOpen = useRef(false);
   useEffect(() => {
-    if (open) {
-      form.reset({ minMatches: batchMinMatches });
+    if (open && !wasOpen.current) {
+      form.reset({ minMatches: suggested.ceil });
       setConfirmingReroll(false);
     }
+    wasOpen.current = open;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, batchMinMatches]);
+  }, [open]);
 
   const handleReroll = () => {
     startTransition(async () => {
@@ -126,14 +147,15 @@ export function GenerateQueueDialog({
       <Tooltip>
         <TooltipTrigger
           render={
-            <DialogTrigger
-              render={
-                <Button size="sm" variant="default" className="h-8 text-xs gap-1">
-                  <Shuffle className="h-3.5 w-3.5" />
-                  {t("generateQueueButton")}
-                </Button>
-              }
-            />
+            <Button
+              size="sm"
+              variant="default"
+              className="h-8 text-xs gap-1"
+              onClick={() => setOpen(true)}
+            >
+              <Shuffle className="h-3.5 w-3.5" />
+              {t("generateQueueButton")}
+            </Button>
           }
         />
         <TooltipContent>{t("generateQueueTooltip")}</TooltipContent>
@@ -158,18 +180,45 @@ export function GenerateQueueDialog({
               return (
                 <Field data-invalid={isInvalid}>
                   <FieldLabel htmlFor={field.name}>{t("generateDialogMinLabel")}</FieldLabel>
-                  <Input
-                    id={field.name}
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(e) => field.handleChange(Number(e.target.value))}
-                    aria-invalid={isInvalid}
-                    className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id={field.name}
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(Number(e.target.value))}
+                      aria-invalid={isInvalid}
+                      className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-9 w-9 shrink-0"
+                            aria-label={t("generateDialogResetAriaLabel")}
+                            disabled={field.state.value === suggested.ceil}
+                            onClick={() => field.handleChange(suggested.ceil)}
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                          </Button>
+                        }
+                      />
+                      <TooltipContent>
+                        {t("generateDialogResetTooltip", { value: suggested.ceil })}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                   <p className="text-xs text-muted-foreground">{t("generateDialogMinHint")}</p>
+                  {eligibleCount > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {t("generateDialogSuggestHint", { range: suggestRange, count: eligibleCount })}
+                    </p>
+                  )}
                   {isInvalid && <FieldError errors={fieldErrors(field.state.meta.errors)} />}
                 </Field>
               );

@@ -5,6 +5,7 @@ import {
   proRatedTarget,
   countFixedAppearances,
   buildPairHistory,
+  suggestBatchTarget,
   generateBatchQueue,
   planRerollSwap,
   type BatchMatchPlan,
@@ -864,5 +865,45 @@ describe("planRerollSwap — cross-match side swap when the roster is fully queu
     expect(swap).not.toBeNull();
     const { t } = applyAndCheck(matches, swap!, "ch1"); // no double-book
     expect(sideIds(t, swap!.targetSlot)).not.toEqual(["p9", "p10"]); // genuinely changed
+  });
+});
+
+describe("suggestBatchTarget — recommended N so everyone meets everyone", () => {
+  it("doubles: meets 3 per match; 12 players → floor 3, ceil 4 (11 others /3)", () => {
+    expect(suggestBatchTarget(12, 2)).toEqual({ meetPerMatch: 3, floor: 3, ceil: 4 });
+  });
+
+  it("doubles even division: 13 players → floor == ceil (12/3 = 4 exactly)", () => {
+    // Adversarial: (M−1) divisible by meetPerMatch — floor and ceil must coincide,
+    // else the dialog would show a phantom "3–4" range when 4 is exact.
+    expect(suggestBatchTarget(13, 2)).toEqual({ meetPerMatch: 3, floor: 4, ceil: 4 });
+  });
+
+  it("singles: meets 1 per match; N == M−1 (both floor and ceil)", () => {
+    expect(suggestBatchTarget(8, 1)).toEqual({ meetPerMatch: 1, floor: 7, ceil: 7 });
+  });
+
+  it("high N clamps to the dialog max of 20 (singles, 25 players → 24 → 20)", () => {
+    const r = suggestBatchTarget(25, 1);
+    expect(r.floor).toBe(20);
+    expect(r.ceil).toBe(20);
+  });
+
+  it("tiny rosters floor at 1 — everyone gets at least one game", () => {
+    // 2 doubles players can't even form a match, but N must never suggest 0.
+    expect(suggestBatchTarget(2, 2)).toEqual({ meetPerMatch: 3, floor: 1, ceil: 1 });
+    expect(suggestBatchTarget(1, 2)).toEqual({ meetPerMatch: 3, floor: 1, ceil: 1 });
+    expect(suggestBatchTarget(0, 2)).toEqual({ meetPerMatch: 3, floor: 1, ceil: 1 });
+  });
+
+  it("floor never exceeds ceil across a sweep of realistic sizes", () => {
+    for (const ppt of [1, 2] as const) {
+      for (let m = 1; m <= 40; m++) {
+        const { floor, ceil } = suggestBatchTarget(m, ppt);
+        expect(floor).toBeLessThanOrEqual(ceil);
+        expect(floor).toBeGreaterThanOrEqual(1);
+        expect(ceil).toBeLessThanOrEqual(20);
+      }
+    }
   });
 });
