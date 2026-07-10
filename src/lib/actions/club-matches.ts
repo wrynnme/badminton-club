@@ -1150,18 +1150,22 @@ export async function deleteClubMatchAction(
 /** Upper bound on a single bulk request — the queue never realistically nears this. */
 const BULK_MATCH_CAP = 200;
 
+type CleanIdsResult = { ids: string[] } | { error: "empty" | "oversize" };
+
 /**
  * Validate + normalize a bulk matchIds payload: keep only non-empty string ids,
- * dedupe, and reject empty / oversized batches. Returns null on invalid input so
- * every bulk action reports the same "no matches selected" error.
+ * dedupe, and reject empty / oversized batches. Returns a discriminated result so
+ * callers can tell "nothing selected" apart from "too many selected" (they render
+ * different errors).
  */
-function cleanBulkMatchIds(matchIds: unknown): string[] | null {
-  if (!Array.isArray(matchIds)) return null;
+function cleanBulkMatchIds(matchIds: unknown): CleanIdsResult {
+  if (!Array.isArray(matchIds)) return { error: "empty" };
   const ids = Array.from(
     new Set(matchIds.filter((x): x is string => typeof x === "string" && x.length > 0)),
   );
-  if (ids.length === 0 || ids.length > BULK_MATCH_CAP) return null;
-  return ids;
+  if (ids.length === 0) return { error: "empty" };
+  if (ids.length > BULK_MATCH_CAP) return { error: "oversize" };
+  return { ids };
 }
 
 /**
@@ -1180,8 +1184,16 @@ export async function bulkSetClubMatchCourtAction(input: {
   if (!session) return await loginRedirect();
 
   const t = await getTranslations("actions");
-  const ids = cleanBulkMatchIds(input.matchIds);
-  if (!ids) return { error: t("club.noMatchesSelected") };
+  const clean = cleanBulkMatchIds(input.matchIds);
+  if ("error" in clean) {
+    return {
+      error:
+        clean.error === "oversize"
+          ? t("club.tooManySelected", { max: BULK_MATCH_CAP })
+          : t("club.noMatchesSelected"),
+    };
+  }
+  const ids = clean.ids;
   const court = input.court.trim();
   if (!court) return { error: t("club.selectCourt") };
 
@@ -1226,8 +1238,16 @@ export async function bulkCancelClubMatchesAction(input: {
   if (!session) return await loginRedirect();
 
   const t = await getTranslations("actions");
-  const ids = cleanBulkMatchIds(input.matchIds);
-  if (!ids) return { error: t("club.noMatchesSelected") };
+  const clean = cleanBulkMatchIds(input.matchIds);
+  if ("error" in clean) {
+    return {
+      error:
+        clean.error === "oversize"
+          ? t("club.tooManySelected", { max: BULK_MATCH_CAP })
+          : t("club.noMatchesSelected"),
+    };
+  }
+  const ids = clean.ids;
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
@@ -1263,8 +1283,16 @@ export async function bulkDeleteClubMatchesAction(input: {
   if (!session) return await loginRedirect();
 
   const t = await getTranslations("actions");
-  const ids = cleanBulkMatchIds(input.matchIds);
-  if (!ids) return { error: t("club.noMatchesSelected") };
+  const clean = cleanBulkMatchIds(input.matchIds);
+  if ("error" in clean) {
+    return {
+      error:
+        clean.error === "oversize"
+          ? t("club.tooManySelected", { max: BULK_MATCH_CAP })
+          : t("club.noMatchesSelected"),
+    };
+  }
+  const ids = clean.ids;
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
@@ -1285,8 +1313,10 @@ export async function bulkDeleteClubMatchesAction(input: {
   let failed = 0;
   for (const id of ownedIds) {
     const { error } = await sb.rpc("delete_club_match", { p_match_id: id });
-    if (error) failed++;
-    else deleted++;
+    // A "not found" here means a concurrent delete already removed the row — the
+    // desired end-state is reached, so count it as deleted, not failed.
+    if (!error || error.message?.includes("not found")) deleted++;
+    else failed++;
   }
 
   revalidatePath(`/clubs/${input.clubId}`);
@@ -1309,8 +1339,16 @@ export async function bulkStartClubMatchesAction(input: {
   if (!session) return await loginRedirect();
 
   const t = await getTranslations("actions");
-  const ids = cleanBulkMatchIds(input.matchIds);
-  if (!ids) return { error: t("club.noMatchesSelected") };
+  const clean = cleanBulkMatchIds(input.matchIds);
+  if ("error" in clean) {
+    return {
+      error:
+        clean.error === "oversize"
+          ? t("club.tooManySelected", { max: BULK_MATCH_CAP })
+          : t("club.noMatchesSelected"),
+    };
+  }
+  const ids = clean.ids;
 
   const sb = await createAdminClient();
   if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
