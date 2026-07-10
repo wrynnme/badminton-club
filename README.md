@@ -57,7 +57,7 @@ npx skills add supabase/agent-skills   # ติดตั้งครั้งเ
 ### Rotation queue (จัดคิวอัตโนมัติ)
 
 - **โหมดหมุนคิว** (`rotation_mode`): `fair_queue` (ทุกคนหมุนตามคิว) · `winner_stays` (ผู้ชนะอยู่ต่อ, จำกัดด้วย `winner_stays_max`) · `fair_winner_fallback` (หมุนเวียนทั่วถึง — fair เป็นหลัก แต่ถ้าคนพักไม่พอ ผู้ชนะอยู่ต่อ)
-- **โหมดเลือกคู่** (`queue_mode`): `rest_longest` (พักนานสุดก่อน) · `fifo` · `level_match` (จับคู่ระดับใกล้กัน) · `smart`
+- **โหมดเลือกคู่** (`queue_mode`): `rest_longest` (พักนานสุดก่อน) · `level_match` (จับคู่ระดับใกล้กัน) — legacy `fifo`→`rest_longest`, `smart`→`level_match` (fold ตอน parse)
 - เดี่ยว/คู่ (`players_per_team` 1|2) · **หลายสนาม** (ผู้ชนะอยู่ต่อสนามตัวเองครบทุกสนาม) · ล็อคคู่ (`club_locked_pairs`)
 - ปุ่ม **"ทุกสนาม"** สร้างแมตช์ให้ทุกสนามว่างพร้อมกัน · drag จัดลำดับคิว · partial match (จองสนามก่อนผู้เล่นครบ)
 - **เช็คอิน = สัญญาณความพร้อม** → `not_ready_action`: `skip` (ตัดคนยังไม่เช็คอินออก, default) | `requeue` (ดึงได้แต่ต่อท้ายคิว)

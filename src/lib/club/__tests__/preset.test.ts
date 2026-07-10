@@ -84,8 +84,13 @@ describe("parsePresetConfig — partial config", () => {
   });
 
   it("preserves valid queue_mode", () => {
+    const result = parsePresetConfig({ queue_mode: "level_match" });
+    expect(result.queue_mode).toBe("level_match");
+  });
+
+  it("folds legacy queue_mode fifo → rest_longest", () => {
     const result = parsePresetConfig({ queue_mode: "fifo" });
-    expect(result.queue_mode).toBe("fifo");
+    expect(result.queue_mode).toBe("rest_longest");
   });
 
   it("preserves valid players_per_team=1", () => {

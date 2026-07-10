@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_QUEUE_SETTINGS,
+  parseQueueSettings,
   queueSettingsEqual,
 } from "@/lib/club/queue-settings";
 
@@ -46,5 +47,45 @@ describe("queueSettingsEqual", () => {
     const changed = { ...a, max_skill_gap: 7 };
     const revert = { ...changed, max_skill_gap: a.max_skill_gap };
     expect(queueSettingsEqual(a, revert)).toBe(true);
+  });
+});
+
+describe("parseQueueSettings — legacy queue_mode folds", () => {
+  it("folds removed fifo → rest_longest", () => {
+    expect(parseQueueSettings({ queue_mode: "fifo" }).queue_mode).toBe("rest_longest");
+  });
+
+  it("folds legacy smart → level_match", () => {
+    expect(parseQueueSettings({ queue_mode: "smart" }).queue_mode).toBe("level_match");
+  });
+
+  it("keeps valid level_match", () => {
+    expect(parseQueueSettings({ queue_mode: "level_match" }).queue_mode).toBe("level_match");
+  });
+});
+
+describe("parseQueueSettings — skill_level_enabled coupling", () => {
+  it("derives skill_level_enabled=true when flag missing + level_match (e.g. preset apply)", () => {
+    expect(parseQueueSettings({ queue_mode: "level_match" }).skill_level_enabled).toBe(true);
+  });
+
+  it("derives skill_level_enabled=false when flag missing + non-level_match", () => {
+    expect(parseQueueSettings({ queue_mode: "rest_longest" }).skill_level_enabled).toBe(false);
+    expect(parseQueueSettings({}).skill_level_enabled).toBe(false);
+  });
+
+  it("derives from legacy smart (→level_match) when flag missing", () => {
+    expect(parseQueueSettings({ queue_mode: "smart" }).skill_level_enabled).toBe(true);
+  });
+
+  it("preserves an explicit stored skill_level_enabled (legacy rows keep behavior)", () => {
+    // rest_longest + skill on: legacy side-balancing config — must NOT be flipped off
+    expect(
+      parseQueueSettings({ queue_mode: "rest_longest", skill_level_enabled: true }).skill_level_enabled,
+    ).toBe(true);
+    // level_match + skill off: preserved as-is
+    expect(
+      parseQueueSettings({ queue_mode: "level_match", skill_level_enabled: false }).skill_level_enabled,
+    ).toBe(false);
   });
 });

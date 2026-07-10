@@ -14,10 +14,10 @@ import { z } from "zod";
  *                       fair_winner_fallback = หมุนเวียนทั่วถึง (ทุกคนสลับลง) แต่ถ้า
  *                       คนพักไม่พอตั้งแมตช์ใหม่ → ผู้ชนะอยู่ต่อ (winner_stays_max ไม่มีผล)
  *  queue_mode           rest_longest = คนพักนานสุดก่อน (default, แนะนำ)
- *                       fifo         = เข้าก่อนออกก่อน (position/joined_at)
- *                       level_match  = คนพักนานสุดก่อน + แบ่งฝั่งให้ระดับสมดุล (ต้อง skill_level_enabled)
- *                       (legacy "smart" = level_match — parseQueueSettings แปลงให้อัตโนมัติ)
- *  skill_level_enabled  ใช้ระดับฝีมือใน level_match + ตอนลงชื่อ
+ *                       level_match  = คนพักนานสุดก่อน + แบ่งฝั่งให้ระดับสมดุล (เปิด skill_level อัตโนมัติ)
+ *                       (legacy "smart" → level_match, "fifo" → rest_longest — parseQueueSettings แปลงให้อัตโนมัติ)
+ *  skill_level_enabled  ผูกกับ queue_mode: จะ true ก็ต่อเมื่อเลือก level_match — UI ตั้งให้อัตโนมัติ ไม่มี
+ *                       toggle แยก. คุมทั้งการเลือกผู้เล่นตามระดับ (level_match) + การแบ่งฝั่งให้บาลานซ์ระดับ
  *  game_time_limit_min  จำกัดเวลา/เกม (0 = ไม่จำกัด) — UI hint สำหรับ referee
  *  winner_stays_max     winner_stays: ชนะติดกันได้กี่เกมก่อนบังคับพัก (0 = ไม่จำกัด)
  *  max_skill_gap        ระยะห่างระดับสูงสุดที่ยอมรับระหว่างผู้เล่นในแมตช์เดียวกัน
@@ -35,7 +35,7 @@ export const ClubQueueSettingsSchema = z.object({
   court_count: z.number().int().min(1).max(20).default(1),
   players_per_team: z.union([z.literal(1), z.literal(2)]).default(2),
   rotation_mode: z.enum(["fair_queue", "winner_stays", "fair_winner_fallback"]).default("fair_queue"),
-  queue_mode: z.enum(["rest_longest", "fifo", "level_match"]).default("rest_longest"),
+  queue_mode: z.enum(["rest_longest", "level_match"]).default("rest_longest"),
   skill_level_enabled: z.boolean().default(false),
   game_time_limit_min: z.number().int().min(0).max(120).default(0),
   winner_stays_max: z.number().int().min(0).max(20).default(2),
@@ -53,15 +53,17 @@ export const DEFAULT_QUEUE_SETTINGS: ClubQueueSettings = ClubQueueSettingsSchema
  * Fold removed legacy enum values onto their surviving twin, in place, before any
  * schema parse — shared by parseQueueSettings and parsePresetConfig so the two
  * translators can't drift. `queue_mode "smart"` ≡ `"level_match"` (identical
- * ordering + level split); `balance_strictness "loose"` ≡ `"balanced"` (only
- * "strict" ever branched). Preset configs have no balance_strictness field, so
- * the second mapping is simply a no-op there. Keeps existing clubs working with
- * no DB migration.
+ * ordering + level split); `queue_mode "fifo"` → `"rest_longest"` (fifo removed —
+ * both are pure queue-order modes, rest_longest just orders by rest instead of
+ * intake); `balance_strictness "loose"` ≡ `"balanced"` (only "strict" ever
+ * branched). Preset configs have no balance_strictness field, so the last mapping
+ * is simply a no-op there. Keeps existing clubs working with no DB migration.
  */
 export function normalizeLegacyQueueValues(
   rec: Record<string, unknown>,
 ): Record<string, unknown> {
   if (rec.queue_mode === "smart") rec.queue_mode = "level_match";
+  if (rec.queue_mode === "fifo") rec.queue_mode = "rest_longest";
   if (rec.balance_strictness === "loose") rec.balance_strictness = "balanced";
   return rec;
 }
@@ -94,9 +96,21 @@ export function parseQueueSettings(raw: unknown): ClubQueueSettings {
   }
 
   const rec = normalizeLegacyQueueValues({ ...(raw as Record<string, unknown>) });
+  // Whether the stored config carried an explicit skill_level_enabled. Since
+  // v0.25.0 the flag has no standalone control — it is implied by the queue mode
+  // (on iff level_match). Configs written before the coupling, or written by a
+  // path that omits the flag (preset apply builds queue_settings by hand without
+  // it), must have it DERIVED so a level_match config actually uses levels and a
+  // non-level_match one doesn't. An explicitly-stored value is preserved so
+  // legacy rows keep their behavior until re-saved through the settings card.
+  const hasSkillFlag = "skill_level_enabled" in rec;
+  const withCoupling = (s: ClubQueueSettings): ClubQueueSettings =>
+    hasSkillFlag
+      ? s
+      : { ...s, skill_level_enabled: s.queue_mode === "level_match" };
 
   const fast = ClubQueueSettingsSchema.safeParse(rec);
-  if (fast.success) return fast.data;
+  if (fast.success) return withCoupling(fast.data);
 
   const out: ClubQueueSettings = { ...DEFAULT_QUEUE_SETTINGS };
   const shape = ClubQueueSettingsSchema.shape;
@@ -107,5 +121,5 @@ export function parseQueueSettings(raw: unknown): ClubQueueSettings {
       (out as Record<string, unknown>)[key] = parsed.data;
     }
   }
-  return out;
+  return withCoupling(out);
 }
