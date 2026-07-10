@@ -277,8 +277,8 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 
 - **Build-time env injection** (`next.config.ts`):
   - `NEXT_PUBLIC_APP_VERSION` — read from `package.json` via `readFileSync` + `JSON.parse`
-  - `NEXT_PUBLIC_GIT_COMMIT` — `execSync("git rev-parse --short HEAD")` with `try/catch` → `"unknown"` fallback (shallow CI clones)
-- **UI**: `SiteHeader` shows outline `Badge` next to 🏸 ก๊วนแบด logo with `v{version} ({commit})` — `hidden sm:inline-flex` (mobile-hidden)
+  - (commit-hash injection removed 2026-07-10 — badge shows version only; `execSync`/`gitHash`/`NEXT_PUBLIC_GIT_COMMIT` dropped)
+- **UI**: `SiteHeader` shows outline `Badge` next to 🏸 ก๊วนแบด logo with `v{version}` (links to `/whats-new`) — `hidden sm:inline-flex` (mobile-hidden)
 
 ### Public Share Page Redesign (`/t/[token]`)
 
