@@ -284,15 +284,21 @@ export function ClubQueueSettings({
           </div>
           <Select
             value={draft.queue_mode}
-            onValueChange={(v) =>
-              update("queue_mode", v as ClubQueueSettings["queue_mode"])
-            }
+            onValueChange={(v) => {
+              const mode = v as ClubQueueSettings["queue_mode"];
+              // skill_level_enabled has no standalone toggle anymore — it is
+              // implied by the mode: on iff level_match, off otherwise.
+              setDraft((prev) => ({
+                ...prev,
+                queue_mode: mode,
+                skill_level_enabled: mode === "level_match",
+              }));
+            }}
           >
             <SelectTrigger id="qs-queue-mode" className="w-44 h-8 text-sm">
               <SelectValue>
                 {(v: string) => {
                   if (v === "rest_longest") return t("queueRestLongest");
-                  if (v === "fifo") return t("queueFifo");
                   if (v === "level_match") return t("queueLevelMatch");
                   return v;
                 }}
@@ -302,22 +308,16 @@ export function ClubQueueSettings({
               <SelectItem value="rest_longest">
                 {t("queueRestLongestFull")}
               </SelectItem>
-              <SelectItem value="fifo">{t("queueFifo")}</SelectItem>
               <SelectItem value="level_match">{t("queueLevelMatch")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
 
-        {/* Skill level enabled */}
-        <ToggleRow
-          id="qs-skill-level"
-          label={t("skillLevelLabel")}
-          description={t("skillLevelDesc")}
-          checked={draft.skill_level_enabled}
-          onChange={(v) => update("skill_level_enabled", v)}
-        />
-
-        {/* Skill level sub-controls — only when skill_level_enabled */}
+        {/* Skill-level sub-controls — shown while skill_level_enabled is on.
+            That flag has no standalone toggle: the Select above sets it to
+            (queue_mode === "level_match"). Gating on the flag (same predicate as
+            the Levels card in the club page) keeps the two surfaces in sync even
+            for legacy configs where the stored flag and mode disagree. */}
         {draft.skill_level_enabled && (
           <div className="ml-7 space-y-1 border-l pl-3 border-border">
             {/* Max skill gap */}

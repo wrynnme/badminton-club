@@ -100,7 +100,7 @@ type FormValues = {
   court_count: number;
   players_per_team: "1" | "2";
   rotation_mode: "fair_queue" | "winner_stays" | "fair_winner_fallback";
-  queue_mode: "rest_longest" | "fifo" | "level_match";
+  queue_mode: "rest_longest" | "level_match";
   promptpay_id: string;
   promptpay_name: string;
   promptpay_qr_image: string;
@@ -326,7 +326,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
     court_count: z.number().int().min(1, t("validationCourtMin")).max(20, t("validationCourtMax")),
     players_per_team: z.enum(["1", "2"]),
     rotation_mode: z.enum(["fair_queue", "winner_stays", "fair_winner_fallback"]),
-    queue_mode: z.enum(["rest_longest", "fifo", "level_match"]),
+    queue_mode: z.enum(["rest_longest", "level_match"]),
     promptpay_id: z
       .string()
       .max(40)
@@ -780,7 +780,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                     onValueChange={(v) => {
                       if (v)
                         field.handleChange(
-                          v as "rest_longest" | "fifo" | "level_match",
+                          v as "rest_longest" | "level_match",
                         );
                     }}
                   >
@@ -788,7 +788,6 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                       <SelectValue>
                         {(v: string) => {
                           if (v === "rest_longest") return t("queueRestLongest");
-                          if (v === "fifo") return t("queueFifo");
                           if (v === "level_match") return t("queueLevelMatch");
                           return v;
                         }}
@@ -798,7 +797,6 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                       <SelectItem value="rest_longest">
                         {t("queueRestLongest")}
                       </SelectItem>
-                      <SelectItem value="fifo">{t("queueFifo")}</SelectItem>
                       <SelectItem value="level_match">{t("queueLevelMatch")}</SelectItem>
                     </SelectContent>
                   </Select>

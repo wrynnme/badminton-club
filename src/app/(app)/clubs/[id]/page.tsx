@@ -414,7 +414,10 @@ export default async function ClubDetailPage({
               )}
               {canManage && <ClubCourtManager clubId={club.id} initialCourts={clubCourts} />}
               {canManage && <ClubQueueSettings clubId={club.id} initial={queueSettings} />}
-              {canManage && (
+              {/* Levels card only when skill levels are in use (queue_mode = level_match);
+                  skill_level_enabled tracks that. Hidden otherwise so managers aren't
+                  shown a level editor that has no effect on their queue. */}
+              {canManage && queueSettings.skill_level_enabled && (
                 <ClubLevelsManager
                   levels={levels}
                   clubId={club.id}

@@ -57,8 +57,13 @@ export function keepsWinner(mode: ClubQueueSettings["rotation_mode"]): boolean {
   return mode === "winner_stays" || mode === "fair_winner_fallback";
 }
 
-/** FIFO: ready first, then position asc (nulls last), then joined_at asc. */
-function cmpFifo(a: QueuePlayer, b: QueuePlayer): number {
+/**
+ * Deterministic intake tiebreak: ready first, then position asc (nulls last),
+ * then joined_at asc, then id. Not a queue_mode on its own (fifo was removed) —
+ * used only as the final tiebreak inside cmpRestLongest so equal-rest players
+ * still order stably.
+ */
+function cmpIntakeOrder(a: QueuePlayer, b: QueuePlayer): number {
   if (readyRank(a) !== readyRank(b)) return readyRank(a) - readyRank(b);
   const pa = a.position ?? Number.POSITIVE_INFINITY;
   const pb = b.position ?? Number.POSITIVE_INFINITY;
@@ -69,30 +74,23 @@ function cmpFifo(a: QueuePlayer, b: QueuePlayer): number {
   return byId(a, b);
 }
 
-/** Longest rest first: ready first, then last_finished_at asc (null = never played = front), then fewer games, then FIFO. */
+/** Longest rest first: ready first, then last_finished_at asc (null = never played = front), then fewer games, then intake order. */
 function cmpRestLongest(a: QueuePlayer, b: QueuePlayer): number {
   if (readyRank(a) !== readyRank(b)) return readyRank(a) - readyRank(b);
   const ta = ts(a.last_finished_at);
   const tb = ts(b.last_finished_at);
   if (ta !== tb) return ta - tb;
   if (a.games_played !== b.games_played) return a.games_played - b.games_played;
-  return cmpFifo(a, b);
+  return cmpIntakeOrder(a, b);
 }
 
 /**
- * Order the pool to decide WHO plays next (not the side split). fifo uses drag
- * position; rest_longest and level_match both order by longest rest — level only
- * affects the side split (see `useBalanced`), never who is picked.
+ * Order the pool to decide WHO plays next (not the side split). rest_longest and
+ * level_match both order by longest rest — level only affects the side split
+ * (see `useBalanced`), never who is picked.
  */
-export function orderPool(pool: QueuePlayer[], settings: ClubQueueSettings): QueuePlayer[] {
-  const copy = [...pool];
-  if (settings.queue_mode === "fifo") {
-    copy.sort(cmpFifo);
-  } else {
-    // rest_longest + level_match
-    copy.sort(cmpRestLongest);
-  }
-  return copy;
+export function orderPool(pool: QueuePlayer[], _settings: ClubQueueSettings): QueuePlayer[] {
+  return [...pool].sort(cmpRestLongest);
 }
 
 /**
@@ -110,14 +108,10 @@ export function orderPool(pool: QueuePlayer[], settings: ClubQueueSettings): Que
  * enforced separately by the batch generator excluding the previous match's
  * players from the variety window, not by the tier key.
  *
- * fifo tier = drag position (strict order, effectively one player per tier).
  * Not-ready players are always their own worse tier.
  */
-export function queueTierKey(p: QueuePlayer, settings: ClubQueueSettings): string {
+export function queueTierKey(p: QueuePlayer, _settings: ClubQueueSettings): string {
   const ready = readyRank(p);
-  if (settings.queue_mode === "fifo") {
-    return `${ready}|${p.position ?? "null"}`;
-  }
   return `${ready}|${p.games_played}`;
 }
 

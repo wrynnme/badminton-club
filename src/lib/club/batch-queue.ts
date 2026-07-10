@@ -28,7 +28,7 @@ import { clampedSessionMinutes } from "./cost-split";
  * planned match the chosen players get games_played+1 and a synthetic, strictly
  * increasing last_finished_at — so every subsequent pick through the existing
  * queue helpers (buildNextMatch / orderPool / takeSides) automatically honours
- * rest spacing, FIFO order, level pairing, skill-gap strictness and locked
+ * rest spacing, intake order, level pairing, skill-gap strictness and locked
  * pairs without re-implementing any of those rules.
  */
 

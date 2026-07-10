@@ -59,9 +59,9 @@ describe("buildNextMatch — pool size", () => {
   });
 });
 
-describe("buildNextMatch — fifo", () => {
+describe("buildNextMatch — intake-order tiebreak (equal rest)", () => {
   it("takes lowest position first", () => {
-    const s = settings({ players_per_team: 2, queue_mode: "fifo" });
+    const s = settings({ players_per_team: 2, queue_mode: "rest_longest" });
     const pool = [
       player("d", { position: 4 }),
       player("a", { position: 1 }),
@@ -77,7 +77,7 @@ describe("buildNextMatch — fifo", () => {
   });
 
   it("null position sorts after numbered, joined_at breaks ties", () => {
-    const s = settings({ players_per_team: 1, queue_mode: "fifo" });
+    const s = settings({ players_per_team: 1, queue_mode: "rest_longest" });
     const pool = [
       player("late", { position: null, joined_at: "2026-06-06T10:05:00.000Z" }),
       player("first", { position: 1 }),
@@ -153,8 +153,8 @@ describe("buildNextMatch — not_ready (requeue: ready-first ordering)", () => {
     expect(ids(m)).toEqual(["nr1", "r1"]);
   });
 
-  it("fifo: not-ready sorts to the tail regardless of position", () => {
-    const s = settings({ players_per_team: 1, queue_mode: "fifo" });
+  it("not-ready sorts to the tail regardless of intake order", () => {
+    const s = settings({ players_per_team: 1, queue_mode: "rest_longest" });
     const pool = [
       player("nr", { notReady: true, position: 1 }), // lowest position but not ready
       player("r", { position: 5 }),
@@ -196,7 +196,7 @@ describe("buildNextMatch — level_match", () => {
 
 describe("buildNextMatch — skill-balanced split", () => {
   it("doubles: balances total level across sides", () => {
-    const s = settings({ players_per_team: 2, queue_mode: "fifo", skill_level_enabled: true });
+    const s = settings({ players_per_team: 2, queue_mode: "rest_longest", skill_level_enabled: true });
     const pool = [
       player("p10", { position: 1, level: 10 }),
       player("p1", { position: 2, level: 1 }),
@@ -212,7 +212,7 @@ describe("buildNextMatch — skill-balanced split", () => {
   });
 
   it("without skill flag: split by pick order (no balancing)", () => {
-    const s = settings({ players_per_team: 2, queue_mode: "fifo", skill_level_enabled: false });
+    const s = settings({ players_per_team: 2, queue_mode: "rest_longest", skill_level_enabled: false });
     const pool = [
       player("p10", { position: 1, level: 10 }),
       player("p1", { position: 2, level: 1 }),
@@ -256,7 +256,7 @@ describe("buildNextMatch — winner_stays", () => {
   });
 
   it("fair_queue ignores stayingSide (both sides from pool)", () => {
-    const s = settings({ players_per_team: 1, rotation_mode: "fair_queue", queue_mode: "fifo" });
+    const s = settings({ players_per_team: 1, rotation_mode: "fair_queue", queue_mode: "rest_longest" });
     const pool = [player("a", { position: 1 }), player("b", { position: 2 })];
     const m = buildNextMatch(pool, s, staying)!;
     expect(ids(m)).toEqual(["a", "b"]);
@@ -264,7 +264,7 @@ describe("buildNextMatch — winner_stays", () => {
 });
 
 describe("buildNextMatch — locked pairs (doubles)", () => {
-  const s = settings({ players_per_team: 2, queue_mode: "fifo" });
+  const s = settings({ players_per_team: 2, queue_mode: "rest_longest" });
 
   function sideHas(side: MatchSide, x: string, y: string): boolean {
     const ids = [side.player1, side.player2].sort();
@@ -274,7 +274,7 @@ describe("buildNextMatch — locked pairs (doubles)", () => {
   it("keeps a locked pair on the same side", () => {
     const pool = [
       player("a", { position: 1 }),
-      player("b", { position: 4 }), // far apart in fifo order but locked to a
+      player("b", { position: 4 }), // far apart in intake order but locked to a
       player("c", { position: 2 }),
       player("d", { position: 3 }),
     ];
@@ -329,7 +329,7 @@ describe("buildNextMatch — locked pairs (doubles)", () => {
   });
 
   it("winner_stays: opponents respect a lock", () => {
-    const ws = settings({ players_per_team: 2, rotation_mode: "winner_stays", queue_mode: "fifo" });
+    const ws = settings({ players_per_team: 2, rotation_mode: "winner_stays", queue_mode: "rest_longest" });
     const staying: MatchSide = { player1: "w1", player2: "w2" };
     const pool = [
       player("a", { position: 1 }),
@@ -343,7 +343,7 @@ describe("buildNextMatch — locked pairs (doubles)", () => {
   });
 
   it("singles ignores locked pairs", () => {
-    const single = settings({ players_per_team: 1, queue_mode: "fifo" });
+    const single = settings({ players_per_team: 1, queue_mode: "rest_longest" });
     const pool = [player("a", { position: 1 }), player("b", { position: 2 })];
     const m = buildNextMatch(pool, single, undefined, [["a", "b"]])!;
     // singles: each side one player; lock has no effect
@@ -512,7 +512,7 @@ describe("buildNextMatch — pickBalancedMatch (max_skill_gap / balance_strictne
 describe("buildNextMatch — splitSides intra-side gap tiebreak (ppt=2)", () => {
   it("greedy sum is preserved when it is uniquely optimal (existing test must stay green)", () => {
     // Levels [10,1,8,3]: only one equal-sum partition exists → greedy result kept.
-    const s = settings({ players_per_team: 2, queue_mode: "fifo", skill_level_enabled: true });
+    const s = settings({ players_per_team: 2, queue_mode: "rest_longest", skill_level_enabled: true });
     const pool = [
       player("p10", { position: 1, level: 10 }),
       player("p1",  { position: 2, level: 1 }),
@@ -534,7 +534,7 @@ describe("buildNextMatch — splitSides intra-side gap tiebreak (ppt=2)", () => 
     //   P3: (8,2)+(8,2)=10+10 — equal, same as P2 (both have gap 6)
     // Greedy: p8a→A(8), p8b→B(8), p2a→A(10), p2b→B(10) → A=[p8a,p2a], B=[p8b,p2b]
     // Both P2/P3 equal-sum and same gap → tiebreak keeps first (stable).
-    const s = settings({ players_per_team: 2, queue_mode: "fifo", skill_level_enabled: true });
+    const s = settings({ players_per_team: 2, queue_mode: "rest_longest", skill_level_enabled: true });
     const pool = [
       player("p8a", { position: 1, level: 8 }),
       player("p8b", { position: 2, level: 8 }),
@@ -556,7 +556,7 @@ describe("buildNextMatch — balance_locked_pairs", () => {
   it("default false: locked-pair match proceeds regardless of level gap", () => {
     const s = settings({
       players_per_team: 2,
-      queue_mode: "fifo",
+      queue_mode: "rest_longest",
       max_skill_gap: 1,
       balance_strictness: "strict",
       balance_locked_pairs: false, // default — no mean-level check
@@ -576,7 +576,7 @@ describe("buildNextMatch — balance_locked_pairs", () => {
   it("strict + balance_locked_pairs: rejects when mean gap exceeds max_skill_gap", () => {
     const s = settings({
       players_per_team: 2,
-      queue_mode: "fifo",
+      queue_mode: "rest_longest",
       max_skill_gap: 1,
       balance_strictness: "strict",
       balance_locked_pairs: true,
@@ -594,7 +594,7 @@ describe("buildNextMatch — balance_locked_pairs", () => {
   it("strict + balance_locked_pairs: passes when mean gap is within max_skill_gap", () => {
     const s = settings({
       players_per_team: 2,
-      queue_mode: "fifo",
+      queue_mode: "rest_longest",
       max_skill_gap: 3,
       balance_strictness: "strict",
       balance_locked_pairs: true,
@@ -696,36 +696,36 @@ describe("isClubMatchFull", () => {
 });
 
 describe("buildPartialMatch", () => {
-  const fifo = (o: Partial<ClubQueueSettings> = {}) =>
-    settings({ queue_mode: "fifo", players_per_team: 2, ...o });
+  const restLongest = (o: Partial<ClubQueueSettings> = {}) =>
+    settings({ queue_mode: "rest_longest", players_per_team: 2, ...o });
   const p = (id: string, pos: number) => player(id, { position: pos });
 
   it("doubles: 3 available → fills a1,a2,b1 in queue order, b2 empty", () => {
-    const r = buildPartialMatch([p("c", 3), p("a", 1), p("b", 2)], fifo());
+    const r = buildPartialMatch([p("c", 3), p("a", 1), p("b", 2)], restLongest());
     expect(r).toEqual({ a1: "a", a2: "b", b1: "c", b2: null });
   });
   it("doubles: 2 available → a1,a2 only", () => {
-    expect(buildPartialMatch([p("a", 1), p("b", 2)], fifo())).toEqual({
+    expect(buildPartialMatch([p("a", 1), p("b", 2)], restLongest())).toEqual({
       a1: "a", a2: "b", b1: null, b2: null,
     });
   });
   it("doubles: 1 available → a1 only", () => {
-    expect(buildPartialMatch([p("a", 1)], fifo())).toEqual({
+    expect(buildPartialMatch([p("a", 1)], restLongest())).toEqual({
       a1: "a", a2: null, b1: null, b2: null,
     });
   });
   it("singles: 1 available → a1 only (b1 empty)", () => {
-    expect(buildPartialMatch([p("a", 1)], fifo({ players_per_team: 1 }))).toEqual({
+    expect(buildPartialMatch([p("a", 1)], restLongest({ players_per_team: 1 }))).toEqual({
       a1: "a", a2: null, b1: null, b2: null,
     });
   });
   it("empty pool → null", () => {
-    expect(buildPartialMatch([], fifo())).toBeNull();
+    expect(buildPartialMatch([], restLongest())).toBeNull();
   });
   it("winner_stays: staying side keeps A, opponents fill B (partial)", () => {
     const r = buildPartialMatch(
       [p("x", 1)],
-      fifo({ rotation_mode: "winner_stays" }),
+      restLongest({ rotation_mode: "winner_stays" }),
       { player1: "w1", player2: "w2" },
     );
     expect(r).toEqual({ a1: "w1", a2: "w2", b1: "x", b2: null });
@@ -975,7 +975,7 @@ describe("buildNextMatch — fair_winner_fallback", () => {
   it("FALLBACK + locked pair: staying side kept, opponents respect the lock", () => {
     const staying: MatchSide = { player1: "w1", player2: "w2" };
     const pool = [player("a"), player("b"), player("c"), player("d")];
-    const m = buildNextMatch(pool, fwf({ queue_mode: "fifo" }), staying, [["a", "b"]])!;
+    const m = buildNextMatch(pool, fwf({ queue_mode: "rest_longest" }), staying, [["a", "b"]])!;
     expect(m.sideA).toEqual(staying);
     expect([m.sideB.player1, m.sideB.player2].sort()).toEqual(["a", "b"]);
   });
@@ -983,7 +983,7 @@ describe("buildNextMatch — fair_winner_fallback", () => {
 
 describe("buildPartialMatch — fair_winner_fallback", () => {
   it("keeps staying side on A, fills B partially", () => {
-    const s = settings({ rotation_mode: "fair_winner_fallback", queue_mode: "fifo" });
+    const s = settings({ rotation_mode: "fair_winner_fallback", queue_mode: "rest_longest" });
     const r = buildPartialMatch([player("x", { position: 1 })], s, { player1: "w1", player2: "w2" });
     expect(r).toEqual({ a1: "w1", a2: "w2", b1: "x", b2: null });
   });
