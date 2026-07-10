@@ -354,14 +354,20 @@
     "timeLimitLabel": "จำกัดเวลา/เกม (นาที)",
     "timeLimitDesc": "แสดงเป็น hint สำหรับ referee (0 = ไม่จำกัด)",
     "realtimeEnabledLabel": "อัปเดตสด (Realtime)",
-    "realtimeEnabledDesc": "เปิด = คิวและรายชื่ออัปเดตเองข้ามอุปกรณ์โดยไม่ต้องรีเฟรช"
+    "realtimeEnabledDesc": "เปิด = คิวและรายชื่ออัปเดตเองข้ามอุปกรณ์โดยไม่ต้องรีเฟรช",
+    "saveButton": "บันทึก",
+    "discardButton": "ยกเลิก",
+    "savedToast": "บันทึกการตั้งค่าแล้ว",
+    "saveTooltip": "บันทึกการตั้งค่าระบบหมุนคิว",
+    "discardTooltip": "ยกเลิกการแก้ไข กลับไปใช้ค่าที่บันทึกไว้ล่าสุด"
   },
   "tabs": {
     "dashboard": "แดชบอร์ด",
     "checkin": "ลงชื่อ / เช็คอิน",
     "queue": "ล็อคคู่ + คิว",
     "cost": "ค่าใช้จ่าย",
-    "settings": "ตั้งค่า"
+    "settings": "ตั้งค่า",
+    "unsavedWarning": "มีการแก้ไขที่ยังไม่บันทึก ต้องการออกโดยไม่บันทึกใช่หรือไม่?"
   },
   "visibility": {
     "title": "การเข้าถึง",

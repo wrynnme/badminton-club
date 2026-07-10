@@ -10,6 +10,13 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-10 (ship-check → ✅ PASS) — club queue settings: auto-save → explicit Save/Discard (v0.24.0)
+
+- ฟีเจอร์: `club-queue-settings.tsx` เปลี่ยนจาก debounce auto-save → draft/baseline + ปุ่ม บันทึก/ยกเลิก (โผล่เมื่อ dirty) + page-wide `use-unsaved-guard.ts` → ClubTabs block tab-switch + beforeunload. court manager คง auto-save (rename ย้ายแมตช์จริง). branch `feat/club-queue-settings-save-btn`.
+- **code-review (high):** 0 P0 · 1 P1 (soft-nav click ออกหน้าอื่น = draft หายเงียบ; App Router ไม่มี hook บล็อก → **accepted limitation** คง tab+close, มี comment) · 1 P2 (ตัด reactive layer `useSyncExternalStore`/listeners/emit ที่ไม่มี consumer ใน `use-unsaved-guard.ts` — แก้แล้ว).
+- **browser smoke (Playwright, net-zero, authenticated manager cookie):** บันทึก ✅ (DB `queue_settings.realtime_enabled` true→false, footer หาย) · ยกเลิก ✅ (revert local, DB ไม่เปลี่ยน) · เตือนสลับแท็บ ✅ (confirm `unsavedWarning` โผล่, กด cancel = อยู่ต่อ). console 0 error. teardown เหลือ 0 row ทุกตาราง.
+- Gates: tsc 0 · vitest **801/801** (31 files, +11 tests: queueSettingsEqual + guard) · `next build` OK. version sync 0.24.0 (changelog.ts/package.json/CHANGELOG.md).
+
 ### 2026-07-09 (schema cleanup → ✅ APPLIED) — remove retired inbound slip-verify DB/storage
 
 - User approved destructive cleanup. Preflight: `payment-slips` bucket existed with 0 objects. Supabase docs require Storage API deletion (not SQL) for storage files/buckets, so bucket was deleted via `supabase-js` Storage API.

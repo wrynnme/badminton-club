@@ -4,6 +4,7 @@ import { useMemo, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTabSync } from "@/lib/hooks/use-tab-sync";
+import { hasUnsavedChanges } from "@/lib/hooks/use-unsaved-guard";
 
 type ClubTabId = "dashboard" | "checkin" | "queue" | "cost" | "settings";
 const ALL_TABS: readonly ClubTabId[] = ["dashboard", "checkin", "queue", "cost", "settings"];
@@ -49,8 +50,17 @@ export function ClubTabs({
     defaultTab: "dashboard",
   });
 
+  // Block a tab switch away from unsaved edits (e.g. ClubQueueSettings' draft
+  // Save/Discard footer) — components register themselves via setUnsavedGuard.
+  // Note: this only covers switching tabs within this shell; it can't
+  // intercept client-side navigation to a different route (Next Link click).
+  const handleChange = (next: string) => {
+    if (hasUnsavedChanges() && !window.confirm(t("unsavedWarning"))) return;
+    onChange(next);
+  };
+
   return (
-    <Tabs value={active} onValueChange={(v) => onChange(String(v))} className="space-y-4">
+    <Tabs value={active} onValueChange={(v) => handleChange(String(v))} className="space-y-4">
       <TabsList className="w-full flex-wrap h-auto">
         <TabsTrigger value="dashboard">{t("dashboard")}</TabsTrigger>
         <TabsTrigger value="checkin">{t("checkin")}</TabsTrigger>

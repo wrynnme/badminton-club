@@ -354,14 +354,20 @@
     "timeLimitLabel": "Time limit per game (min)",
     "timeLimitDesc": "Shown as a hint for the referee (0 = no limit)",
     "realtimeEnabledLabel": "Live updates (Realtime)",
-    "realtimeEnabledDesc": "On = queue & roster auto-update across devices without refreshing"
+    "realtimeEnabledDesc": "On = queue & roster auto-update across devices without refreshing",
+    "saveButton": "Save",
+    "discardButton": "Discard",
+    "savedToast": "Settings saved",
+    "saveTooltip": "Save queue rotation settings",
+    "discardTooltip": "Discard changes and revert to the last saved settings"
   },
   "tabs": {
     "dashboard": "Dashboard",
     "checkin": "Sign in / Check in",
     "queue": "Locked pairs + Queue",
     "cost": "Costs",
-    "settings": "Settings"
+    "settings": "Settings",
+    "unsavedWarning": "You have unsaved changes. Leave without saving?"
   },
   "visibility": {
     "title": "Access",
