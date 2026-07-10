@@ -262,15 +262,6 @@ export default async function ClubDetailPage({
             <div className="space-y-6">
               <section className="space-y-2">
                 <h2 className="font-semibold">{t("page.playerListHeading", { count: joined })}</h2>
-                {canManage && (
-                  <div className="flex flex-wrap gap-2">
-                    <AddGuestPlayer clubId={club.id} full={full} levels={levels} />
-                    <LineImportDialog
-                      clubId={club.id}
-                      existingNames={players.map((p) => p.display_name)}
-                    />
-                  </div>
-                )}
                 <SortablePlayerList
                   clubId={club.id}
                   players={players}
@@ -279,6 +270,17 @@ export default async function ClubDetailPage({
                   levels={levels}
                   sessionStart={club.start_time}
                   sessionEnd={club.end_time}
+                  headerActions={
+                    canManage ? (
+                      <>
+                        <AddGuestPlayer clubId={club.id} full={full} levels={levels} />
+                        <LineImportDialog
+                          clubId={club.id}
+                          existingNames={players.map((p) => p.display_name)}
+                        />
+                      </>
+                    ) : null
+                  }
                 />
               </section>
 

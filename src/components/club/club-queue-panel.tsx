@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState, useTransition, type ReactElement 
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock, RotateCcw, Flag } from "lucide-react";
+import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock, RotateCcw, Flag, MapPin, ListChecks } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -23,6 +23,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -71,6 +72,10 @@ import {
   reorderClubQueueAction,
   deleteClubMatchAction,
   rebuildClubPendingMatchAction,
+  bulkSetClubMatchCourtAction,
+  bulkCancelClubMatchesAction,
+  bulkStartClubMatchesAction,
+  bulkDeleteClubMatchesAction,
 } from "@/lib/actions/club-matches";
 import type { ClubMatch, Game } from "@/lib/types";
 import { isClubMatchFull } from "@/lib/club/queue";
@@ -418,6 +423,9 @@ function PendingRow({
   dragHandleProps,
   rowNumber,
   feederByTarget,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
@@ -433,6 +441,10 @@ function PendingRow({
   /** feeder match (still pending/in_progress) keyed `${winner_next_match_id}:${slot}` —
    *  presence means that side is a LIVE "winner of" placeholder, not an empty slot. */
   feederByTarget: Map<string, ClubMatch>;
+  /** select mode replaces the drag handle + per-row actions with a checkbox */
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }) {
   const t = useTranslations("club.queuePanel");
   const ppt = settings.players_per_team;
@@ -505,7 +517,15 @@ function PendingRow({
 
   return (
     <div className="flex items-center gap-2 py-2 border-b last:border-0">
-      {dragHandleProps && (
+      {selectMode && onToggleSelect && (
+        <Checkbox
+          checked={selected}
+          onCheckedChange={() => onToggleSelect(match.id)}
+          aria-label={t("bulkRowAria")}
+          className="shrink-0"
+        />
+      )}
+      {dragHandleProps && !selectMode && (
         <Tooltip>
           <TooltipTrigger
             render={
@@ -530,7 +550,7 @@ function PendingRow({
       <CourtSelect
         match={match}
         courts={courts}
-        canManage={canManage}
+        canManage={canManage && !selectMode}
         onRefresh={onRefresh}
         badgeClassName="shrink-0 text-xs"
       />
@@ -541,7 +561,7 @@ function PendingRow({
         <span className="text-muted-foreground">vs</span>{" "}
         {placeholderB ? feederLabel(feederB!) : sideB}
       </span>
-      {canManage && (
+      {canManage && !selectMode && (
         <div className="flex items-center gap-1 shrink-0">
           {!(placeholderA && placeholderB) && (
             <MatchFormDialog
@@ -969,11 +989,18 @@ function CompletedRow({
   nameMap,
   canManage,
   onRefresh,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
   canManage: boolean;
   onRefresh: () => void;
+  /** select mode adds a checkbox and hides the per-row actions */
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }) {
   const t = useTranslations("club.queuePanel");
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
@@ -986,6 +1013,14 @@ function CompletedRow({
 
   return (
     <div className="flex items-center gap-2 py-2 border-b last:border-0 text-sm text-muted-foreground">
+      {selectMode && onToggleSelect && (
+        <Checkbox
+          checked={selected}
+          onCheckedChange={() => onToggleSelect(match.id)}
+          aria-label={t("bulkRowAria")}
+          className="shrink-0"
+        />
+      )}
       <Badge variant="outline" className="shrink-0 text-xs opacity-60">
         {t("courtBadge", { court: match.court ?? "" })}
       </Badge>
@@ -1021,12 +1056,14 @@ function CompletedRow({
           <TooltipContent>{t("durationTooltip")}</TooltipContent>
         </Tooltip>
       )}
-      <div className="ml-auto flex items-center gap-1">
-        <ShuttleCounter match={match} canManage={canManage} onRefresh={onRefresh} />
-        {canManage && (
-          <DeleteMatchButton matchId={match.id} status="completed" onRefresh={onRefresh} />
-        )}
-      </div>
+      {!selectMode && (
+        <div className="ml-auto flex items-center gap-1">
+          <ShuttleCounter match={match} canManage={canManage} onRefresh={onRefresh} />
+          {canManage && (
+            <DeleteMatchButton matchId={match.id} status="completed" onRefresh={onRefresh} />
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -1448,6 +1485,206 @@ function MatchFormDialog({
   );
 }
 
+// ─── Bulk action bar (select-mode, per section) ──────────────────────────────
+// Sticky bar shown when ≥1 match is selected in a section's select mode. Pending:
+// จัดสนาม / เริ่มแข่ง / ยกเลิก / ลบถาวร. Completed: ลบถาวร only. Each button calls a
+// single bulk server action (one permission check + one revalidate) and reports the
+// outcome via a dedicated toast key (never concatenated).
+
+function QueueBulkBar({
+  clubId,
+  section,
+  selectedIds,
+  courts,
+  onClearSelection,
+  onRefresh,
+}: {
+  clubId: string;
+  section: "pending" | "completed";
+  selectedIds: Set<string>;
+  courts: string[];
+  onClearSelection: () => void;
+  onRefresh: () => void;
+}) {
+  const t = useTranslations("club.queuePanel");
+  const [pending, start] = useTransition();
+  const [courtOpen, setCourtOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+
+  const ids = useMemo(() => Array.from(selectedIds), [selectedIds]);
+  const n = ids.length;
+  if (n === 0) return null;
+
+  function afterSuccess() {
+    onRefresh();
+    onClearSelection();
+  }
+
+  function runAssignCourt(court: string) {
+    setCourtOpen(false);
+    start(async () => {
+      const res = await bulkSetClubMatchCourtAction({ clubId, matchIds: ids, court });
+      if ("error" in res) toast.error(res.error);
+      else {
+        toast.success(t("toastBulkCourt", { count: res.updated }));
+        afterSuccess();
+      }
+    });
+  }
+
+  function runStart() {
+    start(async () => {
+      const res = await bulkStartClubMatchesAction({ clubId, matchIds: ids });
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      if (res.started > 0 && res.skipped > 0) {
+        toast.success(t("toastBulkStartedSkipped", { started: res.started, skipped: res.skipped }));
+      } else if (res.started > 0) {
+        toast.success(t("toastBulkStarted", { started: res.started }));
+      } else {
+        toast.error(t("toastBulkStartNone", { skipped: res.skipped }));
+      }
+      afterSuccess();
+    });
+  }
+
+  function runCancel() {
+    start(async () => {
+      const res = await bulkCancelClubMatchesAction({ clubId, matchIds: ids });
+      if ("error" in res) toast.error(res.error);
+      else {
+        toast.success(t("toastBulkCancelled", { count: res.cancelled }));
+        afterSuccess();
+      }
+    });
+  }
+
+  function runDelete() {
+    start(async () => {
+      const res = await bulkDeleteClubMatchesAction({ clubId, matchIds: ids });
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      setDeleteOpen(false);
+      if (res.failed > 0) {
+        toast.success(t("toastBulkDeletedPartial", { count: res.deleted, failed: res.failed }));
+      } else {
+        toast.success(t("toastBulkDeleted", { count: res.deleted }));
+      }
+      afterSuccess();
+    });
+  }
+
+  return (
+    <>
+      <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-1.5 rounded-lg border bg-background/95 px-3 py-2 shadow-md text-sm backdrop-blur">
+        <span className="mr-1 shrink-0 text-xs font-medium">{t("bulkSelectedCount", { n })}</span>
+
+        {section === "pending" && (
+          <>
+            {courts.length > 0 && (
+              <Popover open={courtOpen} onOpenChange={setCourtOpen}>
+                <PopoverTrigger
+                  render={
+                    <Button size="xs" variant="outline" disabled={pending} aria-label={t("bulkAssignCourtTooltip")}>
+                      <MapPin className="h-3.5 w-3.5" />
+                      <span className="ml-1 hidden sm:inline">{t("bulkAssignCourt")}</span>
+                    </Button>
+                  }
+                />
+                <PopoverContent align="start" className="w-48 p-1">
+                  <p className="px-2 py-1 text-xs text-muted-foreground">{t("bulkAssignCourtPick")}</p>
+                  <div className="grid gap-0.5">
+                    {courts.map((c) => (
+                      <Button
+                        key={c}
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 justify-start"
+                        disabled={pending}
+                        onClick={() => runAssignCourt(c)}
+                      >
+                        {t("courtSelectItem", { court: c })}
+                      </Button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button size="xs" variant="outline" disabled={pending} onClick={runStart} aria-label={t("bulkStartTooltip")}>
+                    <Play className="h-3.5 w-3.5" />
+                    <span className="ml-1 hidden sm:inline">{t("bulkStart")}</span>
+                  </Button>
+                }
+              />
+              <TooltipContent>{t("bulkStartTooltip")}</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button size="xs" variant="outline" disabled={pending} onClick={runCancel} aria-label={t("bulkCancelTooltip")}>
+                    <X className="h-3.5 w-3.5" />
+                    <span className="ml-1 hidden sm:inline">{t("bulkCancel")}</span>
+                  </Button>
+                }
+              />
+              <TooltipContent>{t("bulkCancelTooltip")}</TooltipContent>
+            </Tooltip>
+          </>
+        )}
+
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="xs"
+                variant="destructive"
+                disabled={pending}
+                onClick={() => setDeleteOpen(true)}
+                aria-label={t("bulkDeleteTooltip")}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span className="ml-1 hidden sm:inline">{t("bulkDelete")}</span>
+              </Button>
+            }
+          />
+          <TooltipContent>{t("bulkDeleteTooltip")}</TooltipContent>
+        </Tooltip>
+      </div>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
+              {t("bulkDeleteDialogTitle", { n })}
+            </DialogTitle>
+          </DialogHeader>
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+            <li>{t("bulkDeleteDialogBullet1")}</li>
+            <li>{t("bulkDeleteDialogBullet2")}</li>
+            <li>{t("bulkDeleteDialogBullet3")}</li>
+          </ul>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" disabled={pending}>{t("bulkDeleteCancel")}</Button>} />
+            <Button variant="destructive" onClick={runDelete} disabled={pending}>
+              {pending ? t("bulkDeleteDeleting") : t("bulkDeleteConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export function ClubQueuePanel({
@@ -1528,6 +1765,51 @@ export function ClubQueuePanel({
     );
   }, [matches]);
 
+  // ─── Select-mode state (pending + completed sections, independent) ──────────
+  const [pendingSelectMode, setPendingSelectMode] = useState(false);
+  const [pendingSelectedIds, setPendingSelectedIds] = useState<Set<string>>(new Set());
+  const [completedSelectMode, setCompletedSelectMode] = useState(false);
+  const [completedSelectedIds, setCompletedSelectedIds] = useState<Set<string>>(new Set());
+
+  function togglePendingSelectMode() {
+    setPendingSelectMode((v) => !v);
+    setPendingSelectedIds(new Set());
+  }
+  function toggleCompletedSelectMode() {
+    setCompletedSelectMode((v) => !v);
+    setCompletedSelectedIds(new Set());
+  }
+  const togglePendingSelect = (id: string) =>
+    setPendingSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleCompletedSelect = (id: string) =>
+    setCompletedSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const clearPendingSelection = () => setPendingSelectedIds(new Set());
+  const clearCompletedSelection = () => setCompletedSelectedIds(new Set());
+
+  // Prune stale ids when matches change (rows leave a section after an action).
+  useEffect(() => {
+    const pendingIds = new Set(matches.filter((m) => m.status === "pending").map((m) => m.id));
+    setPendingSelectedIds((prev) => {
+      const pruned = new Set([...prev].filter((id) => pendingIds.has(id)));
+      return pruned.size === prev.size ? prev : pruned;
+    });
+    const completedIds = new Set(matches.filter((m) => m.status === "completed").map((m) => m.id));
+    setCompletedSelectedIds((prev) => {
+      const pruned = new Set([...prev].filter((id) => completedIds.has(id)));
+      return pruned.size === prev.size ? prev : pruned;
+    });
+  }, [matches]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
@@ -1566,6 +1848,22 @@ export function ClubQueuePanel({
         new Date(b.ended_at ?? b.created_at).getTime() -
         new Date(a.ended_at ?? a.created_at).getTime(),
     );
+
+  // Select-all state per section (all = every row checked, partial = some).
+  const allPendingSelected =
+    pendingOrder.length > 0 && pendingOrder.every((m) => pendingSelectedIds.has(m.id));
+  const partialPendingSelected =
+    !allPendingSelected && pendingOrder.some((m) => pendingSelectedIds.has(m.id));
+  function handleSelectAllPending() {
+    setPendingSelectedIds(allPendingSelected ? new Set() : new Set(pendingOrder.map((m) => m.id)));
+  }
+  const allCompletedSelected =
+    completed.length > 0 && completed.every((m) => completedSelectedIds.has(m.id));
+  const partialCompletedSelected =
+    !allCompletedSelected && completed.some((m) => completedSelectedIds.has(m.id));
+  function handleSelectAllCompleted() {
+    setCompletedSelectedIds(allCompletedSelected ? new Set() : new Set(completed.map((m) => m.id)));
+  }
 
   // Single-page layout (tabs removed 2026-07-07): all three statuses stack in
   // one view, colour-coded per section — live matches first (short + most
@@ -1610,6 +1908,7 @@ export function ClubQueuePanel({
             {pendingOrder.length}
           </Badge>
         </h3>
+
         {canManage && (
           <div className="space-y-2">
             {courts.length === 0 && (
@@ -1617,7 +1916,7 @@ export function ClubQueuePanel({
                 {t("noCourts")}
               </p>
             )}
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <GenerateQueueDialog
                 clubId={clubId}
                 players={players.map((p) => ({
@@ -1642,11 +1941,54 @@ export function ClubQueuePanel({
                 matches={matches}
                 onRefresh={onRefresh}
               />
+              {(pendingSelectMode || pendingOrder.length > 0) && (
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="sm"
+                        variant={pendingSelectMode ? "secondary" : "outline"}
+                        className="ml-auto h-8 gap-1 text-xs"
+                        onClick={togglePendingSelectMode}
+                        aria-label={pendingSelectMode ? t("bulkDone") : t("bulkToggle")}
+                      >
+                        {pendingSelectMode ? (
+                          <Check className="h-3.5 w-3.5" />
+                        ) : (
+                          <ListChecks className="h-3.5 w-3.5" />
+                        )}
+                        {pendingSelectMode ? t("bulkDone") : t("bulkToggle")}
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>
+                    {pendingSelectMode ? t("bulkDone") : t("bulkToggle")}
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
           </div>
         )}
 
-        {canManage && pendingOrder.length >= 2 && (
+        {canManage && pendingSelectMode && pendingOrder.length > 0 && (
+          <div className="flex items-center gap-2 px-1 text-sm">
+            <Checkbox
+              checked={allPendingSelected}
+              indeterminate={partialPendingSelected}
+              onCheckedChange={handleSelectAllPending}
+              aria-label={t("bulkSelectAll", { n: pendingOrder.length })}
+            />
+            <button
+              type="button"
+              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              onClick={handleSelectAllPending}
+            >
+              {t("bulkSelectAll", { n: pendingOrder.length })}
+            </button>
+          </div>
+        )}
+
+        {canManage && !pendingSelectMode && pendingOrder.length >= 2 && (
           <p className="text-xs text-muted-foreground flex items-center gap-1.5">
             {reorderPending && (
               <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -1661,6 +2003,27 @@ export function ClubQueuePanel({
               <p className="text-sm text-muted-foreground text-center py-4">
                 {t("pendingEmpty")}
               </p>
+            ) : canManage && pendingSelectMode ? (
+              // Select mode: plain list with checkboxes; DnD disabled.
+              pendingOrder.map((m, i) => (
+                <PendingRow
+                  key={m.id}
+                  match={m}
+                  nameMap={nameMap.current}
+                  players={players}
+                  settings={settings}
+                  clubId={clubId}
+                  matches={matches}
+                  courts={courts}
+                  canManage
+                  onRefresh={onRefresh}
+                  rowNumber={i + 1}
+                  feederByTarget={feederByTarget}
+                  selectMode
+                  selected={pendingSelectedIds.has(m.id)}
+                  onToggleSelect={togglePendingSelect}
+                />
+              ))
             ) : canManage ? (
               <DndContext
                 id="club-queue-dnd"
@@ -1711,6 +2074,17 @@ export function ClubQueuePanel({
             )}
           </CardContent>
         </Card>
+
+        {canManage && pendingSelectMode && pendingSelectedIds.size > 0 && (
+          <QueueBulkBar
+            clubId={clubId}
+            section="pending"
+            selectedIds={pendingSelectedIds}
+            courts={courts}
+            onClearSelection={clearPendingSelection}
+            onRefresh={onRefresh}
+          />
+        )}
       </section>
 
       {/* ── จบแล้ว — success ── */}
@@ -1723,6 +2097,50 @@ export function ClubQueuePanel({
               {completed.length}
             </Badge>
           </h3>
+
+          {canManage && (
+            <div className="flex items-center gap-2 px-1 text-sm">
+              {completedSelectMode && (
+                <>
+                  <Checkbox
+                    checked={allCompletedSelected}
+                    indeterminate={partialCompletedSelected}
+                    onCheckedChange={handleSelectAllCompleted}
+                    aria-label={t("bulkSelectAll", { n: completed.length })}
+                  />
+                  <button
+                    type="button"
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    onClick={handleSelectAllCompleted}
+                  >
+                    {t("bulkSelectAll", { n: completed.length })}
+                  </button>
+                </>
+              )}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant={completedSelectMode ? "secondary" : "outline"}
+                      className="ml-auto h-8 gap-1 text-xs"
+                      onClick={toggleCompletedSelectMode}
+                      aria-label={completedSelectMode ? t("bulkDone") : t("bulkToggle")}
+                    >
+                      {completedSelectMode ? (
+                        <Check className="h-3.5 w-3.5" />
+                      ) : (
+                        <ListChecks className="h-3.5 w-3.5" />
+                      )}
+                      {completedSelectMode ? t("bulkDone") : t("bulkToggle")}
+                    </Button>
+                  }
+                />
+                <TooltipContent>{completedSelectMode ? t("bulkDone") : t("bulkToggle")}</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
+
           <Card className="border-l-4 border-l-success/50">
             <CardContent className="py-3 px-4">
               {completed.map((m) => (
@@ -1732,10 +2150,24 @@ export function ClubQueuePanel({
                   nameMap={nameMap.current}
                   canManage={canManage}
                   onRefresh={onRefresh}
+                  selectMode={canManage && completedSelectMode}
+                  selected={completedSelectedIds.has(m.id)}
+                  onToggleSelect={toggleCompletedSelect}
                 />
               ))}
             </CardContent>
           </Card>
+
+          {canManage && completedSelectMode && completedSelectedIds.size > 0 && (
+            <QueueBulkBar
+              clubId={clubId}
+              section="completed"
+              selectedIds={completedSelectedIds}
+              courts={courts}
+              onClearSelection={clearCompletedSelection}
+              onRefresh={onRefresh}
+            />
+          )}
         </section>
       )}
     </div>

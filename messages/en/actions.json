@@ -72,6 +72,7 @@
     "saveCourtsFailed": "Failed to save courts",
     "searchFailed": "Search failed",
     "selectCourt": "Select a court",
+    "noMatchesSelected": "No matches selected",
     "selectTwoDifferentPlayers": "Select 2 different players",
     "selectUserFromSearch": "Select a user from search results",
     "specifyCourtName": "Specify a court name",
