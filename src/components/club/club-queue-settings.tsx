@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Loader2, Settings2 } from "lucide-react";
@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -21,9 +22,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { updateClubQueueSettingsAction } from "@/lib/actions/clubs";
-import type { ClubQueueSettings } from "@/lib/club/queue-settings";
-
-const DEBOUNCE_MS = 500;
+import { queueSettingsEqual, type ClubQueueSettings } from "@/lib/club/queue-settings";
+import { setUnsavedGuard } from "@/lib/hooks/use-unsaved-guard";
 
 // ─── Reusable row sub-components ─────────────────────────────────────────────
 
@@ -105,6 +105,17 @@ function ToggleRow({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
+/**
+ * Explicit Save/Discard flow (not auto-save): every control below writes to a
+ * local `draft` only. The footer's Save/Discard row appears once `draft`
+ * diverges from `baseline` (the last-persisted value) and is the only place
+ * that calls `updateClubQueueSettingsAction`. This mirrors how ClubTabs +
+ * beforeunload should warn about the change — see `use-unsaved-guard.ts`.
+ *
+ * `club-court-manager.tsx` intentionally keeps its own auto-save debounce
+ * (renaming a court moves live matches, so partial/uncommitted state there is
+ * not a safe "draft" concept) — do not port this pattern back onto it.
+ */
 export function ClubQueueSettings({
   clubId,
   initial,
@@ -113,76 +124,66 @@ export function ClubQueueSettings({
   initial: ClubQueueSettings;
 }) {
   const t = useTranslations("club.queueSettings");
-  const [settings, setSettings] = useState<ClubQueueSettings>(initial);
-  const [, startTransition] = useTransition();
-  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<ClubQueueSettings>(initial);
+  const [baseline, setBaseline] = useState<ClubQueueSettings>(initial);
+  const [isPending, startTransition] = useTransition();
 
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inFlightRef = useRef<Promise<unknown> | null>(null);
-  const pendingPatchRef = useRef<Partial<ClubQueueSettings> | null>(null);
+  const dirty = !queueSettingsEqual(draft, baseline);
 
-  async function flush(patch: Partial<ClubQueueSettings>) {
-    if (inFlightRef.current) await inFlightRef.current;
-    setSaving(true);
-    const p = updateClubQueueSettingsAction(clubId, patch);
-    inFlightRef.current = p;
-    const res = await p;
-    inFlightRef.current = null;
-    setSaving(false);
-    if (res && "error" in res && res.error) {
-      toast.error(res.error);
-    }
-  }
-
-  // Unmount-flush: fire-and-forget any pending patch when navigating away.
+  // Register/deregister with the page-wide unsaved-changes guard so the tab
+  // shell (ClubTabs) can block a tab switch while this card has unsaved edits.
   useEffect(() => {
-    return () => {
-      if (debounceTimer.current) clearTimeout(debounceTimer.current);
-      const patch = pendingPatchRef.current;
-      if (patch) void flush(patch);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    setUnsavedGuard("club-queue-settings", dirty);
+    return () => setUnsavedGuard("club-queue-settings", false);
+  }, [dirty]);
 
-  function commit(patch: Partial<ClubQueueSettings>, next: ClubQueueSettings) {
-    setSettings(next);
-    pendingPatchRef.current = { ...(pendingPatchRef.current ?? {}), ...patch };
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-      const queued = pendingPatchRef.current;
-      if (!queued) return;
-      // Claim the patch BEFORE dispatching — any change made while this save is
-      // in flight accumulates into a fresh patch + its own timer (no lost update).
-      pendingPatchRef.current = null;
-      startTransition(() => flush(queued));
-    }, DEBOUNCE_MS);
-  }
+  // Warn on browser close/refresh/back while dirty. Note: this does NOT
+  // intercept in-app client-side navigation to a different route (Next App
+  // Router link clicks) — only the native browser unload dialog + the
+  // ClubTabs tab-switch guard are covered.
+  useEffect(() => {
+    if (!dirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [dirty]);
 
   function update<K extends keyof ClubQueueSettings>(
     key: K,
     value: ClubQueueSettings[K],
   ) {
-    commit({ [key]: value } as Partial<ClubQueueSettings>, {
-      ...settings,
-      [key]: value,
+    setDraft((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function discard() {
+    setDraft(baseline);
+  }
+
+  function save() {
+    startTransition(async () => {
+      const res = await updateClubQueueSettingsAction(clubId, draft);
+      if (res && "error" in res && res.error) {
+        toast.error(res.error);
+        return;
+      }
+      setBaseline(draft);
+      toast.success(t("savedToast"));
     });
   }
 
   return (
     <Card>
-      <CardHeader className="pb-3 flex flex-row items-center justify-between">
-        <div>
-          <CardTitle className="text-sm flex items-center gap-1.5">
-            <Settings2 className="h-4 w-4" />
-            {t("title")}
-          </CardTitle>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {t("description")}
-          </p>
-        </div>
-        {saving && (
-          <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
-        )}
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-1.5">
+          <Settings2 className="h-4 w-4" />
+          {t("title")}
+        </CardTitle>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          {t("description")}
+        </p>
       </CardHeader>
 
       <CardContent className="space-y-1">
@@ -197,7 +198,7 @@ export function ClubQueueSettings({
             <p className="text-xs text-muted-foreground">{t("playersPerTeamDesc")}</p>
           </div>
           <Select
-            value={String(settings.players_per_team)}
+            value={String(draft.players_per_team)}
             onValueChange={(v) =>
               update("players_per_team", Number(v) as 1 | 2)
             }
@@ -225,7 +226,7 @@ export function ClubQueueSettings({
             </p>
           </div>
           <Select
-            value={settings.rotation_mode}
+            value={draft.rotation_mode}
             onValueChange={(v) =>
               update(
                 "rotation_mode",
@@ -259,12 +260,12 @@ export function ClubQueueSettings({
         </div>
 
         {/* Winner stays max — only when winner_stays */}
-        {settings.rotation_mode === "winner_stays" && (
+        {draft.rotation_mode === "winner_stays" && (
           <NumberRow
             id="qs-winner-stays-max"
             label={t("winnerStaysMaxLabel")}
             description={t("winnerStaysMaxDesc")}
-            value={settings.winner_stays_max}
+            value={draft.winner_stays_max}
             min={0}
             max={20}
             onChange={(v) => update("winner_stays_max", v)}
@@ -282,7 +283,7 @@ export function ClubQueueSettings({
             </p>
           </div>
           <Select
-            value={settings.queue_mode}
+            value={draft.queue_mode}
             onValueChange={(v) =>
               update("queue_mode", v as ClubQueueSettings["queue_mode"])
             }
@@ -312,19 +313,19 @@ export function ClubQueueSettings({
           id="qs-skill-level"
           label={t("skillLevelLabel")}
           description={t("skillLevelDesc")}
-          checked={settings.skill_level_enabled}
+          checked={draft.skill_level_enabled}
           onChange={(v) => update("skill_level_enabled", v)}
         />
 
         {/* Skill level sub-controls — only when skill_level_enabled */}
-        {settings.skill_level_enabled && (
+        {draft.skill_level_enabled && (
           <div className="ml-7 space-y-1 border-l pl-3 border-border">
             {/* Max skill gap */}
             <NumberRow
               id="qs-max-skill-gap"
               label={t("maxSkillGapLabel")}
               description={t("maxSkillGapDesc")}
-              value={settings.max_skill_gap}
+              value={draft.max_skill_gap}
               min={0}
               max={20}
               onChange={(v) => update("max_skill_gap", v)}
@@ -344,7 +345,7 @@ export function ClubQueueSettings({
                 <TooltipTrigger
                   render={
                     <Select
-                      value={settings.balance_strictness}
+                      value={draft.balance_strictness}
                       onValueChange={(v) =>
                         update(
                           "balance_strictness",
@@ -376,7 +377,7 @@ export function ClubQueueSettings({
               id="qs-balance-locked-pairs"
               label={t("balanceLockedPairsLabel")}
               description={t("balanceLockedPairsDesc")}
-              checked={settings.balance_locked_pairs}
+              checked={draft.balance_locked_pairs}
               onChange={(v) => update("balance_locked_pairs", v)}
             />
           </div>
@@ -387,7 +388,7 @@ export function ClubQueueSettings({
           id="qs-time-limit"
           label={t("timeLimitLabel")}
           description={t("timeLimitDesc")}
-          value={settings.game_time_limit_min}
+          value={draft.game_time_limit_min}
           min={0}
           max={120}
           onChange={(v) => update("game_time_limit_min", v)}
@@ -398,9 +399,41 @@ export function ClubQueueSettings({
           id="qs-realtime"
           label={t("realtimeEnabledLabel")}
           description={t("realtimeEnabledDesc")}
-          checked={settings.realtime_enabled}
+          checked={draft.realtime_enabled}
           onChange={(v) => update("realtime_enabled", v)}
         />
+
+        {dirty && (
+          <div className="flex items-center justify-end gap-2 pt-3 mt-2 border-t border-border">
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={discard}
+                    disabled={isPending}
+                  >
+                    {t("discardButton")}
+                  </Button>
+                }
+              />
+              <TooltipContent>{t("discardTooltip")}</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button type="button" size="sm" onClick={save} disabled={isPending}>
+                    {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
+                    {t("saveButton")}
+                  </Button>
+                }
+              />
+              <TooltipContent>{t("saveTooltip")}</TooltipContent>
+            </Tooltip>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

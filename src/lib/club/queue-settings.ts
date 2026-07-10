@@ -71,6 +71,23 @@ export function normalizeLegacyQueueValues(
  * keep any field that parses individually instead of dropping everything. Defends
  * against partial corruption from manual DB edits / older partial writes.
  */
+/**
+ * Field-by-field equality for the Save/Discard dirty check in
+ * ClubQueueSettings. Deliberately not `JSON.stringify(a) === JSON.stringify(b)`
+ * — key order isn't guaranteed to match between the seeded `initial` prop and
+ * a draft rebuilt via object spread, so string comparison could report a
+ * false positive "dirty" even when every field is equal.
+ */
+export function queueSettingsEqual(
+  a: ClubQueueSettings,
+  b: ClubQueueSettings,
+): boolean {
+  const keys = Object.keys(ClubQueueSettingsSchema.shape) as Array<
+    keyof ClubQueueSettings
+  >;
+  return keys.every((key) => a[key] === b[key]);
+}
+
 export function parseQueueSettings(raw: unknown): ClubQueueSettings {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
     return DEFAULT_QUEUE_SETTINGS;
