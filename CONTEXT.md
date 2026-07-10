@@ -110,3 +110,42 @@ uses only the **global** level set — do not conflate it with club `level_id`.
   The floor value is the largest N that still guarantees *no repeat meeting*; the ceil
   value is the smallest N that *covers everyone* (its tail may repeat once). สุ่มคิว
   offers ceil as the default and shows the floor–ceil range.
+
+## Bulk queue update (เลือกหลายแมตช์)
+
+Design locked 2026-07-10 (grilled); **built in v0.27.0** — lets a manager act on many
+matches at once in the club queue panel (`club-queue-panel.tsx`). The bulk-start
+court allocator is the pure helper `planBulkStartCourts` (`src/lib/club/bulk-start.ts`).
+
+- **Per-section select mode** — the `รอแข่ง` (pending) and `จบแล้ว` (completed)
+  sections each get their own independent select mode + sticky bulk bar; the two
+  selections never mix (mixed-status was deliberately excluded — `กำลังแข่ง`
+  in_progress stays per-row only). Reuses the players-list pattern: header "เลือก"
+  toggle → per-row `Checkbox` + select-all/indeterminate + a sticky `BulkActionBar`.
+  Entering select mode **disables DnD** on pending (parity with `sortable-player-list`).
+  The inline `BulkActionBar` from `sortable-player-list.tsx` is copied/generalized —
+  it is not currently an exported shared component.
+- **Pending bulk actions** — จัดสนาม (assign one chosen court to all selected;
+  pending has no occupancy constraint so same-court-to-many is allowed) · ยกเลิก
+  (soft, `status='cancelled'`) · เริ่มแข่ง (see auto-court below) · ลบถาวร (hard
+  delete via `delete_club_match`, with a confirm dialog carrying the same
+  games_played / last_finished_at caveat as the single-delete dialog).
+- **Completed bulk action** — ลบถาวร only (same confirm + caveat).
+- **Bulk-start auto-court** — the sharp edge (court-occupancy UNIQUE
+  `(club_id,court) WHERE in_progress` + the `club_player_busy` trigger). Behavior:
+  walk selected matches in queue order; a match keeps its own court if that court is
+  free, else gets the next free court (a `clubs.courts` entry not held by an
+  in_progress match nor already claimed earlier in this batch); skip a match that is
+  not full, has a live placeholder, shares a player already started this batch, or
+  finds no free court. Report `เริ่ม X · ข้าม Y` via **dedicated per-outcome toast
+  keys** (never concatenated label keys).
+- **Server actions** — new bulk actions in `club-matches.ts`
+  (`bulkSetClubMatchCourtAction` / `bulkCancelClubMatchesAction` /
+  `bulkStartClubMatchesAction` / `bulkDeleteClubMatchesAction`), each: one
+  `assertCanManageClub(clubId)`, operate only on rows matching
+  `.eq("club_id", clubId).in("id", matchIds)` filtered by the expected status (cross-club
+  or wrong-status ids silently ignored), server-side `Promise.all`, a single
+  `revalidatePath` at the end, and a per-item result shape (`{started, skipped}` /
+  `{deleted, failed}` …). Cancel/delete keep **parity with the single actions** — they
+  do not newly clear downstream `winner_next_match_id` feeder pointers (a pre-existing
+  caveat, out of scope for this feature).

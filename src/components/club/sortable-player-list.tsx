@@ -8,7 +8,7 @@ import { useRouter as useProgressRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import {
   RefreshCw, GripVertical, CheckCircle2, Circle, Loader2, Clock,
-  CheckCheck, Users, Trash2, AlertTriangle, Pencil, Gauge,
+  CheckCheck, Users, Trash2, AlertTriangle, Pencil, Gauge, ListChecks, Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -82,6 +82,9 @@ type Props = {
   /** Club session window — used as placeholder for player time inputs. */
   sessionStart?: string; // "HH:MM:SS"
   sessionEnd?: string;   // "HH:MM:SS"
+  /** Primary action buttons (add player, LINE import) rendered in the same
+   * toolbar row as the select-mode toggle. */
+  headerActions?: ReactNode;
 };
 
 // Radix/Base UI Select can't hold an empty-string value; this sentinel stands in
@@ -1166,6 +1169,7 @@ export function SortablePlayerList({
   levels,
   sessionStart,
   sessionEnd,
+  headerActions,
 }: Props) {
   const t = useTranslations("club.playerList");
   const tBulk = useTranslations("club.bulkSelect");
@@ -1322,9 +1326,14 @@ export function SortablePlayerList({
 
   if (!items.length) {
     return (
-      <div className="flex items-center gap-2">
-        <p className="text-sm text-muted-foreground">{t("noPlayers")}</p>
-        {refreshBtn}
+      <div className="space-y-2">
+        {headerActions && (
+          <div className="flex flex-wrap items-center gap-2">{headerActions}</div>
+        )}
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-muted-foreground">{t("noPlayers")}</p>
+          {refreshBtn}
+        </div>
       </div>
     );
   }
@@ -1333,6 +1342,35 @@ export function SortablePlayerList({
 
   return (
     <div className="space-y-2">
+      {(headerActions || canManage) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {headerActions}
+          {/* Select-mode toggle — canManage + ≥1 player */}
+          {canManage && (
+            <Tooltip>
+              <TooltipTrigger render={
+                <Button
+                  variant={selectMode ? "secondary" : "outline"}
+                  size="sm"
+                  className="ml-auto h-8 gap-1 text-xs"
+                  onClick={toggleSelectMode}
+                  aria-label={selectMode ? tBulk("doneMode") : tBulk("toggleMode")}
+                >
+                  {selectMode ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <ListChecks className="h-3.5 w-3.5" />
+                  )}
+                  {selectMode ? tBulk("doneMode") : tBulk("toggleMode")}
+                </Button>
+              } />
+              <TooltipContent>
+                {selectMode ? tBulk("doneMode") : tBulk("toggleMode")}
+              </TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-xs text-muted-foreground">{t("autoRefresh")}</span>
@@ -1346,27 +1384,7 @@ export function SortablePlayerList({
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-1.5">
-          {/* Select-mode toggle — canManage + ≥1 player */}
-          {canManage && (
-            <Tooltip>
-              <TooltipTrigger render={
-                <Button
-                  variant={selectMode ? "secondary" : "outline"}
-                  size="xs"
-                  onClick={toggleSelectMode}
-                  aria-label={selectMode ? tBulk("doneMode") : tBulk("toggleMode")}
-                >
-                  {selectMode ? tBulk("doneMode") : tBulk("toggleMode")}
-                </Button>
-              } />
-              <TooltipContent>
-                {selectMode ? tBulk("doneMode") : tBulk("toggleMode")}
-              </TooltipContent>
-            </Tooltip>
-          )}
-          {refreshBtn}
-        </div>
+        {refreshBtn}
       </div>
 
       {/* Select-all row */}

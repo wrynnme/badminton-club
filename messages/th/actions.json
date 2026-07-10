@@ -72,6 +72,7 @@
     "saveCourtsFailed": "บันทึกสนามไม่สำเร็จ",
     "searchFailed": "ค้นหาไม่สำเร็จ",
     "selectCourt": "เลือกสนาม",
+    "noMatchesSelected": "ยังไม่ได้เลือกแมตช์",
     "selectTwoDifferentPlayers": "เลือกผู้เล่น 2 คนที่ต่างกัน",
     "selectUserFromSearch": "เลือกผู้ใช้จากผลการค้นหา",
     "specifyCourtName": "ระบุชื่อสนาม",

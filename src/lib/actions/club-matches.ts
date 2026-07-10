@@ -34,6 +34,10 @@ import {
   type BatchCountableMatch,
   type RerollSwapMatch,
 } from "@/lib/club/batch-queue";
+import {
+  planBulkStartCourts,
+  type BulkStartCandidate,
+} from "@/lib/club/bulk-start";
 import { embeddedReal } from "@/lib/tournament/levels";
 import type { ClubMatch, Game } from "@/lib/types";
 
@@ -1139,4 +1143,265 @@ export async function deleteClubMatchAction(
 
   revalidatePath(`/clubs/${match.club_id}`);
   return { ok: true };
+}
+
+// ─── Bulk queue actions (เลือกหลายแมตช์) ────────────────────────────────────────
+
+/** Upper bound on a single bulk request — the queue never realistically nears this. */
+const BULK_MATCH_CAP = 200;
+
+/**
+ * Validate + normalize a bulk matchIds payload: keep only non-empty string ids,
+ * dedupe, and reject empty / oversized batches. Returns null on invalid input so
+ * every bulk action reports the same "no matches selected" error.
+ */
+function cleanBulkMatchIds(matchIds: unknown): string[] | null {
+  if (!Array.isArray(matchIds)) return null;
+  const ids = Array.from(
+    new Set(matchIds.filter((x): x is string => typeof x === "string" && x.length > 0)),
+  );
+  if (ids.length === 0 || ids.length > BULK_MATCH_CAP) return null;
+  return ids;
+}
+
+/**
+ * Bulk-assign one court to many PENDING matches at once (queue-panel select mode).
+ * Pending rows carry no court-occupancy constraint (the unique index is
+ * in_progress-only), so the same court on many pending matches is allowed — the
+ * organizer resolves conflicts when starting. Cross-club / non-pending / stale ids
+ * silently fall out of the filter. One assertCanManageClub, one UPDATE.
+ */
+export async function bulkSetClubMatchCourtAction(input: {
+  clubId: string;
+  matchIds: string[];
+  court: string;
+}): Promise<{ ok: true; updated: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const ids = cleanBulkMatchIds(input.matchIds);
+  if (!ids) return { error: t("club.noMatchesSelected") };
+  const court = input.court.trim();
+  if (!court) return { error: t("club.selectCourt") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  // Court must be one of the club's named courts (when any are configured).
+  const { data: club } = await sb
+    .from("clubs")
+    .select("courts")
+    .eq("id", input.clubId)
+    .single();
+  const courts = (club?.courts ?? []) as string[];
+  if (courts.length > 0 && !courts.includes(court)) {
+    return { error: t("club.courtNotInClub") };
+  }
+
+  const { data: updated, error } = await sb
+    .from("club_matches")
+    .update({ court })
+    .eq("club_id", input.clubId)
+    .in("id", ids)
+    .eq("status", "pending")
+    .select("id");
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true, updated: (updated ?? []).length };
+}
+
+/**
+ * Bulk-cancel (soft) many PENDING matches. Parity with the single cancel: winner-
+ * chain feeder pointers are NOT cleared (a pre-existing caveat). One UPDATE.
+ */
+export async function bulkCancelClubMatchesAction(input: {
+  clubId: string;
+  matchIds: string[];
+}): Promise<{ ok: true; cancelled: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const ids = cleanBulkMatchIds(input.matchIds);
+  if (!ids) return { error: t("club.noMatchesSelected") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const { data: cancelled, error } = await sb
+    .from("club_matches")
+    .update({ status: "cancelled" })
+    .eq("club_id", input.clubId)
+    .in("id", ids)
+    .eq("status", "pending")
+    .select("id");
+  if (error) return { error: error.message };
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true, cancelled: (cancelled ?? []).length };
+}
+
+/**
+ * Bulk hard-delete many matches (pending or completed sections). Each row goes
+ * through delete_club_match so a completed row reverts games_played and unwinds its
+ * winner promotion (parity with the single delete). Runs SEQUENTIALLY on purpose:
+ * winner_next_match_id is ON DELETE SET NULL, so deleting a target row cross-updates
+ * the feeder's FK column — two parallel deletes of a feeder+target pair in the same
+ * batch could deadlock. Cross-club / stale ids are dropped before deleting.
+ */
+export async function bulkDeleteClubMatchesAction(input: {
+  clubId: string;
+  matchIds: string[];
+}): Promise<{ ok: true; deleted: number; failed: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const ids = cleanBulkMatchIds(input.matchIds);
+  if (!ids) return { error: t("club.noMatchesSelected") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  // Restrict to rows that actually belong to this club (drop cross-club/stale ids).
+  const { data: owned, error: loadError } = await sb
+    .from("club_matches")
+    .select("id")
+    .eq("club_id", input.clubId)
+    .in("id", ids);
+  if (loadError) return { error: loadError.message };
+  const ownedIds = (owned ?? []).map((r) => r.id as string);
+  if (ownedIds.length === 0) return { ok: true, deleted: 0, failed: 0 };
+
+  let deleted = 0;
+  let failed = 0;
+  for (const id of ownedIds) {
+    const { error } = await sb.rpc("delete_club_match", { p_match_id: id });
+    if (error) failed++;
+    else deleted++;
+  }
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true, deleted, failed };
+}
+
+/**
+ * Bulk-start many PENDING matches, auto-assigning free courts. The court-occupancy
+ * UNIQUE index + club_player_busy trigger make a naive "start each" loop partial-
+ * fail unpredictably, so planBulkStartCourts decides up front — in queue order —
+ * which matches can start and on which court (keeps own court if free, else the next
+ * free named court; skips not-full / waiting-for-winner / player-busy / no-court).
+ * Only the planned, collision-free starts are then executed. Reports เริ่ม X · ข้าม Y.
+ */
+export async function bulkStartClubMatchesAction(input: {
+  clubId: string;
+  matchIds: string[];
+}): Promise<{ ok: true; started: number; skipped: number } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const ids = cleanBulkMatchIds(input.matchIds);
+  if (!ids) return { error: t("club.noMatchesSelected") };
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  // players_per_team (roster gate) + resolved named courts.
+  const { data: clubRow, error: clubErr } = await sb
+    .from("clubs")
+    .select("queue_settings, courts")
+    .eq("id", input.clubId)
+    .single();
+  if (clubErr || !clubRow) return { error: t("club.clubNotFound") };
+  const settings = parseQueueSettings(clubRow.queue_settings);
+  const ppt = settings.players_per_team;
+  const courts = resolveClubCourts((clubRow.courts ?? []) as string[], settings.court_count);
+
+  // Selected PENDING matches in queue order. Non-pending / cross-club ids drop out.
+  const { data: selected, error: selError } = await sb
+    .from("club_matches")
+    .select(
+      "id, court, side_a_player1, side_a_player2, side_b_player1, side_b_player2, queue_position",
+    )
+    .eq("club_id", input.clubId)
+    .in("id", ids)
+    .eq("status", "pending")
+    .order("queue_position", { ascending: true });
+  if (selError) return { error: selError.message };
+  const pending = selected ?? [];
+  if (pending.length === 0) return { ok: true, started: 0, skipped: 0 };
+
+  // Current occupancy: courts + players held by the club's live in_progress matches.
+  const { data: liveRows } = await sb
+    .from("club_matches")
+    .select("court, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
+    .eq("club_id", input.clubId)
+    .eq("status", "in_progress");
+  const occupiedCourts: string[] = [];
+  const busyPlayers: string[] = [];
+  for (const r of liveRows ?? []) {
+    if (r.court) occupiedCourts.push(r.court);
+    for (const p of [r.side_a_player1, r.side_a_player2, r.side_b_player1, r.side_b_player2]) {
+      if (p) busyPlayers.push(p);
+    }
+  }
+
+  // Selected matches still waiting on a winner (a live feeder points at them).
+  const { data: feeders } = await sb
+    .from("club_matches")
+    .select("winner_next_match_id")
+    .eq("club_id", input.clubId)
+    .in(
+      "winner_next_match_id",
+      pending.map((m) => m.id),
+    )
+    .in("status", ["pending", "in_progress"]);
+  const awaitingWinner = new Set((feeders ?? []).map((f) => f.winner_next_match_id as string));
+
+  const candidates: BulkStartCandidate[] = pending.map((m) => ({
+    id: m.id as string,
+    court: m.court as string | null,
+    playerIds: [m.side_a_player1, m.side_a_player2, m.side_b_player1, m.side_b_player2].filter(
+      (x): x is string => x != null,
+    ),
+    isFull: isClubMatchFull(m, ppt),
+    hasLivePlaceholder: awaitingWinner.has(m.id as string),
+  }));
+
+  const plan = planBulkStartCourts(candidates, courts, occupiedCourts, busyPlayers);
+
+  // Execute the planned starts. The plan already dodges court/player collisions, so
+  // any error is a concurrency race (another manager started/moved something between
+  // the read and here) — count it as skipped, never fail the whole batch. Distinct
+  // courts + players per plan → the updates can run concurrently.
+  const startedAt = new Date().toISOString();
+  const results = await Promise.all(
+    plan.toStart.map(async ({ id, court }) => {
+      const { data, error } = await sb
+        .from("club_matches")
+        .update({ status: "in_progress", started_at: startedAt, court })
+        .eq("id", id)
+        .eq("club_id", input.clubId)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+      return !error && !!data;
+    }),
+  );
+  const started = results.filter(Boolean).length;
+  const skipped = plan.skipped.length + (plan.toStart.length - started);
+
+  revalidatePath(`/clubs/${input.clubId}`);
+  return { ok: true, started, skipped };
 }
