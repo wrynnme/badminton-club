@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition, type ReactElement } from "react";
+import { useRowSelection } from "@/lib/hooks/use-row-selection";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -1513,7 +1514,10 @@ function QueueBulkBar({
 
   const ids = useMemo(() => Array.from(selectedIds), [selectedIds]);
   const n = ids.length;
-  if (n === 0) return null;
+  // Stay mounted while the delete-confirm dialog is open even if a background
+  // refresh prunes the selection to 0 — otherwise the open dialog vanishes
+  // mid-confirmation. The sticky bar itself still only renders when n > 0.
+  if (n === 0 && !deleteOpen) return null;
 
   function afterSuccess() {
     onRefresh();
@@ -1523,63 +1527,87 @@ function QueueBulkBar({
   function runAssignCourt(court: string) {
     setCourtOpen(false);
     start(async () => {
-      const res = await bulkSetClubMatchCourtAction({ clubId, matchIds: ids, court });
-      if ("error" in res) toast.error(res.error);
-      else {
-        toast.success(t("toastBulkCourt", { count: res.updated }));
-        afterSuccess();
+      try {
+        const res = await bulkSetClubMatchCourtAction({ clubId, matchIds: ids, court });
+        if ("error" in res) toast.error(res.error);
+        else {
+          toast.success(t("toastBulkCourt", { count: res.updated }));
+          afterSuccess();
+        }
+      } catch {
+        toast.error(t("toastBulkError"));
       }
     });
   }
 
   function runStart() {
     start(async () => {
-      const res = await bulkStartClubMatchesAction({ clubId, matchIds: ids });
-      if ("error" in res) {
-        toast.error(res.error);
-        return;
+      try {
+        const res = await bulkStartClubMatchesAction({ clubId, matchIds: ids });
+        if ("error" in res) {
+          toast.error(res.error);
+          return;
+        }
+        if (res.started > 0 && res.skipped > 0) {
+          toast.success(t("toastBulkStartedSkipped", { started: res.started, skipped: res.skipped }));
+        } else if (res.started > 0) {
+          toast.success(t("toastBulkStarted", { started: res.started }));
+        } else if (res.skipped > 0) {
+          toast.error(t("toastBulkStartNone", { skipped: res.skipped }));
+        } else {
+          // Nothing started AND nothing skipped → the selected rows simply left the
+          // pending set (another manager started/cancelled them first). Not an error.
+          toast.info(t("toastBulkStartGone"));
+        }
+        afterSuccess();
+      } catch {
+        toast.error(t("toastBulkError"));
       }
-      if (res.started > 0 && res.skipped > 0) {
-        toast.success(t("toastBulkStartedSkipped", { started: res.started, skipped: res.skipped }));
-      } else if (res.started > 0) {
-        toast.success(t("toastBulkStarted", { started: res.started }));
-      } else {
-        toast.error(t("toastBulkStartNone", { skipped: res.skipped }));
-      }
-      afterSuccess();
     });
   }
 
   function runCancel() {
     start(async () => {
-      const res = await bulkCancelClubMatchesAction({ clubId, matchIds: ids });
-      if ("error" in res) toast.error(res.error);
-      else {
-        toast.success(t("toastBulkCancelled", { count: res.cancelled }));
-        afterSuccess();
+      try {
+        const res = await bulkCancelClubMatchesAction({ clubId, matchIds: ids });
+        if ("error" in res) toast.error(res.error);
+        else {
+          toast.success(t("toastBulkCancelled", { count: res.cancelled }));
+          afterSuccess();
+        }
+      } catch {
+        toast.error(t("toastBulkError"));
       }
     });
   }
 
   function runDelete() {
     start(async () => {
-      const res = await bulkDeleteClubMatchesAction({ clubId, matchIds: ids });
-      if ("error" in res) {
-        toast.error(res.error);
-        return;
+      try {
+        const res = await bulkDeleteClubMatchesAction({ clubId, matchIds: ids });
+        if ("error" in res) {
+          toast.error(res.error);
+          return;
+        }
+        setDeleteOpen(false);
+        if (res.failed > 0) {
+          toast.success(t("toastBulkDeletedPartial", { count: res.deleted, failed: res.failed }));
+        } else if (res.deleted > 0) {
+          toast.success(t("toastBulkDeleted", { count: res.deleted }));
+        } else {
+          // Selection was already stale (all rows removed elsewhere) → no-op, not success.
+          toast.info(t("toastBulkDeleteGone"));
+        }
+        afterSuccess();
+      } catch {
+        toast.error(t("toastBulkError"));
       }
-      setDeleteOpen(false);
-      if (res.failed > 0) {
-        toast.success(t("toastBulkDeletedPartial", { count: res.deleted, failed: res.failed }));
-      } else {
-        toast.success(t("toastBulkDeleted", { count: res.deleted }));
-      }
-      afterSuccess();
     });
   }
 
   return (
     <>
+      {n > 0 && (
       <div className="sticky bottom-0 z-10 flex flex-wrap items-center gap-1.5 rounded-lg border bg-background/95 px-3 py-2 shadow-md text-sm backdrop-blur">
         <span className="mr-1 shrink-0 text-xs font-medium">{t("bulkSelectedCount", { n })}</span>
 
@@ -1659,6 +1687,7 @@ function QueueBulkBar({
           <TooltipContent>{t("bulkDeleteTooltip")}</TooltipContent>
         </Tooltip>
       </div>
+      )}
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="sm:max-w-md">
@@ -1766,49 +1795,32 @@ export function ClubQueuePanel({
   }, [matches]);
 
   // ─── Select-mode state (pending + completed sections, independent) ──────────
-  const [pendingSelectMode, setPendingSelectMode] = useState(false);
-  const [pendingSelectedIds, setPendingSelectedIds] = useState<Set<string>>(new Set());
-  const [completedSelectMode, setCompletedSelectMode] = useState(false);
-  const [completedSelectedIds, setCompletedSelectedIds] = useState<Set<string>>(new Set());
-
-  function togglePendingSelectMode() {
-    setPendingSelectMode((v) => !v);
-    setPendingSelectedIds(new Set());
-  }
-  function toggleCompletedSelectMode() {
-    setCompletedSelectMode((v) => !v);
-    setCompletedSelectedIds(new Set());
-  }
-  const togglePendingSelect = (id: string) =>
-    setPendingSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  const toggleCompletedSelect = (id: string) =>
-    setCompletedSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  const clearPendingSelection = () => setPendingSelectedIds(new Set());
-  const clearCompletedSelection = () => setCompletedSelectedIds(new Set());
-
-  // Prune stale ids when matches change (rows leave a section after an action).
-  useEffect(() => {
-    const pendingIds = new Set(matches.filter((m) => m.status === "pending").map((m) => m.id));
-    setPendingSelectedIds((prev) => {
-      const pruned = new Set([...prev].filter((id) => pendingIds.has(id)));
-      return pruned.size === prev.size ? prev : pruned;
-    });
-    const completedIds = new Set(matches.filter((m) => m.status === "completed").map((m) => m.id));
-    setCompletedSelectedIds((prev) => {
-      const pruned = new Set([...prev].filter((id) => completedIds.has(id)));
-      return pruned.size === prev.size ? prev : pruned;
-    });
-  }, [matches]);
+  // One useRowSelection hook per section owns its select-mode + selected-id set,
+  // prunes ids that leave the list, and auto-exits select mode when the section
+  // empties (so a bulk clear/delete can't strand a stuck mode). Destructured into
+  // the section-scoped names the JSX already uses.
+  const pendingIds = matches.filter((m) => m.status === "pending").map((m) => m.id);
+  const completedIds = matches.filter((m) => m.status === "completed").map((m) => m.id);
+  const {
+    selectMode: pendingSelectMode,
+    toggleMode: togglePendingSelectMode,
+    selectedIds: pendingSelectedIds,
+    toggleSelect: togglePendingSelect,
+    clear: clearPendingSelection,
+    allSelected: allPendingSelected,
+    partialSelected: partialPendingSelected,
+    selectAll: handleSelectAllPending,
+  } = useRowSelection(pendingIds);
+  const {
+    selectMode: completedSelectMode,
+    toggleMode: toggleCompletedSelectMode,
+    selectedIds: completedSelectedIds,
+    toggleSelect: toggleCompletedSelect,
+    clear: clearCompletedSelection,
+    allSelected: allCompletedSelected,
+    partialSelected: partialCompletedSelected,
+    selectAll: handleSelectAllCompleted,
+  } = useRowSelection(completedIds);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -1848,22 +1860,6 @@ export function ClubQueuePanel({
         new Date(b.ended_at ?? b.created_at).getTime() -
         new Date(a.ended_at ?? a.created_at).getTime(),
     );
-
-  // Select-all state per section (all = every row checked, partial = some).
-  const allPendingSelected =
-    pendingOrder.length > 0 && pendingOrder.every((m) => pendingSelectedIds.has(m.id));
-  const partialPendingSelected =
-    !allPendingSelected && pendingOrder.some((m) => pendingSelectedIds.has(m.id));
-  function handleSelectAllPending() {
-    setPendingSelectedIds(allPendingSelected ? new Set() : new Set(pendingOrder.map((m) => m.id)));
-  }
-  const allCompletedSelected =
-    completed.length > 0 && completed.every((m) => completedSelectedIds.has(m.id));
-  const partialCompletedSelected =
-    !allCompletedSelected && completed.some((m) => completedSelectedIds.has(m.id));
-  function handleSelectAllCompleted() {
-    setCompletedSelectedIds(allCompletedSelected ? new Set() : new Set(completed.map((m) => m.id)));
-  }
 
   // Single-page layout (tabs removed 2026-07-07): all three statuses stack in
   // one view, colour-coded per section — live matches first (short + most
@@ -2075,7 +2071,7 @@ export function ClubQueuePanel({
           </CardContent>
         </Card>
 
-        {canManage && pendingSelectMode && pendingSelectedIds.size > 0 && (
+        {canManage && pendingSelectMode && (
           <QueueBulkBar
             clubId={clubId}
             section="pending"
@@ -2158,7 +2154,7 @@ export function ClubQueuePanel({
             </CardContent>
           </Card>
 
-          {canManage && completedSelectMode && completedSelectedIds.size > 0 && (
+          {canManage && completedSelectMode && (
             <QueueBulkBar
               clubId={clubId}
               section="completed"
