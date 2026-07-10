@@ -23,7 +23,7 @@ export async function SiteHeader() {
           </Link>
           <Link href="/whats-new" aria-label={t("whatsNew")}>
             <Badge variant="outline" className="text-xs font-mono font-normal hidden sm:inline-flex">
-              v{process.env.NEXT_PUBLIC_APP_VERSION} ({process.env.NEXT_PUBLIC_GIT_COMMIT})
+              v{process.env.NEXT_PUBLIC_APP_VERSION}
             </Badge>
           </Link>
         </div>
