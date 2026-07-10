@@ -79,7 +79,11 @@ export function PresetManager({ presets }: Props) {
     const c = preset.config;
     const parts: string[] = [];
     if (c.max_players) parts.push(t("playerSuffix", { count: c.max_players }));
-    if (c.court_count) parts.push(t("courtSuffix", { count: c.court_count }));
+    // Named courts round-trip: count from the courts list, falling back to the
+    // frozen court_count for legacy presets that never captured names.
+    const courtCount =
+      c.courts.length > 0 ? c.courts.length : c.queue_settings.court_count;
+    if (courtCount) parts.push(t("courtSuffix", { count: courtCount }));
     return parts.join(" · ");
   }
 

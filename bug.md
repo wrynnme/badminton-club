@@ -685,6 +685,13 @@ All 15 P0-P2 review findings from `618e829` now closed (V4 was REFUTED during ve
 
 ## Resolved
 
+### 2026-07-10 — Preset full queue-settings fidelity (v0.26.0, branch `preset-queue-fidelity`) — ✅ ship-check PASS · browser smoke net-zero ผ่าน
+- **สิ่งที่ทำ**: preset เก็บ `queue_settings` ทั้งก้อน (nested) + `courts[]` แทน 4 field แบน → ค่าคิวทุกตัว (winner_stays_max/game_time_limit_min/max_skill_gap/balance_strictness/balance_locked_pairs/realtime_enabled) + ชื่อสนาม round-trip ครบ save→apply→edit; ฟอร์ม preset โชว์แก้ค่าคิวครบ + editor ชื่อสนาม local-state.
+- **บั๊กที่จับได้ระหว่างทำ (แก้แล้ว)**: fast-path `parsePresetConfig` ใช้ `ClubQueueSettingsSchema` ตรงๆ → nested block ที่ไม่มี `skill_level_enabled` ได้ default `false` แทน derive จาก `queue_mode` (คลาสเดียวกับบั๊ก v0.25.0). แก้ให้ normalize `queue_settings` ผ่าน `parseQueueSettings` **เสมอ** ก่อน schema parse → single source ของ coupling ทุก read path. เทส `derives skill_level_enabled from queue_mode` จับได้ก่อน commit.
+- **verify**: `tsc --noEmit` 0 · vitest **815/815** (+6 preset fidelity: legacy flat fold, full round-trip, skill-derive, named courts, partial-corrupt recovery) · `next build` OK · i18n th/en **810=810** (ลบ dead `courtCountLabel`/`validationCourtMin`/`validationCourtMax`, เพิ่ม 5 court-editor keys).
+- **browser smoke (net-zero, prod DB, marker `SMKPRESET_`)**: ผ่าน **A/B/C/D**. (A) สร้าง preset ค่าคิวครบ+2 ชื่อสนาม → DB `config.queue_settings` ครบทุก field + `courts=["คอร์ท A","สนาม VIP"]`. (B) apply → ก๊วนใหม่ `queue_settings`+`courts` ตรง. (C) **edit-no-reset** (กับดักหลัก): แก้แค่ venue แล้วเซฟ → queue_settings + courts **ไม่ถูกรีเซ็ต**. (D) console 0 error. teardown club_presets/clubs/profiles = **0/0/0**.
+- **สถานะ prod**: ไม่มี DB migration (nested + legacy fold ทำงานผ่าน zod strip + parser fold). ยังไม่ push/merge — รอสั่ง.
+
 ### 2026-07-07 — [P1] สุ่มคิว variety foursome-lock (คนหารลงตัว → 3 แมตช์วนซ้ำ) — ✅ FIXED (v0.20.0 branch, ยังไม่ merge)
 - **context**: club MUGGLE `0a0130af-189f-466d-b440-a2bb21861711` (12 คน doubles, N=10, smart, skill+gap2, ล็อก 1 คู่) → คิว 30 ใบ = 3 แมตช์ตายตัววนซ้ำ 10 รอบ. ผู้เล่นถูกล็อกเป็นก๊วนย่อย 4 คน 3 กลุ่มถาวร.
 - **repro**: probe จำลอง config เป๊ะ + ลอง 5 setting (smart/rest/fifo × skill × lock × N) ทุกแบบได้ `distinctMatchups=3, maxPartnerRepeat=10` → บั๊กโค้ด ไม่ใช่ setting/ข้อมูลเก่า.
