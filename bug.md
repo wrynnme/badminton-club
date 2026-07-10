@@ -10,11 +10,11 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
-### 2026-07-10 (gates → ✅ PASS · browser smoke ไม่ได้รัน) — club queue: ตัด fifo + ผูก skill_level กับ level_match (v0.25.0)
+### 2026-07-10 (ship-check → ✅ PASS · browser smoke net-zero ผ่าน) — club queue: ตัด fifo + ผูก skill_level กับ level_match (v0.25.0)
 
 - ฟีเจอร์: `queue_mode` ตัด `fifo` ออก (เหลือ rest_longest/level_match; legacy `fifo`→`rest_longest` fold ที่ parse) · `skill_level_enabled` ผูกกับ `queue_mode=level_match` (ไม่มี toggle แยก — Select ตั้งอัตโนมัติ) · ClubLevelsManager card + skill-balance sub-controls แสดงเมื่อ `skill_level_enabled`. branch `feat/queue-settings-simplify`.
 - **code-review (high, 2 finder ขนาน):** เจอ 1 เรื่องจริง — apply preset ที่ตั้ง level_match ได้ club ที่ `skill_level_enabled=false` เงียบ (preset สร้าง `queue_settings` แบบ subset ไม่ใส่ flag). **แก้:** `parseQueueSettings` derive `skill_level_enabled = (queue_mode==="level_match")` เฉพาะเมื่อ config ไม่มี flag (คง explicit legacy value ไว้ ไม่ force) + รวม gate การ์ด+ปุ่มย่อยให้ใช้ `skill_level_enabled` สัญญาณเดียว. prod check: 9 clubs, 2 มีค่า skill explicit legacy → derive-when-missing ไม่แตะ = **ไม่มี club เปลี่ยนพฤติกรรม**.
-- **browser smoke:** ยังไม่ได้รัน — logic คลุมด้วย unit test + prod-DB check; UI ที่แตะ = conditional render การ์ด (ซ่อน/แสดง). ไม่ได้เคลม "ผ่าน" ระดับ browser.
+- **browser smoke (Playwright, local dev v0.25.0, authenticated manager cookie, net-zero prod seed `SMOKE_QS25_`):** ✅ ผ่าน 8/8 — dropdown queue_mode เหลือ 2 (พักนานก่อน/จับคู่ตามระดับ), FIFO absent · ไม่มี toggle "ใช้ระดับฝีมือ" แยก · เลือก level_match → skill sub-controls โผล่ + Save → DB `queue_mode=level_match, skill_level_enabled=true` → reload การ์ด "ระดับฝีมือ (Levels)" แสดง · เลือก rest_longest → Save → DB `skill_level_enabled=false` → reload การ์ดหาย · console 0 error · teardown เหลือ 0 row (clubs/profiles/levels/club_players).
 - Gates: tsc 0 · vitest **809/809** (31 files, +8 tests: fifo fold + skill coupling) · `next build` OK · i18n th/en 808=808. version sync 0.25.0 (changelog.ts/package.json/CHANGELOG.md).
 - **Follow-up (ไม่รวม PR นี้):** preset เก็บ `queue_settings` แค่ 4/11 field → save/apply ทำ `winner_stays_max`/skill-balance/`game_time_limit`/`realtime` หาย + ชื่อสนามหาย (แนะนำเก็บ queue_settings เต็มก้อน + courts[] — แยก PR).
 
