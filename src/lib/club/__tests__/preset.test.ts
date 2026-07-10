@@ -23,10 +23,11 @@ describe("parsePresetConfig — empty / null input", () => {
     expect(result.max_players).toBe(12);
     expect(result.court_fee).toBe(0);
     expect(result.shuttle_price).toBe(0);
-    expect(result.court_count).toBe(1);
-    expect(result.players_per_team).toBe(2);
-    expect(result.rotation_mode).toBe("fair_queue");
-    expect(result.queue_mode).toBe("rest_longest");
+    expect(result.queue_settings.court_count).toBe(1);
+    expect(result.queue_settings.players_per_team).toBe(2);
+    expect(result.queue_settings.rotation_mode).toBe("fair_queue");
+    expect(result.queue_settings.queue_mode).toBe("rest_longest");
+    expect(result.courts).toEqual([]);
     expect(result.co_admin_ids).toEqual([]);
     expect(result.promptpay_id).toBeNull();
     expect(result.promptpay_name).toBeNull();
@@ -77,25 +78,15 @@ describe("parsePresetConfig — partial config", () => {
     expect(result.shuttle_price).toBe(25);
   });
 
-  it("preserves valid rotation_mode", () => {
-    const result = parsePresetConfig({ rotation_mode: "winner_stays" });
-    expect(result.rotation_mode).toBe("winner_stays");
-    expect(result.queue_mode).toBe("rest_longest"); // default unchanged
+  it("preserves valid nested queue_settings.rotation_mode", () => {
+    const result = parsePresetConfig({ queue_settings: { rotation_mode: "winner_stays" } });
+    expect(result.queue_settings.rotation_mode).toBe("winner_stays");
+    expect(result.queue_settings.queue_mode).toBe("rest_longest"); // default unchanged
   });
 
-  it("preserves valid queue_mode", () => {
-    const result = parsePresetConfig({ queue_mode: "level_match" });
-    expect(result.queue_mode).toBe("level_match");
-  });
-
-  it("folds legacy queue_mode fifo → rest_longest", () => {
-    const result = parsePresetConfig({ queue_mode: "fifo" });
-    expect(result.queue_mode).toBe("rest_longest");
-  });
-
-  it("preserves valid players_per_team=1", () => {
-    const result = parsePresetConfig({ players_per_team: 1 });
-    expect(result.players_per_team).toBe(1);
+  it("preserves valid nested queue_settings.queue_mode", () => {
+    const result = parsePresetConfig({ queue_settings: { queue_mode: "level_match" } });
+    expect(result.queue_settings.queue_mode).toBe("level_match");
   });
 
   it("preserves valid co_admin_ids array", () => {
@@ -105,11 +96,14 @@ describe("parsePresetConfig — partial config", () => {
   });
 
   it("only-some-fields present fills rest with defaults", () => {
-    const result = parsePresetConfig({ venue: "สนาม X", court_count: 3 });
+    const result = parsePresetConfig({
+      venue: "สนาม X",
+      queue_settings: { court_count: 3 },
+    });
     expect(result.venue).toBe("สนาม X");
-    expect(result.court_count).toBe(3);
+    expect(result.queue_settings.court_count).toBe(3);
     expect(result.max_players).toBe(12);
-    expect(result.rotation_mode).toBe("fair_queue");
+    expect(result.queue_settings.rotation_mode).toBe("fair_queue");
     expect(result.regulars).toEqual([]);
   });
 
@@ -154,22 +148,107 @@ describe("parsePresetConfig — partial config", () => {
   });
 });
 
+// ─── Full queue_settings fidelity (nested block + named courts) ───────────────
+
+describe("parsePresetConfig — full queue_settings fidelity", () => {
+  it("round-trips every queue_settings field, not just the legacy four", () => {
+    const result = parsePresetConfig({
+      queue_settings: {
+        court_count: 3,
+        players_per_team: 1,
+        rotation_mode: "winner_stays",
+        queue_mode: "level_match",
+        skill_level_enabled: true,
+        game_time_limit_min: 15,
+        winner_stays_max: 5,
+        max_skill_gap: 2,
+        balance_strictness: "strict",
+        balance_locked_pairs: true,
+        realtime_enabled: false,
+      },
+      courts: ["คอร์ท A", "สนาม VIP"],
+    });
+    expect(result.queue_settings.winner_stays_max).toBe(5);
+    expect(result.queue_settings.game_time_limit_min).toBe(15);
+    expect(result.queue_settings.max_skill_gap).toBe(2);
+    expect(result.queue_settings.balance_strictness).toBe("strict");
+    expect(result.queue_settings.balance_locked_pairs).toBe(true);
+    expect(result.queue_settings.realtime_enabled).toBe(false);
+    expect(result.courts).toEqual(["คอร์ท A", "สนาม VIP"]);
+  });
+
+  it("derives skill_level_enabled from queue_mode when absent in the nested block", () => {
+    const result = parsePresetConfig({ queue_settings: { queue_mode: "level_match" } });
+    expect(result.queue_settings.skill_level_enabled).toBe(true);
+  });
+
+  it("legacy flat preset (no nested block) folds into queue_settings, preserving the four + defaulting the six formerly-lost fields", () => {
+    const result = parsePresetConfig({
+      court_count: 3,
+      players_per_team: 1,
+      rotation_mode: "winner_stays",
+      queue_mode: "level_match",
+    });
+    // legacy four preserved
+    expect(result.queue_settings.court_count).toBe(3);
+    expect(result.queue_settings.players_per_team).toBe(1);
+    expect(result.queue_settings.rotation_mode).toBe("winner_stays");
+    expect(result.queue_settings.queue_mode).toBe("level_match");
+    // derived + behavior-preserving defaults for the six that used to be lost
+    expect(result.queue_settings.skill_level_enabled).toBe(true);
+    expect(result.queue_settings.winner_stays_max).toBe(2);
+    expect(result.queue_settings.game_time_limit_min).toBe(0);
+    expect(result.queue_settings.max_skill_gap).toBe(0);
+    expect(result.queue_settings.balance_strictness).toBe("balanced");
+    expect(result.queue_settings.balance_locked_pairs).toBe(false);
+    expect(result.queue_settings.realtime_enabled).toBe(true);
+    // legacy preset never captured named courts
+    expect(result.courts).toEqual([]);
+  });
+
+  it("legacy flat queue_mode fifo folds to rest_longest inside the nested block", () => {
+    const result = parsePresetConfig({ queue_mode: "fifo" });
+    expect(result.queue_settings.queue_mode).toBe("rest_longest");
+  });
+
+  it("legacy flat queue_mode smart folds to level_match inside the nested block", () => {
+    const result = parsePresetConfig({ queue_mode: "smart" });
+    expect(result.queue_settings.queue_mode).toBe("level_match");
+    expect(result.queue_settings.skill_level_enabled).toBe(true);
+  });
+
+  it("recovers a partially-corrupt nested queue_settings via parseQueueSettings", () => {
+    const result = parsePresetConfig({
+      queue_settings: { queue_mode: "level_match", winner_stays_max: 999, max_skill_gap: 5 },
+    });
+    // out-of-range winner_stays_max falls back to default 2; valid siblings kept
+    expect(result.queue_settings.winner_stays_max).toBe(2);
+    expect(result.queue_settings.max_skill_gap).toBe(5);
+    expect(result.queue_settings.queue_mode).toBe("level_match");
+  });
+
+  it("preserves named courts round-trip", () => {
+    const result = parsePresetConfig({ courts: ["A", "B", "C"] });
+    expect(result.courts).toEqual(["A", "B", "C"]);
+  });
+});
+
 // ─── Bad types → clamped / fallback to default ───────────────────────────────
 
 describe("parsePresetConfig — bad / out-of-range types", () => {
-  it("court_count=999 falls back to default (fails max=20)", () => {
-    const result = parsePresetConfig({ court_count: 999 });
-    expect(result.court_count).toBe(1); // default
+  it("nested court_count=999 falls back to default (fails max=20)", () => {
+    const result = parsePresetConfig({ queue_settings: { court_count: 999 } });
+    expect(result.queue_settings.court_count).toBe(1); // default
   });
 
-  it("court_count=0 falls back to default (fails min=1)", () => {
-    const result = parsePresetConfig({ court_count: 0 });
-    expect(result.court_count).toBe(1);
+  it("nested court_count=0 falls back to default (fails min=1)", () => {
+    const result = parsePresetConfig({ queue_settings: { court_count: 0 } });
+    expect(result.queue_settings.court_count).toBe(1);
   });
 
-  it("players_per_team=3 falls back to default (not literal 1|2)", () => {
-    const result = parsePresetConfig({ players_per_team: 3 });
-    expect(result.players_per_team).toBe(2); // default
+  it("nested players_per_team=3 falls back to default (not literal 1|2)", () => {
+    const result = parsePresetConfig({ queue_settings: { players_per_team: 3 } });
+    expect(result.queue_settings.players_per_team).toBe(2); // default
   });
 
   it("max_players=string falls back to default", () => {
@@ -187,14 +266,14 @@ describe("parsePresetConfig — bad / out-of-range types", () => {
     expect(result.max_players).toBe(12);
   });
 
-  it("rotation_mode='invalid' falls back to default", () => {
-    const result = parsePresetConfig({ rotation_mode: "invalid_mode" });
-    expect(result.rotation_mode).toBe("fair_queue");
+  it("nested rotation_mode='invalid' falls back to default", () => {
+    const result = parsePresetConfig({ queue_settings: { rotation_mode: "invalid_mode" } });
+    expect(result.queue_settings.rotation_mode).toBe("fair_queue");
   });
 
-  it("queue_mode='invalid' falls back to default", () => {
-    const result = parsePresetConfig({ queue_mode: "invalid_mode" });
-    expect(result.queue_mode).toBe("rest_longest");
+  it("nested queue_mode='invalid' falls back to default", () => {
+    const result = parsePresetConfig({ queue_settings: { queue_mode: "invalid_mode" } });
+    expect(result.queue_settings.queue_mode).toBe("rest_longest");
   });
 
   it("court_fee negative falls back to default (min=0)", () => {
@@ -212,6 +291,11 @@ describe("parsePresetConfig — bad / out-of-range types", () => {
     expect(result.co_admin_ids).toEqual([]);
   });
 
+  it("courts non-array falls back to empty list", () => {
+    const result = parsePresetConfig({ courts: "not-an-array" });
+    expect(result.courts).toEqual([]);
+  });
+
   it("bad receipt_template shape falls back to default payment receipt config", () => {
     const result = parsePresetConfig({ receipt_template: "not-an-object" });
     expect(result.receipt_template.payment_show).toEqual({ promptpay: true, bank: false });
@@ -221,11 +305,11 @@ describe("parsePresetConfig — bad / out-of-range types", () => {
 
   it("bad field does not poison valid sibling fields", () => {
     const result = parsePresetConfig({
-      court_count: 999, // bad
+      queue_settings: { court_count: 999 }, // bad
       venue: "สนามดี", // good
       max_players: 16, // good
     });
-    expect(result.court_count).toBe(1); // fallback
+    expect(result.queue_settings.court_count).toBe(1); // fallback
     expect(result.venue).toBe("สนามดี"); // preserved
     expect(result.max_players).toBe(16); // preserved
   });
@@ -306,7 +390,7 @@ describe("parsePresetConfig — regulars", () => {
     const result = parsePresetConfig({
       venue: "สนาม B",
       max_players: 8,
-      court_count: 2,
+      queue_settings: { court_count: 2 },
       regulars: [
         { name: "สมชาย", profile_id: profileId, start_time: "19:00", end_time: "21:00" },
         { name: "แขก", profile_id: null },
@@ -315,7 +399,7 @@ describe("parsePresetConfig — regulars", () => {
     });
     expect(result.venue).toBe("สนาม B");
     expect(result.max_players).toBe(8);
-    expect(result.court_count).toBe(2);
+    expect(result.queue_settings.court_count).toBe(2);
     expect(result.regulars).toHaveLength(3);
     expect(result.regulars[0].profile_id).toBe(profileId);
     expect(result.regulars[1].profile_id).toBeNull();
@@ -334,10 +418,20 @@ describe("parsePresetConfig — full valid config", () => {
       max_players: 16,
       court_fee: 800,
       shuttle_price: 30,
-      court_count: 4,
-      players_per_team: 2,
-      rotation_mode: "winner_stays",
-      queue_mode: "level_match",
+      queue_settings: {
+        court_count: 4,
+        players_per_team: 2,
+        rotation_mode: "winner_stays",
+        queue_mode: "level_match",
+        skill_level_enabled: true,
+        game_time_limit_min: 20,
+        winner_stays_max: 3,
+        max_skill_gap: 2,
+        balance_strictness: "strict",
+        balance_locked_pairs: true,
+        realtime_enabled: false,
+      },
+      courts: ["คอร์ท A", "สนาม VIP", "3", "4"],
       co_admin_ids: ["a1b2c3d4-e5f6-4789-abcd-ef0123456710"],
       promptpay_id: "0812345678",
       promptpay_name: "ผู้รับเงิน",
@@ -370,10 +464,8 @@ describe("parsePresetConfig — full valid config", () => {
     expect(result.max_players).toBe(full.max_players);
     expect(result.court_fee).toBe(full.court_fee);
     expect(result.shuttle_price).toBe(full.shuttle_price);
-    expect(result.court_count).toBe(full.court_count);
-    expect(result.players_per_team).toBe(full.players_per_team);
-    expect(result.rotation_mode).toBe(full.rotation_mode);
-    expect(result.queue_mode).toBe(full.queue_mode);
+    expect(result.queue_settings).toEqual(full.queue_settings);
+    expect(result.courts).toEqual(full.courts);
     expect(result.co_admin_ids).toEqual(full.co_admin_ids);
     expect(result.promptpay_id).toBe(full.promptpay_id);
     expect(result.promptpay_name).toBe(full.promptpay_name);

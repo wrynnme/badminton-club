@@ -201,10 +201,10 @@ function buildPresetConfigFromClub(input: {
     max_players: input.club.max_players,
     court_fee: input.club.court_fee,
     shuttle_price: input.club.shuttle_price,
-    court_count: courtCount,
-    players_per_team: queueSettings.players_per_team,
-    rotation_mode: queueSettings.rotation_mode,
-    queue_mode: queueSettings.queue_mode,
+    // Full queue-settings block round-trips; court_count kept coherent (clamped)
+    // as the frozen fallback for the named courts list below.
+    queue_settings: { ...queueSettings, court_count: courtCount },
+    courts,
     co_admin_ids: [...new Set(input.admins.map((a) => a.user_id))],
     promptpay_id: input.club.promptpay_id,
     promptpay_name: input.club.promptpay_name,
@@ -576,16 +576,15 @@ export async function applyClubPresetAction(
   // Derive today's date server-side (server action — Date is allowed here)
   const today = new Date().toISOString().slice(0, 10);
 
-  // Derive courts array from court_count
-  const courts = Array.from({ length: validatedConfig.court_count }, (_, i) => String(i + 1));
+  // Full queue-settings block round-trips verbatim (single source of truth).
+  const queueSettings = validatedConfig.queue_settings;
 
-  // Build queue_settings from config fields
-  const queueSettings = {
-    court_count: validatedConfig.court_count,
-    players_per_team: validatedConfig.players_per_team,
-    rotation_mode: validatedConfig.rotation_mode,
-    queue_mode: validatedConfig.queue_mode,
-  };
+  // Named courts round-trip: seed from the stored names; fall back to
+  // ["1".."court_count"] only for legacy presets that never captured a list.
+  const courts =
+    validatedConfig.courts.length > 0
+      ? validatedConfig.courts
+      : Array.from({ length: queueSettings.court_count }, (_, i) => String(i + 1));
 
   // ── Step 1: Insert clubs row ──────────────────────────────────────────────
   const { data: clubData, error: clubErr } = await sb

@@ -6,7 +6,12 @@ import {
   DEFAULT_RECEIPT_TEMPLATE,
   parseReceiptTemplate,
 } from "@/lib/club/receipt";
-import { normalizeLegacyQueueValues } from "@/lib/club/queue-settings";
+import {
+  ClubQueueSettingsSchema,
+  DEFAULT_QUEUE_SETTINGS,
+  normalizeLegacyQueueValues,
+  parseQueueSettings,
+} from "@/lib/club/queue-settings";
 
 /**
  * Saved config for a ClubPreset. Stored on `club_presets.config jsonb`.
@@ -21,10 +26,17 @@ import { normalizeLegacyQueueValues } from "@/lib/club/queue-settings";
  *  max_players      2–40 (cap for 'active' vs 'reserve' split)
  *  court_fee        total court hire cost (numeric ≥ 0)
  *  shuttle_price    price per shuttle (numeric ≥ 0)
- *  court_count      1–20 — used to generate courts array ["1".."N"]
- *  players_per_team 1 = เดี่ยว, 2 = คู่
- *  rotation_mode    fair_queue | winner_stays | fair_winner_fallback
- *  queue_mode       rest_longest | level_match  (legacy "smart" → level_match, "fifo" → rest_longest)
+ *  queue_settings   full ClubQueueSettings block (single source of truth) — every
+ *                   queue field round-trips through save→apply→edit, not just the
+ *                   four that used to be captured. skill_level_enabled is NOT stored;
+ *                   parseQueueSettings derives it from queue_mode on read. Presets
+ *                   written before this (flat court_count/players_per_team/
+ *                   rotation_mode/queue_mode, no nested block) are folded in
+ *                   parsePresetConfig before the schema parse.
+ *  courts           named courts (e.g. ["คอร์ท A","สนาม VIP"]); applyClubPresetAction
+ *                   seeds clubs.courts from it, falling back to ["1".."court_count"]
+ *                   only when empty (old presets). queue_settings.court_count stays
+ *                   as the frozen legacy fallback.
  *  co_admin_ids     profile UUIDs to add as club_admins on apply
  *  regulars         seed club_players on apply (D4 decision: name + optional link)
  *  payment receiver PromptPay/bank receiver + receipt channel/theme defaults
@@ -45,10 +57,8 @@ export const ClubPresetConfigSchema = z.object({
   max_players: z.number().int().min(2).max(40).default(12),
   court_fee: z.number().min(0).default(0),
   shuttle_price: z.number().min(0).default(0),
-  court_count: z.number().int().min(1).max(20).default(1),
-  players_per_team: z.union([z.literal(1), z.literal(2)]).default(2),
-  rotation_mode: z.enum(["fair_queue", "winner_stays", "fair_winner_fallback"]).default("fair_queue"),
-  queue_mode: z.enum(["rest_longest", "level_match"]).default("rest_longest"),
+  queue_settings: ClubQueueSettingsSchema.default(DEFAULT_QUEUE_SETTINGS),
+  courts: z.array(z.string()).default([]),
   co_admin_ids: z.array(z.string()).default([]),
   promptpay_id: z.string().trim().max(40).nullable().default(null),
   promptpay_name: z.string().trim().max(80).nullable().default(null),
@@ -101,6 +111,27 @@ export function parsePresetConfig(raw: unknown): ClubPresetConfig {
   // helper so it can't drift from parseQueueSettings.
   const rec = normalizeLegacyQueueValues({ ...(raw as Record<string, unknown>) });
 
+  // Normalize the queue block through parseQueueSettings BEFORE the schema parse
+  // so every read path returns a consistent object — parseQueueSettings is the
+  // single source of the derived coupling (mirrors how the club itself is read):
+  // it derives skill_level_enabled from queue_mode when absent, folds legacy
+  // values, and fills the newer fields with behavior-preserving defaults. Two
+  // cases: a nested block is normalized in place; a legacy preset (four queue
+  // fields flat, no nested block) is synthesized from those flat keys. Skipping
+  // this and relying on the schema's `.default()` would (a) wipe a legacy preset's
+  // stored mode and (b) leave skill_level_enabled at its raw default `false` on a
+  // level_match block that omitted the flag. No DB migration (zod strips the
+  // now-unknown flat keys).
+  rec.queue_settings =
+    "queue_settings" in rec
+      ? parseQueueSettings(rec.queue_settings)
+      : parseQueueSettings({
+          court_count: rec.court_count,
+          players_per_team: rec.players_per_team,
+          rotation_mode: rec.rotation_mode,
+          queue_mode: rec.queue_mode,
+        });
+
   const fast = ClubPresetConfigSchema.safeParse(rec);
   if (fast.success) return fast.data;
 
@@ -111,6 +142,12 @@ export function parsePresetConfig(raw: unknown): ClubPresetConfig {
     if (!(key in rec)) continue;
     if (key === "receipt_template") {
       out.receipt_template = recoverPresetReceiptTemplate(rec[key]);
+      continue;
+    }
+    if (key === "queue_settings") {
+      // parseQueueSettings is itself tolerant (per-field fallback) and derives
+      // skill_level_enabled — recover through it rather than the ZodDefault wrapper.
+      out.queue_settings = parseQueueSettings(rec[key]);
       continue;
     }
     const parsed = shape[key].safeParse(rec[key]);

@@ -39,8 +39,38 @@ uses only the **global** level set — do not conflate it with club `level_id`.
   It stores setup data and regular roster defaults, not live runtime state. Applying a
   preset creates a new independent club.
 - **Snapshot config** — the config captured from an existing club when a manager
-  saves it as a preset. It copies only fields the preset schema supports; it does not
+  saves it as a preset. It copies setup fields the preset schema supports (including
+  the **full queue_settings block** and **named courts** — see below); it does not
   copy matches, current queue state, payment status, slips, or verification secrets.
+- **Full queue-settings fidelity** (design locked 2026-07-10, grilled; separate PR
+  from v0.25.0) — a preset stores the **entire** `ClubQueueSettings` block nested as
+  `config.queue_settings`, so every queue field round-trips through save→apply→edit,
+  not just the four that used to be captured (`court_count`, `players_per_team`,
+  `rotation_mode`, `queue_mode`). The previously-lost fields — `winner_stays_max`,
+  `game_time_limit_min`, `max_skill_gap`, `balance_strictness`,
+  `balance_locked_pairs`, `realtime_enabled` — are now preserved. `skill_level_enabled`
+  is not stored; `parseQueueSettings` derives it from `queue_mode` on every read.
+  - **Storage** — nested `queue_settings: ClubQueueSettingsSchema` is the single
+    source of truth; the four legacy flat fields are dropped from the schema. Old
+    preset rows (flat, no nested block) are folded in `parsePresetConfig` **before**
+    the schema parse: synthesize `queue_settings` from the legacy flat keys via
+    `parseQueueSettings` (migration-free, mirrors the `normalizeLegacyQueueValues`
+    pattern). Without the pre-parse fold, the schema's `.default()` would silently
+    wipe a legacy preset's stored mode.
+  - **Named courts** — a preset stores `config.courts: string[]` (e.g. `["คอร์ท A",
+    "สนาม VIP"]`); `applyClubPresetAction` seeds `clubs.courts` from it verbatim, and
+    falls back to `["1".."court_count"]` only when the list is empty (old presets).
+    `queue_settings.court_count` stays as the frozen legacy fallback (see the queue
+    glossary), kept coherent as `max(1, courts.length)` on save.
+  - **Preset editor** — the preset form exposes the full queue-settings controls for
+    editing (winner_stays_max under winner_stays; queue_mode; the skill sub-group —
+    max_skill_gap / balance_strictness / balance_locked_pairs — under level_match;
+    game_time_limit_min; realtime_enabled) reusing the `club.queue.*` i18n catalog,
+    plus a **local-state named-courts list editor** (add / remove / rename rows). The
+    court editor is form-local only — it must NOT reuse `ClubCourtManager`, which
+    auto-saves and has live-match rename side effects unsuitable for a template. On
+    submit the form rebuilds `config.queue_settings` + `config.courts` from its own
+    state, so no field is reset by the rebuild.
 - **Payment receiver** — the receiver details copied by presets for collecting
   money: PromptPay id/name, an optional existing QR image URL, bank receiver details,
   and which payment channels a receipt should show.

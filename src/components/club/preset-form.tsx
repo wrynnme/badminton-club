@@ -69,6 +69,7 @@ import type { PresetProfileResult } from "@/lib/actions/club-presets";
 import { fieldErrors } from "@/lib/form-errors";
 import type { ClubPreset } from "@/lib/types";
 import type { ClubPresetConfig } from "@/lib/club/preset";
+import { DEFAULT_QUEUE_SETTINGS } from "@/lib/club/queue-settings";
 import { isValidPromptPayId } from "@/lib/club/promptpay";
 import {
   RECEIPT_THEME_KEYS,
@@ -97,10 +98,15 @@ type FormValues = {
   max_players: number;
   court_fee: number;
   shuttle_price: number;
-  court_count: number;
   players_per_team: "1" | "2";
   rotation_mode: "fair_queue" | "winner_stays" | "fair_winner_fallback";
+  winner_stays_max: number;
   queue_mode: "rest_longest" | "level_match";
+  max_skill_gap: number;
+  balance_strictness: "balanced" | "strict";
+  balance_locked_pairs: boolean;
+  game_time_limit_min: number;
+  realtime_enabled: boolean;
   promptpay_id: string;
   promptpay_name: string;
   promptpay_qr_image: string;
@@ -133,10 +139,15 @@ function toFormDefaults(preset?: ClubPreset): FormValues {
       max_players: 12,
       court_fee: 0,
       shuttle_price: 0,
-      court_count: 1,
-      players_per_team: "2",
-      rotation_mode: "fair_queue",
-      queue_mode: "rest_longest",
+      players_per_team: String(DEFAULT_QUEUE_SETTINGS.players_per_team) as "1" | "2",
+      rotation_mode: DEFAULT_QUEUE_SETTINGS.rotation_mode,
+      winner_stays_max: DEFAULT_QUEUE_SETTINGS.winner_stays_max,
+      queue_mode: DEFAULT_QUEUE_SETTINGS.queue_mode,
+      max_skill_gap: DEFAULT_QUEUE_SETTINGS.max_skill_gap,
+      balance_strictness: DEFAULT_QUEUE_SETTINGS.balance_strictness,
+      balance_locked_pairs: DEFAULT_QUEUE_SETTINGS.balance_locked_pairs,
+      game_time_limit_min: DEFAULT_QUEUE_SETTINGS.game_time_limit_min,
+      realtime_enabled: DEFAULT_QUEUE_SETTINGS.realtime_enabled,
       promptpay_id: "",
       promptpay_name: "",
       promptpay_qr_image: "",
@@ -158,10 +169,15 @@ function toFormDefaults(preset?: ClubPreset): FormValues {
     max_players: c.max_players,
     court_fee: c.court_fee,
     shuttle_price: c.shuttle_price,
-    court_count: c.court_count,
-    players_per_team: String(c.players_per_team) as "1" | "2",
-    rotation_mode: c.rotation_mode,
-    queue_mode: c.queue_mode,
+    players_per_team: String(c.queue_settings.players_per_team) as "1" | "2",
+    rotation_mode: c.queue_settings.rotation_mode,
+    winner_stays_max: c.queue_settings.winner_stays_max,
+    queue_mode: c.queue_settings.queue_mode,
+    max_skill_gap: c.queue_settings.max_skill_gap,
+    balance_strictness: c.queue_settings.balance_strictness,
+    balance_locked_pairs: c.queue_settings.balance_locked_pairs,
+    game_time_limit_min: c.queue_settings.game_time_limit_min,
+    realtime_enabled: c.queue_settings.realtime_enabled,
     promptpay_id: c.promptpay_id ?? "",
     promptpay_name: c.promptpay_name ?? "",
     promptpay_qr_image: c.promptpay_qr_image ?? "",
@@ -301,6 +317,9 @@ function ProfileCombobox({
 
 export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
   const t = useTranslations("club.presetForm");
+  // Reuse the club queue-settings catalog for the queue controls so the ~20
+  // label/desc strings aren't duplicated in this form's namespace.
+  const tq = useTranslations("club.queueSettings");
   const router = useRouter();
   const isEdit = !!preset;
 
@@ -323,10 +342,15 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
     max_players: z.number().int().min(2, t("validationMaxMin")).max(40, t("validationMaxMax")),
     court_fee: z.number().min(0, t("validationFeeMin")),
     shuttle_price: z.number().min(0, t("validationFeeMin")),
-    court_count: z.number().int().min(1, t("validationCourtMin")).max(20, t("validationCourtMax")),
     players_per_team: z.enum(["1", "2"]),
     rotation_mode: z.enum(["fair_queue", "winner_stays", "fair_winner_fallback"]),
+    winner_stays_max: z.number().int().min(0).max(20),
     queue_mode: z.enum(["rest_longest", "level_match"]),
+    max_skill_gap: z.number().min(0).max(20),
+    balance_strictness: z.enum(["balanced", "strict"]),
+    balance_locked_pairs: z.boolean(),
+    game_time_limit_min: z.number().int().min(0).max(120),
+    realtime_enabled: z.boolean(),
     promptpay_id: z
       .string()
       .max(40)
@@ -347,6 +371,11 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
 
   // Co-admins — separate state from regulars
   const [coAdmins, setCoAdmins] = useState<PresetProfileResult[]>([]);
+
+  // Named courts — form-local editor (NOT ClubCourtManager, which auto-saves and
+  // has live-match rename side effects unsuitable for a template). Merged into
+  // config.courts at submit; empty list → apply derives ["1".."court_count"].
+  const [courts, setCourts] = useState<string[]>(() => preset?.config.courts ?? []);
 
   const [, startTransition] = useTransition();
 
@@ -400,6 +429,11 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
     defaultValues: toFormDefaults(preset),
     validators: { onSubmit: formSchema },
     onSubmit: async ({ value }) => {
+      // Named courts: trim, drop blanks, dedupe. court_count stays coherent as the
+      // frozen fallback (clamped to the queue-settings max of 20).
+      const cleanedCourts = [
+        ...new Set(courts.map((c) => c.trim()).filter(Boolean)),
+      ];
       const config: ClubPresetConfig = {
         venue: value.venue,
         schedule_day: value.schedule_day,
@@ -408,10 +442,23 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
         max_players: value.max_players,
         court_fee: value.court_fee,
         shuttle_price: value.shuttle_price,
-        court_count: value.court_count,
-        players_per_team: Number(value.players_per_team) as 1 | 2,
-        rotation_mode: value.rotation_mode,
-        queue_mode: value.queue_mode,
+        queue_settings: {
+          court_count: Math.min(Math.max(1, cleanedCourts.length), 20),
+          players_per_team: Number(value.players_per_team) as 1 | 2,
+          rotation_mode: value.rotation_mode,
+          // skill_level_enabled has no standalone control — implied by the mode
+          // (parseQueueSettings re-derives it on read; set here for a consistent
+          // stored object).
+          queue_mode: value.queue_mode,
+          skill_level_enabled: value.queue_mode === "level_match",
+          game_time_limit_min: value.game_time_limit_min,
+          winner_stays_max: value.winner_stays_max,
+          max_skill_gap: value.max_skill_gap,
+          balance_strictness: value.balance_strictness,
+          balance_locked_pairs: value.balance_locked_pairs,
+          realtime_enabled: value.realtime_enabled,
+        },
+        courts: cleanedCourts,
         promptpay_id: value.promptpay_id.trim() || null,
         promptpay_name: value.promptpay_name.trim() || null,
         promptpay_qr_image: value.promptpay_qr_image.trim() || null,
@@ -473,6 +520,7 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
   React.useEffect(() => {
     if (open) {
       form.reset(toFormDefaults(preset));
+      setCourts(preset?.config.courts ?? []);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, preset?.id]);
@@ -517,7 +565,13 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
 
   // ── Numeric field ──────────────────────────────────────────────────────────
   function numberField(
-    name: "max_players" | "court_count" | "court_fee" | "shuttle_price",
+    name:
+      | "max_players"
+      | "court_fee"
+      | "shuttle_price"
+      | "winner_stays_max"
+      | "max_skill_gap"
+      | "game_time_limit_min",
     label: string,
     min: number,
     max?: number,
@@ -694,8 +748,57 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
             {/* ── Max players ──────────────────────────────────────────── */}
             {numberField("max_players", t("maxPlayersLabel"), 2, 40)}
 
-            {/* ── Court count ──────────────────────────────────────────── */}
-            {numberField("court_count", t("courtCountLabel"), 1, 20)}
+            {/* ── Named courts ─────────────────────────────────────────── */}
+            <Field>
+              <FieldLabel>{t("courtsLabel")}</FieldLabel>
+              <div className="space-y-2">
+                {courts.map((court, idx) => (
+                  <div key={idx} className="flex items-center gap-1.5">
+                    <Input
+                      value={court}
+                      onChange={(e) =>
+                        setCourts((prev) =>
+                          prev.map((c, i) => (i === idx ? e.target.value : c)),
+                        )
+                      }
+                      placeholder={t("courtNamePlaceholder", { number: idx + 1 })}
+                      className="flex-1 min-w-0"
+                    />
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            onClick={() =>
+                              setCourts((prev) => prev.filter((_, i) => i !== idx))
+                            }
+                            aria-label={t("courtRemoveAria", { number: idx + 1 })}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        }
+                      />
+                      <TooltipContent>
+                        {t("courtRemoveAria", { number: idx + 1 })}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setCourts((prev) => [...prev, ""])}
+                >
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  {t("addCourtButton")}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{t("courtsNote")}</p>
+            </Field>
 
             {/* ── Court fee ────────────────────────────────────────────── */}
             {numberField("court_fee", t("courtFeeLabel"), 0)}
@@ -769,6 +872,20 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
               )}
             />
 
+            {/* ── Winner-stays max (only for winner_stays) ─────────────── */}
+            <form.Subscribe selector={(s) => s.values.rotation_mode}>
+              {(rotationMode) =>
+                rotationMode === "winner_stays"
+                  ? numberField(
+                      "winner_stays_max",
+                      tq("winnerStaysMaxLabel"),
+                      0,
+                      20,
+                    )
+                  : null
+              }
+            </form.Subscribe>
+
             {/* ── Queue mode ────────────────────────────────────────────── */}
             <form.Field
               name="queue_mode"
@@ -801,6 +918,83 @@ export function PresetFormDialog({ open, onOpenChange, preset }: Props) {
                     </SelectContent>
                   </Select>
                 </Field>
+              )}
+            />
+
+            {/* ── Skill-balance sub-controls (only for level_match) ────── */}
+            <form.Subscribe selector={(s) => s.values.queue_mode}>
+              {(queueMode) =>
+                queueMode === "level_match" ? (
+                  <div className="ml-3 space-y-3 border-l pl-3 border-border">
+                    {numberField("max_skill_gap", tq("maxSkillGapLabel"), 0, 20)}
+                    <form.Field
+                      name="balance_strictness"
+                      children={(field) => (
+                        <Field>
+                          <FieldLabel htmlFor={`${field.name}-trigger`}>
+                            {tq("balanceStrictnessLabel")}
+                          </FieldLabel>
+                          <Select
+                            value={field.state.value}
+                            onValueChange={(v) => {
+                              if (v) field.handleChange(v as "balanced" | "strict");
+                            }}
+                          >
+                            <SelectTrigger
+                              id={`${field.name}-trigger`}
+                              className="w-full"
+                            >
+                              <SelectValue>
+                                {(v: string) =>
+                                  v === "strict"
+                                    ? tq("strictnessStrict")
+                                    : tq("strictnessBalanced")
+                                }
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="balanced">
+                                {tq("strictnessBalanced")}
+                              </SelectItem>
+                              <SelectItem value="strict">
+                                {tq("strictnessStrict")}
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      )}
+                    />
+                    <form.Field
+                      name="balance_locked_pairs"
+                      children={(field) => (
+                        <label className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={field.state.value}
+                            onCheckedChange={(v) => field.handleChange(Boolean(v))}
+                          />
+                          {tq("balanceLockedPairsLabel")}
+                        </label>
+                      )}
+                    />
+                  </div>
+                ) : null
+              }
+            </form.Subscribe>
+
+            {/* ── Game time limit ──────────────────────────────────────── */}
+            {numberField("game_time_limit_min", tq("timeLimitLabel"), 0, 120)}
+
+            {/* ── Realtime auto-refresh ────────────────────────────────── */}
+            <form.Field
+              name="realtime_enabled"
+              children={(field) => (
+                <label className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={field.state.value}
+                    onCheckedChange={(v) => field.handleChange(Boolean(v))}
+                  />
+                  {tq("realtimeEnabledLabel")}
+                </label>
               )}
             />
 
