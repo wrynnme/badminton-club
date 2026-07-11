@@ -878,7 +878,13 @@
     "pushing": "Sending bills…",
     "billPushed": "Bill sent",
     "noLine": "No LINE",
-    "bankTransfer": "Bank transfer"
+    "bankTransfer": "Bank transfer",
+    "pushGroupBtn": "Bill to LINE group",
+    "pushingGroup": "Posting to group…",
+    "pushGroupTip": "Post bill + QR into the club's LINE group, tagging unpaid players grouped by amount",
+    "pushGroupDisabledTip": "No LINE group bound yet — bind a group first",
+    "pushGroupResult": "Posted {amounts} amount group(s) · tagged {tagged} players",
+    "pushGroupNoLineNote": "{n} not LINE-linked yet"
   },
   "slip": {
     "sendSlip": "Send slip",
@@ -938,6 +944,13 @@
     "joinLinkLabel": "Club join link",
     "joinLinkHint": "Share this link with players — once they open it and log in with LINE they appear here to be matched",
     "qrTitle": "Join club QR",
+    "bindGroupHeading": "Bind a LINE group to this club",
+    "bindGroupBound": "✅ LINE group is bound",
+    "bindGroupStep1": "1. Invite the LINE bot into the group",
+    "bindGroupStep2": "2. Send this message in the group:",
+    "bindGroupNeedToken": "Generate the join link first to get a token for binding the group",
+    "bindGroupCopyTip": "Copy command",
+    "bindGroupCopyError": "Copy failed — copy the text manually",
     "btnGenerate": "Create join link",
     "btnGenerating": "Creating…",
     "btnRevoke": "Revoke link",

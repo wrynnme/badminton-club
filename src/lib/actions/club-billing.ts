@@ -7,9 +7,14 @@ import QRCode from "qrcode";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
-import { pushFlexToUser } from "@/lib/notification/line-club";
+import { pushFlexToUser, pushMessagesToGroup } from "@/lib/notification/line-club";
 import { buildPromptPayPayload, isValidPromptPayId } from "@/lib/club/promptpay";
 import { computeClubCostRows } from "@/lib/club/cost-summary";
+import {
+  bucketBillsByAmount,
+  buildGroupBillMessages,
+  type GroupBillPlayer,
+} from "@/lib/club/group-billing";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 
 // ---------------------------------------------------------------------------
@@ -391,5 +396,253 @@ function buildBillBubble(params: {
         },
       ],
     },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// pushGroupBillsAction — collect money inside the club's bound LINE group
+// ---------------------------------------------------------------------------
+
+export type PushGroupBillsResult =
+  | {
+      ok: true;
+      /** distinct amounts posted (one message-group each) */
+      amountsPushed: number;
+      /** players @mentioned across all messages */
+      playersTagged: number;
+      /** payable players in a bucket with no linked LINE account (not tagged) */
+      skippedNoLine: number;
+      /** true if any bucket exceeded LINE's 5-messages-per-push cap */
+      overflow: boolean;
+    }
+  | { error: string };
+
+/**
+ * Post bills into the club's bound LINE group, bucketed by amount owed. For each
+ * distinct amount: one PromptPay QR + one text message @mentioning every payable
+ * player who owes that amount (e.g. 170 → @bee @pang, 90 → @bank @boy).
+ *
+ * Requires `clubs.line_group_id` (bind the group first via the webhook command).
+ * Guest players (no linked LINE) still owe the amount but can't be tagged — they
+ * count toward `skippedNoLine`. bill_amount / bill_pushed_at are stamped on every
+ * player in a successfully-posted bucket; paid_at is never touched here.
+ */
+export async function pushGroupBillsAction(input: {
+  clubId: string;
+  /** Optional subset of club_players.id to bill (still must be payable + unpaid). */
+  playerIds?: string[];
+}): Promise<PushGroupBillsResult> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  // 1. Fetch data (mirrors pushClubBillsAction / page.tsx).
+  const [clubRes, playersRes, matchesRes, expensesRes] = await Promise.all([
+    sb.from("clubs").select("*").eq("id", input.clubId).single(),
+    sb
+      .from("club_players")
+      .select("*")
+      .eq("club_id", input.clubId)
+      .order("position", { ascending: true, nullsFirst: false })
+      .order("joined_at", { ascending: true }),
+    sb
+      .from("club_matches")
+      .select("*")
+      .eq("club_id", input.clubId)
+      .order("queue_position", { ascending: true, nullsFirst: false })
+      .order("created_at", { ascending: true }),
+    sb
+      .from("club_expenses")
+      .select("*")
+      .eq("club_id", input.clubId)
+      .order("created_at", { ascending: true }),
+  ]);
+
+  if (clubRes.error || !clubRes.data) {
+    return { error: clubRes.error?.message ?? t("club.invalidData") };
+  }
+
+  const club = clubRes.data;
+  if (!club.line_group_id) {
+    return { error: t("club.noLineGroup") };
+  }
+
+  const players = playersRes.data ?? [];
+  const matches = matchesRes.data ?? [];
+  const expenses = (expensesRes.data ?? []) as Array<{
+    amount: number | string;
+    payer_player_ids: string[];
+  }>;
+
+  // 2. Compute per-player cost rows.
+  const { rows: costRows } = computeClubCostRows({
+    club,
+    players,
+    matches,
+    expenses,
+  });
+  const costByPlayerId = new Map(costRows.map((r) => [r.playerId, r]));
+
+  // 3. Resolve LINE user ids via profiles.
+  const profileIds = players
+    .map((p) => p.profile_id)
+    .filter((pid): pid is string => pid !== null);
+
+  let lineUserIdByProfileId = new Map<string, string | null>();
+  if (profileIds.length > 0) {
+    const { data: profileRows } = await sb
+      .from("profiles")
+      .select("id, line_user_id")
+      .in("id", profileIds);
+    lineUserIdByProfileId = new Map(
+      (profileRows ?? []).map((pr) => [pr.id, pr.line_user_id]),
+    );
+  }
+  const lineUserIdByPlayerId = new Map<string, string | null>(
+    players.map((p) => [
+      p.id,
+      p.profile_id ? (lineUserIdByProfileId.get(p.profile_id) ?? null) : null,
+    ]),
+  );
+
+  // 4. Build payable player list → bucket by amount.
+  const filterSet = input.playerIds ? new Set(input.playerIds) : null;
+  const payable: GroupBillPlayer[] = players
+    .filter((p) => {
+      if (filterSet && !filterSet.has(p.id)) return false;
+      const cost = costByPlayerId.get(p.id);
+      if (!cost || cost.total <= 0) return false;
+      if (p.paid_at !== null) return false;
+      return true;
+    })
+    .map((p) => ({
+      playerId: p.id,
+      displayName: p.display_name,
+      lineUserId: lineUserIdByPlayerId.get(p.id) ?? null,
+      amount: costByPlayerId.get(p.id)!.total,
+    }));
+
+  const buckets = bucketBillsByAmount(payable);
+  if (buckets.length === 0) {
+    return { error: t("club.noPayable") };
+  }
+
+  // 5. Format play_date for the message header.
+  let dateStr = "";
+  if (club.play_date) {
+    try {
+      dateStr = format(new Date(club.play_date), "dd MMM yyyy", {
+        locale: dateFnsLocaleOf("th"),
+      });
+    } catch {
+      dateStr = club.play_date;
+    }
+  }
+
+  // 6. Per amount: build QR, compose messages, push to the group, stamp bills.
+  let amountsPushed = 0;
+  let playersTagged = 0;
+  let skippedNoLine = 0;
+  let overflowAny = false;
+
+  for (const bucket of buckets) {
+    skippedNoLine += bucket.unreachable.length;
+
+    // QR (amount-embedded dynamic, else static uploaded, else none).
+    let qrUrl: string | null = null;
+    if (club.promptpay_id && isValidPromptPayId(club.promptpay_id)) {
+      try {
+        const payload = buildPromptPayPayload(club.promptpay_id, bucket.amount);
+        const buf: Buffer = await QRCode.toBuffer(payload, {
+          errorCorrectionLevel: "H",
+          width: 600,
+          margin: 1,
+        });
+        const storagePath = `${input.clubId}/group-bill-${bucket.amount}.png`;
+        const up = await sb.storage
+          .from("club-qr")
+          .upload(storagePath, buf, { contentType: "image/png", upsert: true });
+        if (!up.error) {
+          const { data: pub } = sb.storage
+            .from("club-qr")
+            .getPublicUrl(storagePath);
+          qrUrl = `${pub.publicUrl}?v=${Date.now()}`;
+        } else {
+          console.error(
+            "[club-billing] group QR upload error for amount",
+            bucket.amount,
+            up.error.message,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[club-billing] group QR generation error for amount",
+          bucket.amount,
+          err,
+        );
+      }
+    } else if (club.promptpay_qr_image) {
+      qrUrl = club.promptpay_qr_image;
+    }
+
+    const { messages, overflow } = buildGroupBillMessages(bucket, {
+      clubName: club.name,
+      qrUrl,
+      dateStr,
+    });
+    if (overflow) overflowAny = true;
+
+    const ok = await pushMessagesToGroup(club.line_group_id, messages);
+    if (!ok) continue;
+
+    amountsPushed++;
+    playersTagged += bucket.members.length;
+
+    // Stamp bill snapshot on every player in this bucket (bill was posted to the
+    // group they're all in). paid_at / paid_method are NOT touched.
+    const bucketIds = [
+      ...bucket.members.map((m) => m.playerId),
+      ...bucket.unreachable.map((u) => u.playerId),
+    ];
+    const { error: stampErr } = await sb
+      .from("club_players")
+      .update({
+        bill_amount: bucket.amount,
+        bill_pushed_at: new Date().toISOString(),
+      })
+      .in("id", bucketIds)
+      .eq("club_id", input.clubId);
+    if (stampErr) {
+      console.error(
+        "[club-billing] group bill stamp error for amount",
+        bucket.amount,
+        stampErr.message,
+      );
+    }
+  }
+
+  // 7. Audit + revalidate.
+  await sb.from("club_audit_logs").insert({
+    club_id: input.clubId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: "group_bills_pushed",
+    detail: `amounts ${amountsPushed}, tagged ${playersTagged}, no-line ${skippedNoLine}`,
+  });
+
+  revalidatePath(`/clubs/${input.clubId}`);
+
+  return {
+    ok: true,
+    amountsPushed,
+    playersTagged,
+    skippedNoLine,
+    overflow: overflowAny,
   };
 }

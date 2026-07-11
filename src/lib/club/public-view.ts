@@ -50,6 +50,8 @@ export function toPublicClub(club: Club): Club {
     receipt_logo_url: null,
     // LINE-linking join token — a secret share token; never expose publicly.
     join_token: null,
+    // Bound LINE group id — a private binding target; never expose publicly.
+    line_group_id: null,
   };
 }
 

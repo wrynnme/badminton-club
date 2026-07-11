@@ -878,7 +878,13 @@
     "pushing": "กำลังส่งบิล…",
     "billPushed": "ส่งบิลแล้ว",
     "noLine": "ไม่มี LINE",
-    "bankTransfer": "โอนเข้าบัญชี"
+    "bankTransfer": "โอนเข้าบัญชี",
+    "pushGroupBtn": "เรียกเก็บเข้ากลุ่มไลน์",
+    "pushingGroup": "กำลังโพสต์เข้ากลุ่ม…",
+    "pushGroupTip": "โพสต์บิล + QR เข้ากลุ่มไลน์ของก๊วน แท็กผู้เล่นที่ยังไม่จ่าย แยกตามยอดเงิน",
+    "pushGroupDisabledTip": "ยังไม่ได้ผูกกลุ่มไลน์ — ผูกกลุ่มก่อน",
+    "pushGroupResult": "โพสต์เข้ากลุ่มแล้ว {amounts} ยอด · แท็ก {tagged} คน",
+    "pushGroupNoLineNote": "{n} คนยังไม่ได้เชื่อม LINE"
   },
   "slip": {
     "sendSlip": "ส่งสลิป",
@@ -938,6 +944,13 @@
     "joinLinkLabel": "ลิงก์เข้าร่วมก๊วน",
     "joinLinkHint": "แชร์ลิงก์นี้ให้ผู้เล่น — เมื่อเปิดและเข้าสู่ระบบ LINE จะเข้ามารอให้จับคู่",
     "qrTitle": "QR เข้าร่วมก๊วน",
+    "bindGroupHeading": "ผูกกลุ่มไลน์กับก๊วน",
+    "bindGroupBound": "✅ ผูกกลุ่มไลน์แล้ว",
+    "bindGroupStep1": "1. เชิญบอท LINE เข้ากลุ่ม",
+    "bindGroupStep2": "2. พิมพ์ข้อความนี้ในกลุ่ม:",
+    "bindGroupNeedToken": "สร้างลิงก์เข้าร่วมก่อน เพื่อรับโทเคนสำหรับผูกกลุ่ม",
+    "bindGroupCopyTip": "คัดลอกคำสั่ง",
+    "bindGroupCopyError": "คัดลอกไม่สำเร็จ — คัดลอกข้อความด้วยตนเอง",
     "btnGenerate": "สร้างลิงก์เข้าร่วม",
     "btnGenerating": "กำลังสร้าง…",
     "btnRevoke": "ยกเลิกลิงก์",

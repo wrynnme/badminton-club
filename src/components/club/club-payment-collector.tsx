@@ -16,6 +16,7 @@ import {
   Save,
   Send,
   Trash2,
+  Users,
   Wallet,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -50,7 +51,7 @@ import {
   uploadClubPromptPayQrAction,
   removeClubPromptPayQrAction,
 } from "@/lib/actions/club-payments";
-import { pushClubBillsAction } from "@/lib/actions/club-billing";
+import { pushClubBillsAction, pushGroupBillsAction } from "@/lib/actions/club-billing";
 import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import { GeneratedQr } from "@/components/club/generated-qr";
@@ -74,13 +75,16 @@ type Props = {
   qrLogoUrl: string | null;
   /** club_players.id values whose linked profile has a non-null line_user_id. */
   lineReachableIds: string[];
+  /** true when clubs.line_group_id is bound — gates the group-billing button. */
+  lineGroupBound: boolean;
 };
 
-export function ClubPaymentCollector({ clubId, club, players, matches, expenses, qrLogoUrl, lineReachableIds }: Props) {
+export function ClubPaymentCollector({ clubId, club, players, matches, expenses, qrLogoUrl, lineReachableIds, lineGroupBound }: Props) {
   const t = useTranslations("club.payment");
   const tSlip = useTranslations("club.slip");
   const locale = useLocale();
   const [pushing, startPush] = useTransition();
+  const [pushingGroup, startPushGroup] = useTransition();
 
   // Warm the react-qr-code chunk so the first off-screen batch capture (and the
   // first per-player slip dialog) isn't raced by its lazy ssr:false import.
@@ -232,6 +236,43 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                     {pushing ? t("pushing") : t("pushLineBtn")}
                   </TooltipTrigger>
                   <TooltipContent>{t("pushLineTip")}</TooltipContent>
+                </Tooltip>
+
+                {/* Post one message-group per distinct amount into the club's bound LINE group */}
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 gap-1.5 text-xs"
+                        disabled={pushingGroup || payable.length === 0 || !lineGroupBound}
+                        onClick={() => {
+                          startPushGroup(async () => {
+                            const res = await pushGroupBillsAction({ clubId });
+                            if ("error" in res) {
+                              toast.error(res.error);
+                            } else {
+                              const base = t("pushGroupResult", {
+                                amounts: res.amountsPushed,
+                                tagged: res.playersTagged,
+                              });
+                              toast.success(
+                                res.skippedNoLine > 0
+                                  ? `${base} · ${t("pushGroupNoLineNote", { n: res.skippedNoLine })}`
+                                  : base,
+                              );
+                            }
+                          });
+                        }}
+                      />
+                    }
+                  >
+                    {pushingGroup ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
+                    {pushingGroup ? t("pushingGroup") : t("pushGroupBtn")}
+                  </TooltipTrigger>
+                  <TooltipContent>{lineGroupBound ? t("pushGroupTip") : t("pushGroupDisabledTip")}</TooltipContent>
                 </Tooltip>
 
                 {/* Batch: download every payable player's slip image (for non-LINE players) */}

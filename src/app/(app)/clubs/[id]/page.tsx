@@ -428,6 +428,7 @@ export default async function ClubDetailPage({
                   expenses={expenses}
                   qrLogoUrl={resolveQrLogoUrl(appSettings)}
                   lineReachableIds={lineReachableIds}
+                  lineGroupBound={!!club.line_group_id}
                 />
               )}
             </div>
@@ -469,6 +470,7 @@ export default async function ClubDetailPage({
                   appUrl={appUrl}
                   pendingRequests={pendingLinkRequests}
                   guestPlayers={guestPlayers}
+                  lineGroupBound={!!club.line_group_id}
                 />
               )}
               {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}

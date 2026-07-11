@@ -17,7 +17,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { useRouter as useProgressRouter } from "@bprogress/next/app";
-import { Link2, Link2Off, Loader2, UserPlus, X, Users } from "lucide-react";
+import { Check, Copy, Link2, Link2Off, Loader2, UserPlus, X, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,17 +56,31 @@ export function ClubLinkControls({
   appUrl,
   pendingRequests,
   guestPlayers,
+  lineGroupBound,
 }: {
   clubId: string;
   joinToken: string | null;
   appUrl: string;
   pendingRequests: ClubLinkPoolRequest[];
   guestPlayers: GuestOption[];
+  /** true when clubs.line_group_id is bound to this club. */
+  lineGroupBound: boolean;
 }) {
   const t = useTranslations("club.linking");
   const [token, setToken] = useState(joinToken);
   const [tokenPending, startToken] = useTransition();
   const [linkTarget, setLinkTarget] = useState<ClubLinkPoolRequest | null>(null);
+  const [bindCopied, setBindCopied] = useState(false);
+
+  const copyBindCommand = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setBindCopied(true);
+      setTimeout(() => setBindCopied(false), 2000);
+    } catch {
+      toast.error(t("bindGroupCopyError"));
+    }
+  };
 
   const generate = () =>
     startToken(async () => {
@@ -153,6 +167,65 @@ export function ClubLinkControls({
             </Tooltip>
           )}
           <p className="text-xs text-muted-foreground">{t("joinLinkHint")}</p>
+        </div>
+
+        {/* Bind LINE group — post commands are read by the LINE webhook */}
+        <div className="space-y-2 border-t pt-4">
+          <h3 className="text-sm font-medium">{t("bindGroupHeading")}</h3>
+          {lineGroupBound ? (
+            <p className="text-sm text-emerald-600 dark:text-emerald-400">{t("bindGroupBound")}</p>
+          ) : token ? (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">{t("bindGroupStep1")}</p>
+              <p className="text-xs text-muted-foreground">{t("bindGroupStep2")}</p>
+              <div className="flex gap-2">
+                <code className="h-8 flex-1 overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 px-2 font-mono text-xs leading-8">
+                  ผูกก๊วน {token}
+                </code>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 shrink-0"
+                        aria-label={t("bindGroupCopyTip")}
+                        onClick={() => copyBindCommand(`ผูกก๊วน ${token}`)}
+                      >
+                        {bindCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                      </Button>
+                    }
+                  />
+                  <TooltipContent>{t("bindGroupCopyTip")}</TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">{t("bindGroupNeedToken")}</p>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={generate}
+                      className="self-start"
+                      disabled={tokenPending}
+                    >
+                      {tokenPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Link2 className="h-3.5 w-3.5" />
+                      )}
+                      {tokenPending ? t("btnGenerating") : t("btnGenerate")}
+                    </Button>
+                  }
+                />
+                <TooltipContent>{t("tipGenerate")}</TooltipContent>
+              </Tooltip>
+            </div>
+          )}
         </div>
 
         {/* Link pool */}
