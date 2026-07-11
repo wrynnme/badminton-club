@@ -9,7 +9,7 @@ import { useTranslations } from "next-intl";
 import {
   RefreshCw, GripVertical, CheckCircle2, Circle, Loader2, Clock,
   CheckCheck, Users, Trash2, AlertTriangle, Pencil, Gauge, ListChecks, Check,
-  Link2, Link2Off,
+  Link2, Link2Off, Search, UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   Select,
   SelectContent,
@@ -71,8 +72,12 @@ import {
   bulkUpdateClubPlayerSessionAction,
   bulkDeleteClubPlayersAction,
 } from "@/lib/actions/club-players";
-import { unlinkClubPlayerAction } from "@/lib/actions/club-linking";
-import type { ClubPlayer, Level } from "@/lib/types";
+import {
+  unlinkClubPlayerAction,
+  listLinkableKnownProfilesAction,
+  linkKnownProfileAction,
+} from "@/lib/actions/club-linking";
+import type { ClubPlayer, Level, LinkableKnownProfile } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -218,6 +223,7 @@ function EditPlayerForm({
   const [endVal, setEndVal] = useState(player.end_time?.slice(0, 5) ?? clubEndPlaceholder);
   const [pending, start] = useTransition();
   const [unlinkPending, startUnlink] = useTransition();
+  const [linkOpen, setLinkOpen] = useState(false);
 
   function handleUnlink() {
     if (!confirm(t("unlinkConfirm", { name: player.display_name }))) return;
@@ -271,6 +277,7 @@ function EditPlayerForm({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm max-h-[90dvh] overflow-y-auto">
         <DialogHeader>
@@ -371,6 +378,24 @@ function EditPlayerForm({
               <p className="text-[11px] text-muted-foreground">{t("unlinkHint")}</p>
             </div>
           )}
+
+          {/* LINE account — link this guest row to a known profile (no fresh scan). */}
+          {isGuest && (
+            <div className="space-y-1 border-t pt-3">
+              <Label className="text-xs text-muted-foreground">{t("linkKnownLabel")}</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() => setLinkOpen(true)}
+              >
+                <Link2 className="h-3.5 w-3.5" />
+                {t("linkKnownButton")}
+              </Button>
+              <p className="text-[11px] text-muted-foreground">{t("linkKnownHint")}</p>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="gap-2">
@@ -381,6 +406,197 @@ function EditPlayerForm({
             {pending
               ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />{t("renameSave")}</>
               : t("renameSave")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    {isGuest && (
+      <LinkKnownDialog
+        clubId={clubId}
+        targetPlayerId={player.id}
+        guestName={player.display_name}
+        open={linkOpen}
+        onOpenChange={setLinkOpen}
+      />
+    )}
+    </>
+  );
+}
+
+// ─── Link a guest row to a known LINE profile (no fresh scan) ─────────────────
+
+function LinkKnownDialog({
+  clubId,
+  targetPlayerId,
+  guestName,
+  open,
+  onOpenChange,
+}: {
+  clubId: string;
+  targetPlayerId: string;
+  guestName: string;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const t = useTranslations("club.playerList");
+  const router = useProgressRouter();
+  const [loading, setLoading] = useState(false);
+  const [profiles, setProfiles] = useState<LinkableKnownProfile[]>([]);
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [useLineName, setUseLineName] = useState(false); // default: keep the guest name
+  const [pending, start] = useTransition();
+
+  // Load the picker list on open; reset the picker state each time it opens.
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    setSelectedId("");
+    setUseLineName(false);
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const res = await listLinkableKnownProfilesAction(clubId);
+      if (cancelled) return;
+      if (res && "error" in res) {
+        toast.error(res.error);
+        setProfiles([]);
+      } else {
+        setProfiles(res.profiles);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, clubId]);
+
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? profiles.filter((p) => p.display_name.toLowerCase().includes(q))
+    : profiles;
+  // Resolve against the FILTERED list, not the full one: if a search query hides the
+  // picked row, `selected` becomes undefined so the name-choice card + confirm disable
+  // instead of letting the manager confirm a selection they can no longer see.
+  const selected = shown.find((p) => p.id === selectedId);
+
+  const confirm = () =>
+    start(async () => {
+      const res = await linkKnownProfileAction({
+        clubId,
+        targetPlayerId,
+        profileId: selectedId,
+        useLineName,
+      });
+      if (res && "error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(t("linkKnownDone"));
+      router.refresh();
+      // Close only THIS picker; leave the edit dialog open so focus returns to its
+      // "เชื่อม LINE" trigger (still mounted) rather than falling to <body> when both
+      // nested dialogs close in the same tick. The row re-renders to its linked state.
+      onOpenChange(false);
+    });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm max-h-[90dvh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{t("linkKnownTitle")}</DialogTitle>
+          <DialogDescription className="text-xs">
+            {t("linkKnownDesc", { name: guestName })}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-1">
+          {/* Search */}
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={t("linkKnownSearch")}
+              className="h-8 pl-7 text-sm"
+            />
+          </div>
+
+          {/* Profile list */}
+          {loading ? (
+            <div className="flex items-center justify-center py-6 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+            </div>
+          ) : shown.length === 0 ? (
+            <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+              {profiles.length === 0 ? t("linkKnownEmpty") : t("linkKnownNoMatch")}
+            </p>
+          ) : (
+            <ul className="max-h-56 space-y-1 overflow-y-auto">
+              {shown.map((p) => {
+                const active = p.id === selectedId;
+                return (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(p.id)}
+                      className={cn(
+                        "flex w-full items-center gap-2 rounded-md border p-2 text-left",
+                        active ? "border-primary bg-primary/5" : "hover:bg-muted",
+                      )}
+                    >
+                      <Avatar size="sm">
+                        <AvatarImage src={p.picture_url ?? undefined} alt="" />
+                        <AvatarFallback>{p.display_name.slice(0, 1)}</AvatarFallback>
+                      </Avatar>
+                      <span className="min-w-0 flex-1 truncate text-sm">{p.display_name}</span>
+                      {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {/* Name choice — default keep the manager-curated guest name */}
+          {selected && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">{t("linkKnownNameChoice")}</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={!useLineName ? "default" : "outline"}
+                  className="h-auto flex-col items-start gap-0 py-2"
+                  onClick={() => setUseLineName(false)}
+                >
+                  <span className="text-[10px] opacity-70">{t("linkKnownKeepName")}</span>
+                  <span className="max-w-full truncate text-sm font-medium">{guestName}</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant={useLineName ? "default" : "outline"}
+                  className="h-auto flex-col items-start gap-0 py-2"
+                  onClick={() => setUseLineName(true)}
+                >
+                  <span className="text-[10px] opacity-70">{t("linkKnownUseLineName")}</span>
+                  <span className="max-w-full truncate text-sm font-medium">{selected.display_name}</span>
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2">
+          <DialogClose render={
+            <Button variant="outline" disabled={pending}>{t("renameCancel")}</Button>
+          } />
+          <Button onClick={confirm} disabled={pending || !selected}>
+            {pending ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />{t("linkKnownConfirm")}</>
+            ) : (
+              <><UserPlus className="h-3.5 w-3.5 mr-1" />{t("linkKnownConfirm")}</>
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

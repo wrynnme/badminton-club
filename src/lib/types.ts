@@ -108,6 +108,12 @@ export type ClubLinkPoolRequest = {
   profile: Pick<Profile, "id" | "display_name" | "picture_url">;
 };
 
+// A profile a manager may link WITHOUT a fresh scan: it already opted into one of the
+// manager's own clubs (any club_link_requests row, any status) and is NOT yet linked to
+// a roster row in the current club. Powers the "เชื่อม LINE" picker inside the guest
+// edit form. Only public profile fields reach the client — line_user_id stays server-side.
+export type LinkableKnownProfile = Pick<Profile, "id" | "display_name" | "picture_url">;
+
 // Locked pair: two players forced to be teammates by the rotation queue.
 // games_remaining null = forever; N = lock for N more games played together.
 export type ClubLockedPair = {

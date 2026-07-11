@@ -26,6 +26,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession, type SessionPayload } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 import { pushTextToUser } from "@/lib/notification/line-club";
+import type { LinkableKnownProfile } from "@/lib/types";
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
 
@@ -43,6 +44,21 @@ async function writeClubAudit(
     event_type: eventType,
     detail,
   });
+}
+
+/**
+ * Fire-and-forget "you're now linked" push to a freshly-linked player. The club-name
+ * fetch is awaited; the push itself is not (never blocks or fails the link). No-op when
+ * the profile has no LINE id. Shared by linkClubPlayerAction + linkKnownProfileAction.
+ */
+async function pushLinkConfirm(sb: AdminClient, clubId: string, lineUserId: string | null) {
+  if (!lineUserId) return;
+  const { data: club } = await sb.from("clubs").select("name").eq("id", clubId).maybeSingle();
+  const clubName = club?.name ?? "";
+  void pushTextToUser(
+    lineUserId,
+    `✅ เชื่อมบัญชี LINE กับก๊วน "${clubName}" เรียบร้อยแล้ว — จากนี้จะได้รับบิลและการแจ้งเตือนทาง LINE`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -242,14 +258,7 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
   await writeClubAudit(sb, clubId, session, "player_linked", `${target.display_name} ← ${profileId}`);
 
   // 6. Fire-and-forget confirmation push (never blocks or fails the link).
-  if (profile.line_user_id) {
-    const { data: club } = await sb.from("clubs").select("name").eq("id", clubId).maybeSingle();
-    const clubName = club?.name ?? "";
-    void pushTextToUser(
-      profile.line_user_id,
-      `✅ เชื่อมบัญชี LINE กับก๊วน "${clubName}" เรียบร้อยแล้ว — จากนี้จะได้รับบิลและการแจ้งเตือนทาง LINE`,
-    );
-  }
+  await pushLinkConfirm(sb, clubId, profile.line_user_id);
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true as const };
@@ -349,6 +358,190 @@ export async function unlinkClubPlayerAction(input: UnlinkClubPlayerInput) {
     .eq("profile_id", profileId);
 
   await writeClubAudit(sb, clubId, session, "player_unlinked", `${player.display_name} ✕ ${profileId}`);
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true as const };
+}
+
+// ---------------------------------------------------------------------------
+// Manager: link a KNOWN profile directly — the "เชื่อม LINE" picker inside the
+// guest edit form (no fresh scan; the player opted in on a previous session)
+// ---------------------------------------------------------------------------
+
+/**
+ * The set of clubs this profile manages (owns or co-admins). Consent for the
+ * "known profiles" picker flows from a player having opted into ANY of these clubs.
+ */
+async function managerClubIds(sb: AdminClient, profileId: string): Promise<string[]> {
+  const [owned, adminOf] = await Promise.all([
+    sb.from("clubs").select("id").eq("owner_id", profileId),
+    sb.from("club_admins").select("club_id").eq("user_id", profileId),
+  ]);
+  const ids = new Set<string>();
+  for (const c of owned.data ?? []) ids.add(c.id);
+  for (const a of adminOf.data ?? []) ids.add(a.club_id);
+  return [...ids];
+}
+
+/**
+ * List profiles a manager may link to a guest row WITHOUT asking the player to scan
+ * again: anyone who opted into one of the manager's own clubs (a club_link_requests
+ * row, ANY status) and is not already linked to a roster row in THIS club. Only public
+ * profile fields are returned — line_user_id stays server-side.
+ */
+export async function listLinkableKnownProfilesAction(clubId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const myClubIds = await managerClubIds(sb, session.profileId);
+  if (myClubIds.length === 0) return { ok: true as const, profiles: [] as LinkableKnownProfile[] };
+
+  // Profiles that opted into any of my clubs, excluding ones a manager explicitly
+  // dismissed (status=rejected) — a dismiss means "not this person", so the picker
+  // must not silently resurface them.
+  const { data: reqs } = await sb
+    .from("club_link_requests")
+    .select("profile_id")
+    .in("club_id", myClubIds)
+    .neq("status", "rejected");
+  const candidateIds = [...new Set((reqs ?? []).map((r) => r.profile_id))];
+  if (candidateIds.length === 0) return { ok: true as const, profiles: [] as LinkableKnownProfile[] };
+
+  // Exclude profiles already linked to a roster row in THIS club.
+  const { data: linked } = await sb
+    .from("club_players")
+    .select("profile_id")
+    .eq("club_id", clubId)
+    .not("profile_id", "is", null);
+  const linkedSet = new Set((linked ?? []).map((l) => l.profile_id));
+  const freeIds = candidateIds.filter((id) => !linkedSet.has(id));
+  if (freeIds.length === 0) return { ok: true as const, profiles: [] as LinkableKnownProfile[] };
+
+  const { data: profiles, error } = await sb
+    .from("profiles")
+    .select("id, display_name, picture_url")
+    .in("id", freeIds)
+    .order("display_name", { ascending: true });
+  if (error) {
+    console.error("[listLinkableKnownProfilesAction]", error);
+    return { error: t("club.linkFailed") };
+  }
+
+  return { ok: true as const, profiles: (profiles ?? []) as LinkableKnownProfile[] };
+}
+
+const LinkKnownSchema = z.object({
+  clubId: z.string().uuid(),
+  targetPlayerId: z.string().uuid(),
+  profileId: z.string().uuid(),
+  useLineName: z.boolean().default(false),
+});
+export type LinkKnownProfileInput = z.infer<typeof LinkKnownSchema>;
+
+/**
+ * Attach a KNOWN profile (see listLinkableKnownProfilesAction) to a guest row directly,
+ * skipping the pool. Mirrors linkClubPlayerAction's guards but keys off profileId instead
+ * of a pending request, and re-verifies the profile is genuinely one the manager may link
+ * (has opted into one of the manager's clubs) so a forged profileId cannot be attached.
+ */
+export async function linkKnownProfileAction(input: LinkKnownProfileInput) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const parsed = LinkKnownSchema.safeParse(input);
+  if (!parsed.success) return { error: t("club.invalidData") };
+  const { clubId, targetPlayerId, profileId, useLineName } = parsed.data;
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  // 1. Re-verify consent: the profile must have opted into one of the manager's own clubs.
+  //    Closes the hole where a forged profileId would attach an arbitrary LINE account.
+  const myClubIds = await managerClubIds(sb, session.profileId);
+  if (myClubIds.length === 0) return { error: t("club.linkRequestNotFound") };
+  const { data: consent } = await sb
+    .from("club_link_requests")
+    .select("id")
+    .eq("profile_id", profileId)
+    .in("club_id", myClubIds)
+    .neq("status", "rejected") // a dismissed request must not be re-linkable — mirrors the picker list
+    .limit(1)
+    .maybeSingle();
+  if (!consent) return { error: t("club.linkRequestNotFound") };
+
+  // 2. Guard: this profile must not already be linked to another row in the club.
+  const { data: dup } = await sb
+    .from("club_players")
+    .select("id, display_name")
+    .eq("club_id", clubId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+  if (dup) return { error: t("club.linkAlreadyLinked", { name: dup.display_name }) };
+
+  // 3. The target must be a guest row (profile_id NULL) in this club.
+  const { data: target } = await sb
+    .from("club_players")
+    .select("id, profile_id, display_name")
+    .eq("id", targetPlayerId)
+    .eq("club_id", clubId)
+    .maybeSingle();
+  if (!target) return { error: t("club.linkTargetNotFound") };
+  if (target.profile_id !== null) return { error: t("club.linkTargetNotGuest") };
+
+  // 4. Resolve the profile (name for the optional rename + LINE id for the push).
+  const { data: profile } = await sb
+    .from("profiles")
+    .select("id, display_name, line_user_id")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (!profile) return { error: t("club.linkRequestNotFound") };
+
+  // 5. Attach. Same two race guards as linkClubPlayerAction: `.is("profile_id", null)`
+  //    (row still a guest) + the partial UNIQUE uniq_club_players_profile on
+  //    (club_id, profile_id) WHERE profile_id IS NOT NULL (migration 20260711000300),
+  //    which caps a profile at one linked row per club.
+  const update: { profile_id: string; display_name?: string } = { profile_id: profileId };
+  if (useLineName && profile.display_name) update.display_name = profile.display_name;
+
+  const { data: updated, error: upErr } = await sb
+    .from("club_players")
+    .update(update)
+    .eq("id", targetPlayerId)
+    .eq("club_id", clubId)
+    .is("profile_id", null)
+    .select("id")
+    .maybeSingle();
+  if (upErr) {
+    console.error("[linkKnownProfileAction]", upErr);
+    return { error: t("club.linkFailed") };
+  }
+  // 0 rows matched = the guest row was claimed by a concurrent link. No false success.
+  if (!updated) return { error: t("club.linkTargetNotGuest") };
+
+  // 6. If a pending pool request for this profile exists in THIS club, retire it so the
+  //    pool and the picker stay consistent (best-effort — absent when the player only
+  //    scanned another of the manager's clubs).
+  const { error: matchErr } = await sb
+    .from("club_link_requests")
+    .update({ status: "matched" })
+    .eq("club_id", clubId)
+    .eq("profile_id", profileId)
+    .eq("status", "pending");
+  if (matchErr) console.error("[linkKnownProfileAction] status=matched", matchErr);
+
+  await writeClubAudit(sb, clubId, session, "player_linked", `${target.display_name} ← ${profileId}`);
+
+  // 7. Fire-and-forget confirmation push (never blocks or fails the link).
+  await pushLinkConfirm(sb, clubId, profile.line_user_id);
+
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true as const };
 }

@@ -391,8 +391,8 @@
   },
   "tabs": {
     "dashboard": "Dashboard",
-    "checkin": "Sign in / Check in",
-    "queue": "Locked pairs + Queue",
+    "checkin": "Players",
+    "queue": "Queue",
     "cost": "Costs",
     "settings": "Settings",
     "unsavedWarning": "You have unsaved changes. Leave without saving?"
@@ -806,7 +806,20 @@
     "unlinkButton": "Unlink LINE",
     "unlinkHint": "The player reverts to unlinked and won't receive bills/notifications on LINE",
     "unlinkConfirm": "Unlink LINE from {name}?",
-    "unlinkDone": "Unlinked"
+    "unlinkDone": "Unlinked",
+    "linkKnownLabel": "Link a LINE account",
+    "linkKnownButton": "Link LINE",
+    "linkKnownHint": "Match this player to a member who already scanned into one of your clubs — no need to scan again",
+    "linkKnownTitle": "Link a LINE account",
+    "linkKnownDesc": "Choose a LINE account to link with \"{name}\"",
+    "linkKnownSearch": "Search name…",
+    "linkKnownEmpty": "No members have scanned into your clubs yet (or all are linked)",
+    "linkKnownNoMatch": "No matching name",
+    "linkKnownNameChoice": "Which name?",
+    "linkKnownKeepName": "Keep name",
+    "linkKnownUseLineName": "LINE name",
+    "linkKnownConfirm": "Link",
+    "linkKnownDone": "LINE account linked"
   },
   "payment": {
     "collectTitle": "Collect payment",

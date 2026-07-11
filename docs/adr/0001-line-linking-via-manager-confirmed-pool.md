@@ -75,3 +75,30 @@ v1 is **outbound-only**: it wires no new player-facing surface beyond the join p
   are reused; the inbound webhook is untouched.
 - **Deferred**: tournament-side linking, self-service player surfaces, and realtime pool
   updates (the manager refreshes / the action revalidates) are out of v1 scope.
+
+## Addendum (2026-07-11): second entry point — link a known profile from the edit form
+
+The pool answers "a player *this* club scanned wants in." It does **not** cover the
+common case where a manager runs several clubs and the player already scanned a
+*different* one of theirs — the manager knows exactly who this guest is but the pool for
+this club is empty, so they'd have to ask the player to scan again.
+
+The addition: a "เชื่อม LINE" button in the guest row's edit dialog opens a picker of
+**known profiles** — anyone with a `club_link_requests` row in *any* club the manager
+owns or co-admins (any status **except `rejected`**, so a dismissed request stays
+dismissed), minus profiles already linked in this club. The manager picks one and links
+directly (`linkKnownProfileAction`), skipping the pool.
+
+- **Consent scope decision**: consent flows from the player having opted into the
+  manager's *ecosystem* (any of their clubs), not strictly into this one club. Rationale:
+  the player already handed this manager their LINE identity by scanning; attaching them
+  to another of the same manager's rosters exposes no new PII (still only
+  `display_name`/`picture_url` client-side, `line_user_id` server-only) and matches how a
+  real club owner reuses a known member across their weekly sessions. The trade-off
+  (linking a profile that scanned a sibling club, not this one) is deliberate and is why
+  the consent predicate is re-verified server-side in `linkKnownProfileAction` — a
+  `profileId` with no request in the manager's clubs is rejected, so the picker's scope is
+  a hard authorization boundary, not just a UI filter.
+- **No new durable state**: reuses `club_link_requests`, the guest-target/already-linked
+  guards, the `uniq_club_players_profile` index, and the confirm push. A pending pool
+  request for the same profile in this club is retired to `matched` on link. No migration.
