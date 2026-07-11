@@ -102,7 +102,15 @@
     "rebuildOnlyPending": "จัดคิวใหม่ได้เฉพาะแมตช์ที่ยังรอแข่ง",
     "rebuildNoPlayers": "ไม่มีผู้เล่นว่างพอสำหรับจัดคิวใหม่",
     "rebuildNoSwap": "ทุกคนอยู่ในคิวแล้ว ไม่มีผู้เล่นให้สลับเข้ามา — ใช้ปุ่ม รื้อ+สุ่มใหม่ ทั้งชุดแทน",
-    "rebuildSwapFailed": "จัดคิวใหม่ไม่สำเร็จ ลองอีกครั้ง"
+    "rebuildSwapFailed": "จัดคิวใหม่ไม่สำเร็จ ลองอีกครั้ง",
+    "linkTokenFailed": "จัดการลิงก์เข้าร่วมไม่สำเร็จ",
+    "linkInvalidToken": "ลิงก์เข้าร่วมไม่ถูกต้องหรือถูกยกเลิกแล้ว",
+    "linkRequestFailed": "ส่งคำขอไม่สำเร็จ",
+    "linkRequestNotFound": "ไม่พบคำขอเชื่อม หรือถูกจัดการไปแล้ว",
+    "linkAlreadyLinked": "บัญชี LINE นี้ผูกกับ {name} แล้ว",
+    "linkTargetNotFound": "ไม่พบผู้เล่นที่จะจับคู่",
+    "linkTargetNotGuest": "ผู้เล่นคนนี้ผูกบัญชีอื่นอยู่แล้ว",
+    "linkFailed": "จับคู่ไม่สำเร็จ"
   },
   "tournament": {
     "requireLineLogin": "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้างทัวร์นาเมนต์",

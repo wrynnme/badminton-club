@@ -48,6 +48,8 @@ export function toPublicClub(club: Club): Club {
     // (name / account no), and the slip is a manager-only surface anyway
     receipt_template: {},
     receipt_logo_url: null,
+    // LINE-linking join token — a secret share token; never expose publicly.
+    join_token: null,
   };
 }
 

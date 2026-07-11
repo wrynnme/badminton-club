@@ -19,6 +19,7 @@ import { ExpenseManager } from "@/components/club/expense-manager";
 import { ClubCoAdminControls } from "@/components/club/club-co-admin-controls";
 import { DeleteClubButton } from "@/components/club/delete-club-button";
 import { ClubVisibilityControls } from "@/components/club/club-visibility-controls";
+import { ClubLinkControls } from "@/components/club/club-link-controls";
 import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
 import { ClubPaymentCollector } from "@/components/club/club-payment-collector";
@@ -39,7 +40,7 @@ import { getClubLevelsAction } from "@/lib/actions/levels";
 import { getAppSettings, resolveQrLogoUrl } from "@/lib/app-settings";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
-import type { ClubMatch, ClubLockedPair, Level, ClubPreset } from "@/lib/types";
+import type { ClubMatch, ClubLockedPair, Level, ClubPreset, ClubLinkPoolRequest } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes, lineRes] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes, lineRes, linkReqRes] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -111,6 +112,15 @@ export default async function ClubDetailPage({
       .from("club_players")
       .select("id, profile:profiles!club_players_profile_id_fkey(line_user_id)")
       .eq("club_id", id),
+    // Pending LINE-link requests (the pool). Only the requesting profile's public
+    // fields ship to the client — line_user_id is never selected here, and the row's
+    // own club_id/profile_id/status are unused by the pool UI (the dialog acts by id).
+    sb
+      .from("club_link_requests")
+      .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
+      .eq("club_id", id)
+      .eq("status", "pending")
+      .order("created_at", { ascending: true }),
   ]);
 
   const owner = ownerRes.data;
@@ -138,6 +148,26 @@ export default async function ClubDetailPage({
   const lineReachableIds: string[] = ((lineRes.data ?? []) as unknown as LineRow[])
     .filter((r) => r.profile?.line_user_id)
     .map((r) => r.id);
+
+  // Pending LINE-link requests (the pool) + the guest rows a manager can link them to.
+  // line_user_id is never selected/derived here — only public profile fields reach the client.
+  type LinkReqRow = {
+    id: string;
+    profile: { id: string; display_name: string; picture_url: string | null } | null;
+  };
+  const pendingLinkRequests: ClubLinkPoolRequest[] = ((linkReqRes.data ?? []) as unknown as LinkReqRow[])
+    .filter((r) => r.profile)
+    .map((r) => ({
+      id: r.id,
+      profile: {
+        id: r.profile!.id,
+        display_name: r.profile!.display_name,
+        picture_url: r.profile!.picture_url,
+      },
+    }));
+  const guestPlayers = players
+    .filter((p) => p.profile_id == null)
+    .map((p) => ({ id: p.id, display_name: p.display_name }));
 
   const joined = players.length;
   const activeCount = players.filter((p) => p.status === "active").length;
@@ -273,7 +303,13 @@ export default async function ClubDetailPage({
                   headerActions={
                     canManage ? (
                       <>
-                        <AddGuestPlayer clubId={club.id} full={full} levels={levels} />
+                        <AddGuestPlayer
+                          clubId={club.id}
+                          full={full}
+                          levels={levels}
+                          sessionStart={club.start_time}
+                          sessionEnd={club.end_time}
+                        />
                         <LineImportDialog
                           clubId={club.id}
                           existingNames={players.map((p) => p.display_name)}
@@ -424,6 +460,15 @@ export default async function ClubDetailPage({
                   levels={levels}
                   clubId={club.id}
                   isCustomized={isCustomized}
+                />
+              )}
+              {canManage && (
+                <ClubLinkControls
+                  clubId={club.id}
+                  joinToken={club.join_token}
+                  appUrl={appUrl}
+                  pendingRequests={pendingLinkRequests}
+                  guestPlayers={guestPlayers}
                 />
               )}
               {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}
