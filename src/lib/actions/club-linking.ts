@@ -205,8 +205,11 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
     .maybeSingle();
   if (!profile) return { error: t("club.linkRequestNotFound") };
 
-  // 5. Attach: set profile_id (+ optionally adopt the LINE name). The `.is(profile_id,
-  //    null)` filter + UNIQUE(club_id, profile_id) make a concurrent double-link safe.
+  // 5. Attach: set profile_id (+ optionally adopt the LINE name). Two guards make this
+  //    race-safe: `.is("profile_id", null)` stops two profiles claiming the SAME row,
+  //    and the partial UNIQUE index uniq_club_players_profile on club_players
+  //    (club_id, profile_id) WHERE profile_id IS NOT NULL (migration 20260711000300)
+  //    stops ONE profile being linked to TWO different rows at once.
   const update: { profile_id: string; display_name?: string } = { profile_id: profileId };
   if (useLineName && profile.display_name) update.display_name = profile.display_name;
 
@@ -219,6 +222,9 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
     .select("id")
     .maybeSingle();
   if (upErr) {
+    // 23505 = uniq_club_players_profile rejected linking this profile to a second row
+    // (a concurrent link won the race). Safe — no false success; a retry hits the
+    // step-2 dup guard and gets the clearer "already linked" message.
     console.error("[linkClubPlayerAction]", upErr);
     return { error: t("club.linkFailed") };
   }
@@ -226,7 +232,13 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
   // guard above and this write. Report it instead of a false success.
   if (!updated) return { error: t("club.linkTargetNotGuest") };
 
-  await sb.from("club_link_requests").update({ status: "matched" }).eq("id", requestId);
+  const { error: matchErr } = await sb
+    .from("club_link_requests")
+    .update({ status: "matched" })
+    .eq("id", requestId);
+  // Link already succeeded; a failed status flip only leaves a stale pool row (a
+  // re-link hits the dup guard, and realtime/refresh re-reads it) — log, don't fail.
+  if (matchErr) console.error("[linkClubPlayerAction] status=matched", matchErr);
   await writeClubAudit(sb, clubId, session, "player_linked", `${target.display_name} ← ${profileId}`);
 
   // 6. Fire-and-forget confirmation push (never blocks or fails the link).
@@ -263,16 +275,21 @@ export async function dismissClubLinkRequestAction(input: DismissClubLinkInput) 
     return { error: t("club.noPermission") };
   }
 
-  const { error } = await sb
+  const { data: dismissed, error } = await sb
     .from("club_link_requests")
     .update({ status: "rejected" })
     .eq("id", requestId)
     .eq("club_id", clubId)
-    .eq("status", "pending");
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
   if (error) {
     console.error("[dismissClubLinkRequestAction]", error);
     return { error: t("club.linkFailed") };
   }
+  // 0 rows = already non-pending (matched, or another tab dismissed it): nothing to
+  // do — skip the audit + revalidate rather than logging a phantom dismissal.
+  if (!dismissed) return { ok: true as const, noop: true as const };
 
   await writeClubAudit(sb, clubId, session, "link_dismissed", requestId);
   revalidatePath(`/clubs/${clubId}`);

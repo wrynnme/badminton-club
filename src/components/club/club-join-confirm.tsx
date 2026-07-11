@@ -17,16 +17,21 @@ import { requestClubLinkAction } from "@/lib/actions/club-linking";
 export function ClubJoinConfirm({ token, clubName }: { token: string; clubName: string }) {
   const t = useTranslations("club.linking");
   const [pending, start] = useTransition();
-  const [done, setDone] = useState(false);
+  // null = not submitted yet. Otherwise the action's resolved state: "already_linked"
+  // (a manager linked this player in the race between page render and this tap) vs
+  // "pending" (dropped into the pool). Showing the right one avoids telling a
+  // just-linked player their request is still "awaiting approval".
+  const [done, setDone] = useState<"pending" | "already_linked" | null>(null);
 
   if (done) {
+    const linked = done === "already_linked";
     return (
       <div className="flex items-start gap-2 rounded-md border border-green-500/30 bg-green-500/5 p-3">
         <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
         <div className="space-y-0.5">
-          <p className="text-sm font-medium">{t("joinPendingTitle")}</p>
+          <p className="text-sm font-medium">{t(linked ? "joinAlreadyTitle" : "joinPendingTitle")}</p>
           <p className="text-xs text-muted-foreground">
-            {t("joinPendingDesc", { club: clubName })}
+            {t(linked ? "joinAlreadyDesc" : "joinPendingDesc", { club: clubName })}
           </p>
         </div>
       </div>
@@ -40,7 +45,7 @@ export function ClubJoinConfirm({ token, clubName }: { token: string; clubName: 
         toast.error(res.error);
         return;
       }
-      setDone(true);
+      setDone(res && "state" in res && res.state === "already_linked" ? "already_linked" : "pending");
     });
 
   return (
