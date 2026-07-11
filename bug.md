@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-11 (feature verify → ✅ PASS · net-zero live-smoke) — LINE linking (v0.28.0)
+
+ฟีเจอร์ใหม่ "เชื่อมผู้เล่นในก๊วนกับ LINE" (grill-with-docs → build). Gate: tsc 0 · vitest 825/825 (ไม่มี test ใหม่ — logic เป็น DB-guard ไม่มี pure helper ให้แยก; เพิ่ม assertion `toPublicClub` redact `join_token`) · i18n club 882=882 / actions 243=243 · build OK. **Net-zero Playwright smoke ผ่านครบ 6 จุด** (seed throwaway club+owner+guest+player profile, minted cookies): (A) join page render ให้ player, (B) player กด → `club_link_requests` pending, (C) manager pool เห็น player, (D) link → `club_players.profile_id` set, (E) request → matched, (F) name-choice default = คงชื่อเดิม. Teardown 0 rows ทุกตาราง. line_user_id ของ player = null → ไม่มี push จริงไป LINE. Migration `20260711000100_club_line_link` applied prod (additive). รายละเอียดใน `spec.md` → "LINE linking" + `docs/adr/0001`.
+
+### 2026-07-11 (ship-check re-verify → ✅ PASS) — LINE linking (v0.28.0)
+
+`/ship-check` หลัง build เสร็จ. **Phase 1 (code-review)** เจอ 1 P2 correctness: `linkClubPlayerAction` เดิม UPDATE `club_players` โดยไม่ตรวจ rows-affected → ถ้ามี concurrent link ชนกันระหว่าง guard กับ write จะรายงาน success ทั้งที่ 0 rows โดน. แก้: `.select("id").maybeSingle()` + `if (!updated) return linkTargetNotGuest`. **Phase 2 (standards)**: ยุบ type drift — ลบ `ClubLinkRequest`/`ClubLinkRequestStatus` ที่ไม่มีใครใช้ เหลือ `ClubLinkPoolRequest` (ตัด `profile_id`/`club_id`/`status`/`created_at` ที่ client ไม่ใช้ ทั้งใน type, `page.tsx` fetch select, และ derive map); เพิ่ม Tooltip ครบ 6 ปุ่มใหม่ (generate/revoke/link/dismiss/confirm/cancel) ด้วย pattern `TooltipTrigger render={<Button/>}`; dedup `SelectValue` ให้ reuse `selectedGuest`; reconcile ADR wording (unlink อยู่ใน edit dialog ของผู้เล่นในแท็บเช็คอิน ไม่ใช่บน roster row). Re-gate: tsc 0 · vitest 825/825 · i18n club **888=888** / actions 243=243 · build OK (Turbopack). **Re-smoke net-zero บนโค้ดสุดท้าย** (browser จริง, manager cookie): pool render pending (ยืนยัน narrowed select) → dialog SelectValue โชว์ชื่อ guest (ยืนยัน dedup) → confirm → DB: `profile_id` set + display_name คงเดิม + request matched + audit=1 → หลัง reload pool = "รอจับคู่ (0)". Console 0 error/0 warning (server Turbopack ปัจจุบัน). Teardown 0 rows ทุกตาราง.
+
 ### 2026-07-10 (ship-check #2 → ✅ PASS · browser smoke net-zero ผ่าน) — Bulk update หน้าคิว: UI polish + 8 fixes (v0.27.0)
 
 - ขอบเขต: diff `origin/master...develop` (ฟีเจอร์ bulk + ปุ่มเลือกหลายรายการเข้าแถว toolbar + `headerActions` ในแท็บลงชื่อ). code-review high-effort (4 finder + verify): **0 P0 · 0 P1 · 8 P2/P3** — core safety ผ่าน (court/ผู้เล่นไม่ชน, sequential delete กัน deadlock, permission/tenant รัดกุม, i18n parity). ผู้ใช้เลือก "แก้ทั้งหมด #1–8 + cleanup".

@@ -101,7 +101,15 @@
     "rebuildOnlyPending": "Only pending matches can be re-rolled",
     "rebuildNoPlayers": "Not enough free players to re-roll this match",
     "rebuildNoSwap": "Everyone is already queued — no free player to swap in. Use Rebuild + reshuffle for the whole queue instead",
-    "rebuildSwapFailed": "Couldn't re-roll right now — please try again"
+    "rebuildSwapFailed": "Couldn't re-roll right now — please try again",
+    "linkTokenFailed": "Couldn't update the join link",
+    "linkInvalidToken": "The join link is invalid or has been revoked",
+    "linkRequestFailed": "Couldn't send the request",
+    "linkRequestNotFound": "Link request not found or already handled",
+    "linkAlreadyLinked": "This LINE account is already linked to {name}",
+    "linkTargetNotFound": "Player to match not found",
+    "linkTargetNotGuest": "This player is already linked to another account",
+    "linkFailed": "Couldn't match"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",

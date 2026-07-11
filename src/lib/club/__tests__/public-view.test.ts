@@ -33,6 +33,7 @@ const baseClub: Club = {
     bank: { name: "ธนาคารลับ", account_no: "1234567890", account_name: "เจ้าของก๊วน" },
   },
   receipt_logo_url: "https://example.com/logo.png",
+  join_token: "secret-join-token",
 };
 
 const basePlayer: ClubPlayer = {
@@ -72,6 +73,8 @@ describe("toPublicClub", () => {
     expect(pub.promptpay_qr_image).toBeNull();
     // receipt_template can hold bank-account details → must be redacted on the public view
     expect(pub.receipt_template).toEqual({});
+    // join_token is a secret share token → never exposed publicly
+    expect(pub.join_token).toBeNull();
     expect(pub.receipt_logo_url).toBeNull();
   });
 

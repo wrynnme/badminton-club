@@ -28,10 +28,13 @@ uses only the **global** level set — do not conflate it with club `level_id`.
 
 - **Roster player** — a `club_players` row. Either a **guest** (`profile_id IS
   NULL`, name-only, added by a manager) or **profile-linked** (`profile_id` set — a
-  real LINE account, e.g. via preset regulars). A guest's `display_name` is editable;
-  a profile-linked player keeps their LINE account name.
+  real LINE account). A row becomes profile-linked in one of two ways: a **preset
+  regular** seeds a *new* row that adopts the LINE account name, or a **LINE link**
+  (see below) attaches a profile to an *existing* guest row — which keeps its
+  manager-curated `display_name` by default. A guest's `display_name` is always
+  editable; a profile-linked player's name stays editable by a manager too.
 - **Manager** — the club **owner** or a **co-admin** (`canManage` / `assertCanManageClub`).
-  Only managers may add or edit roster players or manage the level catalog.
+  Only managers may add or edit roster players, manage the level catalog, or run LINE linking.
 
 ## Club presets
 
@@ -149,3 +152,33 @@ court allocator is the pure helper `planBulkStartCourts` (`src/lib/club/bulk-sta
   `{deleted, failed}` …). Cancel/delete keep **parity with the single actions** — they
   do not newly clear downstream `winner_next_match_id` feeder pointers (a pre-existing
   caveat, out of scope for this feature).
+
+## LINE linking (เชื่อม LINE)
+
+Design locked 2026-07-11 (grilled). Attaches a real LINE account to an existing
+**guest** roster player so outbound pushes (bills, notifications) reach them —
+closing the `skippedNoLine` gap in club billing. v1 is **outbound-only and
+club-only**; the tournament roster (`team_players`) is out of scope (no consumer).
+See ADR 0001.
+
+- **LINE link (เชื่อม)** — the manager action that attaches a profile to an existing
+  guest `club_players` row by setting its `profile_id`. Distinct from a **Meet** and
+  from a **club_match** (a game) — "link" never refers to a badminton match. The UI
+  verb is "จับคู่ LINE". A link is manager-confirmed, never automatic.
+- **Join link (ลิงก์เข้าร่วมก๊วน)** — a per-club stable token (`clubs.join_token`,
+  unique/nullable, mirrors `tournaments.share_token`) that a manager generates and
+  shares. A player who opens it and logs in with LINE places their profile into the
+  club's **link pool**. Distinct from `share_token`, which grants public read-only
+  view of a tournament — a join link instead *collects* a would-be member.
+- **Link request (คำขอเชื่อม)** — a `club_link_requests` row: a profile that opted
+  into a club via the join link and awaits a manager to link it. `status` is
+  `pending` | `matched` | `rejected`; `UNIQUE(club_id, profile_id)` makes a repeat
+  login idempotent (upsert), never a duplicate.
+- **Link pool / รอจับคู่** — the set of `pending` link requests for a club, shown to
+  managers with each profile's LINE name + picture. A manager either **links** a
+  request to a guest row or **dismisses** it (`status = rejected`) — e.g. a stranger
+  who opened the link.
+- **Name-on-link choice** — when a manager links, a dialog asks whether the roster
+  `display_name` stays the manager-curated name (default) or adopts the LINE account
+  name. The identity on the roster is the club's, not LINE's, unless the manager opts
+  in.

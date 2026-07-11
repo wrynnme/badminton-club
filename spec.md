@@ -338,6 +338,16 @@ team, pair_id, id_player_1*, id_player_2*, pair_name
 | Edit club / Expenses / Cost config / Queue / Locked / Match | ✓     | ✓        | ✗      |
 | Add/remove co-admins / Share link                           | ✓     | ✗        | ✗      |
 
+### LINE linking (เชื่อม LINE) — ✅ IMPLEMENTED 2026-07-11 (v0.28.0, develop; net-zero live-smoke PASS)
+
+Attaches a real LINE account to an existing **guest** `club_players` row so club billing/notification push reaches a player who was previously `profile_id IS NULL` (`skippedNoLine`). v1 = **club-only, outbound-push-only**. Design/decisions: `docs/adr/0001-line-linking-via-manager-confirmed-pool.md`; glossary: `CONTEXT.md` → "LINE linking". Rejected alternatives (direct claim link / pick-from-list / bot inbound) documented in the ADR.
+
+- **Mechanism** — manager-confirmed pool (NOT auto-claim): a per-club `clubs.join_token` (mirrors `tournaments.share_token`) → player opens `/clubs/join/[token]` + LINE Login → `requestClubLinkAction` upserts a `pending` row into `club_link_requests` → manager links it to a guest row or dismisses it.
+- **Schema** — migration `20260711000100_club_line_link` (applied prod): `clubs.join_token text` + partial-unique index `uniq_clubs_join_token (join_token) WHERE join_token IS NOT NULL`; table `club_link_requests` (id, club_id FK CASCADE, profile_id FK profiles CASCADE, status `pending|matched|rejected`, created_at, `UNIQUE(club_id, profile_id)`); RLS on + no policy (service-role only) + REVOKE anon/authenticated (club-table invariant). `join_token` redacted to null in `toPublicClub`.
+- **Actions** (`src/lib/actions/club-linking.ts`, all `createAdminClient` + `club_audit_logs`): `generateClubJoinTokenAction` / `revokeClubJoinTokenAction` (`assertCanManageClub`); `requestClubLinkAction(token)` (public — `session.profileId`, idempotent upsert, returns `pending`/`already_linked`); `linkClubPlayerAction({clubId, requestId, targetPlayerId, useLineName})` (guard: profile-already-linked-in-club → reject, target must be guest; sets `profile_id`, optional LINE-name adopt [default keep], marks `matched`, fire-and-forget `pushTextToUser` confirm); `dismissClubLinkRequestAction`; `unlinkClubPlayerAction` (`profile_id=NULL` + request → `pending`).
+- **UI** — `club-link-controls.tsx` (manager card in settings tab: `ShareLinkRow`+QR join link + pool list with link/dismiss + name-choice dialog); public `/clubs/join/[token]` server page (session-gated → LINE Login redirect; states join/pending/already-linked/invalid) + `club-join-confirm.tsx` client button; `sortable-player-list.tsx` PlayerRow gains a "LINE" linked badge + an unlink control in the edit dialog. i18n `club.linking.*` + `club.playerList.{linkedBadge,linkedLabel,unlink*}` + `actions.club.link*` (th/en parity).
+- **Verify (2026-07-11)** — tsc 0 · vitest 825/825 · i18n club 882=882 / actions 243=243 · build OK · **net-zero Playwright smoke PASS** (player join→pending row · manager link→`profile_id` set · request→matched · name-kept default; teardown 0 rows). Tournament `team_players` linking OUT of scope (no consumer).
+
 ### LINE sign-up import (วางรายชื่อจากไลน์) — ✅ IMPLEMENTED 2026-06-13 (develop, static green — ยังไม่ live-smoke/commit)
 
 วางข้อความ "ลงชื่อ" จากไลน์ → parse → preview ติ๊กเลือก → เพิ่มผู้เล่น guest เข้าก๊วนที่มีอยู่ทั้งชุด.
