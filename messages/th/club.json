@@ -806,7 +806,20 @@
     "unlinkButton": "ยกเลิกการเชื่อม LINE",
     "unlinkHint": "ผู้เล่นจะกลับเป็นแบบไม่ผูกบัญชี และไม่ได้รับบิล/แจ้งเตือนทาง LINE",
     "unlinkConfirm": "ยกเลิกการเชื่อม LINE ของ {name}?",
-    "unlinkDone": "ยกเลิกการเชื่อมแล้ว"
+    "unlinkDone": "ยกเลิกการเชื่อมแล้ว",
+    "linkKnownLabel": "เชื่อมบัญชี LINE",
+    "linkKnownButton": "เชื่อม LINE",
+    "linkKnownHint": "จับคู่ผู้เล่นคนนี้กับสมาชิกที่เคยสแกนเข้าก๊วนของคุณมาก่อน โดยไม่ต้องให้สแกนซ้ำ",
+    "linkKnownTitle": "เชื่อมบัญชี LINE",
+    "linkKnownDesc": "เลือกบัญชี LINE ที่จะเชื่อมกับ \"{name}\"",
+    "linkKnownSearch": "ค้นหาชื่อ…",
+    "linkKnownEmpty": "ยังไม่มีสมาชิกที่เคยสแกนเข้าก๊วนของคุณ (หรือเชื่อมครบแล้ว)",
+    "linkKnownNoMatch": "ไม่พบชื่อที่ค้นหา",
+    "linkKnownNameChoice": "ใช้ชื่อไหน",
+    "linkKnownKeepName": "ชื่อเดิม",
+    "linkKnownUseLineName": "ชื่อ LINE",
+    "linkKnownConfirm": "เชื่อม",
+    "linkKnownDone": "เชื่อมบัญชี LINE แล้ว"
   },
   "payment": {
     "collectTitle": "เก็บเงิน",
