@@ -273,7 +273,13 @@ export default async function ClubDetailPage({
                   headerActions={
                     canManage ? (
                       <>
-                        <AddGuestPlayer clubId={club.id} full={full} levels={levels} />
+                        <AddGuestPlayer
+                          clubId={club.id}
+                          full={full}
+                          levels={levels}
+                          sessionStart={club.start_time}
+                          sessionEnd={club.end_time}
+                        />
                         <LineImportDialog
                           clubId={club.id}
                           existingNames={players.map((p) => p.display_name)}

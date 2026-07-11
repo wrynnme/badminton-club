@@ -15,7 +15,11 @@
     "close": "ปิด",
     "toastSuccessActive": "เพิ่มผู้เล่นแล้ว",
     "toastSuccessReserve": "เพิ่มเป็นสำรองแล้ว (รอคิว)",
-    "validationName": "ระบุชื่อ"
+    "validationName": "ระบุชื่อ",
+    "moreOptions": "ตัวเลือกเพิ่มเติม",
+    "timeStartLabel": "เริ่ม",
+    "timeEndLabel": "เลิก",
+    "timeHint": "ว่างไว้ = ใช้เวลาก๊วน {start}–{end}"
   },
   "coAdmin": {
     "title": "ผู้ช่วยดูแล (Co-admin)",

@@ -15,7 +15,11 @@
     "close": "Close",
     "toastSuccessActive": "Player added",
     "toastSuccessReserve": "Added as reserve (queue)",
-    "validationName": "Enter a name"
+    "validationName": "Enter a name",
+    "moreOptions": "More options",
+    "timeStartLabel": "Start",
+    "timeEndLabel": "End",
+    "timeHint": "Leave blank = use club window {start}–{end}"
   },
   "coAdmin": {
     "title": "Co-admins",

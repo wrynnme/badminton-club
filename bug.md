@@ -10,6 +10,12 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-12 (✅ PASS · browser smoke net-zero ผ่าน) — ฟอร์มเพิ่มผู้เล่นในก๊วน รับ "เวลา มา–กลับ" (v0.28.0)
+
+- ขอบเขต: `feat/club-add-player-fields` (base develop @0.27.0). เพิ่ม `start_time`/`end_time` ให้ `AddGuestPlayer` ผ่าน collapsible "ตัวเลือกเพิ่มเติม" (progressive disclosure — quick-add ชื่อ·ระดับ·โน้ตคงเดิม) + ขยาย `addGuestPlayerAction` เป็น 2-step insert (RPC → time update) + thread `sessionStart`/`sessionEnd` จาก page (placeholder = club window) + i18n 4 keys th/en.
+- **browser smoke (Playwright, local dev :3000, authenticated manager cookie, net-zero prod seed `SMOKE_ADDTIME_`, club window 18:00–21:00):** ✅ ผ่าน — **(A)** เพิ่ม `SMOKE_NoTime` ไม่กางเวลา → DB `start_time=null, end_time=null`; **(B)** กาง "ตัวเลือกเพิ่มเติม" (placeholder ยืนยัน = 18:00/21:00 → session props thread ถูก) → กรอก 19:00–20:30 → เพิ่ม `SMOKE_WithTime` → DB `start_time=19:00:00, end_time=20:30:00`; toggle ยุบกลับหลัง submit. console **0 error** · teardown เหลือ **0 row** (club_players/clubs/profiles).
+- Gates: tsc 0 · vitest **825/825** · `next build` OK (RSC ผ่าน) · i18n th/en **club 845=845** (+4 keys `addGuestPlayer.{moreOptions,timeStartLabel,timeEndLabel,timeHint}`). **ไม่มี DB migration** (คอลัมน์ `club_players.start_time`/`end_time` มีอยู่แล้ว).
+
 ### 2026-07-10 (ship-check #2 → ✅ PASS · browser smoke net-zero ผ่าน) — Bulk update หน้าคิว: UI polish + 8 fixes (v0.27.0)
 
 - ขอบเขต: diff `origin/master...develop` (ฟีเจอร์ bulk + ปุ่มเลือกหลายรายการเข้าแถว toolbar + `headerActions` ในแท็บลงชื่อ). code-review high-effort (4 finder + verify): **0 P0 · 0 P1 · 8 P2/P3** — core safety ผ่าน (court/ผู้เล่นไม่ชน, sequential delete กัน deadlock, permission/tenant รัดกุม, i18n parity). ผู้ใช้เลือก "แก้ทั้งหมด #1–8 + cleanup".
