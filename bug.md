@@ -10,6 +10,28 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-11 (feature verify → ✅ PASS · net-zero live-smoke) — LINE linking (v0.28.0)
+
+ฟีเจอร์ใหม่ "เชื่อมผู้เล่นในก๊วนกับ LINE" (grill-with-docs → build). Gate: tsc 0 · vitest 825/825 (ไม่มี test ใหม่ — logic เป็น DB-guard ไม่มี pure helper ให้แยก; เพิ่ม assertion `toPublicClub` redact `join_token`) · i18n club 882=882 / actions 243=243 · build OK. **Net-zero Playwright smoke ผ่านครบ 6 จุด** (seed throwaway club+owner+guest+player profile, minted cookies): (A) join page render ให้ player, (B) player กด → `club_link_requests` pending, (C) manager pool เห็น player, (D) link → `club_players.profile_id` set, (E) request → matched, (F) name-choice default = คงชื่อเดิม. Teardown 0 rows ทุกตาราง. line_user_id ของ player = null → ไม่มี push จริงไป LINE. Migration `20260711000100_club_line_link` applied prod (additive). รายละเอียดใน `spec.md` → "LINE linking" + `docs/adr/0001`.
+
+### 2026-07-11 (ship-check re-verify → ✅ PASS) — LINE linking (v0.28.0)
+
+`/ship-check` หลัง build เสร็จ. **Phase 1 (code-review)** เจอ 1 P2 correctness: `linkClubPlayerAction` เดิม UPDATE `club_players` โดยไม่ตรวจ rows-affected → ถ้ามี concurrent link ชนกันระหว่าง guard กับ write จะรายงาน success ทั้งที่ 0 rows โดน. แก้: `.select("id").maybeSingle()` + `if (!updated) return linkTargetNotGuest`. **Phase 2 (standards)**: ยุบ type drift — ลบ `ClubLinkRequest`/`ClubLinkRequestStatus` ที่ไม่มีใครใช้ เหลือ `ClubLinkPoolRequest` (ตัด `profile_id`/`club_id`/`status`/`created_at` ที่ client ไม่ใช้ ทั้งใน type, `page.tsx` fetch select, และ derive map); เพิ่ม Tooltip ครบ 6 ปุ่มใหม่ (generate/revoke/link/dismiss/confirm/cancel) ด้วย pattern `TooltipTrigger render={<Button/>}`; dedup `SelectValue` ให้ reuse `selectedGuest`; reconcile ADR wording (unlink อยู่ใน edit dialog ของผู้เล่นในแท็บเช็คอิน ไม่ใช่บน roster row). Re-gate: tsc 0 · vitest 825/825 · i18n club **888=888** / actions 243=243 · build OK (Turbopack). **Re-smoke net-zero บนโค้ดสุดท้าย** (browser จริง, manager cookie): pool render pending (ยืนยัน narrowed select) → dialog SelectValue โชว์ชื่อ guest (ยืนยัน dedup) → confirm → DB: `profile_id` set + display_name คงเดิม + request matched + audit=1 → หลัง reload pool = "รอจับคู่ (0)". Console 0 error/0 warning (server Turbopack ปัจจุบัน). Teardown 0 rows ทุกตาราง.
+
+### 2026-07-11 (realtime + focused bug-hunt → ✅ PASS) — LINE linking (v0.28.0)
+
+ต่อจาก ship-check: (ก) user ขอให้ **รายชื่อ pool "รอจับคู่ LINE" เป็น realtime**, (ข) user สั่ง "จัดการบัค" → เลือกหา bug ในฟีเจอร์ LINE-link.
+
+- **Realtime**: club ใช้ Broadcast-from-DB (ไม่ใช่ postgres_changes — club tables ล็อก RLS จาก anon). trigger `club_queue_broadcast()` เป็น generic (อ่าน `club_id`+`tg_table_name`) → เพิ่ม trigger ตัวที่ 3 บน `club_link_requests` reuse function เดิม (migration `20260711000200`, applied prod). **ไม่ต้องแก้ client** — `ClubLiveWrapper` ครอบทั้งหน้ารวมแท็บตั้งค่าอยู่แล้ว; broadcast ส่งแค่ signal `{club_id, table}` ไม่มี `profile_id` ขึ้น channel. **live-smoke จริง**: เปิดหน้า manager ค้าง → SQL INSERT pending → pool `รอจับคู่ (0)`→`(1)` + ชื่อ player โผล่ **โดยไม่ navigate** · console 0 error · teardown 0 rows.
+- **bug-hunt (2 adversarial reviewers ขนาน — server-logic + join/UI)**: 0 P0. เจอ + แก้:
+  - **P1 double-link race** — `linkClubPlayerAction` guard `.is("profile_id",null)` กันแค่ 2 profiles แย่ง row เดียวกัน แต่ไม่กัน 1 profile ผูก 2 rows พร้อมกัน (2 manager tabs, requestId เดียว, targetPlayerId ต่างกัน) → billing นับซ้ำ + push 2 ครั้ง. comment เดิมอ้าง `UNIQUE(club_id,profile_id)` ผิด (UNIQUE นั้นอยู่บน `club_link_requests` ไม่ใช่ `club_players`). **แก้**: migration `20260711000300` partial-unique `uniq_club_players_profile (club_id, profile_id) WHERE profile_id IS NOT NULL` (verified prod 0 existing dups ก่อนสร้าง) + แก้ comment + note 23505.
+  - **P2 join-confirm เพิกเฉย state** — `club-join-confirm.tsx` แสดง "รออนุมัติ" เสมอ แม้ action คืน `already_linked` (race: manager ผูกก่อนผู้เล่นกด) → ผู้เล่นถูกบอกผิด. **แก้**: branch `already_linked` vs `pending` (ใช้ i18n `joinAlready*` ที่มีอยู่).
+  - **P3 dismiss false-success** — dismiss บน request ที่ไม่ pending คืน `ok:true` + เขียน audit หลอก. **แก้**: `.select("id").maybeSingle()` → 0 rows คืน `noop`, ข้าม audit.
+  - **P3 matched-write ไม่เช็ค error** — `update({status:'matched'})` ไม่มี error check. **แก้**: capture + `console.error` (self-heal, ไม่ fail link).
+  - **P3 pool ไม่ live-update** — reviewer เจอ → **แก้แล้วด้วย realtime ข้างบน**.
+  - **P2 dismiss ไม่ sticky** (dismissed → re-tap → กลับ pending): **ปล่อยไว้ v1** โดยตั้งใจ — token revoke ได้ + pool ต้อง manager ยืนยันเสมอ (ไม่ใช่ access bypass); member-check กัน matched ไม่ให้ฟื้น. รอ user ตัดสินถ้าจะ harden.
+- Re-gate: tsc 0 · vitest 825/825 · i18n club 888=888 / actions 243=243 · build OK · re-smoke link happy-path (final code + index live) PASS.
+
 ### 2026-07-10 (ship-check #2 → ✅ PASS · browser smoke net-zero ผ่าน) — Bulk update หน้าคิว: UI polish + 8 fixes (v0.27.0)
 
 - ขอบเขต: diff `origin/master...develop` (ฟีเจอร์ bulk + ปุ่มเลือกหลายรายการเข้าแถว toolbar + `headerActions` ในแท็บลงชื่อ). code-review high-effort (4 finder + verify): **0 P0 · 0 P1 · 8 P2/P3** — core safety ผ่าน (court/ผู้เล่นไม่ชน, sequential delete กัน deadlock, permission/tenant รัดกุม, i18n parity). ผู้ใช้เลือก "แก้ทั้งหมด #1–8 + cleanup".

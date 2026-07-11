@@ -9,6 +9,7 @@ import { useTranslations } from "next-intl";
 import {
   RefreshCw, GripVertical, CheckCircle2, Circle, Loader2, Clock,
   CheckCheck, Users, Trash2, AlertTriangle, Pencil, Gauge, ListChecks, Check,
+  Link2, Link2Off,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -70,6 +71,7 @@ import {
   bulkUpdateClubPlayerSessionAction,
   bulkDeleteClubPlayersAction,
 } from "@/lib/actions/club-players";
+import { unlinkClubPlayerAction } from "@/lib/actions/club-linking";
 import type { ClubPlayer, Level } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -215,6 +217,21 @@ function EditPlayerForm({
   const [startVal, setStartVal] = useState(player.start_time?.slice(0, 5) ?? clubStartPlaceholder);
   const [endVal, setEndVal] = useState(player.end_time?.slice(0, 5) ?? clubEndPlaceholder);
   const [pending, start] = useTransition();
+  const [unlinkPending, startUnlink] = useTransition();
+
+  function handleUnlink() {
+    if (!confirm(t("unlinkConfirm", { name: player.display_name }))) return;
+    startUnlink(async () => {
+      const res = await unlinkClubPlayerAction({ clubId, playerId: player.id });
+      if (res && "error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(t("unlinkDone"));
+      router.refresh();
+      onOpenChange(false);
+    });
+  }
 
   // Reseed on open only — while closed, a background refresh must not clobber
   // an in-progress edit; on open we want the freshest server values.
@@ -331,6 +348,29 @@ function EditPlayerForm({
               className="text-sm"
             />
           </div>
+
+          {/* LINE account — unlink a profile-linked player back to a guest row. */}
+          {!isGuest && (
+            <div className="space-y-1 border-t pt-3">
+              <Label className="text-xs text-muted-foreground">{t("linkedLabel")}</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 text-destructive hover:text-destructive"
+                disabled={unlinkPending}
+                onClick={handleUnlink}
+              >
+                {unlinkPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Link2Off className="h-3.5 w-3.5" />
+                )}
+                {t("unlinkButton")}
+              </Button>
+              <p className="text-[11px] text-muted-foreground">{t("unlinkHint")}</p>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="gap-2">
@@ -897,6 +937,12 @@ function PlayerRowBody({
           const label = player.level_id ? levels?.find((l) => l.id === player.level_id)?.label : undefined;
           return label ? <Badge variant="outline">{label}</Badge> : null;
         })()}
+        {player.profile_id != null && (
+          <Badge variant="secondary" className="gap-1">
+            <Link2 className="h-3 w-3" />
+            {t("linkedBadge")}
+          </Badge>
+        )}
         {player.note && (
           <span className="text-muted-foreground text-xs hidden sm:inline">— {player.note}</span>
         )}

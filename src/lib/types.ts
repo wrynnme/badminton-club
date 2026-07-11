@@ -56,6 +56,10 @@ export type Club = {
   // PromptPay only). receipt_logo_url = uploaded header logo (mirror promptpay_qr_image).
   receipt_template: Record<string, unknown>;
   receipt_logo_url: string | null;
+  // Per-club LINE-linking join token (mirror tournaments.share_token). A manager shares
+  // it; a player who opens /clubs/join/[token] and logs in drops a pending link request
+  // into the pool. null = no join link generated. See docs/adr/0001.
+  join_token: string | null;
 };
 
 // Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").
@@ -93,6 +97,15 @@ export type ClubPlayer = {
   bill_amount: number | null; // amount snapshotted when the LINE bill was pushed
   paid_method: "promptpay_slip" | "manual" | null; // how paid_at was set
   bill_pushed_at: string | null; // ISO; null = bill not pushed
+};
+
+// A pending LINE-link request as shown to a manager in the pool: a profile that opted
+// into a club via its join link, awaiting a manager to link it to a guest club_players
+// row. Only the fields the pool UI needs (the link dialog acts by request id). Neither
+// line_user_id (PII) nor profile_id (unused by the UI) reaches the client. See docs/adr/0001.
+export type ClubLinkPoolRequest = {
+  id: string;
+  profile: Pick<Profile, "id" | "display_name" | "picture_url">;
 };
 
 // Locked pair: two players forced to be teammates by the rotation queue.
