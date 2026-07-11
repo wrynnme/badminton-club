@@ -10,6 +10,12 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-12 (✅ PASS · browser smoke net-zero ผ่าน) — หน้าคิวก๊วน: ปุ่ม "กลับไปรอแข่ง" บนการ์ดกำลังแข่ง (v0.28.0)
+
+- ขอบเขต: `feat/club-cancel-inprogress-match` (base develop @0.27.0). action ใหม่ `revertClubMatchToPendingAction` (in_progress→pending, inverse ของ start; คง queue_position เดิม, ล้าง court+started_at+shuttles_used, rows-affected guard → `matchNotInProgress`) + ปุ่ม `Undo2` "กลับไปรอแข่ง" บน `InProgressRow` + confirm dialog (controlled `<Dialog>`) ใน `club-queue-panel.tsx` + i18n 7 keys `queuePanel.revert*/toastReverted` + 1 error key `actions.club.matchNotInProgress`. **ไม่มี migration** (พลิก status; occupancy index เป็น in_progress-only อยู่แล้ว).
+- **browser smoke (Playwright, local dev :3000, authenticated manager cookie, net-zero prod seed `SMOKE_REVERT_`):** ✅ ผ่าน — seed M1(in_progress, สนาม 1, qp=1, shuttles=3) + M2(pending, qp=2) → เข้าแท็บ "ล็อคคู่ + คิว" → การ์ดกำลังแข่งมีปุ่ม "กลับไปรอแข่ง" (count=1) → กด → confirm dialog (title "กลับไปรอแข่ง?" + body "ตำแหน่งเดิม") → ยืนยัน → **DB: M1 `status=pending, court=null, started_at=null, shuttles_used=0, queue_position=1`** (คงตำแหน่งเดิม → sort เหนือ M2 qp=2), M2 ไม่ถูกแตะ → reload: การ์ดกำลังแข่งหายสนิท (revert/finish buttons=0). console **0 error** · teardown เหลือ **0 row** (club_matches/club_players/clubs/profiles).
+- Gates: tsc 0 · vitest **825/825** · `next build` OK (RSC ผ่าน) · i18n th/en **club 848=848 · actions 236=236**.
+
 ### 2026-07-10 (ship-check #2 → ✅ PASS · browser smoke net-zero ผ่าน) — Bulk update หน้าคิว: UI polish + 8 fixes (v0.27.0)
 
 - ขอบเขต: diff `origin/master...develop` (ฟีเจอร์ bulk + ปุ่มเลือกหลายรายการเข้าแถว toolbar + `headerActions` ในแท็บลงชื่อ). code-review high-effort (4 finder + verify): **0 P0 · 0 P1 · 8 P2/P3** — core safety ผ่าน (court/ผู้เล่นไม่ชน, sequential delete กัน deadlock, permission/tenant รัดกุม, i18n parity). ผู้ใช้เลือก "แก้ทั้งหมด #1–8 + cleanup".
