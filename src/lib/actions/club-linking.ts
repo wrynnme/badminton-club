@@ -46,6 +46,21 @@ async function writeClubAudit(
   });
 }
 
+/**
+ * Fire-and-forget "you're now linked" push to a freshly-linked player. The club-name
+ * fetch is awaited; the push itself is not (never blocks or fails the link). No-op when
+ * the profile has no LINE id. Shared by linkClubPlayerAction + linkKnownProfileAction.
+ */
+async function pushLinkConfirm(sb: AdminClient, clubId: string, lineUserId: string | null) {
+  if (!lineUserId) return;
+  const { data: club } = await sb.from("clubs").select("name").eq("id", clubId).maybeSingle();
+  const clubName = club?.name ?? "";
+  void pushTextToUser(
+    lineUserId,
+    `✅ เชื่อมบัญชี LINE กับก๊วน "${clubName}" เรียบร้อยแล้ว — จากนี้จะได้รับบิลและการแจ้งเตือนทาง LINE`,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Manager: generate / revoke the per-club join link token
 // ---------------------------------------------------------------------------
@@ -243,14 +258,7 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
   await writeClubAudit(sb, clubId, session, "player_linked", `${target.display_name} ← ${profileId}`);
 
   // 6. Fire-and-forget confirmation push (never blocks or fails the link).
-  if (profile.line_user_id) {
-    const { data: club } = await sb.from("clubs").select("name").eq("id", clubId).maybeSingle();
-    const clubName = club?.name ?? "";
-    void pushTextToUser(
-      profile.line_user_id,
-      `✅ เชื่อมบัญชี LINE กับก๊วน "${clubName}" เรียบร้อยแล้ว — จากนี้จะได้รับบิลและการแจ้งเตือนทาง LINE`,
-    );
-  }
+  await pushLinkConfirm(sb, clubId, profile.line_user_id);
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true as const };
@@ -393,11 +401,14 @@ export async function listLinkableKnownProfilesAction(clubId: string) {
   const myClubIds = await managerClubIds(sb, session.profileId);
   if (myClubIds.length === 0) return { ok: true as const, profiles: [] as LinkableKnownProfile[] };
 
-  // Profiles that opted into any of my clubs (any status = they consented once).
+  // Profiles that opted into any of my clubs, excluding ones a manager explicitly
+  // dismissed (status=rejected) — a dismiss means "not this person", so the picker
+  // must not silently resurface them.
   const { data: reqs } = await sb
     .from("club_link_requests")
     .select("profile_id")
-    .in("club_id", myClubIds);
+    .in("club_id", myClubIds)
+    .neq("status", "rejected");
   const candidateIds = [...new Set((reqs ?? []).map((r) => r.profile_id))];
   if (candidateIds.length === 0) return { ok: true as const, profiles: [] as LinkableKnownProfile[] };
 
@@ -461,6 +472,7 @@ export async function linkKnownProfileAction(input: LinkKnownProfileInput) {
     .select("id")
     .eq("profile_id", profileId)
     .in("club_id", myClubIds)
+    .neq("status", "rejected") // a dismissed request must not be re-linkable — mirrors the picker list
     .limit(1)
     .maybeSingle();
   if (!consent) return { error: t("club.linkRequestNotFound") };
@@ -528,14 +540,7 @@ export async function linkKnownProfileAction(input: LinkKnownProfileInput) {
   await writeClubAudit(sb, clubId, session, "player_linked", `${target.display_name} ← ${profileId}`);
 
   // 7. Fire-and-forget confirmation push (never blocks or fails the link).
-  if (profile.line_user_id) {
-    const { data: club } = await sb.from("clubs").select("name").eq("id", clubId).maybeSingle();
-    const clubName = club?.name ?? "";
-    void pushTextToUser(
-      profile.line_user_id,
-      `✅ เชื่อมบัญชี LINE กับก๊วน "${clubName}" เรียบร้อยแล้ว — จากนี้จะได้รับบิลและการแจ้งเตือนทาง LINE`,
-    );
-  }
+  await pushLinkConfirm(sb, clubId, profile.line_user_id);
 
   revalidatePath(`/clubs/${clubId}`);
   return { ok: true as const };

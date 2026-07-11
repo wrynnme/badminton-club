@@ -418,7 +418,6 @@ function EditPlayerForm({
         guestName={player.display_name}
         open={linkOpen}
         onOpenChange={setLinkOpen}
-        onLinked={() => onOpenChange(false)}
       />
     )}
     </>
@@ -433,14 +432,12 @@ function LinkKnownDialog({
   guestName,
   open,
   onOpenChange,
-  onLinked,
 }: {
   clubId: string;
   targetPlayerId: string;
   guestName: string;
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onLinked: () => void;
 }) {
   const t = useTranslations("club.playerList");
   const router = useProgressRouter();
@@ -479,7 +476,10 @@ function LinkKnownDialog({
   const shown = q
     ? profiles.filter((p) => p.display_name.toLowerCase().includes(q))
     : profiles;
-  const selected = profiles.find((p) => p.id === selectedId);
+  // Resolve against the FILTERED list, not the full one: if a search query hides the
+  // picked row, `selected` becomes undefined so the name-choice card + confirm disable
+  // instead of letting the manager confirm a selection they can no longer see.
+  const selected = shown.find((p) => p.id === selectedId);
 
   const confirm = () =>
     start(async () => {
@@ -495,8 +495,10 @@ function LinkKnownDialog({
       }
       toast.success(t("linkKnownDone"));
       router.refresh();
+      // Close only THIS picker; leave the edit dialog open so focus returns to its
+      // "เชื่อม LINE" trigger (still mounted) rather than falling to <body> when both
+      // nested dialogs close in the same tick. The row re-renders to its linked state.
       onOpenChange(false);
-      onLinked();
     });
 
   return (
@@ -589,7 +591,7 @@ function LinkKnownDialog({
           <DialogClose render={
             <Button variant="outline" disabled={pending}>{t("renameCancel")}</Button>
           } />
-          <Button onClick={confirm} disabled={pending || !selectedId}>
+          <Button onClick={confirm} disabled={pending || !selected}>
             {pending ? (
               <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />{t("linkKnownConfirm")}</>
             ) : (

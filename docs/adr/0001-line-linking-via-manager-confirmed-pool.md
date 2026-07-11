@@ -85,8 +85,9 @@ this club is empty, so they'd have to ask the player to scan again.
 
 The addition: a "เชื่อม LINE" button in the guest row's edit dialog opens a picker of
 **known profiles** — anyone with a `club_link_requests` row in *any* club the manager
-owns or co-admins (any status), minus profiles already linked in this club. The manager
-picks one and links directly (`linkKnownProfileAction`), skipping the pool.
+owns or co-admins (any status **except `rejected`**, so a dismissed request stays
+dismissed), minus profiles already linked in this club. The manager picks one and links
+directly (`linkKnownProfileAction`), skipping the pool.
 
 - **Consent scope decision**: consent flows from the player having opted into the
   manager's *ecosystem* (any of their clubs), not strictly into this one club. Rationale:
