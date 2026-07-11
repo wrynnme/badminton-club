@@ -8,6 +8,9 @@ import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 import { resolveActiveLevelIds } from "@/lib/club/levels";
 
+// "HH:MM" (24h) — shared validator for per-player session-window inputs.
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 /**
  * True when `levelId` belongs to the club's active level set (club-scoped rows
  * if the club has customized its ladder, else the global rows). The FK on
@@ -32,6 +35,9 @@ function guestSchema(nameRequiredMsg: string, nameTooLongMsg: string) {
     display_name: z.string().min(1, nameRequiredMsg).max(60, nameTooLongMsg),
     level_id: z.string().uuid().optional().nullable(),
     note: z.string().optional().nullable(),
+    // Per-player session window; null = use the club window (same as edit/CSV).
+    start_time: z.string().regex(TIME_RE).optional().nullable(),
+    end_time: z.string().regex(TIME_RE).optional().nullable(),
   });
 }
 // Static fallback for type inference only; call sites pass translated messages.
@@ -69,7 +75,7 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
   // in one transaction — so concurrent adds at the cap can't overshoot
   // max_players (the previous read-then-insert could). Auto-promoted when an
   // active player later leaves.
-  const { error } = await sb.rpc("add_club_player", {
+  const { data: inserted, error } = await sb.rpc("add_club_player", {
     p_club_id: parsed.data.club_id,
     p_display_name: parsed.data.display_name.trim(),
     p_level_id: parsed.data.level_id || null,
@@ -77,6 +83,19 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
   });
   if (error) {
     return { error: error.message.includes("club not found") ? t("club.clubNotFound") : error.message };
+  }
+
+  // The RPC doesn't take a session window, so apply it in a follow-up update
+  // by the freshly-inserted row id (mirror importClubPlayersAction). null = use
+  // the club window. A failure here isn't fatal — the player is already added.
+  if (inserted?.id && (parsed.data.start_time || parsed.data.end_time)) {
+    await sb
+      .from("club_players")
+      .update({
+        start_time: parsed.data.start_time || null,
+        end_time: parsed.data.end_time || null,
+      })
+      .eq("id", inserted.id);
   }
 
   revalidatePath(`/clubs/${parsed.data.club_id}`);
@@ -255,8 +274,6 @@ export async function updateClubPlayerDiscountAction(
 }
 
 // ─── Batch LINE import ────────────────────────────────────────────────────────
-
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 const playerWithTimeSchema = z.object({
   name: z.string().min(1).max(60),
