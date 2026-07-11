@@ -391,8 +391,8 @@
   },
   "tabs": {
     "dashboard": "Dashboard",
-    "checkin": "Sign in / Check in",
-    "queue": "Locked pairs + Queue",
+    "checkin": "Players",
+    "queue": "Queue",
     "cost": "Costs",
     "settings": "Settings",
     "unsavedWarning": "You have unsaved changes. Leave without saving?"
