@@ -60,6 +60,11 @@ export type Club = {
   // it; a player who opens /clubs/join/[token] and logs in drops a pending link request
   // into the pool. null = no join link generated. See docs/adr/0001.
   join_token: string | null;
+  // Bound LINE group chat id (C…) for group billing (push bill+QR+@mentions into
+  // the group, bucketed by amount). Captured when a manager posts the bind command
+  // + join_token in the group (LINE only exposes groupId via webhook). null = not
+  // bound. Enforced unique across clubs via uniq_clubs_line_group_id.
+  line_group_id: string | null;
 };
 
 // Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").

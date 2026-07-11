@@ -144,6 +144,52 @@ export async function replyMessage(
 }
 
 // ---------------------------------------------------------------------------
+// pushMessagesToGroup
+// ---------------------------------------------------------------------------
+
+/**
+ * Push an arbitrary array of LINE message objects to a group (or room, or user)
+ * — the `to` field of the Messaging API accepts a group id (`C...`), room id
+ * (`R...`) or user id (`U...`) interchangeably.
+ *
+ * Used by the group-billing flow to deliver, per amount, a text message (with
+ * @mentions) immediately followed by the PromptPay QR image in a single push.
+ *
+ * `messages` must contain 1–5 LINE message objects (LINE's per-push cap).
+ * Returns true on success, false on missing token, empty messages, or API error.
+ */
+export async function pushMessagesToGroup(
+  groupId: string,
+  messages: unknown[],
+): Promise<boolean> {
+  const token = process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN;
+  if (!token) return false;
+  if (!messages.length) return false;
+
+  try {
+    const res = await fetch(PUSH_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ to: groupId, messages }),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error("[LINE-CLUB] pushMessagesToGroup API error:", res.status, errBody);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error("[LINE-CLUB] pushMessagesToGroup exception:", err);
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // verifyLineSignature
 // ---------------------------------------------------------------------------
 

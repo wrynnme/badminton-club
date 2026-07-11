@@ -34,6 +34,7 @@ const baseClub: Club = {
   },
   receipt_logo_url: "https://example.com/logo.png",
   join_token: "secret-join-token",
+  line_group_id: "Csecretgroupid",
 };
 
 const basePlayer: ClubPlayer = {
@@ -75,6 +76,8 @@ describe("toPublicClub", () => {
     expect(pub.receipt_template).toEqual({});
     // join_token is a secret share token → never exposed publicly
     expect(pub.join_token).toBeNull();
+    // line_group_id is a private binding target → never exposed publicly
+    expect(pub.line_group_id).toBeNull();
     expect(pub.receipt_logo_url).toBeNull();
   });
 
