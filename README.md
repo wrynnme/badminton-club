@@ -4,7 +4,7 @@
 
 **Stack**: Next.js 16 App Router · Tailwind v4 · shadcn/ui · TanStack Form v1 · Supabase (Postgres + RLS) · LINE Login · next-intl (TH/EN, cookie-based) · @bprogress/next (nav progress) · @dnd-kit · Anuphan font
 
-**เวอร์ชันล่าสุด**: v0.20.0 — สุ่มคิวแบบหลากหลาย (variety-aware batch queue) + ปุ่ม "รื้อ+สุ่มใหม่" · ปุ่ม "จัดคิวใหม่" รายใบสลับผู้เล่นข้ามแมตช์เมื่อคนเต็มคิว (source เดียว: `src/lib/changelog.ts`, mirror ที่ `CHANGELOG.md`)
+**เวอร์ชันล่าสุด**: v0.30.0 — หน้าคิว: ยกเลิกแมตช์ที่ "กำลังแข่ง" กลับไป "รอแข่ง" ได้ (ปุ่ม "กลับไปรอแข่ง" — คืนตำแหน่งคิวเดิม + ล้างสนามที่เลือก) (source เดียว: `src/lib/changelog.ts`, mirror ที่ `CHANGELOG.md`)
 
 **Deployed** (กลยุทธ์ branch: feature → `develop` [CI gate] → `master` [prod]):
 - Production: https://kuanbad.vercel.app (**master** branch)
@@ -69,8 +69,7 @@ npx skills add supabase/agent-skills   # ติดตั้งครั้งเ
 - หารค่าสนาม + ค่าลูก + ค่าใช้จ่ายอื่น เป็นรายคน
 - **ค่าสนาม** หารแบบเท่ากัน หรือ `by_time` (ตามเวลาที่อยู่จริง) · **ค่าลูก** หารแบบ เท่ากัน / ต่อแมตช์ / ต่อคน / **ตามชั่วโมง** (ใส่จำนวนลูกต่อชั่วโมง → หารเฉพาะคนที่อยู่ชั่วโมงนั้น — คนเล่นชั่วโมงเดียวไม่โดนหารลูกชั่วโมงที่ไม่ได้เล่น)
 - **QR พร้อมเพย์รายคน** (ฝังยอด) + ติ๊ก "จ่ายแล้ว" · ส่ง/ดาวน์โหลดสลิปการ์ด
-- **เก็บเงินผ่าน LINE**: บอทส่งบิล (QR ฝังยอด) → ผู้เล่นส่งสลิปกลับ → ตรวจ + ติ๊กจ่ายอัตโนมัติ
-- ตรวจสลิปรายก๊วน 2 โหมด: `manual` (เจ้าของยืนยันเอง) | `byok` (ใส่ key SlipOK/EasySlip → auto-verify)
+- **เก็บเงินผ่าน LINE**: บอทส่งบิล (QR พร้อมเพย์ฝังยอด) เข้าแชตผู้เล่นที่ link LINE แล้ว → เจ้าของก๊วนติ๊ก "จ่ายแล้ว" เอง (การรับ/ตรวจสลิปขาเข้าอัตโนมัติถูกถอดออกตั้งแต่ v0.22.0)
 
 ### อื่นๆ
 
@@ -233,7 +232,7 @@ src/
 - ✅ Per-club skill levels + level-based matchmaking + roster level editing after signup
 - ✅ Reserve / waiting list (สำรอง) · co-admin · preset · import from message · realtime
 - ✅ Itemized expenses + per-player PromptPay QR
-- ✅ LINE billing (push bill + slip auto-verify: manual / BYOK)
+- ✅ LINE billing (push bill + QR → เจ้าของติ๊กจ่ายเอง; inbound slip auto-verify ถอดออก v0.22.0)
 - [ ] Recurring session
 - [ ] Wheelspin / สุ่มรางวัล (deferred)
 
