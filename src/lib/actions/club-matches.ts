@@ -788,6 +788,44 @@ export async function cancelClubMatchAction(
   return { ok: true };
 }
 
+/**
+ * Owner / co-admin reverts an in_progress match back to the pending queue
+ * ("กลับไปรอแข่ง") — the inverse of startClubMatchAction. Keeps the row's
+ * queue_position so it returns to its original slot; clears court + started_at +
+ * shuttles_used so it's as if the match never started. Starting a match only
+ * flips status + started_at (no games_played / winner-pointer side effects), so
+ * nothing else needs undoing. The court-occupancy unique index is in_progress-only,
+ * so dropping back to pending frees the court for another match immediately.
+ */
+export async function revertClubMatchToPendingAction(
+  matchId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const sb = await createAdminClient();
+
+  const guard = await loadClubMatchForManage(sb, matchId, session.profileId);
+  if ("error" in guard) return { error: guard.error };
+  const { match } = guard;
+
+  const t = await getTranslations("actions");
+  const { data: updated, error: updateError } = await sb
+    .from("club_matches")
+    .update({ status: "pending", started_at: null, court: null, shuttles_used: 0 })
+    .eq("id", matchId)
+    .eq("status", "in_progress")
+    .select("id")
+    .maybeSingle();
+  if (updateError) return { error: updateError.message };
+  // 0 rows = the match already left in_progress (finished / cancelled / reverted
+  // by a concurrent action) — don't report a misleading success.
+  if (!updated) return { error: t("club.matchNotInProgress") };
+
+  revalidatePath(`/clubs/${match.club_id}`);
+  return { ok: true };
+}
+
 // ─── Locked-Pair Actions ──────────────────────────────────────────────────────
 
 /**

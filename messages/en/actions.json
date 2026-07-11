@@ -98,6 +98,7 @@
     "generateFailed": "Failed to generate the queue — please try again",
     "matchNeedsCourtToStart": "Select a court before starting the match",
     "matchWaitingForWinner": "This match is waiting for a winner from an earlier match",
+    "matchNotInProgress": "This match is no longer in progress",
     "rebuildOnlyPending": "Only pending matches can be re-rolled",
     "rebuildNoPlayers": "Not enough free players to re-roll this match",
     "rebuildNoSwap": "Everyone is already queued — no free player to swap in. Use Rebuild + reshuffle for the whole queue instead",

@@ -5,7 +5,7 @@ import { useRowSelection } from "@/lib/hooks/use-row-selection";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock, RotateCcw, Flag, MapPin, ListChecks } from "lucide-react";
+import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock, RotateCcw, Flag, Undo2, MapPin, ListChecks } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -66,6 +66,7 @@ import {
   startClubMatchAction,
   finishClubMatchAction,
   cancelClubMatchAction,
+  revertClubMatchToPendingAction,
   setClubMatchShuttlesAction,
   setClubMatchCourtAction,
   createClubManualMatchAction,
@@ -721,6 +722,8 @@ function InProgressRow({
   const t = useTranslations("club.queuePanel");
   const [finishOpen, setFinishOpen] = useState(false);
   const [finishBusy, finishTransition] = useTransition();
+  const [revertOpen, setRevertOpen] = useState(false);
+  const [revertBusy, revertTransition] = useTransition();
   // Per-set score rows (strings while editing). Starts with one blank set; leaving
   // every set blank finishes winner-only (no score recorded), preserving the quick path.
   const [games, setGames] = useState<{ a: string; b: string }[]>([{ a: "", b: "" }]);
@@ -748,6 +751,21 @@ function InProgressRow({
       } else {
         setFinishOpen(false);
         setGames([{ a: "", b: "" }]);
+        onRefresh();
+      }
+    });
+  }
+
+  // Revert in_progress → pending ("กลับไปรอแข่ง"): the inverse of เริ่ม. Confirmed
+  // via dialog since it drops the live match back into the queue (clears court).
+  function handleRevert() {
+    revertTransition(async () => {
+      const res = await revertClubMatchToPendingAction(match.id);
+      if ("error" in res) {
+        toast.error(res.error);
+      } else {
+        setRevertOpen(false);
+        toast.success(t("toastReverted"));
         onRefresh();
       }
     });
@@ -806,6 +824,23 @@ function InProgressRow({
         <ShuttleCounter match={match} canManage={canManage} onRefresh={onRefresh} />
         {canManage && (
           <>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 shrink-0"
+                    disabled={revertBusy}
+                    onClick={() => setRevertOpen(true)}
+                  >
+                    <Undo2 className="h-3.5 w-3.5" />
+                    <span className="text-xs ml-1">{t("revertButton")}</span>
+                  </Button>
+                }
+              />
+              <TooltipContent>{t("revertTooltip")}</TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger
                 render={
@@ -975,6 +1010,28 @@ function InProgressRow({
               <DialogClose render={
                 <Button variant="outline" disabled={finishBusy}>{t("finishDialogCancel")}</Button>
               } />
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {canManage && (
+        <Dialog open={revertOpen} onOpenChange={setRevertOpen}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>{t("revertConfirmTitle")}</DialogTitle>
+              <DialogDescription className="text-xs">
+                {sideA} vs {sideB}
+              </DialogDescription>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">{t("revertConfirmBody")}</p>
+            <DialogFooter>
+              <DialogClose render={
+                <Button variant="outline" disabled={revertBusy}>{t("revertCancel")}</Button>
+              } />
+              <Button onClick={handleRevert} disabled={revertBusy}>
+                {t("revertConfirm")}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
