@@ -10,6 +10,14 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-12 (ship-check → ✅ PASS · แก้ root cause แท็กไม่เด้ง = textV2) — LINE group-billing @mention (v0.31.1, fix บน v0.31.0)
+
+`/ship-check` บน `fix/club-line-group-mention-textv2` (PR #40 → develop). **บั๊กที่แก้:** v0.31.0 ส่ง @mention ด้วย format ฝั่งรับ webhook (`type:"text"` + `mention.mentionees` index/length) → LINE รับ HTTP 200 แต่ **drop เงียบ → แท็กเป็นตัวดำ ไม่เด้ง noti**. **แก้:** `buildGroupBillText` → Text Message v2 (`type:"textV2"` + `substitution:{mN:{type:"mention",mentionee:{type:"user",userId}}}` + placeholder `{mN}`); LINE render ชื่อ LINE จริงอัตโนมัติ (ไม่ส่ง @ชื่อเอง). **`club-billing.ts` / `pushMessagesToGroup` ไม่ต้องแก้** (ส่ง messages array ต่อเฉยๆ). test 8→10 (assert textV2/substitution + regression guard กันกลับ format เก่า + strip-brace).
+- **Phase 1 (code-review, review agent อิสระ อ่าน diff+2 โมดูล+caller+grep repo+รันเทส):** 0 P0/P1/P2 — ยืนยัน key parity ข้าม chunk >20, brace `esc`, empty-members path, ไม่มี stale ref format เก่า, union narrowing ปลอดภัย. 2 note ไม่ใช่บั๊ก: `esc` strip brace (cosmetic ตั้งใจ) · >80 คน/bucket QR ตกจาก 5-msg cap = **pre-existing v0.31.0 ไม่ใช่ diff นี้**.
+- **Phase 3 (พิสูจน์จริง):** ✅ **live-verified ในกลุ่ม MUGGLE จริง** — ยิง textV2 ตรง LINE API (userId สมาชิกกลุ่มยืนยันด้วย group-member endpoint 200) → user เห็นแท็ก **สีฟ้า + เด้ง noti จริง** ("ฟ้าแล้ว") เทียบ format เดิมที่ยิงแล้วตัวดำ. **ไม่กดปุ่มส่งในแอปจริง** เพราะ `pushGroupBillsAction` ยิงบิลจริงถึงคนจริงในกลุ่ม (classifier บล็อก + ไม่ควรสแปม) → logic สร้างข้อความ unit-test ครอบ (10 tests: 170/@bee/@pang + 90/@bank/@boy + regression guard). **ข้อจำกัด:** แท็ก textV2 โชว์เฉพาะ LINE มือถือ ≥14.17.0 (PC ไม่รองรับ).
+- Gates: tsc 0 · vitest **835/835** (group-billing 8→10) · `next build` OK (`BUILD_ID` ✓) · i18n ไม่แตะ (diff ไม่มี `messages/`/`t()`) · CI เขียว (PR #40). **ไม่มี migration** (format change ล้วน). commit `d320972`.
+- 👉 prod ยังรัน format เก่า (แท็กไม่เด้ง) จนกว่าจะ merge PR #40 → develop → master.
+
 ### 2026-07-12 (✅ PASS · browser smoke net-zero ผ่าน) — หน้าคิวก๊วน: ปุ่ม "กลับไปรอแข่ง" บนการ์ดกำลังแข่ง (v0.30.0)
 
 - ขอบเขต: `feat/club-cancel-inprogress-match` (base develop @0.27.0). action ใหม่ `revertClubMatchToPendingAction` (in_progress→pending, inverse ของ start; คง queue_position เดิม, ล้าง court+started_at+shuttles_used, rows-affected guard → `matchNotInProgress`) + ปุ่ม `Undo2` "กลับไปรอแข่ง" บน `InProgressRow` + confirm dialog (controlled `<Dialog>`) ใน `club-queue-panel.tsx` + i18n 7 keys `queuePanel.revert*/toastReverted` + 1 error key `actions.club.matchNotInProgress`. **ไม่มี migration** (พลิก status; occupancy index เป็น in_progress-only อยู่แล้ว).
