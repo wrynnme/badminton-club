@@ -180,15 +180,15 @@ export function buildGroupBillText(params: {
 }
 
 // ---------------------------------------------------------------------------
-// buildQrImageMessage
+// buildSlipImageMessage
 // ---------------------------------------------------------------------------
 
-/** Wrap an already-hosted QR PNG URL as a LINE image message. */
-export function buildQrImageMessage(qrUrl: string): LineImageMessage {
+/** Wrap an already-hosted slip PNG URL (client-rendered) as a LINE image message. */
+export function buildSlipImageMessage(slipUrl: string): LineImageMessage {
   return {
     type: "image",
-    originalContentUrl: qrUrl,
-    previewImageUrl: qrUrl,
+    originalContentUrl: slipUrl,
+    previewImageUrl: slipUrl,
   };
 }
 
@@ -202,15 +202,16 @@ export function buildQrImageMessage(qrUrl: string): LineImageMessage {
  *
  * - Members are chunked by 20 (LINE mentionee cap): each chunk → one text
  *   message. In the overwhelmingly common case that's a single text bubble.
- * - The QR image (when `qrUrl` given) is appended as the last bubble so it sits
- *   directly under the tags.
+ * - The slip image (when `slipUrl` given) is appended as the last bubble so it
+ *   sits directly under the tags. `slipUrl` is a client-rendered bill slip PNG
+ *   (uploaded by the caller via `uploadBillSlipAction`), not a bare QR.
  * - The result is clamped to LINE's 5-messages-per-push limit; `overflow` is set
  *   true when clamping actually dropped a trailing text chunk so the caller can
  *   fall back (e.g. send remaining chunks in a second push).
  */
 export function buildGroupBillMessages(
   bucket: GroupBillBucket,
-  opts: { clubName: string; qrUrl: string | null; dateStr?: string },
+  opts: { clubName: string; slipUrl: string | null; dateStr?: string },
 ): { messages: LineMessage[]; overflow: boolean } {
   const chunks: { displayName: string; lineUserId: string }[][] = [];
   for (let i = 0; i < bucket.members.length; i += MAX_MENTIONS_PER_MESSAGE) {
@@ -228,8 +229,8 @@ export function buildGroupBillMessages(
     }),
   );
 
-  const imageMessages: LineMessage[] = opts.qrUrl
-    ? [buildQrImageMessage(opts.qrUrl)]
+  const imageMessages: LineMessage[] = opts.slipUrl
+    ? [buildSlipImageMessage(opts.slipUrl)]
     : [];
 
   const all = [...textMessages, ...imageMessages];

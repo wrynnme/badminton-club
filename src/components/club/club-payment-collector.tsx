@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "@bprogress/next/app";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -50,6 +51,7 @@ import {
   resetAllPaidAction,
   uploadClubPromptPayQrAction,
   removeClubPromptPayQrAction,
+  uploadBillSlipAction,
 } from "@/lib/actions/club-payments";
 import { pushClubBillsAction, pushGroupBillsAction } from "@/lib/actions/club-billing";
 import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
@@ -77,6 +79,23 @@ type Props = {
   lineReachableIds: string[];
   /** true when clubs.line_group_id is bound — gates the group-billing button. */
   lineGroupBound: boolean;
+};
+
+/** Reads a rendered slip PNG Blob back out as a base64 data URL for upload. */
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** Off-screen SlipCard mount request — shared shape for the 1:1 and group push loops. */
+type PushSlipItem = {
+  key: string;
+  row: ClubCostRow;
+  playerName: string;
 };
 
 export function ClubPaymentCollector({ clubId, club, players, matches, expenses, qrLogoUrl, lineReachableIds, lineGroupBound }: Props) {
@@ -161,6 +180,162 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
     });
   }
 
+  // Push slips (1:1 + group): render → upload → push. Two independent off-screen
+  // mounts so concurrent clicks on both buttons can't race the same DOM node.
+  const pushSlipContainerRef = useRef<HTMLDivElement>(null);
+  const [pushSlipItem, setPushSlipItem] = useState<PushSlipItem | null>(null);
+  const [pushProgress, setPushProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const groupSlipContainerRef = useRef<HTMLDivElement>(null);
+  const [groupSlipItem, setGroupSlipItem] = useState<PushSlipItem | null>(null);
+  const [pushGroupProgress, setPushGroupProgress] = useState<{ done: number; total: number } | null>(null);
+
+  /** Mounts `item` off-screen, waits for the commit + QR/font render, captures it
+   *  to a PNG, and returns a base64 data URL — or null if the node/capture fails. */
+  async function renderOffscreenSlipDataUrl(
+    containerRef: React.RefObject<HTMLDivElement | null>,
+    setItem: (item: PushSlipItem | null) => void,
+    item: PushSlipItem,
+  ): Promise<string | null> {
+    // Force-commit the off-screen mount synchronously. These functions run inside a
+    // useTransition callback, so a plain setState is a low-priority update whose DOM
+    // commit can be deferred past our read below — yielding a null node → the slip
+    // "fails to render". flushSync guarantees the node exists before we capture it.
+    flushSync(() => setItem(item));
+    // Give the SlipCard's async QR (qrcode.toDataURL in a useEffect) a frame to draw.
+    await new Promise<void>((resolve) => setTimeout(resolve, 120));
+    const node = containerRef.current?.firstElementChild as HTMLElement | null;
+    if (!node) {
+      console.error("[bill-slip] off-screen node missing after flushSync", item.key);
+      return null;
+    }
+    try {
+      const blob = await renderSlipBlob(node);
+      return await blobToDataUrl(blob);
+    } catch (e) {
+      console.error("[bill-slip] renderSlipBlob threw for", item.key, e);
+      return null;
+    }
+  }
+
+  /** Render + upload one slip per item (off-screen), returning the URLs keyed by
+   *  item.key. Per-item failures are skipped (not fatal); `failKind` reports the
+   *  first failure so the caller can surface a localized note. Shared by both the
+   *  1:1 and group push flows (they differ only in the item list + upload kind). */
+  async function renderUploadSlips(
+    items: PushSlipItem[],
+    kind: "player" | "amount",
+    containerRef: React.RefObject<HTMLDivElement | null>,
+    setItem: (item: PushSlipItem | null) => void,
+    setProgress: (p: { done: number; total: number } | null) => void,
+  ): Promise<{ urlByKey: Record<string, string>; failKind: "render" | "upload" | null }> {
+    setProgress(items.length > 0 ? { done: 0, total: items.length } : null);
+    const urlByKey: Record<string, string> = {};
+    let failKind: "render" | "upload" | null = null;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const dataUrl = await renderOffscreenSlipDataUrl(containerRef, setItem, item);
+      if (!dataUrl) {
+        failKind = failKind ?? "render";
+      } else {
+        const up = await uploadBillSlipAction({ clubId, kind, key: item.key, dataUrl });
+        if (up && "url" in up) {
+          urlByKey[item.key] = up.url;
+        } else {
+          failKind = failKind ?? "upload";
+          console.error("[bill-slip] upload failed for", kind, item.key, up);
+        }
+      }
+      setProgress({ done: i + 1, total: items.length });
+    }
+    setItem(null);
+    setProgress(null);
+    return { urlByKey, failKind };
+  }
+
+  /** Localized parenthesized note for a slip failure kind, or "" when none (i18n —
+   *  never surface raw error strings). */
+  const slipFailNote = (kind: "render" | "upload" | null) =>
+    kind ? ` (${kind === "render" ? t("slipRenderFailed") : t("slipUploadFailed")})` : "";
+
+  function pushBillsWithSlips() {
+    // Mirror who the server would actually push to — rendering for players with
+    // no linked LINE account is wasted work.
+    const items: PushSlipItem[] = payable
+      .filter((r) => reachable.has(r.playerId))
+      .map((row) => ({
+        key: row.playerId,
+        row,
+        playerName: nameById.get(row.playerId) ?? row.playerId,
+      }));
+    startPush(async () => {
+      const { urlByKey, failKind } = await renderUploadSlips(
+        items,
+        "player",
+        pushSlipContainerRef,
+        setPushSlipItem,
+        setPushProgress,
+      );
+      const res = await pushClubBillsAction({ clubId, slipUrlByPlayerId: urlByKey });
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      const base = t("pushResult", { pushed: res.pushed, noLine: res.skippedNoLine, failed: res.failed });
+      const note =
+        res.skippedNoSlip > 0
+          ? ` · ${t("pushNoSlipNote", { n: res.skippedNoSlip })}${slipFailNote(failKind)}`
+          : "";
+      if (res.pushed === 0 && res.skippedNoSlip > 0) toast.error(base + note);
+      else toast.success(base + note);
+    });
+  }
+
+  function pushGroupBillsWithSlips() {
+    // One slip per distinct positive total owed — a bucket is shared by everyone
+    // owing that amount (only row.total is read by the "group" slip variant).
+    const items: PushSlipItem[] = [
+      ...new Set(payable.map((r) => r.total).filter((a) => a > 0)),
+    ].map((amount) => ({
+      key: String(amount),
+      row: {
+        playerId: "",
+        hours: 0,
+        games: 0,
+        shuttles: 0,
+        court: 0,
+        shuttle: 0,
+        expense: 0,
+        discount: 0,
+        total: amount,
+      },
+      playerName: "",
+    }));
+    startPushGroup(async () => {
+      const { urlByKey, failKind } = await renderUploadSlips(
+        items,
+        "amount",
+        groupSlipContainerRef,
+        setGroupSlipItem,
+        setPushGroupProgress,
+      );
+      const res = await pushGroupBillsAction({ clubId, slipUrlByAmount: urlByKey });
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      const base = t("pushGroupResult", { amounts: res.amountsPushed, tagged: res.playersTagged });
+      const notes: string[] = [];
+      if (res.skippedNoLine > 0) notes.push(t("pushGroupNoLineNote", { n: res.skippedNoLine }));
+      if (res.skippedNoSlip > 0) {
+        notes.push(`${t("pushGroupNoSlipNote", { n: res.skippedNoSlip })}${slipFailNote(failKind)}`);
+      }
+      const msg = notes.length > 0 ? `${base} · ${notes.join(" · ")}` : base;
+      if (res.amountsPushed === 0 && res.skippedNoSlip > 0) toast.error(msg);
+      else toast.success(msg);
+    });
+  }
+
   return (
     <>
     <Card>
@@ -219,21 +394,16 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                         variant="outline"
                         className="h-8 gap-1.5 text-xs"
                         disabled={pushing || payable.length === 0}
-                        onClick={() => {
-                          startPush(async () => {
-                            const res = await pushClubBillsAction({ clubId });
-                            if ("error" in res) {
-                              toast.error(res.error);
-                            } else {
-                              toast.success(t("pushResult", { pushed: res.pushed, noLine: res.skippedNoLine, failed: res.failed }));
-                            }
-                          });
-                        }}
+                        onClick={pushBillsWithSlips}
                       />
                     }
                   >
                     {pushing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                    {pushing ? t("pushing") : t("pushLineBtn")}
+                    {pushing
+                      ? pushProgress
+                        ? t("generatingSlips", { done: pushProgress.done, total: pushProgress.total })
+                        : t("pushing")
+                      : t("pushLineBtn")}
                   </TooltipTrigger>
                   <TooltipContent>{t("pushLineTip")}</TooltipContent>
                 </Tooltip>
@@ -248,29 +418,16 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                         variant="outline"
                         className="h-8 gap-1.5 text-xs"
                         disabled={pushingGroup || payable.length === 0 || !lineGroupBound}
-                        onClick={() => {
-                          startPushGroup(async () => {
-                            const res = await pushGroupBillsAction({ clubId });
-                            if ("error" in res) {
-                              toast.error(res.error);
-                            } else {
-                              const base = t("pushGroupResult", {
-                                amounts: res.amountsPushed,
-                                tagged: res.playersTagged,
-                              });
-                              toast.success(
-                                res.skippedNoLine > 0
-                                  ? `${base} · ${t("pushGroupNoLineNote", { n: res.skippedNoLine })}`
-                                  : base,
-                              );
-                            }
-                          });
-                        }}
+                        onClick={pushGroupBillsWithSlips}
                       />
                     }
                   >
                     {pushingGroup ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
-                    {pushingGroup ? t("pushingGroup") : t("pushGroupBtn")}
+                    {pushingGroup
+                      ? pushGroupProgress
+                        ? t("generatingSlips", { done: pushGroupProgress.done, total: pushGroupProgress.total })
+                        : t("pushingGroup")
+                      : t("pushGroupBtn")}
                   </TooltipTrigger>
                   <TooltipContent>{lineGroupBound ? t("pushGroupTip") : t("pushGroupDisabledTip")}</TooltipContent>
                 </Tooltip>
@@ -348,6 +505,48 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
           qrImage={ppNumber ? null : qrImage}
           qrLogoUrl={qrLogoUrl}
           locale={locale}
+        />
+      </div>
+    )}
+
+    {/* Off-screen push-slip capture container — 1:1 flow (variant="full") */}
+    {pushSlipItem && (
+      <div
+        ref={pushSlipContainerRef}
+        aria-hidden="true"
+        style={{ position: "fixed", top: -9999, left: -9999, pointerEvents: "none", zIndex: -1 }}
+      >
+        <SlipCard
+          key={pushSlipItem.key}
+          club={club}
+          row={pushSlipItem.row}
+          playerName={pushSlipItem.playerName}
+          ppNumber={ppNumber}
+          qrImage={ppNumber ? null : qrImage}
+          qrLogoUrl={qrLogoUrl}
+          locale={locale}
+          variant="full"
+        />
+      </div>
+    )}
+
+    {/* Off-screen push-slip capture container — group flow (variant="group") */}
+    {groupSlipItem && (
+      <div
+        ref={groupSlipContainerRef}
+        aria-hidden="true"
+        style={{ position: "fixed", top: -9999, left: -9999, pointerEvents: "none", zIndex: -1 }}
+      >
+        <SlipCard
+          key={groupSlipItem.key}
+          club={club}
+          row={groupSlipItem.row}
+          playerName={groupSlipItem.playerName}
+          ppNumber={ppNumber}
+          qrImage={ppNumber ? null : qrImage}
+          qrLogoUrl={qrLogoUrl}
+          locale={locale}
+          variant="group"
         />
       </div>
     )}

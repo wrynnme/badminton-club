@@ -875,7 +875,11 @@
     "pushLineBtn": "Bill via LINE",
     "pushLineTip": "Send bill + QR to all LINE-linked players who haven't paid yet",
     "pushResult": "Sent to {pushed} · No LINE {noLine} · Failed {failed}",
+    "pushNoSlipNote": "{n} slip(s) failed to generate",
+    "slipRenderFailed": "Couldn't generate the slip image",
+    "slipUploadFailed": "Couldn't upload the slip",
     "pushing": "Sending bills…",
+    "generatingSlips": "Generating slip {done}/{total}",
     "billPushed": "Bill sent",
     "noLine": "No LINE",
     "bankTransfer": "Bank transfer",
@@ -884,7 +888,8 @@
     "pushGroupTip": "Post bill + QR into the club's LINE group, tagging unpaid players grouped by amount",
     "pushGroupDisabledTip": "No LINE group bound yet — bind a group first",
     "pushGroupResult": "Posted {amounts} amount group(s) · tagged {tagged} players",
-    "pushGroupNoLineNote": "{n} not LINE-linked yet"
+    "pushGroupNoLineNote": "{n} not LINE-linked yet",
+    "pushGroupNoSlipNote": "{n} amount(s) failed to generate slip"
   },
   "slip": {
     "sendSlip": "Send slip",

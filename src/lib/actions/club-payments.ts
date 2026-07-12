@@ -79,7 +79,31 @@ export async function toggleClubPlayerPaidAction(input: { clubId: string; player
 }
 
 const QR_DATA_URL_RE = /^data:(image\/(?:png|jpe?g|webp));base64,([A-Za-z0-9+/=]+)$/;
-const MAX_QR_BYTES = 1_000_000; // ~1MB, matches the club-qr bucket file_size_limit
+const MAX_UPLOAD_BYTES = 1_000_000; // ~1MB, matches the club-qr bucket file_size_limit
+
+/**
+ * Shared decode → size-check → upload → public-URL body for every client-supplied
+ * image that lands in the `club-qr` bucket (PromptPay QR, receipt logo, bill slip).
+ * Callers own auth, the storage `path`, and any post-upload DB write.
+ */
+async function decodeAndUploadImage(
+  sb: Awaited<ReturnType<typeof createAdminClient>>,
+  path: string,
+  dataUrl: string,
+  invalidMsg: string,
+): Promise<{ url: string } | { error: string }> {
+  const m = QR_DATA_URL_RE.exec(dataUrl ?? "");
+  if (!m) return { error: invalidMsg };
+  const contentType = m[1];
+  const buffer = Buffer.from(m[2], "base64");
+  if (buffer.byteLength === 0 || buffer.byteLength > MAX_UPLOAD_BYTES) {
+    return { error: invalidMsg };
+  }
+  const up = await sb.storage.from("club-qr").upload(path, buffer, { contentType, upsert: true });
+  if (up.error) return { error: up.error.message };
+  const { data: pub } = sb.storage.from("club-qr").getPublicUrl(path);
+  return { url: `${pub.publicUrl}?v=${Date.now()}` }; // cache-bust on replace
+}
 
 /** Owner / co-admin uploads a PromptPay QR image (alternative to a number). */
 export async function uploadClubPromptPayQrAction(input: { clubId: string; dataUrl: string }) {
@@ -92,26 +116,68 @@ export async function uploadClubPromptPayQrAction(input: { clubId: string; dataU
     return { error: t("club.noPermission") };
   }
 
-  const m = QR_DATA_URL_RE.exec(input.dataUrl ?? "");
-  if (!m) return { error: t("club.invalidQrImage") };
-  const contentType = m[1];
-  const buffer = Buffer.from(m[2], "base64");
-  if (buffer.byteLength === 0 || buffer.byteLength > MAX_QR_BYTES) {
-    return { error: t("club.invalidQrImage") };
-  }
-
   // One object per club (fixed path + upsert) → replacing never orphans the old file.
-  const path = `${input.clubId}/promptpay`;
-  const up = await sb.storage.from("club-qr").upload(path, buffer, { contentType, upsert: true });
-  if (up.error) return { error: up.error.message };
+  const uploaded = await decodeAndUploadImage(
+    sb,
+    `${input.clubId}/promptpay`,
+    input.dataUrl,
+    t("club.invalidQrImage"),
+  );
+  if ("error" in uploaded) return { error: uploaded.error };
 
-  const { data: pub } = sb.storage.from("club-qr").getPublicUrl(path);
-  const url = `${pub.publicUrl}?v=${Date.now()}`; // cache-bust on replace
-  const { error } = await sb.from("clubs").update({ promptpay_qr_image: url }).eq("id", input.clubId);
+  const { error } = await sb
+    .from("clubs")
+    .update({ promptpay_qr_image: uploaded.url })
+    .eq("id", input.clubId);
   if (error) return { error: error.message };
 
   revalidatePath(`/clubs/${input.clubId}`);
-  return { ok: true, url };
+  return { ok: true, url: uploaded.url };
+}
+
+/** Only allow simple filename-safe keys — blocks `/` and `..` path escapes. */
+function isSafeStorageKey(key: string): boolean {
+  if (!key) return false;
+  if (key.includes("/") || key.includes("..")) return false;
+  return /^[A-Za-z0-9_.-]+$/.test(key);
+}
+
+/**
+ * Owner / co-admin uploads a client-rendered bill slip PNG (replaces the server-
+ * generated bare QR). `kind`/`key` pick the storage path so it overwrites the
+ * exact same object the old QR-gen code used to write — no orphaned files:
+ *   - kind='amount' → `${clubId}/group-bill-${key}.png` (key = amount, group flow)
+ *   - kind='player' → `${clubId}/bill-${key}.png`        (key = club_players.id, 1:1 flow)
+ */
+export async function uploadBillSlipAction(input: {
+  clubId: string;
+  kind: "amount" | "player";
+  key: string;
+  dataUrl: string;
+}): Promise<{ ok: true; url: string } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, input.clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  if (!isSafeStorageKey(input.key)) {
+    return { error: t("club.invalidData") };
+  }
+
+  // Reuses the exact path the old server-side QR-gen wrote to — upsert overwrites
+  // the bare QR in place, so no orphaned objects are left in the bucket.
+  const path =
+    input.kind === "amount"
+      ? `${input.clubId}/group-bill-${input.key}.png`
+      : `${input.clubId}/bill-${input.key}.png`;
+
+  const uploaded = await decodeAndUploadImage(sb, path, input.dataUrl, t("club.invalidSlipImage"));
+  if ("error" in uploaded) return { error: uploaded.error };
+  return { ok: true, url: uploaded.url };
 }
 
 /** Owner / co-admin removes the uploaded PromptPay QR image. */
@@ -217,25 +283,22 @@ export async function uploadClubReceiptLogoAction(input: { clubId: string; dataU
     return { error: t("club.noPermission") };
   }
 
-  const m = QR_DATA_URL_RE.exec(input.dataUrl ?? "");
-  if (!m) return { error: t("club.invalidQrImage") };
-  const contentType = m[1];
-  const buffer = Buffer.from(m[2], "base64");
-  if (buffer.byteLength === 0 || buffer.byteLength > MAX_QR_BYTES) {
-    return { error: t("club.invalidQrImage") };
-  }
+  const uploaded = await decodeAndUploadImage(
+    sb,
+    `${input.clubId}/receipt-logo`,
+    input.dataUrl,
+    t("club.invalidQrImage"),
+  );
+  if ("error" in uploaded) return { error: uploaded.error };
 
-  const path = `${input.clubId}/receipt-logo`;
-  const up = await sb.storage.from("club-qr").upload(path, buffer, { contentType, upsert: true });
-  if (up.error) return { error: up.error.message };
-
-  const { data: pub } = sb.storage.from("club-qr").getPublicUrl(path);
-  const url = `${pub.publicUrl}?v=${Date.now()}`; // cache-bust on replace
-  const { error } = await sb.from("clubs").update({ receipt_logo_url: url }).eq("id", input.clubId);
+  const { error } = await sb
+    .from("clubs")
+    .update({ receipt_logo_url: uploaded.url })
+    .eq("id", input.clubId);
   if (error) return { error: error.message };
 
   revalidatePath(`/clubs/${input.clubId}`);
-  return { ok: true, url };
+  return { ok: true, url: uploaded.url };
 }
 
 /** Owner / co-admin removes the uploaded receipt logo. */
