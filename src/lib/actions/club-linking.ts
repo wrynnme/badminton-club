@@ -109,6 +109,38 @@ export async function revokeClubJoinTokenAction(clubId: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Manager: unbind the LINE group (clears clubs.line_group_id)
+// ---------------------------------------------------------------------------
+
+/**
+ * Clear `clubs.line_group_id` so this club is no longer bound to a LINE group.
+ * Group billing is gated on that column, so unbinding disables it until the
+ * manager rebinds (posts `ผูกก๊วน <join_token>` in a group again). Binding
+ * itself only happens through the webhook — there is no inbound unbind command,
+ * so this action is the only way to release the group from the app.
+ */
+export async function unbindClubLineGroupAction(clubId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const { error } = await sb.from("clubs").update({ line_group_id: null }).eq("id", clubId);
+  if (error) {
+    console.error("[unbindClubLineGroupAction]", error);
+    return { error: t("club.unbindGroupFailed") };
+  }
+
+  await writeClubAudit(sb, clubId, session, "line_group_unbound", "");
+  revalidatePath(`/clubs/${clubId}`);
+  return { ok: true as const };
+}
+
+// ---------------------------------------------------------------------------
 // Player (public): opt into a club via the join link
 // ---------------------------------------------------------------------------
 
