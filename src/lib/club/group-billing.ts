@@ -10,17 +10,17 @@
  *    90 บาท → @bank @boy   + QR(90)
  *
  * ── LINE API constraint that shapes this module ────────────────────────────
- * A single LINE message bubble cannot carry BOTH a real @mention AND an image:
- *   • text messages support `mention.mentionees[]` but no image;
- *   • image / Flex messages support an image but NOT mentions.
- * So each amount is delivered as a single push whose `messages` array is
- * `[ textMessage(with mentionees), imageMessage(QR) ]` — two bubbles that arrive
- * together. See buildGroupBillMessages.
+ * Sending a WORKING @mention requires **Text Message v2** (`type: "textV2"`) with
+ * a `substitution` map: the text holds `{key}` placeholders and each key maps to a
+ * `{type:"mention", mentionee:{type:"user", userId}}` entry. LINE renders each
+ * placeholder as "@<that user's LINE display name>" and fires their notification.
+ * (The older `text` + `mention.mentionees[]` index/length shape is the *inbound*
+ * webhook format — on send LINE returns HTTP 200 but silently drops the mention,
+ * so it renders as plain text with no notification. That mismatch was the bug.)
  *
- * `mention.mentionees[].index` / `.length` are counted in UTF-16 code units,
- * which is exactly what JS `String.prototype.length` returns — so offsets are
- * computed by building the text string and reading `.length` as we go. LINE caps
- * a message at 20 mentionees; buckets larger than that are split across messages.
+ * A single bubble can't carry both a mention and an image, so each amount is one
+ * push of `[ textV2(with mentions), imageMessage(QR) ]`. LINE caps a message at 20
+ * mentionees; larger buckets are split across messages. See buildGroupBillMessages.
  *
  * Everything here is pure (no I/O). QR generation/upload + the actual push live
  * in the server action; this module only decides *what* to send.
@@ -28,17 +28,24 @@
 
 // --- LINE message object shapes (minimal subset we emit) --------------------
 
-export type LineMentionee = {
-  index: number;
-  length: number;
-  type: "user";
-  userId: string;
+/**
+ * A textV2 `substitution` entry that renders as an @mention of one user. LINE
+ * fills in the user's current LINE display name automatically — we never send the
+ * @name text ourselves.
+ */
+export type LineMentionSubstitution = {
+  type: "mention";
+  mentionee: { type: "user"; userId: string };
 };
 
-export type LineTextMessage = {
-  type: "text";
+/**
+ * Text Message v2 — the ONLY message type that can SEND a working @mention. The
+ * text carries `{key}` placeholders; each key maps to a `substitution` entry.
+ */
+export type LineTextV2Message = {
+  type: "textV2";
   text: string;
-  mention?: { mentionees: LineMentionee[] };
+  substitution?: Record<string, LineMentionSubstitution>;
 };
 
 export type LineImageMessage = {
@@ -47,7 +54,7 @@ export type LineImageMessage = {
   previewImageUrl: string;
 };
 
-export type LineMessage = LineTextMessage | LineImageMessage;
+export type LineMessage = LineTextV2Message | LineImageMessage;
 
 // --- Domain shapes ----------------------------------------------------------
 
@@ -125,48 +132,50 @@ export function bucketBillsByAmount(
 // ---------------------------------------------------------------------------
 
 /**
- * Build ONE mention-carrying text message for up to 20 members of a bucket.
+ * Build ONE mention-carrying textV2 message for up to 20 members of a bucket.
  *
- * Layout (mentions FIRST so their offsets start at 0 — no preceding emoji /
- * surrogate pair can shift the index):
+ * Placeholders lead the message; LINE substitutes each `{mN}` with the mentioned
+ * user's current LINE display name (so we never send the @name text ourselves):
  *
- *     @bee @pang
+ *     {m0} {m1}                          → renders as "@bee @pang"
  *     ค่าก๊วน<clubName> <dateStr> · 170 บาท
  *     สแกน QR ด้านล่างจ่ายได้เลย 🙏
  *
- * `members` MUST already be sliced to ≤ 20 (see buildGroupBillMessages).
+ * `members` MUST already be sliced to ≤ 20 (see buildGroupBillMessages). Member
+ * `displayName` is intentionally unused — textV2 renders the live LINE name.
  */
 export function buildGroupBillText(params: {
   clubName: string;
   amount: number;
   members: { displayName: string; lineUserId: string }[];
   dateStr?: string;
-}): LineTextMessage {
+}): LineTextV2Message {
   const { clubName, amount, members, dateStr } = params;
 
-  const mentionees: LineMentionee[] = [];
-  let text = "";
+  // Strip braces from interpolated free text so a club name containing { or }
+  // can't be mis-read as a textV2 placeholder (our own keys are m0..mN).
+  const esc = (s: string) => s.replace(/[{}]/g, "");
 
+  const substitution: Record<string, LineMentionSubstitution> = {};
+  const placeholders: string[] = [];
   members.forEach((m, i) => {
-    if (i > 0) text += " ";
-    const tag = `@${m.displayName}`;
-    // index/length in UTF-16 units === JS string .length at this point.
-    mentionees.push({
-      index: text.length,
-      length: tag.length,
-      type: "user",
-      userId: m.lineUserId,
-    });
-    text += tag;
+    const key = `m${i}`;
+    substitution[key] = {
+      type: "mention",
+      mentionee: { type: "user", userId: m.lineUserId },
+    };
+    placeholders.push(`{${key}}`);
   });
 
-  text += `\nค่าก๊วน${clubName}${dateStr ? ` ${dateStr}` : ""} · ${amount.toLocaleString(
+  let text = placeholders.join(" ");
+  if (text) text += "\n";
+  text += `ค่าก๊วน${esc(clubName)}${dateStr ? ` ${esc(dateStr)}` : ""} · ${amount.toLocaleString(
     "en-US",
   )} บาท`;
   text += `\nสแกน QR ด้านล่างจ่ายได้เลย 🙏`;
 
-  const msg: LineTextMessage = { type: "text", text };
-  if (mentionees.length > 0) msg.mention = { mentionees };
+  const msg: LineTextV2Message = { type: "textV2", text };
+  if (placeholders.length > 0) msg.substitution = substitution;
   return msg;
 }
 
