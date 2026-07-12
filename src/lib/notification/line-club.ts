@@ -105,6 +105,55 @@ export async function pushFlexToUser(
 }
 
 // ---------------------------------------------------------------------------
+// pushImageToUser
+// ---------------------------------------------------------------------------
+
+/**
+ * Push a single image message (the client-rendered bill slip) to a LINE user.
+ * `imageUrl` is used as both the full-size and preview image — LINE requires
+ * both fields; the slip PNG is small enough not to need a separate thumbnail.
+ * Returns true on success, false on missing token or API error.
+ */
+export async function pushImageToUser(
+  userId: string,
+  imageUrl: string,
+): Promise<boolean> {
+  const token = process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN;
+  if (!token) return false;
+
+  try {
+    const res = await fetch(PUSH_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        to: userId,
+        messages: [
+          {
+            type: "image",
+            originalContentUrl: imageUrl,
+            previewImageUrl: imageUrl,
+          },
+        ],
+      }),
+    });
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error("[LINE-CLUB] pushImageToUser API error:", res.status, errBody);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error("[LINE-CLUB] pushImageToUser exception:", err);
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // replyMessage
 // ---------------------------------------------------------------------------
 
