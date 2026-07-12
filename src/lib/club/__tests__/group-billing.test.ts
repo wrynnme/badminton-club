@@ -4,7 +4,7 @@ import {
   buildGroupBillText,
   buildGroupBillMessages,
   type GroupBillPlayer,
-  type LineTextMessage,
+  type LineTextV2Message,
 } from "../group-billing";
 
 // The exact scenario from the product goal:
@@ -48,8 +48,8 @@ describe("bucketBillsByAmount", () => {
   });
 });
 
-describe("buildGroupBillText — mention offsets", () => {
-  it("tags @bee @pang with mentionees whose index/length point exactly at each tag", () => {
+describe("buildGroupBillText — textV2 mention substitution", () => {
+  it("leads with {m0} {m1} placeholders mapped to each member's userId", () => {
     const msg = buildGroupBillText({
       clubName: "แบดเย็นนี้",
       amount: 170,
@@ -59,34 +59,54 @@ describe("buildGroupBillText — mention offsets", () => {
       ],
     });
 
-    // Mentions lead the message so their indices start at 0.
-    expect(msg.text.startsWith("@bee @pang\n")).toBe(true);
+    expect(msg.type).toBe("textV2");
+    // Placeholders lead the message so the mention renders at the top.
+    expect(msg.text.startsWith("{m0} {m1}\n")).toBe(true);
     expect(msg.text).toContain("170 บาท");
 
-    const mentionees = msg.mention!.mentionees;
-    expect(mentionees).toHaveLength(2);
-
-    // Every mentionee slice must equal exactly "@<name>" and carry the userId.
-    for (const m of mentionees) {
-      const slice = msg.text.slice(m.index, m.index + m.length);
-      expect(slice[0]).toBe("@");
-    }
-    expect(msg.text.slice(mentionees[0].index, mentionees[0].index + mentionees[0].length)).toBe("@bee");
-    expect(msg.text.slice(mentionees[1].index, mentionees[1].index + mentionees[1].length)).toBe("@pang");
-    expect(mentionees[0]).toMatchObject({ index: 0, length: 4, type: "user", userId: "Ubee" });
-    // "@bee" (0..3) + " " (4) → "@pang" starts at 5, length 5
-    expect(mentionees[1]).toMatchObject({ index: 5, length: 5, type: "user", userId: "Upang" });
+    // Each placeholder maps to a user mention carrying the right userId. LINE
+    // renders it as "@<live LINE name>" — we never send the @handle text.
+    expect(msg.substitution).toEqual({
+      m0: { type: "mention", mentionee: { type: "user", userId: "Ubee" } },
+      m1: { type: "mention", mentionee: { type: "user", userId: "Upang" } },
+    });
   });
 
-  it("emits no mention block when there are no mentionable members", () => {
+  it("uses textV2/substitution, NOT the old text+mentionees receive format", () => {
+    // Regression guard for the original bug: the inbound webhook shape
+    // ({type:"text", mention:{mentionees:[...]}}) is silently dropped on send.
+    const msg = buildGroupBillText({
+      clubName: "c",
+      amount: 50,
+      members: [{ displayName: "a", lineUserId: "Ua" }],
+    });
+    expect(msg.type).toBe("textV2");
+    expect((msg as Record<string, unknown>).mention).toBeUndefined();
+    expect(msg.text).not.toContain("@"); // no literal @handle text
+  });
+
+  it("emits no substitution when there are no mentionable members", () => {
     const msg = buildGroupBillText({ clubName: "c", amount: 90, members: [] });
-    expect(msg.mention).toBeUndefined();
+    expect(msg.substitution).toBeUndefined();
     expect(msg.text).toContain("90 บาท");
+    expect(msg.text.startsWith("ค่าก๊วน")).toBe(true);
+  });
+
+  it("strips braces from the club name so they can't be read as placeholders", () => {
+    const msg = buildGroupBillText({
+      clubName: "ก๊วน{x}",
+      amount: 10,
+      members: [{ displayName: "a", lineUserId: "Ua" }],
+    });
+    expect(msg.text).toContain("ก๊วนx");
+    expect(msg.text).not.toContain("{x}");
+    // our own mention placeholder survives
+    expect(msg.text.startsWith("{m0}")).toBe(true);
   });
 });
 
 describe("buildGroupBillMessages — one push per amount", () => {
-  it("produces [text(@bee @pang), image(QR)] for the 170 bucket", () => {
+  it("produces [textV2(@bee @pang), image(QR)] for the 170 bucket", () => {
     const [b170] = bucketBillsByAmount(SCENARIO);
     const { messages, overflow } = buildGroupBillMessages(b170, {
       clubName: "แบดเย็นนี้",
@@ -97,8 +117,9 @@ describe("buildGroupBillMessages — one push per amount", () => {
     expect(messages).toHaveLength(2);
 
     const [text, image] = messages;
-    expect(text.type).toBe("text");
-    expect((text as LineTextMessage).mention!.mentionees.map((m) => m.userId)).toEqual([
+    expect(text.type).toBe("textV2");
+    const sub = (text as LineTextV2Message).substitution!;
+    expect([sub.m0.mentionee.userId, sub.m1.mentionee.userId]).toEqual([
       "Ubee",
       "Upang",
     ]);
@@ -113,7 +134,7 @@ describe("buildGroupBillMessages — one push per amount", () => {
     const [, b90] = bucketBillsByAmount(SCENARIO);
     const { messages } = buildGroupBillMessages(b90, { clubName: "c", qrUrl: null });
     expect(messages).toHaveLength(1);
-    expect(messages[0].type).toBe("text");
+    expect(messages[0].type).toBe("textV2");
   });
 
   it("splits >20 mentions across multiple text messages and flags overflow past 5 bubbles", () => {
@@ -131,9 +152,9 @@ describe("buildGroupBillMessages — one push per amount", () => {
     // 85 members → 5 text chunks (20*4 + 5) + 1 image = 6 → clamped to 5, overflow.
     expect(messages).toHaveLength(5);
     expect(overflow).toBe(true);
-    for (const m of messages.slice(0, 5)) {
-      if (m.type === "text") {
-        expect(m.mention!.mentionees.length).toBeLessThanOrEqual(20);
+    for (const m of messages) {
+      if (m.type === "textV2") {
+        expect(Object.keys(m.substitution!).length).toBeLessThanOrEqual(20);
       }
     }
   });
