@@ -3,12 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { format } from "date-fns";
 import { getTranslations } from "next-intl/server";
-import QRCode from "qrcode";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
-import { pushFlexToUser, pushMessagesToGroup } from "@/lib/notification/line-club";
-import { buildPromptPayPayload, isValidPromptPayId } from "@/lib/club/promptpay";
+import { pushImageToUser, pushMessagesToGroup } from "@/lib/notification/line-club";
 import { computeClubCostRows } from "@/lib/club/cost-summary";
 import {
   bucketBillsByAmount,
@@ -23,13 +21,20 @@ import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 
 export type PushClubBillsInput = {
   clubId: string;
-  /** When provided, only push to these club_players.id values (must still meet
-   *  the payable + unpaid + has-LINE guard). Omit to push to all eligible. */
-  playerIds?: string[];
+  /** Client-rendered bill slip PNG URL (from `uploadBillSlipAction`, kind='player'),
+   *  keyed by club_players.id. Players not present here are skipped (skippedNoSlip)
+   *  — the server never falls back to generating its own QR/bubble. */
+  slipUrlByPlayerId: Record<string, string>;
 };
 
 export type PushClubBillsResult =
-  | { ok: true; pushed: number; failed: number; skippedNoLine: number }
+  | {
+      ok: true;
+      pushed: number;
+      failed: number;
+      skippedNoLine: number;
+      skippedNoSlip: number;
+    }
   | { error: string };
 
 // ---------------------------------------------------------------------------
@@ -37,19 +42,23 @@ export type PushClubBillsResult =
 // ---------------------------------------------------------------------------
 
 /**
- * Send a LINE Flex bill to every eligible player (payable, unpaid, has LINE id).
+ * Send the client-rendered bill slip PNG to every eligible player (payable,
+ * unpaid, has LINE id, AND present in `input.slipUrlByPlayerId`).
  *
  * Eligibility per player:
  *   – cost row total > 0
  *   – paid_at == null  (not yet marked paid)
  *   – resolved line_user_id (via profile_id → profiles.line_user_id)
- *   – if input.playerIds given: must be in that set
+ *   – club_players.id present as a key in input.slipUrlByPlayerId
  *
- * For each eligible player:
- *   1. Build a PromptPay QR (amount-embedded) when promptpay_id is valid, OR fall
- *      back to the static uploaded QR image, OR send no QR.
- *   2. Push a Flex bubble; on success stamp bill_amount + bill_pushed_at on the
- *      club_players row (paid_at / paid_method are NOT touched here).
+ * The server never generates a QR or bubble itself — the caller renders the
+ * slip client-side, uploads it via `uploadBillSlipAction`, and passes the
+ * resulting URL here. Players missing a slip URL are counted in
+ * `skippedNoSlip` and never pushed.
+ *
+ * For each eligible player: push a single LINE image message; on success
+ * stamp bill_amount + bill_pushed_at on the club_players row (paid_at /
+ * paid_method are NOT touched here).
  *
  * After the loop inserts one club_audit_logs row and revalidates the club path.
  */
@@ -143,13 +152,13 @@ export async function pushClubBillsAction(
   );
 
   // ------------------------------------------------------------------
-  // 4. Determine eligible targets.
+  // 4. Determine eligible targets — every payable + unpaid player is a
+  //    candidate (independent of whether a slip was uploaded). Reachable
+  //    players missing a slip URL are reported via skippedNoSlip in the
+  //    loop below, not silently dropped from the eligibility set.
   // ------------------------------------------------------------------
-  const filterSet = input.playerIds ? new Set(input.playerIds) : null;
-
   // players whose bill must be sent
   const payablePlayers = players.filter((p) => {
-    if (filterSet && !filterSet.has(p.id)) return false;
     const cost = costByPlayerId.get(p.id);
     if (!cost || cost.total <= 0) return false;
     if (p.paid_at !== null) return false; // already paid
@@ -163,83 +172,24 @@ export async function pushClubBillsAction(
   const skippedNoLine = payablePlayers.length - reachable.length;
 
   // ------------------------------------------------------------------
-  // 5. Format the club play_date for display.
-  // ------------------------------------------------------------------
-  let dateStr = "";
-  if (club.play_date) {
-    try {
-      dateStr = format(new Date(club.play_date), "dd MMM yyyy", {
-        locale: dateFnsLocaleOf("th"),
-      });
-    } catch {
-      dateStr = club.play_date;
-    }
-  }
-
-  // ------------------------------------------------------------------
-  // 6. Send a Flex bill to each reachable player.
+  // 5. Send the slip image to each reachable player.
   // ------------------------------------------------------------------
   let pushed = 0;
   let failed = 0;
+  let skippedNoSlip = 0;
 
   for (const player of reachable) {
     const lineUserId = lineUserIdByPlayerId.get(player.id)!;
     const amount = costByPlayerId.get(player.id)!.total;
-    const playerName = player.display_name;
 
-    // --- Build QR URL --------------------------------------------------
-    let qrUrl: string | null = null;
-
-    if (club.promptpay_id && isValidPromptPayId(club.promptpay_id)) {
-      // Amount-embedded dynamic QR — upload as PNG to the public bucket.
-      try {
-        const payload = buildPromptPayPayload(club.promptpay_id, amount);
-        const buf: Buffer = await QRCode.toBuffer(payload, {
-          errorCorrectionLevel: "H",
-          width: 600,
-          margin: 1,
-        });
-
-        const storagePath = `${input.clubId}/bill-${player.id}.png`;
-        const up = await sb.storage
-          .from("club-qr")
-          .upload(storagePath, buf, { contentType: "image/png", upsert: true });
-
-        if (!up.error) {
-          const { data: pub } = sb.storage
-            .from("club-qr")
-            .getPublicUrl(storagePath);
-          qrUrl = `${pub.publicUrl}?v=${Date.now()}`;
-        } else {
-          console.error(
-            "[club-billing] QR upload error for player",
-            player.id,
-            up.error.message,
-          );
-        }
-      } catch (err) {
-        console.error("[club-billing] QR generation error for player", player.id, err);
-      }
-    } else if (club.promptpay_qr_image) {
-      // Static uploaded QR (no embedded amount).
-      qrUrl = club.promptpay_qr_image;
+    const url = input.slipUrlByPlayerId[player.id];
+    if (!url) {
+      skippedNoSlip++;
+      continue;
     }
 
-    // --- Build Flex bubble -------------------------------------------
-    const bubble = buildBillBubble({
-      club,
-      playerName,
-      amount,
-      qrUrl,
-      dateStr,
-    });
-
     // --- Push via LINE -----------------------------------------------
-    const ok = await pushFlexToUser(
-      lineUserId,
-      `บิลค่าก๊วน ${club.name} — ฿${amount}`,
-      bubble,
-    );
+    const ok = await pushImageToUser(lineUserId, url);
 
     if (ok) {
       // Stamp bill_amount + bill_pushed_at; do NOT touch paid_at/paid_method.
@@ -266,137 +216,22 @@ export async function pushClubBillsAction(
   }
 
   // ------------------------------------------------------------------
-  // 7. Audit log.
+  // 6. Audit log.
   // ------------------------------------------------------------------
   await sb.from("club_audit_logs").insert({
     club_id: input.clubId,
     actor_id: session.profileId,
     actor_name: session.displayName,
     event_type: "bills_pushed",
-    detail: `pushed ${pushed}, failed ${failed}, no-line ${skippedNoLine}`,
+    detail: `pushed ${pushed}, failed ${failed}, no-line ${skippedNoLine}, no-slip ${skippedNoSlip}`,
   });
 
   // ------------------------------------------------------------------
-  // 8. Revalidate.
+  // 7. Revalidate.
   // ------------------------------------------------------------------
   revalidatePath(`/clubs/${input.clubId}`);
 
-  return { ok: true, pushed, failed, skippedNoLine };
-}
-
-// ---------------------------------------------------------------------------
-// Flex bubble builder (pure — no side effects)
-// ---------------------------------------------------------------------------
-
-function buildBillBubble(params: {
-  club: {
-    name: string;
-    promptpay_id: string | null;
-    promptpay_name: string | null;
-  };
-  playerName: string;
-  amount: number;
-  qrUrl: string | null;
-  dateStr: string;
-}) {
-  const { club, playerName, amount, qrUrl, dateStr } = params;
-
-  return {
-    type: "bubble",
-    header: {
-      type: "box",
-      layout: "vertical",
-      backgroundColor: "#2e7d4f",
-      paddingAll: "16px",
-      contents: [
-        {
-          type: "text",
-          text: `🏸 ${club.name}`,
-          color: "#ffffff",
-          weight: "bold",
-          size: "lg",
-          wrap: true,
-        },
-        ...(dateStr
-          ? [
-              {
-                type: "text",
-                text: dateStr,
-                color: "#ffffffcc",
-                size: "sm",
-              },
-            ]
-          : []),
-      ],
-    },
-    body: {
-      type: "box",
-      layout: "vertical",
-      spacing: "sm",
-      paddingAll: "16px",
-      contents: [
-        {
-          type: "text",
-          text: playerName,
-          weight: "bold",
-          size: "md",
-          wrap: true,
-        },
-        {
-          type: "text",
-          text: "ยอดที่ต้องชำระ",
-          size: "sm",
-          color: "#999999",
-        },
-        {
-          type: "text",
-          text: `฿${amount.toLocaleString()}`,
-          weight: "bold",
-          size: "3xl",
-          color: "#2e7d4f",
-        },
-        ...(qrUrl
-          ? [
-              {
-                type: "image",
-                url: qrUrl,
-                size: "full",
-                aspectMode: "fit",
-                aspectRatio: "1:1",
-                margin: "md",
-              },
-            ]
-          : []),
-        {
-          type: "text",
-          text: qrUrl
-            ? "สแกน QR เพื่อจ่ายเงินได้เลย"
-            : `โอน ${amount.toLocaleString()} บาท ไปพร้อมเพย์ ${
-                club.promptpay_name ?? club.promptpay_id ?? ""
-              }`,
-          size: "xs",
-          color: "#888888",
-          wrap: true,
-          margin: "md",
-        },
-      ],
-    },
-    footer: {
-      type: "box",
-      layout: "vertical",
-      paddingAll: "12px",
-      contents: [
-        {
-          type: "text",
-          text: `พร้อมเพย์ · ${club.promptpay_name ?? ""}`,
-          size: "xs",
-          color: "#aaaaaa",
-          align: "center",
-          wrap: true,
-        },
-      ],
-    },
-  };
+  return { ok: true, pushed, failed, skippedNoLine, skippedNoSlip };
 }
 
 // ---------------------------------------------------------------------------
@@ -412,6 +247,8 @@ export type PushGroupBillsResult =
       playersTagged: number;
       /** payable players in a bucket with no linked LINE account (not tagged) */
       skippedNoLine: number;
+      /** amount buckets with no client-rendered slip URL — not pushed, not stamped */
+      skippedNoSlip: number;
       /** true if any bucket exceeded LINE's 5-messages-per-push cap */
       overflow: boolean;
     }
@@ -419,18 +256,21 @@ export type PushGroupBillsResult =
 
 /**
  * Post bills into the club's bound LINE group, bucketed by amount owed. For each
- * distinct amount: one PromptPay QR + one text message @mentioning every payable
- * player who owes that amount (e.g. 170 → @bee @pang, 90 → @bank @boy).
+ * distinct amount: one client-rendered slip image + one text message @mentioning
+ * every payable player who owes that amount (e.g. 170 → @bee @pang, 90 → @bank @boy).
  *
  * Requires `clubs.line_group_id` (bind the group first via the webhook command).
  * Guest players (no linked LINE) still owe the amount but can't be tagged — they
- * count toward `skippedNoLine`. bill_amount / bill_pushed_at are stamped on every
- * player in a successfully-posted bucket; paid_at is never touched here.
+ * count toward `skippedNoLine`. Buckets missing a slip URL in
+ * `input.slipUrlByAmount` are skipped entirely (`skippedNoSlip`) — the server
+ * never generates its own QR/bubble. bill_amount / bill_pushed_at are stamped on
+ * every player in a successfully-posted bucket; paid_at is never touched here.
  */
 export async function pushGroupBillsAction(input: {
   clubId: string;
-  /** Optional subset of club_players.id to bill (still must be payable + unpaid). */
-  playerIds?: string[];
+  /** Client-rendered bill slip PNG URL (from `uploadBillSlipAction`, kind='amount'),
+   *  keyed by `String(amount)`. Buckets not present here are skipped (skippedNoSlip). */
+  slipUrlByAmount: Record<string, string>;
 }): Promise<PushGroupBillsResult> {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -512,10 +352,8 @@ export async function pushGroupBillsAction(input: {
   );
 
   // 4. Build payable player list → bucket by amount.
-  const filterSet = input.playerIds ? new Set(input.playerIds) : null;
   const payable: GroupBillPlayer[] = players
     .filter((p) => {
-      if (filterSet && !filterSet.has(p.id)) return false;
       const cost = costByPlayerId.get(p.id);
       if (!cost || cost.total <= 0) return false;
       if (p.paid_at !== null) return false;
@@ -545,55 +383,26 @@ export async function pushGroupBillsAction(input: {
     }
   }
 
-  // 6. Per amount: build QR, compose messages, push to the group, stamp bills.
+  // 6. Per amount: look up the client-rendered slip, compose messages, push to
+  //    the group, stamp bills.
   let amountsPushed = 0;
   let playersTagged = 0;
   let skippedNoLine = 0;
+  let skippedNoSlip = 0;
   let overflowAny = false;
 
   for (const bucket of buckets) {
     skippedNoLine += bucket.unreachable.length;
 
-    // QR (amount-embedded dynamic, else static uploaded, else none).
-    let qrUrl: string | null = null;
-    if (club.promptpay_id && isValidPromptPayId(club.promptpay_id)) {
-      try {
-        const payload = buildPromptPayPayload(club.promptpay_id, bucket.amount);
-        const buf: Buffer = await QRCode.toBuffer(payload, {
-          errorCorrectionLevel: "H",
-          width: 600,
-          margin: 1,
-        });
-        const storagePath = `${input.clubId}/group-bill-${bucket.amount}.png`;
-        const up = await sb.storage
-          .from("club-qr")
-          .upload(storagePath, buf, { contentType: "image/png", upsert: true });
-        if (!up.error) {
-          const { data: pub } = sb.storage
-            .from("club-qr")
-            .getPublicUrl(storagePath);
-          qrUrl = `${pub.publicUrl}?v=${Date.now()}`;
-        } else {
-          console.error(
-            "[club-billing] group QR upload error for amount",
-            bucket.amount,
-            up.error.message,
-          );
-        }
-      } catch (err) {
-        console.error(
-          "[club-billing] group QR generation error for amount",
-          bucket.amount,
-          err,
-        );
-      }
-    } else if (club.promptpay_qr_image) {
-      qrUrl = club.promptpay_qr_image;
+    const slipUrl = input.slipUrlByAmount[String(bucket.amount)] ?? null;
+    if (!slipUrl) {
+      skippedNoSlip++;
+      continue;
     }
 
     const { messages, overflow } = buildGroupBillMessages(bucket, {
       clubName: club.name,
-      qrUrl,
+      slipUrl,
       dateStr,
     });
     if (overflow) overflowAny = true;
@@ -633,7 +442,7 @@ export async function pushGroupBillsAction(input: {
     actor_id: session.profileId,
     actor_name: session.displayName,
     event_type: "group_bills_pushed",
-    detail: `amounts ${amountsPushed}, tagged ${playersTagged}, no-line ${skippedNoLine}`,
+    detail: `amounts ${amountsPushed}, tagged ${playersTagged}, no-line ${skippedNoLine}, no-slip ${skippedNoSlip}`,
   });
 
   revalidatePath(`/clubs/${input.clubId}`);
@@ -643,6 +452,7 @@ export async function pushGroupBillsAction(input: {
     amountsPushed,
     playersTagged,
     skippedNoLine,
+    skippedNoSlip,
     overflow: overflowAny,
   };
 }

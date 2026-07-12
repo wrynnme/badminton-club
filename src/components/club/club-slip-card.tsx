@@ -176,10 +176,17 @@ export type SlipCardProps = {
   qrImage: string | null;
   qrLogoUrl: string | null;
   locale: string;
+  /**
+   * "full" (default) = today's per-player slip: name + itemized rows + total + QR.
+   * "group" = a shared-amount slip for group-chat billing — a bucket is shared by
+   * everyone owing the same TOTAL, but their line-item breakdowns differ, so name
+   * + itemized rows are hidden. Only club/date header + Total + QR + footer show.
+   */
+  variant?: "full" | "group";
 };
 
 export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipCard(
-  { club, row, playerName, ppNumber, qrImage, qrLogoUrl, locale },
+  { club, row, playerName, ppNumber, qrImage, qrLogoUrl, locale, variant = "full" },
   ref,
 ) {
   const t = useTranslations("club.slip");
@@ -269,94 +276,101 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
 
       {/* Body */}
       <div style={{ padding: "16px 20px 8px", backgroundColor: "#ffffff" }}>
-        {/* Player name */}
-        <div
-          style={{
-            fontSize: 16,
-            fontWeight: 700,
-            color: "#111827",
-            marginBottom: 12,
-          }}
-        >
-          {playerName}
-        </div>
-
-        {/* Itemized rows */}
-        <div style={{ fontSize: 13, color: "#6b7280" }}>
-          {/* Court — hide when owner toggled it off */}
-          {tpl.fields.court && (
+        {variant === "full" && (
+          <>
+            {/* Player name */}
             <div
               style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "4px 0",
+                fontSize: 16,
+                fontWeight: 700,
+                color: "#111827",
+                marginBottom: 12,
               }}
             >
-              <span>{tp("colCourt")}</span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                {baht(row.court)}
-              </span>
+              {playerName}
             </div>
-          )}
 
-          {/* Shuttle — hide when owner toggled it off */}
-          {tpl.fields.shuttle && (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "4px 0",
-              }}
-            >
-              <span>
-                {tp("colShuttle")} ({tp("gamesSuffix", { n: row.games })})
-              </span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                {baht(row.shuttle)}
-              </span>
+            {/* Itemized rows */}
+            <div style={{ fontSize: 13, color: "#6b7280" }}>
+              {/* Court — hide when owner toggled it off */}
+              {tpl.fields.court && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "4px 0",
+                  }}
+                >
+                  <span>{tp("colCourt")}</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {baht(row.court)}
+                  </span>
+                </div>
+              )}
+
+              {/* Shuttle — hide when owner toggled it off */}
+              {tpl.fields.shuttle && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "4px 0",
+                  }}
+                >
+                  <span>
+                    {tp("colShuttle")} ({tp("gamesSuffix", { n: row.games })})
+                  </span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {baht(row.shuttle)}
+                  </span>
+                </div>
+              )}
+
+              {/* Expense — hide if zero or toggled off */}
+              {tpl.fields.expense && row.expense > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "4px 0",
+                  }}
+                >
+                  <span>{tp("colExpense")}</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                    {baht(row.expense)}
+                  </span>
+                </div>
+              )}
+
+              {/* Discount — show only if >0 and not toggled off */}
+              {tpl.fields.discount && row.discount > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "4px 0",
+                  }}
+                >
+                  <span>{tp("colDiscount")}</span>
+                  <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                    -{baht(row.discount)}
+                  </span>
+                </div>
+              )}
             </div>
-          )}
+          </>
+        )}
 
-          {/* Expense — hide if zero or toggled off */}
-          {tpl.fields.expense && row.expense > 0 && (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "4px 0",
-              }}
-            >
-              <span>{tp("colExpense")}</span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                {baht(row.expense)}
-              </span>
-            </div>
-          )}
-
-          {/* Discount — show only if >0 and not toggled off */}
-          {tpl.fields.discount && row.discount > 0 && (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                padding: "4px 0",
-              }}
-            >
-              <span>{tp("colDiscount")}</span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                -{baht(row.discount)}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Divider */}
-        <div
-          style={{
-            borderTop: "1px solid #e5e7eb",
-            margin: "10px 0 8px",
-          }}
-        />
+        {/* Divider — only in the full variant; the group variant hides the name +
+            itemized rows above it, so the rule would otherwise sit stray under the header. */}
+        {variant === "full" && (
+          <div
+            style={{
+              borderTop: "1px solid #e5e7eb",
+              margin: "10px 0 8px",
+            }}
+          />
+        )}
 
         {/* Total */}
         <div

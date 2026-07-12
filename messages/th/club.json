@@ -875,7 +875,11 @@
     "pushLineBtn": "เรียกเก็บผ่าน LINE",
     "pushLineTip": "ส่งบิล + QR ให้ผู้เล่นที่ผูก LINE ทุกคนที่ยังไม่จ่าย",
     "pushResult": "ส่งบิลแล้ว {pushed} คน · ไม่มี LINE {noLine} · ส่งไม่สำเร็จ {failed}",
+    "pushNoSlipNote": "สร้างสลิปไม่สำเร็จ {n} คน",
+    "slipRenderFailed": "สร้างรูปสลิปไม่สำเร็จ",
+    "slipUploadFailed": "อัปโหลดสลิปไม่สำเร็จ",
     "pushing": "กำลังส่งบิล…",
+    "generatingSlips": "กำลังสร้างสลิป {done}/{total}",
     "billPushed": "ส่งบิลแล้ว",
     "noLine": "ไม่มี LINE",
     "bankTransfer": "โอนเข้าบัญชี",
@@ -884,7 +888,8 @@
     "pushGroupTip": "โพสต์บิล + QR เข้ากลุ่มไลน์ของก๊วน แท็กผู้เล่นที่ยังไม่จ่าย แยกตามยอดเงิน",
     "pushGroupDisabledTip": "ยังไม่ได้ผูกกลุ่มไลน์ — ผูกกลุ่มก่อน",
     "pushGroupResult": "โพสต์เข้ากลุ่มแล้ว {amounts} ยอด · แท็ก {tagged} คน",
-    "pushGroupNoLineNote": "{n} คนยังไม่ได้เชื่อม LINE"
+    "pushGroupNoLineNote": "{n} คนยังไม่ได้เชื่อม LINE",
+    "pushGroupNoSlipNote": "สร้างสลิปไม่สำเร็จ {n} ยอด"
   },
   "slip": {
     "sendSlip": "ส่งสลิป",

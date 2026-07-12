@@ -110,7 +110,7 @@ describe("buildGroupBillMessages — one push per amount", () => {
     const [b170] = bucketBillsByAmount(SCENARIO);
     const { messages, overflow } = buildGroupBillMessages(b170, {
       clubName: "แบดเย็นนี้",
-      qrUrl: "https://cdn.example/qr-170.png",
+      slipUrl: "https://cdn.example/qr-170.png",
     });
 
     expect(overflow).toBe(false);
@@ -132,7 +132,7 @@ describe("buildGroupBillMessages — one push per amount", () => {
 
   it("omits the image bubble when no QR url is available", () => {
     const [, b90] = bucketBillsByAmount(SCENARIO);
-    const { messages } = buildGroupBillMessages(b90, { clubName: "c", qrUrl: null });
+    const { messages } = buildGroupBillMessages(b90, { clubName: "c", slipUrl: null });
     expect(messages).toHaveLength(1);
     expect(messages[0].type).toBe("textV2");
   });
@@ -147,7 +147,7 @@ describe("buildGroupBillMessages — one push per amount", () => {
     const [bucket] = bucketBillsByAmount(many);
     const { messages, overflow } = buildGroupBillMessages(bucket, {
       clubName: "c",
-      qrUrl: "https://cdn.example/qr.png",
+      slipUrl: "https://cdn.example/qr.png",
     });
     // 85 members → 5 text chunks (20*4 + 5) + 1 image = 6 → clamped to 5, overflow.
     expect(messages).toHaveLength(5);
