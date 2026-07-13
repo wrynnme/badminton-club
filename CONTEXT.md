@@ -182,3 +182,10 @@ See ADR 0001.
   `display_name` stays the manager-curated name (default) or adopts the LINE account
   name. The identity on the roster is the club's, not LINE's, unless the manager opts
   in.
+- **Self-service keyword link (เชื่อมเองในกลุ่ม)** — a player links themselves by
+  @mentioning the bot in the club's bound LINE group and typing
+  `เชื่อมไลน์ <ชื่อในโพย>`. A clean **unique** match on a still-guest row auto-links
+  immediately — the one exception to "a link is manager-confirmed, never automatic";
+  any ambiguous / already-linked / not-found case drops into the **link pool** for a
+  manager instead. A fast-path *alongside* the join-link pool (v0.34.0), not a
+  replacement. The roster `display_name` is always preserved (no name-choice dialog).
