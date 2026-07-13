@@ -32,7 +32,6 @@ import {
   verifyLineSignature,
   replyMessage,
   getGroupMemberProfile,
-  pushTextToUser,
 } from "@/lib/notification/line-club";
 import { upsertLineProfile } from "@/lib/auth/line-profile";
 import {
@@ -297,11 +296,9 @@ async function resolveSelfLink(args: {
         event_type: "player_linked_keyword",
         detail: `${updated.display_name} ← ${profile.id} (keyword)`,
       });
-      // Fire-and-forget confirmation to the player (never blocks the link).
-      void pushTextToUser(
-        userId,
-        `✅ เชื่อมบัญชี LINE กับก๊วน "${club.name}" เรียบร้อยแล้ว — จากนี้จะได้รับบิลและการแจ้งเตือนทาง LINE`,
-      );
+      // Confirmation is the in-group reply (see handleSelfLink). No 1:1 push — a
+      // group member need not be a bot friend, so a DM would 403 for exactly the
+      // users this flow targets, and the group reply already confirms.
       return { kind: "linked", playerName: updated.display_name };
     }
     // 23505 = this profile already links another row in the club (race the step-4
@@ -311,12 +308,14 @@ async function resolveSelfLink(args: {
   }
 
   // 7. Ambiguous / taken / not-found / lost-the-race → drop a pending pool request
-  //    so a manager finishes it (upsert is idempotent per UNIQUE(club_id, profile_id)).
+  //    so a manager finishes it. ignoreDuplicates = insert-when-absent only: never
+  //    resurrect a request a manager already dismissed (rejected) back to pending;
+  //    an existing pending row is left as-is.
   await sb
     .from("club_link_requests")
     .upsert(
       { club_id: club.id, profile_id: profile.id, status: "pending" },
-      { onConflict: "club_id,profile_id" },
+      { onConflict: "club_id,profile_id", ignoreDuplicates: true },
     );
   await sb.from("club_audit_logs").insert({
     club_id: club.id,
