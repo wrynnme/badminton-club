@@ -239,6 +239,59 @@ export async function pushMessagesToGroup(
 }
 
 // ---------------------------------------------------------------------------
+// getGroupMemberProfile
+// ---------------------------------------------------------------------------
+
+export type LineMemberProfile = {
+  userId: string;
+  displayName: string;
+  pictureUrl?: string;
+};
+
+/**
+ * Fetch a group member's profile (displayName + pictureUrl) by groupId + userId.
+ *
+ * Unlike GET /v2/bot/profile/{userId} (which requires the user to have added the
+ * bot as a friend), this group-member endpoint resolves any current member of a
+ * group the bot is in — no friendship or consent needed. Both ids come straight
+ * from a group message webhook event's `source`. Used by the self-service
+ * keyword-link flow to name a sender we've never seen before.
+ *
+ * Returns null on missing token, API error, or an incomplete payload.
+ */
+export async function getGroupMemberProfile(
+  groupId: string,
+  userId: string,
+): Promise<LineMemberProfile | null> {
+  const token = process.env.LINE_MESSAGING_CHANNEL_ACCESS_TOKEN;
+  if (!token) return null;
+
+  try {
+    const res = await fetch(
+      `https://api.line.me/v2/bot/group/${encodeURIComponent(groupId)}/member/${encodeURIComponent(userId)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+
+    if (!res.ok) {
+      const errBody = await res.text();
+      console.error("[LINE-CLUB] getGroupMemberProfile API error:", res.status, errBody);
+      return null;
+    }
+
+    const data = (await res.json()) as {
+      userId?: string;
+      displayName?: string;
+      pictureUrl?: string;
+    };
+    if (!data.userId || !data.displayName) return null;
+    return { userId: data.userId, displayName: data.displayName, pictureUrl: data.pictureUrl };
+  } catch (err) {
+    console.error("[LINE-CLUB] getGroupMemberProfile exception:", err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // verifyLineSignature
 // ---------------------------------------------------------------------------
 

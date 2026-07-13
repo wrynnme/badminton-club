@@ -43,12 +43,55 @@ import { ShareLinkRow } from "@/components/share-link-row";
 import {
   generateClubJoinTokenAction,
   revokeClubJoinTokenAction,
+  unbindClubLineGroupAction,
   linkClubPlayerAction,
   dismissClubLinkRequestAction,
 } from "@/lib/actions/club-linking";
 import type { ClubLinkPoolRequest } from "@/lib/types";
 
 type GuestOption = { id: string; display_name: string };
+
+/**
+ * The `ผูกก๊วน <token>` command line + copy button. Rendered in the unbound state
+ * (initial bind) and, once bound, again under the rebind hint so a manager can
+ * move the club to a different LINE group without hunting for the command.
+ */
+function BindCommandRow({
+  token,
+  copied,
+  onCopy,
+  copyTip,
+}: {
+  token: string;
+  copied: boolean;
+  onCopy: (text: string) => void;
+  copyTip: string;
+}) {
+  const command = `ผูกก๊วน ${token}`;
+  return (
+    <div className="flex gap-2">
+      <code className="h-8 flex-1 overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 px-2 font-mono text-xs leading-8">
+        {command}
+      </code>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 shrink-0"
+              aria-label={copyTip}
+              onClick={() => onCopy(command)}
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            </Button>
+          }
+        />
+        <TooltipContent>{copyTip}</TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
 
 export function ClubLinkControls({
   clubId,
@@ -71,6 +114,9 @@ export function ClubLinkControls({
   const [tokenPending, startToken] = useTransition();
   const [linkTarget, setLinkTarget] = useState<ClubLinkPoolRequest | null>(null);
   const [bindCopied, setBindCopied] = useState(false);
+  const [bound, setBound] = useState(lineGroupBound);
+  const [unbindOpen, setUnbindOpen] = useState(false);
+  const [unbindPending, startUnbind] = useTransition();
 
   const copyBindCommand = async (text: string) => {
     try {
@@ -102,6 +148,18 @@ export function ClubLinkControls({
       }
       setToken(null);
       toast.success(t("toastLinkRevoked"));
+    });
+
+  const unbind = () =>
+    startUnbind(async () => {
+      const res = await unbindClubLineGroupAction(clubId);
+      if (res && "error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      setBound(false);
+      setUnbindOpen(false);
+      toast.success(t("toastUnbound"));
     });
 
   return (
@@ -172,33 +230,97 @@ export function ClubLinkControls({
         {/* Bind LINE group — post commands are read by the LINE webhook */}
         <div className="space-y-2 border-t pt-4">
           <h3 className="text-sm font-medium">{t("bindGroupHeading")}</h3>
-          {lineGroupBound ? (
-            <p className="text-sm text-emerald-600 dark:text-emerald-400">{t("bindGroupBound")}</p>
+          {bound ? (
+            <div className="space-y-2">
+              <p className="text-sm text-emerald-600 dark:text-emerald-400">{t("bindGroupBound")}</p>
+              {token ? (
+                <>
+                  <p className="text-xs text-muted-foreground">{t("bindGroupRebindHint")}</p>
+                  <BindCommandRow
+                    token={token}
+                    copied={bindCopied}
+                    onCopy={copyBindCommand}
+                    copyTip={t("bindGroupCopyTip")}
+                  />
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">{t("bindGroupNeedToken")}</p>
+              )}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 text-destructive hover:text-destructive"
+                      onClick={() => setUnbindOpen(true)}
+                      disabled={unbindPending}
+                    >
+                      <Link2Off className="h-3.5 w-3.5" />
+                      {t("unbindGroupBtn")}
+                    </Button>
+                  }
+                />
+                <TooltipContent>{t("unbindGroupTip")}</TooltipContent>
+              </Tooltip>
+
+              <Dialog open={unbindOpen} onOpenChange={setUnbindOpen}>
+                <DialogContent className="sm:max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle>{t("unbindConfirmTitle")}</DialogTitle>
+                    <DialogDescription>{t("unbindConfirmDesc")}</DialogDescription>
+                  </DialogHeader>
+                  <DialogFooter>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setUnbindOpen(false)}
+                            disabled={unbindPending}
+                          >
+                            {t("cancel")}
+                          </Button>
+                        }
+                      />
+                      <TooltipContent>{t("unbindCancelTip")}</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger
+                        render={
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={unbind}
+                            disabled={unbindPending}
+                          >
+                            {unbindPending ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Link2Off className="h-3.5 w-3.5" />
+                            )}
+                            {t("unbindConfirmBtn")}
+                          </Button>
+                        }
+                      />
+                      <TooltipContent>{t("unbindGroupTip")}</TooltipContent>
+                    </Tooltip>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           ) : token ? (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">{t("bindGroupStep1")}</p>
               <p className="text-xs text-muted-foreground">{t("bindGroupStep2")}</p>
-              <div className="flex gap-2">
-                <code className="h-8 flex-1 overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 px-2 font-mono text-xs leading-8">
-                  ผูกก๊วน {token}
-                </code>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 shrink-0"
-                        aria-label={t("bindGroupCopyTip")}
-                        onClick={() => copyBindCommand(`ผูกก๊วน ${token}`)}
-                      >
-                        {bindCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                      </Button>
-                    }
-                  />
-                  <TooltipContent>{t("bindGroupCopyTip")}</TooltipContent>
-                </Tooltip>
-              </div>
+              <BindCommandRow
+                token={token}
+                copied={bindCopied}
+                onCopy={copyBindCommand}
+                copyTip={t("bindGroupCopyTip")}
+              />
             </div>
           ) : (
             <div className="space-y-2">
