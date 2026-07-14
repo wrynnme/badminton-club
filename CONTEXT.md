@@ -153,6 +153,52 @@ court allocator is the pure helper `planBulkStartCourts` (`src/lib/club/bulk-sta
   do not newly clear downstream `winner_next_match_id` feeder pointers (a pre-existing
   caveat, out of scope for this feature).
 
+## Club series (ก๊วนถาวร + นัด)
+
+Design locked 2026-07-15 (grilled, 10 decisions); **NOT built yet** — see ADR 0002
+and `spec.md` § "📐 Design — ผูกครั้งเดียวใช้ได้ตลอด". Once built, these terms
+supersede the "one `clubs` row = one club" reading used elsewhere in this file.
+
+- **Club series / ก๊วน (ถาวร)** — the persistent real-world club (e.g. "MUGGLE"): a
+  `club_series` row owning the LINE group binding (`line_group_id`), the join link
+  (`join_token`), the member registry, and (post-P3) payment config + co-admins.
+  Bound to its LINE group **once, forever** — bindings never move between sessions.
+- **Session / นัด** — one play meeting: a `clubs` row with `series_id` set. Roster,
+  queue, matches, and billing stay per-session. Noun contexts always use "นัด"
+  ("นัดปัจจุบัน", "ประวัตินัด", "นัดวันพุธ"). Never call a session "ก๊วน" in new copy.
+- **จัดก๊วน (open a session)** — the **verb** on the primary action button that opens
+  a new นัด (hybrid naming, 2026-07-15). Action-label only — never a noun for the
+  session entity, to avoid stacking "ก๊วน" across both layers.
+- **Member / สมาชิกก๊วน** — a `series_members` row: a person belonging to the series
+  (manager-curated `canonical_name` + `default_level_id`), surviving every session.
+  Two kinds: **LINE-linked** (`profile_id` set — reachable by push/mention; created
+  the first time a manager confirms that person) and **name-only** (`profile_id`
+  NULL — added by a manager, seeded normally, unreachable by push; upgrades in place
+  when they link LINE). Distinct from a **roster player** (`club_players` =
+  attendance of one นัด).
+- **Regular / ขาประจำ** — a member with `is_regular = true` (default): auto-seeded
+  into the roster when a session opens.
+- **Partner pair / คู่ประจำ** — a series-level pair of members
+  (`series_partner_pairs`) instantiated into per-session `club_locked_pairs` on
+  session open. The queue engine still reads only per-session locked pairs.
+- **Active session / นัดปัจจุบัน** — the session `club_series.active_session_id`
+  points at; set automatically on open, switchable by a manager. Webhook keyword
+  linking and join-link auto-link target this session's roster. Membership upserts
+  are series-level regardless.
+- **Membership request** — the evolution of a **link request**: `club_link_requests`
+  becomes series-scoped (join a ก๊วน once, not each นัด). Returning confirmed
+  members auto-link on exact+unique name match (amends ADR 0001 — see ADR 0002);
+  first-timers still require one manager confirmation.
+- **Ad-hoc club / ก๊วนเฉพาะกิจ** — a one-off group (plays once or twice): a hidden
+  auto-created `club_series` with `is_adhoc = true` (name optional) wrapping its
+  session(s), so LINE binding/join/billing use the same series-level machinery.
+  Listed compactly as "เฉพาะกิจ", not as a full ก๊วน. Upgrading to a full ก๊วน =
+  naming it and flipping the flag — nothing moves.
+- **Session defaults / ค่าตั้งต้นนัด** — `club_series.session_defaults` jsonb (venue,
+  times, max_players, court/shuttle fees, full queue_settings, named courts) edited
+  on the club settings page. "จัดก๊วน" always reads it; editing one นัด never writes
+  back. The living successor of the retired club-preset system.
+
 ## LINE linking (เชื่อม LINE)
 
 Design locked 2026-07-11 (grilled). Attaches a real LINE account to an existing
