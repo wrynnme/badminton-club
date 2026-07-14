@@ -537,6 +537,39 @@ Design ล็อกจาก grilling 2026-07-07 — **priority ladder (strict)*
 - **Foursome-lock fix (ship-check 2026-07-07)**: เดิม pool == 2×match-size (เช่น 8 คน doubles/สนามเดียว) rest-spacing บังคับ foursome ตรงข้ามทุกรอบ → 2 ก๊วนไม่เจอกันทั้งคืน (distinctFoursomes=2). แก้ `planFullMatch`: `if (eligible.length < fillCount)` → **`<=`** (ตรง intent comment เดิม; `<` พลาด boundary) → ที่ 2× ผ่อน rest-spacing ให้ variety เลือก grouping ข้ามก๊วน. Probe: 8 คน/N8 → distinctFoursomes **2→14**, partnership **12→28 ครบทุกคู่**, crossHalf **0→12**, maxRepeat 2, fairness ยังถึง N (trade: ยอม back-to-back 1 ครั้งที่ boundary). pool ≥ 3× ยังคง rest-spacing เข้ม.
 - **Tests**: `pair-history.test.ts` (8) + `batch-queue.test.ts` (28 — variety block + **ship-check regressions 2026-07-07**: `assertNoConcurrentDoubleBooking` เขียนใหม่ให้ resolve winnerOf → possible-occupants disjoint (จับ cross-lane + P-vs-P; ของเดิมเช็คแค่ fixedIds จึง blind) · even-division 8 คน mix ไม่ lock · winner_stays 1 fixed game/คน). รวม **808/808**
 
+#### Locked-pair time-mismatch warning — ✅ DONE 2026-07-14 (v0.35.0)
+
+เป้า pro-rate ต่อคน (`computePlayerTarget` = N × เวลาที่อยู่ ÷ เวลา session) เป็น **floor (ขั้นต่ำ) ไม่ใช่ cap**. เมื่อ **locked pair** จับคนเป้าต่ำ (มาสาย/กลับก่อน) ล็อกกับคนเป้าสูง (อยู่เต็มเวลา) → คู่ล็อกต้องลงเล่นด้วยกันทุกแมตช์ → คนเป้าต่ำถูกดันให้เล่นเท่าคนเป้าสูง (เกินเป้าตัวเอง). เคสจริงที่เจอ (club `589c5747…`): BANK (`end_time=20:00`, เป้า 3) ล็อกกับ Jxler (เต็ม, เป้า 5) → หลัง "รื้อ+สุ่มใหม่" BANK ได้ 5 = Jxler เป๊ะ. นี่คือข้อจำกัดเชิงออกแบบของ locked pair (ทำงานถูกตาม intent) ไม่ใช่บั๊ก generator — จึงเลือกทาง **เตือน** แทนแก้อัลกอริทึม.
+
+- **Helper** `playerPresenceMinutes(row, clubStart, clubEnd)` ใน `batch-queue.ts` (reuse `resolvePlayerWindow` + `clampedSessionMinutes` — window เดียวกับ `computePlayerTargets` เป๊ะ) · `findLockedPairMismatches(players, locks, clubStart, clubEnd)` ใน `queue-preview.ts` → คู่ล็อกที่ presence-minutes ต่างกัน พร้อมระบุคน "สั้นกว่า" (`LockedPairMismatch {shorterId/Name, shorterMinutes, longerName, longerMinutes}`). **N-independent** (คีย์ที่นาที ไม่ใช่การปัดเป้า)
+- **UI** — `club-locked-pairs.tsx`: เตือนกล่อง amber ตอนเลือก 2 คนจะล็อก (`windowWarnCreate`) + ไอคอน `AlertTriangle` + tooltip ต่อแถวคู่ที่ล็อกไว้แล้ว (`windowWarnRow`); `generate-queue-dialog.tsx` (หน้า "สุ่มคิวทั้งชุด"): กล่อง amber ใต้ตารางพรีวิว ไล่รายคู่ (`lockMismatchTitle`/`lockMismatchItem`). ต้องส่ง `players` (พร้อม start/end/checked_in_at) + `clubStart/clubEnd` เข้า `ClubLockedPairs` และ `locks` เข้า `ClubQueuePanel`→`GenerateQueueDialog` (wired ทั้ง 2 page: `(app)/clubs/[id]` + `(public)/c/[id]`)
+- **i18n**: `club.lockedPairs.windowWarnCreate/windowWarnRow` + `club.queuePanel.lockMismatchTitle/lockMismatchItem` (th/en, parity 942)
+- **Tests**: `locked-pair-mismatch.test.ts` (10 — presence minutes: full/leave-early/late/clamp; mismatch: equal→none, BANK+Jxler shorter-pick regardless of column order, late via checked_in_at, missing-player skip, multi-lock). tsc 0
+- **ไม่ทำ (ยังเปิดไว้)**: fix (ข) — generator filler ปัจจุบัน (`pickCandidates` `batch-queue.ts:462`) เลือกคน games น้อยสุดก่อน = ดันคนเป้าต่ำเกินเป้าแม้ไม่ล็อกคู่ (sort ตาม `games_played − target` ยังไม่ทำ)
+
+#### N-game lock budget: respect quota at queue-time (derive) — ✅ DONE 2026-07-14 (v0.37.0)
+
+เดิม lock "N เกม" ลด `games_remaining` **เฉพาะตอนแมตช์จบ** (finish RPC) และ generator โหลด lock เป็นแค่ `[p1,p2]` ทิ้ง count → มองทุก lock เป็น "ตลอด" → สุ่มคิวทีเดียวจับคู่ติดกันเกิน N. แก้เป็น **derive semantics** (grill 2026-07-14):
+
+- **Schema semantic change (R1)**: `club_locked_pairs.games_remaining` = **QUOTA คงที่** (NULL=ตลอด) ไม่ mutate อีก. live remaining = `quota − countLockedTeammateMatches(matches)` (นับใบ pending+in_progress+completed ที่คู่นี้อยู่ทีมเดียวกัน) → **ยกเลิก/ลบ pending = refund อัตโนมัติ** ไม่มี counter ให้ drift. lock **ไม่ auto-remove** ที่ 0 — เจ้าของปลดเอง
+- **Migration** `20260714000100_finish_club_match_drop_lock_decrement.sql` (⏳ ยังไม่ apply prod — apply ตอน deploy กัน desync): CREATE OR REPLACE `finish_club_match` **ตัดบล็อก `games_remaining -= 1` + `DELETE ... <= 0`** (ที่เหลือ = winner-promotion + guards เดิม byte-identical)
+- **Pure helpers** (`batch-queue.ts`): `countLockedTeammateMatches(matches,a,b)` · `deriveLockBudgets(lockRows, matches)` → `{ active: LockedPair[] (remaining>0 only), budget: Map<pairKey,number> }` (NULL→Infinity)
+- **Generator** `generateBatchQueue` รับ `lockBudget?: Map<pairKey,number>`; `activeLocks` เป็น mutable — `markScheduled` เผา budget เมื่อคู่ล็อกถูกวางลงแมตช์เดียวกัน, budget=0 → drop lock + rebuild `lockedPartner` (ที่เหลือของ batch จับกับคนอื่นได้). ไม่ส่ง budget = Infinity = พฤติกรรมเดิม (backward-compatible, 44 เดิมผ่านหมด)
+- **Actions** (`club-matches.ts`): `loadClubQueueContext` fetch matches ครั้งเดียว (status+slots) แล้ว `deriveLockBudgets` → คืน `lockedPairs` (active) + `lockBudget` + `matches`; generate action reuse `ctx.matches` + ส่ง `lockBudget`. incremental reroll/manual ใช้ `ctx.lockedPairs` (active) อัตโนมัติ
+- **UI** `club-locked-pairs.tsx`: badge โชว์ remaining ที่ derive (`quota − teammateCount`, clamp 0) + AlertTriangle เตือน `overQuota` เมื่อจัดเกินโควตา; 2 page ส่ง `matches` เข้ามา. i18n `club.lockedPairs.overQuota` (th/en)
+- **Tests**: `locked-pair-budget.test.ts` (7 — countLockedTeammateMatches, deriveLockBudgets forever/refund/consumed/over-clamp, generator budget cap ≤N + ไม่ stall + no-budget>2). tsc 0 · vitest 869
+- **ไม่ทำ**: fix (ข) generator filler favoring (`pickCandidates`) ยังเปิดไว้เหมือนเดิม (คนละเรื่องกับ lock budget)
+
+#### Queue name search (ค้นหาชื่อในแท็บคิว) — ✅ DONE 2026-07-14 (v0.36.0)
+
+ช่องค้นหาบนสุดของ `club-queue-panel.tsx` กรองทั้ง 3 section (รอแข่ง/กำลังแข่ง/จบแล้ว) ตามชื่อผู้เล่น.
+
+- **Filter**: `matchHit(m)` = query ว่าง OR ชื่อจาก slot ใดใน `side_a_player1/2` `side_b_player1/2` (resolve ผ่าน `nameMap`) มี substring ตรง (lowercase). สร้าง `visibleInProgress/visiblePending/visibleCompleted` ที่ระดับ render (ไม่ memoize — ขนาดเล็ก). ช่อง winnerOf placeholder (slot null) ไม่แมตช์ตอนค้นหา
+- **UI**: `Input type="search"` + ไอคอน `Search` + ปุ่มล้าง `X`; แต่ละ section ใช้ visible array (badge count + map); pending section ทั้ง `<section>` ซ่อนเมื่อค้นหาแล้วว่าง; ข้อความรวม `searchEmpty` เมื่อไม่พบทั้ง 3 ส่วน
+- **Highlight**: helper `HighlightText({ text, query })` แยกทุก occurrence ของ `q` (case-insensitive, คงตัวพิมพ์เดิม) ครอบด้วย `<mark className="bg-warning/40">`; `query={q}` ส่งเข้า `PendingRow`/`InProgressRow`/`CompletedRow` (prop optional — `q` ว่าง = render ข้อความเดิม). ครอบชื่อใน label หลักทั้ง 3 row (ข้าม winnerOf placeholder + dialog ภายใน finish/revert). ใช้ `q` ตัวเดียวกับ `matchHit` → highlight ตรงกับ filter เสมอ
+- **ระหว่างค้นหา (`searching`) พัก DnD + bulk-select**: `pendingSelectActive`/`completedSelectActive` = `selectMode && !searching`; pending card เพิ่ม branch `searching ?` render `PendingRow` แบบไม่ลาก + เลขคิวจริงจาก `pendingPos` (id→ตำแหน่งใน pendingOrder เต็ม); toggle/drag-hint/select-all/bulk-bar ซ่อนเมื่อ searching. per-row actions (เริ่ม/ยกเลิก/รีเซ็ต/เลือกสนาม) ยังทำงาน
+- **i18n**: `club.queuePanel.searchPlaceholder/searchClear/searchEmpty` (th/en, parity 945)
+
 ### Reserve / Waitlist (สำรอง) — ✅ UI DONE (2026-06-08, develop)
 
 - **DB**: `club_players.status "active"|"reserve"` (backend already done — migration + server actions not touched by this change).

@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useForm } from "@tanstack/react-form";
 import * as z from "zod";
 import { toast } from "sonner";
-import { RotateCcw, Shuffle } from "lucide-react";
+import { AlertTriangle, RotateCcw, Shuffle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,7 +31,12 @@ import {
   generateClubQueueAction,
   regenerateClubQueueAction,
 } from "@/lib/actions/club-matches";
-import { buildPreviewRows, type PreviewPlayer } from "@/lib/club/queue-preview";
+import {
+  buildPreviewRows,
+  findLockedPairMismatches,
+  type PreviewPlayer,
+  type LockPairIds,
+} from "@/lib/club/queue-preview";
 import { suggestBatchTarget } from "@/lib/club/batch-queue";
 import type { ClubMatch } from "@/lib/types";
 
@@ -39,6 +44,7 @@ export function GenerateQueueDialog({
   clubId,
   players,
   matches,
+  locks,
   clubStart,
   clubEnd,
   playersPerTeam,
@@ -47,6 +53,7 @@ export function GenerateQueueDialog({
   clubId: string;
   players: PreviewPlayer[];
   matches: ClubMatch[];
+  locks: LockPairIds[];
   clubStart: string;
   clubEnd: string;
   playersPerTeam: 1 | 2;
@@ -82,6 +89,14 @@ export function GenerateQueueDialog({
   const pendingCount = useMemo(
     () => matches.filter((m) => m.status === "pending").length,
     [matches],
+  );
+
+  // Locked pairs whose players stay for different amounts of time: the shorter one
+  // is dragged up to their partner's match count, so their (lower) pro-rated target
+  // silently won't hold. N-independent — surfaced regardless of the current N.
+  const lockMismatches = useMemo(
+    () => findLockedPairMismatches(players, locks, clubStart, clubEnd),
+    [players, locks, clubStart, clubEnd],
   );
 
   const schema = useMemo(
@@ -268,6 +283,25 @@ export function GenerateQueueDialog({
               );
             }}
           </form.Subscribe>
+
+          {lockMismatches.length > 0 && (
+            <div className="flex gap-2 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-xs text-warning-foreground">
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-px" />
+              <div className="space-y-1">
+                <p className="font-medium">{t("lockMismatchTitle")}</p>
+                <ul className="space-y-0.5">
+                  {lockMismatches.map((m, i) => (
+                    <li key={`${m.shorterId}-${i}`}>
+                      {t("lockMismatchItem", {
+                        shorter: m.shorterName,
+                        longer: m.longerName,
+                      })}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
 
           {confirmingReroll ? (
             <div className="space-y-3">

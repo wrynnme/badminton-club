@@ -77,7 +77,6 @@ export default async function PublicClubPage({
   const publicPlayers = players.map(toPublicPlayer);
   // The queue + locked-pairs panels only need id + name; derive once from the
   // already-sanitized list instead of re-walking the raw players twice.
-  const nameList = publicPlayers.map((p) => ({ id: p.id, display_name: p.display_name }));
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto px-3 sm:px-4 py-6">
@@ -149,9 +148,18 @@ export default async function PublicClubPage({
               {queueSettings.players_per_team === 2 && (
                 <ClubLockedPairs
                   clubId={club.id}
-                  players={nameList}
+                  players={publicPlayers.map((p) => ({
+                    id: p.id,
+                    display_name: p.display_name,
+                    start_time: p.start_time,
+                    end_time: p.end_time,
+                    checked_in_at: p.checked_in_at,
+                  }))}
                   locks={lockedPairs}
+                  matches={clubMatches}
                   canManage={false}
+                  clubStart={club.start_time.slice(0, 5)}
+                  clubEnd={club.end_time.slice(0, 5)}
                 />
               )}
               <ClubQueuePanel
@@ -165,6 +173,7 @@ export default async function PublicClubPage({
                   start_time: p.start_time,
                   end_time: p.end_time,
                 }))}
+                locks={lockedPairs}
                 settings={queueSettings}
                 courts={clubCourts}
                 canManage={false}

@@ -5,7 +5,7 @@ import { useRowSelection } from "@/lib/hooks/use-row-selection";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock, RotateCcw, Flag, Undo2, MapPin, ListChecks } from "lucide-react";
+import { GripVertical, Minus, Plus, Play, X, Trophy, ChevronsUpDown, Check, PenLine, Trash2, AlertTriangle, Clock, RotateCcw, Flag, Undo2, MapPin, ListChecks, Search } from "lucide-react";
 import {
   DndContext,
   closestCenter,
@@ -81,6 +81,7 @@ import {
 } from "@/lib/actions/club-matches";
 import type { ClubMatch, Game } from "@/lib/types";
 import { isClubMatchFull } from "@/lib/club/queue";
+import type { LockPairIds } from "@/lib/club/queue-preview";
 import type { ClubQueueSettings } from "@/lib/club/queue-settings";
 import { firstFreeCourt, occupiedCourtMap } from "@/lib/club/courts";
 import { GenerateQueueDialog } from "@/components/club/generate-queue-dialog";
@@ -132,6 +133,32 @@ function resolveSide(
   if (!player2) return n1;
   const n2 = nameMap.get(player2) ?? "—";
   return `${n1} / ${n2}`;
+}
+
+// Highlights every case-insensitive occurrence of `query` inside a match's name
+// label, so the searched-for player pops out of the "A / B vs C / D" string. `query`
+// is the already-trimmed+lowercased search term (same value matchHit filters on);
+// empty → the text renders untouched, so rows pass it unconditionally.
+function HighlightText({ text, query }: { text: string; query?: string }) {
+  if (!query) return <>{text}</>;
+  const lower = text.toLowerCase();
+  let from = lower.indexOf(query);
+  if (from === -1) return <>{text}</>;
+  const parts: Array<string | ReactElement> = [];
+  let cursor = 0;
+  let key = 0;
+  while (from !== -1) {
+    if (from > cursor) parts.push(text.slice(cursor, from));
+    parts.push(
+      <mark key={key++} className="rounded-[2px] bg-warning/40 text-inherit">
+        {text.slice(from, from + query.length)}
+      </mark>,
+    );
+    cursor = from + query.length;
+    from = lower.indexOf(query, cursor);
+  }
+  if (cursor < text.length) parts.push(text.slice(cursor));
+  return <>{parts}</>;
 }
 
 // A compact {a,b} summary of a finished match for the prior-meeting hint:
@@ -425,6 +452,7 @@ function PendingRow({
   dragHandleProps,
   rowNumber,
   feederByTarget,
+  query,
   selectMode = false,
   selected = false,
   onToggleSelect,
@@ -443,6 +471,8 @@ function PendingRow({
   /** feeder match (still pending/in_progress) keyed `${winner_next_match_id}:${slot}` —
    *  presence means that side is a LIVE "winner of" placeholder, not an empty slot. */
   feederByTarget: Map<string, ClubMatch>;
+  /** active search term (trimmed+lowercased) → highlight matched names; undefined = none */
+  query?: string;
   /** select mode replaces the drag handle + per-row actions with a checkbox */
   selectMode?: boolean;
   selected?: boolean;
@@ -559,9 +589,9 @@ function PendingRow({
       {/* Read-only lineup — editing moves to the ✎ dialog. Placeholder sides show the
           "winner of #N" label instead of names. */}
       <span className="min-w-0 flex-1 text-sm truncate">
-        {placeholderA ? feederLabel(feederA!) : sideA}{" "}
+        {placeholderA ? feederLabel(feederA!) : <HighlightText text={sideA} query={query} />}{" "}
         <span className="text-muted-foreground">vs</span>{" "}
-        {placeholderB ? feederLabel(feederB!) : sideB}
+        {placeholderB ? feederLabel(feederB!) : <HighlightText text={sideB} query={query} />}
       </span>
       {canManage && !selectMode && (
         <div className="flex items-center gap-1 shrink-0">
@@ -710,6 +740,7 @@ function InProgressRow({
   canManage,
   onRefresh,
   gameTimeLimitMin,
+  query,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
@@ -718,6 +749,8 @@ function InProgressRow({
   onRefresh: () => void;
   /** game_time_limit_min from queue settings (0 = no over-time indicator). */
   gameTimeLimitMin: number;
+  /** active search term (trimmed+lowercased) → highlight matched names; undefined = none */
+  query?: string;
 }) {
   const t = useTranslations("club.queuePanel");
   const [finishOpen, setFinishOpen] = useState(false);
@@ -812,7 +845,9 @@ function InProgressRow({
           badgeClassName="shrink-0 text-xs bg-warning/20 text-warning-foreground border-warning/40"
         />
         <span className="flex-1 text-sm truncate">
-          {sideA} <span className="text-muted-foreground">vs</span> {sideB}
+          <HighlightText text={sideA} query={query} />{" "}
+          <span className="text-muted-foreground">vs</span>{" "}
+          <HighlightText text={sideB} query={query} />
         </span>
         {match.started_at && (
           <ElapsedTicker
@@ -1050,6 +1085,7 @@ function CompletedRow({
   selectMode = false,
   selected = false,
   onToggleSelect,
+  query,
 }: {
   match: ClubMatch;
   nameMap: Map<string, string>;
@@ -1059,6 +1095,8 @@ function CompletedRow({
   selectMode?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
+  /** active search term (trimmed+lowercased) → highlight matched names; undefined = none */
+  query?: string;
 }) {
   const t = useTranslations("club.queuePanel");
   const sideA = resolveSide(match.side_a_player1, match.side_a_player2, nameMap);
@@ -1082,9 +1120,13 @@ function CompletedRow({
       <Badge variant="outline" className="shrink-0 text-xs opacity-60">
         {t("courtBadge", { court: match.court ?? "" })}
       </Badge>
-      <span className={winnerA ? "text-winner font-medium" : ""}>{sideA}</span>
+      <span className={winnerA ? "text-winner font-medium" : ""}>
+        <HighlightText text={sideA} query={query} />
+      </span>
       <span className="text-xs">vs</span>
-      <span className={winnerB ? "text-winner font-medium" : ""}>{sideB}</span>
+      <span className={winnerB ? "text-winner font-medium" : ""}>
+        <HighlightText text={sideB} query={query} />
+      </span>
       {gameSets.length > 0 ? (
         <span className="flex items-center gap-1.5 shrink-0 text-xs font-medium tabular-nums text-foreground">
           {gameSets.map((g, i) => (
@@ -1777,6 +1819,7 @@ export function ClubQueuePanel({
   clubId,
   matches,
   players,
+  locks,
   settings,
   courts,
   canManage,
@@ -1793,6 +1836,8 @@ export function ClubQueuePanel({
     start_time?: string | null;
     end_time?: string | null;
   }>;
+  /** Locked pairs — forwarded to GenerateQueueDialog to warn on unequal-time locks. */
+  locks: LockPairIds[];
   settings: ClubQueueSettings;
   courts: string[];
   canManage: boolean;
@@ -1850,6 +1895,11 @@ export function ClubQueuePanel({
         .sort(byQueueThenCreated),
     );
   }, [matches]);
+
+  // ─── Name search (filters all 3 sections) ───────────────────────────────────
+  // While a query is active, DnD reorder + bulk-select are suspended (reordering a
+  // filtered subset would corrupt queue order); per-row actions still work.
+  const [search, setSearch] = useState("");
 
   // ─── Select-mode state (pending + completed sections, independent) ──────────
   // One useRowSelection hook per section owns its select-mode + selected-id set,
@@ -1918,25 +1968,98 @@ export function ClubQueuePanel({
         new Date(a.ended_at ?? a.created_at).getTime(),
     );
 
+  // Name filter: a match is a hit when any of its 4 fixed player slots resolves to
+  // a name containing the query (case-insensitive). Empty query = everything.
+  const q = search.trim().toLowerCase();
+  const searching = q.length > 0;
+  const matchHit = (m: ClubMatch) => {
+    if (!searching) return true;
+    for (const pid of [
+      m.side_a_player1,
+      m.side_a_player2,
+      m.side_b_player1,
+      m.side_b_player2,
+    ]) {
+      if (!pid) continue;
+      const nm = nameMap.current.get(pid);
+      if (nm && nm.toLowerCase().includes(q)) return true;
+    }
+    return false;
+  };
+  const visibleInProgress = inProgress.filter(matchHit);
+  const visibleCompleted = completed.filter(matchHit);
+  const visiblePending = pendingOrder.filter(matchHit);
+  // Real queue position (1-based over the full pending order) so filtered rows keep
+  // their true number instead of a filtered index.
+  const pendingPos = new Map(pendingOrder.map((m, i) => [m.id, i + 1]));
+  // Suspend drag + bulk-select while searching (see search state comment).
+  const pendingSelectActive = pendingSelectMode && !searching;
+  const completedSelectActive = completedSelectMode && !searching;
+  const noSearchResults =
+    searching &&
+    visibleInProgress.length === 0 &&
+    visiblePending.length === 0 &&
+    visibleCompleted.length === 0;
+
   // Single-page layout (tabs removed 2026-07-07): all three statuses stack in
   // one view, colour-coded per section — live matches first (short + most
   // relevant mid-session; the batch-generated pending list can be long), then
   // the queue, then finished. Empty กำลังแข่ง / จบแล้ว sections are hidden.
   return (
     <div className="space-y-4">
+      {/* ── ค้นหาชื่อผู้เล่น ── */}
+      {matches.length > 0 && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("searchPlaceholder")}
+            aria-label={t("searchPlaceholder")}
+            className="h-9 pl-8 pr-8 [&::-webkit-search-cancel-button]:appearance-none"
+          />
+          {searching && (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setSearch("")}
+                    aria-label={t("searchClear")}
+                    className="absolute right-1 top-1/2 h-7 w-7 -translate-y-1/2 text-muted-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                }
+              />
+              <TooltipContent>{t("searchClear")}</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      )}
+
+      {noSearchResults && (
+        <p className="rounded-md border border-dashed py-6 text-center text-sm text-muted-foreground">
+          {t("searchEmpty", { q: search.trim() })}
+        </p>
+      )}
+
       {/* ── กำลังแข่ง — amber, live ── */}
-      {inProgress.length > 0 && (
+      {visibleInProgress.length > 0 && (
         <section className="space-y-2">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
             <span className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-warning" />
             {t("tabInProgress")}
             <Badge variant="outline" className="text-[10px] px-1 py-0">
-              {inProgress.length}
+              {visibleInProgress.length}
             </Badge>
           </h3>
           <Card className="border-l-4 border-l-warning/60">
             <CardContent className="py-3 px-4">
-              {inProgress.map((m) => (
+              {visibleInProgress.map((m) => (
                 <InProgressRow
                   key={m.id}
                   match={m}
@@ -1945,6 +2068,7 @@ export function ClubQueuePanel({
                   canManage={canManage}
                   onRefresh={onRefresh}
                   gameTimeLimitMin={settings.game_time_limit_min}
+                  query={q}
                 />
               ))}
             </CardContent>
@@ -1952,13 +2076,14 @@ export function ClubQueuePanel({
         </section>
       )}
 
-      {/* ── รอแข่ง — primary ── */}
+      {/* ── รอแข่ง — primary (ซ่อนทั้ง section เมื่อค้นหาแล้วไม่มีคิวเข้าเงื่อนไข) ── */}
+      {(!searching || visiblePending.length > 0) && (
       <section className="space-y-3">
         <h3 className="flex items-center gap-2 text-sm font-semibold">
           <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary" />
           {t("tabPending")}
           <Badge variant="outline" className="text-[10px] px-1 py-0">
-            {pendingOrder.length}
+            {visiblePending.length}
           </Badge>
         </h3>
 
@@ -1981,6 +2106,7 @@ export function ClubQueuePanel({
                   end_time: p.end_time ?? null,
                 }))}
                 matches={matches}
+                locks={locks}
                 clubStart={clubStart ?? "00:00"}
                 clubEnd={clubEnd ?? "23:59"}
                 playersPerTeam={settings.players_per_team}
@@ -1994,7 +2120,7 @@ export function ClubQueuePanel({
                 matches={matches}
                 onRefresh={onRefresh}
               />
-              {(pendingSelectMode || pendingOrder.length > 0) && (
+              {!searching && (pendingSelectMode || pendingOrder.length > 0) && (
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -2023,7 +2149,7 @@ export function ClubQueuePanel({
           </div>
         )}
 
-        {canManage && pendingSelectMode && pendingOrder.length > 0 && (
+        {canManage && pendingSelectActive && pendingOrder.length > 0 && (
           <div className="flex items-center gap-2 px-1 text-sm">
             <Checkbox
               checked={allPendingSelected}
@@ -2041,7 +2167,7 @@ export function ClubQueuePanel({
           </div>
         )}
 
-        {canManage && !pendingSelectMode && pendingOrder.length >= 2 && (
+        {canManage && !searching && !pendingSelectMode && pendingOrder.length >= 2 && (
           <p className="text-xs text-muted-foreground flex items-center gap-1.5">
             {reorderPending && (
               <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -2056,28 +2182,8 @@ export function ClubQueuePanel({
               <p className="text-sm text-muted-foreground text-center py-4">
                 {t("pendingEmpty")}
               </p>
-            ) : canManage && pendingSelectMode ? (
-              // Select mode: plain list with checkboxes; DnD disabled.
-              pendingOrder.map((m, i) => (
-                <PendingRow
-                  key={m.id}
-                  match={m}
-                  nameMap={nameMap.current}
-                  players={players}
-                  settings={settings}
-                  clubId={clubId}
-                  matches={matches}
-                  courts={courts}
-                  canManage
-                  onRefresh={onRefresh}
-                  rowNumber={i + 1}
-                  feederByTarget={feederByTarget}
-                  selectMode
-                  selected={pendingSelectedIds.has(m.id)}
-                  onToggleSelect={togglePendingSelect}
-                />
-              ))
-            ) : canManage ? (
+            ) : canManage && !searching && !pendingSelectMode ? (
+              // Drag-to-reorder: the only branch that isn't a plain PendingRow list.
               <DndContext
                 id="club-queue-dnd"
                 sensors={sensors}
@@ -2108,7 +2214,10 @@ export function ClubQueuePanel({
                 </SortableContext>
               </DndContext>
             ) : (
-              pendingOrder.map((m, i) => (
+              // Search-filtered / select-mode / read-only all render the same plain
+              // (non-drag) row. Search uses the real queue position; select props are
+              // inert unless pendingSelectActive.
+              (searching ? visiblePending : pendingOrder).map((m, i) => (
                 <PendingRow
                   key={m.id}
                   match={m}
@@ -2118,17 +2227,21 @@ export function ClubQueuePanel({
                   clubId={clubId}
                   matches={matches}
                   courts={courts}
-                  canManage={false}
+                  canManage={canManage}
                   onRefresh={onRefresh}
-                  rowNumber={i + 1}
+                  rowNumber={searching ? (pendingPos.get(m.id) ?? 0) : i + 1}
                   feederByTarget={feederByTarget}
+                  query={q}
+                  selectMode={pendingSelectActive}
+                  selected={pendingSelectedIds.has(m.id)}
+                  onToggleSelect={togglePendingSelect}
                 />
               ))
             )}
           </CardContent>
         </Card>
 
-        {canManage && pendingSelectMode && (
+        {canManage && pendingSelectActive && (
           <QueueBulkBar
             clubId={clubId}
             section="pending"
@@ -2139,19 +2252,20 @@ export function ClubQueuePanel({
           />
         )}
       </section>
+      )}
 
       {/* ── จบแล้ว — success ── */}
-      {completed.length > 0 && (
+      {visibleCompleted.length > 0 && (
         <section className="space-y-2">
           <h3 className="flex items-center gap-2 text-sm font-semibold">
             <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-success" />
             {t("tabCompleted")}
             <Badge variant="outline" className="text-[10px] px-1 py-0">
-              {completed.length}
+              {visibleCompleted.length}
             </Badge>
           </h3>
 
-          {canManage && (
+          {canManage && !searching && (
             <div className="flex items-center gap-2 px-1 text-sm">
               {completedSelectMode && (
                 <>
@@ -2196,22 +2310,23 @@ export function ClubQueuePanel({
 
           <Card className="border-l-4 border-l-success/50">
             <CardContent className="py-3 px-4">
-              {completed.map((m) => (
+              {visibleCompleted.map((m) => (
                 <CompletedRow
                   key={m.id}
                   match={m}
                   nameMap={nameMap.current}
                   canManage={canManage}
                   onRefresh={onRefresh}
-                  selectMode={canManage && completedSelectMode}
+                  selectMode={completedSelectActive}
                   selected={completedSelectedIds.has(m.id)}
                   onToggleSelect={toggleCompletedSelect}
+                  query={q}
                 />
               ))}
             </CardContent>
           </Card>
 
-          {canManage && completedSelectMode && (
+          {canManage && completedSelectActive && (
             <QueueBulkBar
               clubId={clubId}
               section="completed"
