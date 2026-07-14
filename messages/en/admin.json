@@ -12,5 +12,26 @@
   "uploading": "Uploading…",
   "useDefault": "Use default",
   "uploadInvalid": "File must be a PNG/JPG/WebP image under 1MB",
-  "disabledHint": "Off — QR will have no centre logo"
+  "disabledHint": "Off — QR will have no centre logo",
+  "levels": {
+    "title": "Global skill levels (site-wide)",
+    "description": "The default level set new clubs are seeded with, and the fallback for tournaments",
+    "impactNote": "Editing here affects new clubs + clubs that haven't customized their set — customized clubs are unaffected",
+    "empty": "No global levels yet",
+    "realAriaLabel": "Level numeric value",
+    "labelAriaLabel": "Level name",
+    "addPlaceholder": "Level name e.g. P, S, N",
+    "addButton": "Add",
+    "addTooltip": "Add a new global level",
+    "saveTooltip": "Save",
+    "cancelTooltip": "Cancel",
+    "editTooltip": "Edit this level",
+    "deleteTooltip": "Delete this level",
+    "confirmDelete": "Delete this level?",
+    "confirmButton": "Delete",
+    "cancelButton": "Cancel",
+    "validationReal": "Numeric value must be a number",
+    "validationLabel": "Level name required",
+    "deleteWarning": "Deleting a global level nulls the level of players in clubs using the global set (customized clubs unaffected)"
+  }
 }
