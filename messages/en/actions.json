@@ -256,6 +256,7 @@
   "admin": {
     "notSiteAdmin": "Site owner only",
     "invalidImage": "Invalid image file",
-    "unsafeSvg": "This SVG contains unsafe script content and can't be uploaded"
+    "unsafeSvg": "This SVG contains unsafe script content and can't be uploaded",
+    "messagePlaceholderMissing": "Message \"{key}\" is missing required variables: {missing}"
   }
 }

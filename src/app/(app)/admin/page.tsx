@@ -5,6 +5,7 @@ import { getAppSettings, DEFAULT_QR_LOGO } from "@/lib/app-settings";
 import { getGlobalLevelsAction } from "@/lib/actions/levels";
 import { AdminQrLogoManager } from "@/components/admin/admin-qr-logo-manager";
 import { AdminLevelsManager } from "@/components/admin/admin-levels-manager";
+import { AdminBotMessagesManager } from "@/components/admin/admin-bot-messages-manager";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export default async function AdminPage() {
         defaultLogo={DEFAULT_QR_LOGO}
       />
       <AdminLevelsManager levels={globalLevels} />
+      <AdminBotMessagesManager initialMessages={settings.messages} />
     </div>
   );
 }

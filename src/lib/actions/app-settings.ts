@@ -6,6 +6,11 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect } from "@/lib/club/permissions";
 import { isSiteAdmin } from "@/lib/auth/site-admin";
+import {
+  BOT_MESSAGE_KEYS,
+  missingRequiredPlaceholders,
+  type BotMessageKey,
+} from "@/lib/bot-messages";
 
 const QR_DATA_URL_RE = /^data:(image\/(?:png|jpe?g|webp|svg\+xml));base64,([A-Za-z0-9+/=]+)$/;
 const MAX_LOGO_BYTES = 1_000_000; // ~1MB, matches the app-assets bucket limit
@@ -92,6 +97,47 @@ export async function removeQrLogoAction() {
   const { error } = await sb
     .from("app_settings")
     .update({ qr_logo_url: null, updated_at: new Date().toISOString() })
+    .eq("id", 1);
+  if (error) return { error: error.message };
+
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/**
+ * Replace the site-admin overrides for the bot's automated LINE messages
+ * (site owner only). A blank value for a key clears that override (the message
+ * falls back to its code default); a non-blank value must keep every REQUIRED
+ * placeholder for that message, else the save is rejected naming the culprit.
+ */
+export async function updateBotMessagesAction(input: {
+  messages: Partial<Record<BotMessageKey, string>>;
+}): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
+  if (!(await isSiteAdmin())) return { error: t("admin.notSiteAdmin") };
+
+  // Build a clean override map: only known keys with a non-blank value survive.
+  // Each survivor must keep its required placeholders (server-side backstop for
+  // the client editor's own validation).
+  const clean: Partial<Record<BotMessageKey, string>> = {};
+  for (const key of BOT_MESSAGE_KEYS) {
+    const raw = input.messages?.[key];
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) continue; // blank → clear override (use default)
+    const missing = missingRequiredPlaceholders(key, trimmed);
+    if (missing.length > 0) {
+      return { error: t("admin.messagePlaceholderMissing", { key, missing: missing.join(", ") }) };
+    }
+    clean[key] = trimmed;
+  }
+
+  const sb = await createAdminClient();
+  const { error } = await sb
+    .from("app_settings")
+    .update({ messages: clean, updated_at: new Date().toISOString() })
     .eq("id", 1);
   if (error) return { error: error.message };
 

@@ -41,12 +41,22 @@ type Props = {
   clubId: string;
   club: Club;
   unpaid: UnpaidPlayer[];
+  /** Site-admin-editable "scan the QR" prompt; falls back to the built-in default. */
+  scanPrompt?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onDone: () => void;
 };
 
-export function GroupBillDialog({ clubId, club, unpaid, open, onOpenChange, onDone }: Props) {
+export function GroupBillDialog({
+  clubId,
+  club,
+  unpaid,
+  scanPrompt = GROUP_BILL_SCAN_PROMPT,
+  open,
+  onOpenChange,
+  onDone,
+}: Props) {
   const t = useTranslations("club.payment");
   const [sending, startSending] = useTransition();
 
@@ -154,7 +164,7 @@ export function GroupBillDialog({ clubId, club, unpaid, open, onOpenChange, onDo
 
           {qrSource !== "none" && (
             // The scan-prompt line the message carries just above the QR image.
-            <p className="text-xs text-muted-foreground">{GROUP_BILL_SCAN_PROMPT}</p>
+            <p className="text-xs text-muted-foreground">{scanPrompt}</p>
           )}
 
           <div className="flex flex-col items-center gap-2 rounded-lg border p-3">

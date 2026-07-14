@@ -183,8 +183,10 @@ export function buildGroupBillListMessages(params: {
   clubName: string;
   dateStr?: string;
   qrImageUrl: string | null;
+  /** Site-admin override for the "scan the QR" prompt; defaults to the built-in. */
+  scanPrompt?: string;
 }): { messages: LineMessage[]; overflow: boolean; sentPlayerIds: string[] } {
-  const { lines, clubName, dateStr, qrImageUrl } = params;
+  const { lines, clubName, dateStr, qrImageUrl, scanPrompt = GROUP_BILL_SCAN_PROMPT } = params;
 
   // 1. Pack lines into chunks. Start a new chunk when either the 20-mention cap or
   //    the total-lines cap (guest-heavy guard) would be exceeded by the next line.
@@ -238,7 +240,7 @@ export function buildGroupBillListMessages(params: {
     const parts: string[] = [];
     if (ci === 0) parts.push(header);
     parts.push(rows.join("\n"));
-    if (ci === lastKeptIdx && qrImageUrl) parts.push(GROUP_BILL_SCAN_PROMPT);
+    if (ci === lastKeptIdx && qrImageUrl) parts.push(scanPrompt);
 
     const msg: LineTextV2Message = { type: "textV2", text: parts.join("\n") };
     if (Object.keys(substitution).length > 0) msg.substitution = substitution;

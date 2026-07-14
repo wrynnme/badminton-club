@@ -33,5 +33,34 @@
     "validationReal": "Numeric value must be a number",
     "validationLabel": "Level name required",
     "deleteWarning": "Deleting a global level nulls the level of players in clubs using the global set (customized clubs unaffected)"
+  },
+  "botMessages": {
+    "title": "LINE bot messages",
+    "description": "Edit the bot's automatic replies and notifications. Leave a field blank to use the built-in default; the braced placeholders are filled in when the message is sent.",
+    "saveButton": "Save messages",
+    "saving": "Saving…",
+    "saved": "Saved",
+    "resetTooltip": "Reset to default",
+    "usingDefault": "Using default",
+    "previewLabel": "Preview",
+    "requiredLabel": "Must include:",
+    "missingError": "Missing required variables: {missing}",
+    "label": {
+      "bindSuccess": "Group bound to club",
+      "bindInvalid": "Invalid bind code",
+      "bindConflict": "Bind failed",
+      "selfLinkUsage": "Self-link usage hint",
+      "selfLinkNoUser": "Cannot identify user",
+      "selfLinkNoClub": "Group not bound yet",
+      "selfLinkProfileFailed": "Profile fetch failed",
+      "selfLinkLinked": "Self-link succeeded",
+      "selfLinkAlready": "Already linked",
+      "selfLinkPooled": "Link request pooled",
+      "notifyStatus": "Tournament status changed",
+      "notifyBracket": "Knockout bracket created",
+      "notifyScore": "Match result",
+      "notifyMatchCall": "Match call",
+      "groupBillScanPrompt": "Scan-QR prompt (group bill)"
+    }
   }
 }

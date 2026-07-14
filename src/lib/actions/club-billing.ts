@@ -13,6 +13,8 @@ import {
   buildGroupBillListMessages,
   type GroupBillPlayer,
 } from "@/lib/club/group-billing";
+import { getAppSettings } from "@/lib/app-settings";
+import { resolveBotMessage } from "@/lib/bot-messages";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 
 // ---------------------------------------------------------------------------
@@ -382,12 +384,15 @@ export async function pushGroupBillsAction(input: {
     }
   }
 
-  // 7. Compose the messages (list + QR image) and push ONCE to the group.
+  // 7. Compose the messages (list + QR image) and push ONCE to the group. The
+  //    scan prompt is a site-admin-editable template (blank/missing → default).
+  const { messages: botMessages } = await getAppSettings();
   const { messages, overflow, sentPlayerIds } = buildGroupBillListMessages({
     lines,
     clubName: club.name,
     dateStr,
     qrImageUrl: input.qrImageUrl,
+    scanPrompt: resolveBotMessage(botMessages, "groupBillScanPrompt"),
   });
 
   const ok = await pushMessagesToGroup(club.line_group_id, messages);
