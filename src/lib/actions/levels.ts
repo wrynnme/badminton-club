@@ -6,6 +6,7 @@ import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { assertCanManageClub } from "@/lib/club/permissions";
+import { isSiteAdmin } from "@/lib/auth/site-admin";
 import type { Level } from "@/lib/types";
 
 function levelSchema(labelRequiredMsg: string) {
@@ -203,5 +204,102 @@ export async function deleteLevelAction(input: {
   if (error) return { error: error.message };
   revalidatePath("/clubs", "layout");
   revalidatePath(`/c/${input.clubId}`);
+  return { ok: true };
+}
+
+// ─── Global default levels (site admin only) ──────────────────────────────────
+//
+// The global set (`levels` where `club_id IS NULL`) is cloned into every new club
+// (`clone_global_levels_to_club`) and is the fallback for clubs that haven't
+// customized + for tournament pages. Only the single site owner edits it, via
+// /admin. Editing global does NOT retro-change clubs that already have their own
+// copy (rows with `club_id = <uuid>`). All three mutations scope strictly with
+// `.is("club_id", null)` so a club's set can never be touched from here.
+
+/** Create a global default level (site admin only). */
+export async function createGlobalLevelAction(input: {
+  real: number;
+  label: string;
+  sort_order?: number;
+}): Promise<{ ok: true } | { error: string }> {
+  const t = await getTranslations("actions");
+  if (!(await isSiteAdmin())) return { error: t("admin.notSiteAdmin") };
+
+  const parsed = levelSchema(t("club.levelNameRequired")).safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
+
+  const sb = await createAdminClient();
+  const { error } = await sb.from("levels").insert({
+    real: parsed.data.real,
+    label: parsed.data.label,
+    sort_order: parsed.data.sort_order ?? Math.round(parsed.data.real * 10),
+    club_id: null,
+  });
+  if (error) {
+    if (error.code === "23505") return { error: t("club.levelAlreadyExists") };
+    return { error: error.message };
+  }
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/** Edit a global default level (site admin only). */
+export async function updateGlobalLevelAction(input: {
+  id: string;
+  real: number;
+  label: string;
+  sort_order?: number;
+}): Promise<{ ok: true } | { error: string }> {
+  const t = await getTranslations("actions");
+  if (!(await isSiteAdmin())) return { error: t("admin.notSiteAdmin") };
+
+  const parsed = levelSchema(t("club.levelNameRequired")).safeParse(input);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
+
+  const sb = await createAdminClient();
+  const { error } = await sb
+    .from("levels")
+    .update({
+      real: parsed.data.real,
+      label: parsed.data.label,
+      ...(parsed.data.sort_order != null ? { sort_order: parsed.data.sort_order } : {}),
+    })
+    .eq("id", input.id)
+    .is("club_id", null); // global rows only — never touch a club's copy
+  if (error) {
+    if (error.code === "23505") return { error: t("club.levelAlreadyExists") };
+    return { error: error.message };
+  }
+  revalidatePath("/admin");
+  return { ok: true };
+}
+
+/**
+ * Delete a global default level (site admin only).
+ * Players in non-customized clubs referencing it get level_id set to NULL
+ * (FK ON DELETE SET NULL). Guarded against deleting the last global level.
+ */
+export async function deleteGlobalLevelAction(input: {
+  id: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const t = await getTranslations("actions");
+  if (!(await isSiteAdmin())) return { error: t("admin.notSiteAdmin") };
+
+  const sb = await createAdminClient();
+
+  // Guard against emptying the global set (would break new-club clone + fallback).
+  const { count } = await sb
+    .from("levels")
+    .select("id", { count: "exact", head: true })
+    .is("club_id", null);
+  if ((count ?? 0) <= 1) return { error: t("club.cannotDeleteLastLevel") };
+
+  const { error } = await sb
+    .from("levels")
+    .delete()
+    .eq("id", input.id)
+    .is("club_id", null); // global rows only
+  if (error) return { error: error.message };
+  revalidatePath("/admin");
   return { ok: true };
 }
