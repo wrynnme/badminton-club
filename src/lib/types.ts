@@ -120,7 +120,10 @@ export type ClubLinkPoolRequest = {
 export type LinkableKnownProfile = Pick<Profile, "id" | "display_name" | "picture_url">;
 
 // Locked pair: two players forced to be teammates by the rotation queue.
-// games_remaining null = forever; N = lock for N more games played together.
+// games_remaining is an IMMUTABLE quota, not a live counter: null = forever;
+// N = the pair should play at most N games together in total. Live "remaining"
+// is DERIVED at read time (quota − matches already pairing them, so removing a
+// match refunds the slot) — see deriveLockBudgets in lib/club/batch-queue.ts.
 export type ClubLockedPair = {
   id: string;
   club_id: string;

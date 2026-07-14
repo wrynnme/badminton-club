@@ -194,7 +194,10 @@
     "releaseTooltip": "ปล่อยคู่",
     "empty": "ยังไม่มีคู่ที่ล็อค",
     "toastLocked": "ล็อคคู่แล้ว",
-    "toastReleased": "ปล่อยคู่แล้ว"
+    "toastReleased": "ปล่อยคู่แล้ว",
+    "windowWarnCreate": "⚠️ {shorter} อยู่ไม่เต็มเวลา — ถ้าล็อคคู่กับ {longer} จะทำให้ {shorter} ถูกจัดลงเล่นเท่า {longer} (เกินโควตาเวลาที่ควรได้)",
+    "windowWarnRow": "{shorter} อยู่ไม่เต็มเวลา แต่ล็อคคู่กับ {longer} จึงถูกดันให้เล่นเท่ากัน (เกินโควตาเวลา)",
+    "overQuota": "จัดคิวคู่นี้ติดกันเกินโควตาไปแล้ว {count} ใบ"
   },
   "queuePanel": {
     "bulkToggle": "เลือกหลายรายการ",
@@ -231,6 +234,9 @@
     "tabPending": "รอแข่ง",
     "tabInProgress": "กำลังแข่ง",
     "tabCompleted": "จบแล้ว",
+    "searchPlaceholder": "ค้นหาชื่อผู้เล่น…",
+    "searchClear": "ล้างคำค้น",
+    "searchEmpty": "ไม่พบแมตช์ที่มีชื่อ “{q}”",
     "noCourts": "ยังไม่ได้ตั้งค่าสนาม — เพิ่มในแท็บตั้งค่าก่อนสร้างแมตช์ตามสนาม",
     "dragHint": "ลากเพื่อจัดลำดับ",
     "pendingEmpty": "ยังไม่มีแมตช์ในคิว",
@@ -337,6 +343,8 @@
     "generatePreviewTarget": "เป้า",
     "generatePreviewPlayed": "มีแล้ว",
     "generatePreviewShortfall": "ขาด",
+    "lockMismatchTitle": "คู่ล็อคที่เวลาไม่เท่ากัน — คนที่อยู่สั้นกว่าจะถูกดันให้เล่นเท่าคู่ของตัวเอง:",
+    "lockMismatchItem": "{shorter} จะถูกจัดลงเล่นเท่า {longer}",
     "generatePreviewEmpty": "ไม่มีผู้เล่นที่เข้าเงื่อนไข",
     "generateDialogSubmit": "สุ่มเพิ่มในคิว",
     "generateDialogCancel": "ยกเลิก",

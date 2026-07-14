@@ -194,7 +194,10 @@
     "releaseTooltip": "Release pair",
     "empty": "No locked pairs",
     "toastLocked": "Pair locked",
-    "toastReleased": "Pair released"
+    "toastReleased": "Pair released",
+    "windowWarnCreate": "⚠️ {shorter} isn't here for the whole session — locking with {longer} will schedule {shorter} as often as {longer} (above their time-based quota)",
+    "windowWarnRow": "{shorter} isn't here the whole session but is locked with {longer}, so they'll be scheduled equally (above their time-based quota)",
+    "overQuota": "This pair is already queued together {count} game(s) past its quota"
   },
   "queuePanel": {
     "bulkToggle": "Select multiple",
@@ -231,6 +234,9 @@
     "tabPending": "Pending",
     "tabInProgress": "In progress",
     "tabCompleted": "Completed",
+    "searchPlaceholder": "Search player name…",
+    "searchClear": "Clear search",
+    "searchEmpty": "No matches with “{q}”",
     "noCourts": "No courts set up — add courts in Settings before building matches",
     "dragHint": "Drag to reorder",
     "pendingEmpty": "No matches in queue",
@@ -337,6 +343,8 @@
     "generatePreviewTarget": "Target",
     "generatePreviewPlayed": "Have",
     "generatePreviewShortfall": "Need",
+    "lockMismatchTitle": "Locked pairs with unequal time — the shorter-staying player is pulled up to their partner:",
+    "lockMismatchItem": "{shorter} will be scheduled as often as {longer}",
     "generatePreviewEmpty": "No eligible players",
     "generateDialogSubmit": "Add to queue",
     "generateDialogCancel": "Cancel",

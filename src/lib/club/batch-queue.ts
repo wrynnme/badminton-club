@@ -12,6 +12,7 @@ import {
 import {
   clonePairHistory,
   emptyPairHistory,
+  pairKey,
   pairingCost,
   partnerCost,
   recordPairing,
@@ -144,6 +145,27 @@ export function computePlayerTargets(
   return out;
 }
 
+/**
+ * Minutes a single player is present within the club session — the exact window
+ * `computePlayerTargets` pro-rates against (declared start/end wins, else check-in,
+ * else the full session). Exposed so UI (e.g. locked-pair warnings) can compare two
+ * players' presence without recomputing the whole target table.
+ */
+export function playerPresenceMinutes(
+  p: PlayerTargetRow,
+  clubStart: string,
+  clubEnd: string,
+): number {
+  const window = resolvePlayerWindow({
+    declaredStart: p.start_time?.slice(0, 5) ?? null,
+    declaredEnd: p.end_time?.slice(0, 5) ?? null,
+    checkedInHHMM: p.checked_in_at ? CHECK_IN_HHMM.format(new Date(p.checked_in_at)) : null,
+    clubStart,
+    clubEnd,
+  });
+  return clampedSessionMinutes(window.start, window.end, clubStart, clubEnd);
+}
+
 // ─── Suggested target (N) ─────────────────────────────────────────────────────
 
 /**
@@ -196,6 +218,85 @@ export function countFixedAppearances(
     }
   }
   return counts;
+}
+
+// ─── Locked-pair budget (derive semantics) ───────────────────────────────────
+
+/**
+ * How many matches (pending + in_progress + completed; cancelled excluded) already
+ * have `a` and `b` on the SAME side — i.e. scheduled/played as the locked teammates.
+ * This is what a locked pair's "N games" quota is spent against.
+ */
+export function countLockedTeammateMatches(
+  matches: BatchCountableMatch[],
+  a: string,
+  b: string,
+): number {
+  let n = 0;
+  for (const m of matches) {
+    if (m.status === "cancelled") continue;
+    const sameA =
+      (m.side_a_player1 === a || m.side_a_player2 === a) &&
+      (m.side_a_player1 === b || m.side_a_player2 === b);
+    const sameB =
+      (m.side_b_player1 === a || m.side_b_player2 === a) &&
+      (m.side_b_player1 === b || m.side_b_player2 === b);
+    if (sameA || sameB) n++;
+  }
+  return n;
+}
+
+export type LockRow = {
+  player1_id: string;
+  player2_id: string;
+  /** immutable quota; NULL = locked forever (unlimited) */
+  games_remaining: number | null;
+};
+
+/**
+ * Derive each lock's LIVE remaining budget = quota − teammate-matches already on
+ * the board (pending/in_progress/completed). NULL quota = Infinity (forever).
+ * Refund is automatic: cancel/delete a pending teammate match → count drops →
+ * remaining rises, with no stored counter to drift. Returns only the still-active
+ * pairs (remaining > 0) plus a pairKey→remaining budget map for the generator to
+ * deplete within a single batch.
+ */
+/**
+ * A single lock's live remaining = quota − teammate-matches, floored at 0.
+ * NULL quota = forever (Infinity). Shared by the generator's budget derivation
+ * and the lock-list badge so the two can't drift.
+ */
+export function deriveLockRemaining(quota: number | null, teammateCount: number): number {
+  return quota == null ? Infinity : Math.max(0, quota - teammateCount);
+}
+
+export function deriveLockBudgets(
+  lockRows: LockRow[],
+  matches: BatchCountableMatch[],
+): { active: LockedPair[]; budget: Map<string, number> } {
+  const active: LockedPair[] = [];
+  const budget = new Map<string, number>();
+  for (const r of lockRows) {
+    const remaining = deriveLockRemaining(
+      r.games_remaining,
+      countLockedTeammateMatches(matches, r.player1_id, r.player2_id),
+    );
+    if (remaining > 0) {
+      active.push([r.player1_id, r.player2_id]);
+      budget.set(pairKey(r.player1_id, r.player2_id), remaining);
+    }
+  }
+  return { active, budget };
+}
+
+/** Small helper: player→partner lookup for a set of locked pairs (doubles). */
+function lockPartnerMap(locks: LockedPair[]): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const [a, b] of locks) {
+    m.set(a, b);
+    m.set(b, a);
+  }
+  return m;
 }
 
 export type RerollSwapMatch = BatchCountableMatch & {
@@ -393,6 +494,13 @@ export function generateBatchQueue(input: {
   pool: QueuePlayer[];
   settings: ClubQueueSettings;
   lockedPairs: LockedPair[];
+  /**
+   * Per-lock remaining budget keyed by pairKey (see deriveLockBudgets). A lock
+   * stops forcing its pair together once its budget is spent WITHIN this batch.
+   * Omitted / missing key = unlimited (forever) — legacy callers behave exactly
+   * as before.
+   */
+  lockBudget?: Map<string, number>;
   /** per-player shortfall (target − existing fixed appearances), pool ids only */
   remaining: Map<string, number>;
   /** K = club court count — number of winner-chain lanes (winner modes only) */
@@ -404,7 +512,7 @@ export function generateBatchQueue(input: {
    */
   history?: PairHistory;
 }): BatchMatchPlan[] {
-  const { settings, lockedPairs } = input;
+  const { settings } = input;
   const ppt = settings.players_per_team;
 
   // Simulation state: cloned players + remaining shortfalls (pool ids only).
@@ -416,14 +524,19 @@ export function generateBatchQueue(input: {
   // Variety memory: own clone so we never mutate the caller's seed; updated as
   // each match is planned so within-batch repeats are penalised too.
   const hist = clonePairHistory(input.history);
-  // Fast locked-partner lookup (doubles only) for window forcing.
-  const lockedPartner = new Map<string, string>();
-  if (ppt === 2) {
-    for (const [a, b] of lockedPairs) {
-      lockedPartner.set(a, b);
-      lockedPartner.set(b, a);
-    }
+
+  // Locked pairs with a live in-batch budget: `activeLocks` shrinks as an N-game
+  // lock is spent, so the generator stops forcing that pair once its quota is used
+  // up mid-batch (the rest of their games go to normal fair/variety pairing). A
+  // lock with no budget entry = unlimited (forever). `lockedPartner` is rebuilt
+  // whenever a lock expires so planChallengerSide/window forcing see the change.
+  let activeLocks: LockedPair[] = ppt === 2 ? [...input.lockedPairs] : [];
+  const lockRem = new Map<string, number>();
+  for (const [a, b] of activeLocks) {
+    lockRem.set(pairKey(a, b), input.lockBudget?.get(pairKey(a, b)) ?? Infinity);
   }
+  activeLocks = activeLocks.filter(([a, b]) => (lockRem.get(pairKey(a, b)) ?? Infinity) > 0);
+  let lockedPartner = lockPartnerMap(activeLocks);
 
   // Synthetic finish stamps continue after the latest real one so simulated
   // matches always read as "played after everything that already happened".
@@ -447,6 +560,25 @@ export function generateBatchQueue(input: {
       rem.set(id, Math.max(0, (rem.get(id) ?? 0) - 1));
     }
     justPlayed = new Set(ids);
+    // Spend an N-game lock's budget when both members were placed in this match.
+    // A lock forces teammates, so both-present ⟹ paired. Drop the lock at 0 so the
+    // rest of the batch pairs them freely.
+    if (activeLocks.length > 0) {
+      const present = new Set(ids);
+      let expired = false;
+      for (const [a, b] of activeLocks) {
+        if (present.has(a) && present.has(b)) {
+          const key = pairKey(a, b);
+          const left = (lockRem.get(key) ?? Infinity) - 1;
+          lockRem.set(key, left);
+          if (left <= 0) expired = true;
+        }
+      }
+      if (expired) {
+        activeLocks = activeLocks.filter(([a, b]) => (lockRem.get(pairKey(a, b)) ?? Infinity) > 0);
+        lockedPartner = lockPartnerMap(activeLocks);
+      }
+    }
   };
 
   const someRemaining = () => [...rem.values()].some((v) => v > 0);
@@ -523,7 +655,7 @@ export function generateBatchQueue(input: {
         for (const combo of combinations(choosable, fillCount)) {
           if (tried++ >= MAX_VARIETY_CANDIDATES) break;
           const subset = [...forced, ...combo];
-          const m = buildNextMatch(subset, settings, undefined, lockedPairs, hist);
+          const m = buildNextMatch(subset, settings, undefined, activeLocks, hist);
           if (!m) continue;
           const ids = [...sideIds(m.sideA), ...sideIds(m.sideB)];
           // Progress guard: skip a match that covers nobody still needing games.
@@ -549,11 +681,11 @@ export function generateBatchQueue(input: {
     // Fallback: original fairest pick — candidate subset, then the full pool (a
     // locked player's partner may be a filler the window left out).
     let proposed = candidates
-      ? buildNextMatch(candidates, settings, undefined, lockedPairs, hist)
+      ? buildNextMatch(candidates, settings, undefined, activeLocks, hist)
       : null;
     if (!proposed) {
       const rest = exclude ? simPool.filter((p) => !exclude.has(p.id)) : simPool;
-      proposed = buildNextMatch(rest, settings, undefined, lockedPairs, hist);
+      proposed = buildNextMatch(rest, settings, undefined, activeLocks, hist);
     }
     if (!proposed) return null;
     const ids = [...sideIds(proposed.sideA), ...sideIds(proposed.sideB)];

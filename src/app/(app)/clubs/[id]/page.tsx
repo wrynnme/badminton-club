@@ -333,9 +333,18 @@ export default async function ClubDetailPage({
               {queueSettings.players_per_team === 2 && (
                 <ClubLockedPairs
                   clubId={club.id}
-                  players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
+                  players={players.map((p) => ({
+                    id: p.id,
+                    display_name: p.display_name,
+                    start_time: p.start_time,
+                    end_time: p.end_time,
+                    checked_in_at: p.checked_in_at,
+                  }))}
                   locks={lockedPairs}
+                  matches={clubMatches}
                   canManage={canManage}
+                  clubStart={String(club.start_time).slice(0, 5)}
+                  clubEnd={String(club.end_time).slice(0, 5)}
                 />
               )}
               <ClubQueuePanel
@@ -349,6 +358,7 @@ export default async function ClubDetailPage({
                   start_time: p.start_time,
                   end_time: p.end_time,
                 }))}
+                locks={lockedPairs}
                 settings={queueSettings}
                 courts={clubCourts}
                 canManage={canManage}
