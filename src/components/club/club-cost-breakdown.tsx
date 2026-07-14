@@ -100,6 +100,12 @@ export function ClubCostBreakdown({
 }: Props) {
   const t = useTranslations("club.costBreakdown");
 
+  // Pin the player-name (first) + total (last) columns so they stay visible when
+  // the wide breakdown scrolls horizontally on mobile. bg-card matches the Card
+  // surface so scrolling cells pass underneath opaquely.
+  const stickyLeft = "sticky left-0 z-10 bg-card";
+  const stickyRight = "sticky right-0 z-10 bg-card";
+
   // All three shuttle modes (even/per_match/per_player) are price-driven via
   // computeShuttle (shuttle_price × per-match shuttles_used); shuttle_fee is dead.
   const hasShuttle = club.shuttle_price > 0;
@@ -207,7 +213,7 @@ export function ClubCostBreakdown({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b text-muted-foreground text-xs">
-              <th className="text-left py-1.5 pr-3 font-medium">{t("colPlayer")}</th>
+              <th className={`${stickyLeft} text-left py-1.5 pr-3 font-medium`}>{t("colPlayer")}</th>
               <th className="text-right py-1.5 px-2 font-medium tabular-nums">{t("colHours")}</th>
               <th className="text-right py-1.5 px-2 font-medium tabular-nums">{t("colGames")}</th>
               <th className="text-right py-1.5 px-2 font-medium tabular-nums">{t("colShuttlesUsed")}</th>
@@ -227,7 +233,7 @@ export function ClubCostBreakdown({
               <th className="text-right py-1.5 px-2 font-medium tabular-nums">
                 {t("colDiscount")}
               </th>
-              <th className="text-right py-1.5 pl-2 font-medium tabular-nums">
+              <th className={`${stickyRight} text-right py-1.5 pl-2 font-medium tabular-nums`}>
                 {t("colTotal")}
               </th>
             </tr>
@@ -236,7 +242,7 @@ export function ClubCostBreakdown({
             {rows.map((row) => {
               return (
                 <tr key={row.playerId} className="border-b last:border-0">
-                  <td className="py-1.5 pr-3 font-medium">
+                  <td className={`${stickyLeft} py-1.5 pr-3 font-medium`}>
                     {nameById.get(row.playerId) ?? row.playerId}
                   </td>
                   <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">
@@ -267,7 +273,7 @@ export function ClubCostBreakdown({
                     initialDiscount={row.discount}
                     canManage={canManage}
                   />
-                  <td className="py-1.5 pl-2 text-right font-semibold tabular-nums">
+                  <td className={`${stickyRight} py-1.5 pl-2 text-right font-semibold tabular-nums`}>
                     {row.total.toLocaleString()}
                   </td>
                 </tr>
@@ -276,7 +282,7 @@ export function ClubCostBreakdown({
           </tbody>
           <tfoot>
             <tr className="border-t-2 font-semibold">
-              <td className="py-1.5 pr-3 text-sm">{t("footerLabel")}</td>
+              <td className={`${stickyLeft} py-1.5 pr-3 text-sm`}>{t("footerLabel")}</td>
               <td className="py-1.5 px-2" aria-hidden />
               <td className="py-1.5 px-2" aria-hidden />
               <td className="py-1.5 px-2 text-right tabular-nums text-sm">
@@ -298,7 +304,7 @@ export function ClubCostBreakdown({
               <td className="py-1.5 px-2 text-right tabular-nums text-sm">
                 {totalDiscount.toLocaleString()}
               </td>
-              <td className="py-1.5 pl-2 text-right tabular-nums text-sm">
+              <td className={`${stickyRight} py-1.5 pl-2 text-right tabular-nums text-sm`}>
                 {grandTotal.toLocaleString()} ฿
               </td>
             </tr>

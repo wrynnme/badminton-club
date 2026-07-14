@@ -53,6 +53,7 @@
     "noPermission": "Permission denied",
     "noLineGroup": "This club isn't linked to a LINE group yet — post the bind command in the group first",
     "noPayable": "No one has anything to pay right now",
+    "groupPushFailed": "Couldn't post the bill to the LINE group — please try again",
     "notEnoughPlayersForMatch": "Not enough players for a match",
     "payersNoLongerInClub": "Selected payers are no longer in this club — please reselect",
     "playerAlreadyLocked": "Player is already in a locked pair",

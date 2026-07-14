@@ -53,10 +53,11 @@ import {
   removeClubPromptPayQrAction,
   uploadBillSlipAction,
 } from "@/lib/actions/club-payments";
-import { pushClubBillsAction, pushGroupBillsAction } from "@/lib/actions/club-billing";
+import { pushClubBillsAction } from "@/lib/actions/club-billing";
 import type { Club, ClubMatch, ClubPlayer } from "@/lib/types";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import { GeneratedQr } from "@/components/club/generated-qr";
+import { GroupBillDialog } from "@/components/club/group-bill-dialog";
 import {
   baht,
   buildSlipMeta,
@@ -102,8 +103,9 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
   const t = useTranslations("club.payment");
   const tSlip = useTranslations("club.slip");
   const locale = useLocale();
+  const router = useRouter();
   const [pushing, startPush] = useTransition();
-  const [pushingGroup, startPushGroup] = useTransition();
+  const [groupDlgOpen, setGroupDlgOpen] = useState(false);
 
   // Warm the react-qr-code chunk so the first off-screen batch capture (and the
   // first per-player slip dialog) isn't raced by its lazy ssr:false import.
@@ -180,15 +182,10 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
     });
   }
 
-  // Push slips (1:1 + group): render → upload → push. Two independent off-screen
-  // mounts so concurrent clicks on both buttons can't race the same DOM node.
+  // Push slips (1:1): render → upload → push. Off-screen mount for the batch loop.
   const pushSlipContainerRef = useRef<HTMLDivElement>(null);
   const [pushSlipItem, setPushSlipItem] = useState<PushSlipItem | null>(null);
   const [pushProgress, setPushProgress] = useState<{ done: number; total: number } | null>(null);
-
-  const groupSlipContainerRef = useRef<HTMLDivElement>(null);
-  const [groupSlipItem, setGroupSlipItem] = useState<PushSlipItem | null>(null);
-  const [pushGroupProgress, setPushGroupProgress] = useState<{ done: number; total: number } | null>(null);
 
   /** Mounts `item` off-screen, waits for the commit + QR/font render, captures it
    *  to a PNG, and returns a base64 data URL — or null if the node/capture fails. */
@@ -291,50 +288,16 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
     });
   }
 
-  function pushGroupBillsWithSlips() {
-    // One slip per distinct positive total owed — a bucket is shared by everyone
-    // owing that amount (only row.total is read by the "group" slip variant).
-    const items: PushSlipItem[] = [
-      ...new Set(payable.map((r) => r.total).filter((a) => a > 0)),
-    ].map((amount) => ({
-      key: String(amount),
-      row: {
-        playerId: "",
-        hours: 0,
-        games: 0,
-        shuttles: 0,
-        court: 0,
-        shuttle: 0,
-        expense: 0,
-        discount: 0,
-        total: amount,
-      },
-      playerName: "",
+  // Unpaid roster fed to the group-bill preview dialog — mirrors who the server
+  // would actually resolve (payable + unpaid), tagged with LINE reachability.
+  const unpaidForGroupBill = payable
+    .filter((r) => !paidIds.has(r.playerId))
+    .map((r) => ({
+      playerId: r.playerId,
+      displayName: nameById.get(r.playerId) ?? "",
+      amount: r.total,
+      hasLine: reachable.has(r.playerId),
     }));
-    startPushGroup(async () => {
-      const { urlByKey, failKind } = await renderUploadSlips(
-        items,
-        "amount",
-        groupSlipContainerRef,
-        setGroupSlipItem,
-        setPushGroupProgress,
-      );
-      const res = await pushGroupBillsAction({ clubId, slipUrlByAmount: urlByKey });
-      if ("error" in res) {
-        toast.error(res.error);
-        return;
-      }
-      const base = t("pushGroupResult", { amounts: res.amountsPushed, tagged: res.playersTagged });
-      const notes: string[] = [];
-      if (res.skippedNoLine > 0) notes.push(t("pushGroupNoLineNote", { n: res.skippedNoLine }));
-      if (res.skippedNoSlip > 0) {
-        notes.push(`${t("pushGroupNoSlipNote", { n: res.skippedNoSlip })}${slipFailNote(failKind)}`);
-      }
-      const msg = notes.length > 0 ? `${base} · ${notes.join(" · ")}` : base;
-      if (res.amountsPushed === 0 && res.skippedNoSlip > 0) toast.error(msg);
-      else toast.success(msg);
-    });
-  }
 
   return (
     <>
@@ -408,7 +371,8 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                   <TooltipContent>{t("pushLineTip")}</TooltipContent>
                 </Tooltip>
 
-                {/* Post one message-group per distinct amount into the club's bound LINE group */}
+                {/* Open the group-bill preview dialog: one consolidated numbered list +
+                    amount-less QR posted into the club's bound LINE group */}
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -417,17 +381,13 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                         size="sm"
                         variant="outline"
                         className="h-8 gap-1.5 text-xs"
-                        disabled={pushingGroup || payable.length === 0 || !lineGroupBound}
-                        onClick={pushGroupBillsWithSlips}
+                        disabled={payable.length === 0 || !lineGroupBound}
+                        onClick={() => setGroupDlgOpen(true)}
                       />
                     }
                   >
-                    {pushingGroup ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
-                    {pushingGroup
-                      ? pushGroupProgress
-                        ? t("generatingSlips", { done: pushGroupProgress.done, total: pushGroupProgress.total })
-                        : t("pushingGroup")
-                      : t("pushGroupBtn")}
+                    <Users className="h-3.5 w-3.5" />
+                    {t("pushGroupBtn")}
                   </TooltipTrigger>
                   <TooltipContent>{lineGroupBound ? t("pushGroupTip") : t("pushGroupDisabledTip")}</TooltipContent>
                 </Tooltip>
@@ -530,26 +490,17 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
       </div>
     )}
 
-    {/* Off-screen push-slip capture container — group flow (variant="group") */}
-    {groupSlipItem && (
-      <div
-        ref={groupSlipContainerRef}
-        aria-hidden="true"
-        style={{ position: "fixed", top: -9999, left: -9999, pointerEvents: "none", zIndex: -1 }}
-      >
-        <SlipCard
-          key={groupSlipItem.key}
-          club={club}
-          row={groupSlipItem.row}
-          playerName={groupSlipItem.playerName}
-          ppNumber={ppNumber}
-          qrImage={ppNumber ? null : qrImage}
-          qrLogoUrl={qrLogoUrl}
-          locale={locale}
-          variant="group"
-        />
-      </div>
-    )}
+    <GroupBillDialog
+      open={groupDlgOpen}
+      onOpenChange={setGroupDlgOpen}
+      clubId={clubId}
+      club={club}
+      unpaid={unpaidForGroupBill}
+      onDone={() => {
+        setGroupDlgOpen(false);
+        router.refresh();
+      }}
+    />
     </>
   );
 }

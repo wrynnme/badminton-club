@@ -9,8 +9,8 @@ import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 import { pushImageToUser, pushMessagesToGroup } from "@/lib/notification/line-club";
 import { computeClubCostRows } from "@/lib/club/cost-summary";
 import {
-  bucketBillsByAmount,
-  buildGroupBillMessages,
+  buildGroupBillLines,
+  buildGroupBillListMessages,
   type GroupBillPlayer,
 } from "@/lib/club/group-billing";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
@@ -241,36 +241,34 @@ export async function pushClubBillsAction(
 export type PushGroupBillsResult =
   | {
       ok: true;
-      /** distinct amounts posted (one message-group each) */
-      amountsPushed: number;
-      /** players @mentioned across all messages */
-      playersTagged: number;
-      /** payable players in a bucket with no linked LINE account (not tagged) */
-      skippedNoLine: number;
-      /** amount buckets with no client-rendered slip URL — not pushed, not stamped */
-      skippedNoSlip: number;
-      /** true if any bucket exceeded LINE's 5-messages-per-push cap */
+      /** total roster lines posted (payable + unpaid) */
+      billed: number;
+      /** linked players rendered as a working @mention */
+      mentioned: number;
+      /** true if the list exceeded LINE's 5-messages-per-push cap and was clamped */
       overflow: boolean;
     }
   | { error: string };
 
 /**
- * Post bills into the club's bound LINE group, bucketed by amount owed. For each
- * distinct amount: one client-rendered slip image + one text message @mentioning
- * every payable player who owes that amount (e.g. 170 → @bee @pang, 90 → @bank @boy).
+ * Post ONE consolidated bill into the club's bound LINE group: a numbered roster
+ * of who owes what, then a single amount-less PromptPay QR. Linked players are
+ * @mentioned (textV2, fires their notification); guests are listed by plain name
+ * so they're covered too. The list splits across messages at LINE's 20-mention
+ * cap with continuous numbering (see buildGroupBillListMessages).
  *
  * Requires `clubs.line_group_id` (bind the group first via the webhook command).
- * Guest players (no linked LINE) still owe the amount but can't be tagged — they
- * count toward `skippedNoLine`. Buckets missing a slip URL in
- * `input.slipUrlByAmount` are skipped entirely (`skippedNoSlip`) — the server
- * never generates its own QR/bubble. bill_amount / bill_pushed_at are stamped on
- * every player in a successfully-posted bucket; paid_at is never touched here.
+ * `input.qrImageUrl` is the client-rendered open QR PNG (or the club's uploaded
+ * promptpay_qr_image); null → text-only bill (club has no PromptPay). On a
+ * successful push, bill_amount + bill_pushed_at are stamped on every listed
+ * player; paid_at is never touched here.
  */
 export async function pushGroupBillsAction(input: {
   clubId: string;
-  /** Client-rendered bill slip PNG URL (from `uploadBillSlipAction`, kind='amount'),
-   *  keyed by `String(amount)`. Buckets not present here are skipped (skippedNoSlip). */
-  slipUrlByAmount: Record<string, string>;
+  /** Hosted amount-less QR image URL attached after the list. The client renders
+   *  the open PromptPay QR PNG (from promptpay_id) and uploads it, or passes the
+   *  club's uploaded promptpay_qr_image. null → text-only bill (no PromptPay set). */
+  qrImageUrl: string | null;
 }): Promise<PushGroupBillsResult> {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -351,7 +349,7 @@ export async function pushGroupBillsAction(input: {
     ]),
   );
 
-  // 4. Build payable player list → bucket by amount.
+  // 4. Build payable player list (unpaid, owes > 0), resolving each LINE id.
   const payable: GroupBillPlayer[] = players
     .filter((p) => {
       const cost = costByPlayerId.get(p.id);
@@ -366,12 +364,13 @@ export async function pushGroupBillsAction(input: {
       amount: costByPlayerId.get(p.id)!.total,
     }));
 
-  const buckets = bucketBillsByAmount(payable);
-  if (buckets.length === 0) {
+  // 5. Build the numbered roster list (amount desc, ties keep roster order).
+  const lines = buildGroupBillLines(payable);
+  if (lines.length === 0) {
     return { error: t("club.noPayable") };
   }
 
-  // 5. Format play_date for the message header.
+  // 6. Format play_date for the message header.
   let dateStr = "";
   if (club.play_date) {
     try {
@@ -383,76 +382,61 @@ export async function pushGroupBillsAction(input: {
     }
   }
 
-  // 6. Per amount: look up the client-rendered slip, compose messages, push to
-  //    the group, stamp bills.
-  let amountsPushed = 0;
-  let playersTagged = 0;
-  let skippedNoLine = 0;
-  let skippedNoSlip = 0;
-  let overflowAny = false;
+  // 7. Compose the messages (list + QR image) and push ONCE to the group.
+  const { messages, overflow } = buildGroupBillListMessages({
+    lines,
+    clubName: club.name,
+    dateStr,
+    qrImageUrl: input.qrImageUrl,
+  });
 
-  for (const bucket of buckets) {
-    skippedNoLine += bucket.unreachable.length;
+  const ok = await pushMessagesToGroup(club.line_group_id, messages);
+  if (!ok) {
+    return { error: t("club.groupPushFailed") };
+  }
 
-    const slipUrl = input.slipUrlByAmount[String(bucket.amount)] ?? null;
-    if (!slipUrl) {
-      skippedNoSlip++;
-      continue;
-    }
-
-    const { messages, overflow } = buildGroupBillMessages(bucket, {
-      clubName: club.name,
-      slipUrl,
-      dateStr,
-    });
-    if (overflow) overflowAny = true;
-
-    const ok = await pushMessagesToGroup(club.line_group_id, messages);
-    if (!ok) continue;
-
-    amountsPushed++;
-    playersTagged += bucket.members.length;
-
-    // Stamp bill snapshot on every player in this bucket (bill was posted to the
-    // group they're all in). paid_at / paid_method are NOT touched.
-    const bucketIds = [
-      ...bucket.members.map((m) => m.playerId),
-      ...bucket.unreachable.map((u) => u.playerId),
-    ];
+  // 8. Stamp the bill snapshot on every listed player (grouped by amount to keep
+  //    the write count small). paid_at / paid_method are NOT touched.
+  const now = new Date().toISOString();
+  const idsByAmount = new Map<number, string[]>();
+  for (const line of lines) {
+    const ids = idsByAmount.get(line.amount) ?? [];
+    ids.push(line.playerId);
+    idsByAmount.set(line.amount, ids);
+  }
+  for (const [amount, ids] of idsByAmount) {
     const { error: stampErr } = await sb
       .from("club_players")
-      .update({
-        bill_amount: bucket.amount,
-        bill_pushed_at: new Date().toISOString(),
-      })
-      .in("id", bucketIds)
+      .update({ bill_amount: amount, bill_pushed_at: now })
+      .in("id", ids)
       .eq("club_id", input.clubId);
     if (stampErr) {
       console.error(
         "[club-billing] group bill stamp error for amount",
-        bucket.amount,
+        amount,
         stampErr.message,
       );
     }
   }
 
-  // 7. Audit + revalidate.
+  const mentioned = lines.filter((l) => l.mentioned).length;
+  const plain = lines.length - mentioned;
+
+  // 9. Audit + revalidate.
   await sb.from("club_audit_logs").insert({
     club_id: input.clubId,
     actor_id: session.profileId,
     actor_name: session.displayName,
     event_type: "group_bills_pushed",
-    detail: `amounts ${amountsPushed}, tagged ${playersTagged}, no-line ${skippedNoLine}, no-slip ${skippedNoSlip}`,
+    detail: `billed ${lines.length}, mentioned ${mentioned}, plain ${plain}, qr ${input.qrImageUrl ? "yes" : "no"}`,
   });
 
   revalidatePath(`/clubs/${input.clubId}`);
 
   return {
     ok: true,
-    amountsPushed,
-    playersTagged,
-    skippedNoLine,
-    skippedNoSlip,
-    overflow: overflowAny,
+    billed: lines.length,
+    mentioned,
+    overflow,
   };
 }

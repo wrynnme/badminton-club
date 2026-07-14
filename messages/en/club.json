@@ -897,7 +897,19 @@
     "pushGroupDisabledTip": "No LINE group bound yet — bind a group first",
     "pushGroupResult": "Posted {amounts} amount group(s) · tagged {tagged} players",
     "pushGroupNoLineNote": "{n} not LINE-linked yet",
-    "pushGroupNoSlipNote": "{n} amount(s) failed to generate slip"
+    "pushGroupNoSlipNote": "{n} amount(s) failed to generate slip",
+    "groupBillPreviewTitle": "Group bill preview",
+    "groupBillMentionBadge": "LINE",
+    "groupBillNoQr": "No PromptPay set for this club — the bill will be text-only (no QR)",
+    "groupBillQrLabel": "PromptPay QR (no amount)",
+    "groupBillCount": "{total} unpaid · {mentioned} LINE-tagged · {plain} no LINE",
+    "groupBillChunkWarn": "Long list — will be split into {n} messages",
+    "groupBillConfirm": "Send to group",
+    "groupBillSending": "Sending…",
+    "groupBillResult": "Bill posted · {billed} players ({mentioned} tagged)",
+    "groupBillOverflowNote": "List too long — some entries were dropped",
+    "groupBillCancel": "Cancel",
+    "groupBillCancelTip": "Close without posting the bill to the group"
   },
   "slip": {
     "sendSlip": "Send slip",
