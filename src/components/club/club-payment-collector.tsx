@@ -381,7 +381,7 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                         size="sm"
                         variant="outline"
                         className="h-8 gap-1.5 text-xs"
-                        disabled={payable.length === 0 || !lineGroupBound}
+                        disabled={unpaidForGroupBill.length === 0 || !lineGroupBound}
                         onClick={() => setGroupDlgOpen(true)}
                       />
                     }

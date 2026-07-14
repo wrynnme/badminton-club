@@ -383,7 +383,7 @@ export async function pushGroupBillsAction(input: {
   }
 
   // 7. Compose the messages (list + QR image) and push ONCE to the group.
-  const { messages, overflow } = buildGroupBillListMessages({
+  const { messages, overflow, sentPlayerIds } = buildGroupBillListMessages({
     lines,
     clubName: club.name,
     dateStr,
@@ -395,11 +395,15 @@ export async function pushGroupBillsAction(input: {
     return { error: t("club.groupPushFailed") };
   }
 
-  // 8. Stamp the bill snapshot on every listed player (grouped by amount to keep
-  //    the write count small). paid_at / paid_method are NOT touched.
+  // 8. Stamp the bill snapshot — but ONLY on players whose line actually made it
+  //    into the push. On overflow the composer drops trailing chunks; stamping the
+  //    full roster would mark players "billed" for a message they never received.
+  //    Grouped by amount to keep the write count small. paid_at is NOT touched.
+  const sentSet = new Set(sentPlayerIds);
+  const sentLines = lines.filter((l) => sentSet.has(l.playerId));
   const now = new Date().toISOString();
   const idsByAmount = new Map<number, string[]>();
-  for (const line of lines) {
+  for (const line of sentLines) {
     const ids = idsByAmount.get(line.amount) ?? [];
     ids.push(line.playerId);
     idsByAmount.set(line.amount, ids);
@@ -419,8 +423,8 @@ export async function pushGroupBillsAction(input: {
     }
   }
 
-  const mentioned = lines.filter((l) => l.mentioned).length;
-  const plain = lines.length - mentioned;
+  const mentioned = sentLines.filter((l) => l.mentioned).length;
+  const plain = sentLines.length - mentioned;
 
   // 9. Audit + revalidate.
   await sb.from("club_audit_logs").insert({
@@ -428,14 +432,14 @@ export async function pushGroupBillsAction(input: {
     actor_id: session.profileId,
     actor_name: session.displayName,
     event_type: "group_bills_pushed",
-    detail: `billed ${lines.length}, mentioned ${mentioned}, plain ${plain}, qr ${input.qrImageUrl ? "yes" : "no"}`,
+    detail: `billed ${sentLines.length}, mentioned ${mentioned}, plain ${plain}, qr ${input.qrImageUrl ? "yes" : "no"}${overflow ? `, overflow (dropped ${lines.length - sentLines.length})` : ""}`,
   });
 
   revalidatePath(`/clubs/${input.clubId}`);
 
   return {
     ok: true,
-    billed: lines.length,
+    billed: sentLines.length,
     mentioned,
     overflow,
   };

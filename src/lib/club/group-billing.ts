@@ -91,6 +91,12 @@ export type GroupBillListLine = {
 export const MAX_MENTIONS_PER_MESSAGE = 20;
 /** LINE hard limit: max 5 message objects per push request. */
 export const MAX_MESSAGES_PER_PUSH = 5;
+/** Soft cap on TOTAL roster lines per message. The 20-mention cap already bounds
+ *  mention-heavy messages, but an all-plain (guest-heavy) roster consumes no
+ *  mention budget and would otherwise pack every name into one textV2 body that
+ *  could blow past LINE's ~5000-char text limit and fail the whole push. 40 lines
+ *  (~1.2k chars even with long names) stays comfortably under. */
+export const MAX_LINES_PER_MESSAGE = 40;
 
 // ---------------------------------------------------------------------------
 // buildGroupBillLines
@@ -112,7 +118,10 @@ export function buildGroupBillLines(players: GroupBillPlayer[]): GroupBillListLi
       playerId: p.playerId,
       displayName: p.displayName,
       amount: p.amount,
-      mentioned: p.lineUserId != null,
+      // Boolean() (not `!= null`) so an empty-string lineUserId also reads as
+      // un-mentioned — the render guard below is `mentioned && lineUserId`, and a
+      // truthy-but-empty id would otherwise consume a mention slot yet render plain.
+      mentioned: Boolean(p.lineUserId),
       lineUserId: p.lineUserId,
     }));
 }
@@ -160,26 +169,32 @@ export const GROUP_BILL_SCAN_PROMPT = "สแกน QR ด้านล่าง�
  *   stays continuous across the split.
  * - Each mentioned line renders as `{index}. {mK} {amount}` with a per-message
  *   `substitution`; each plain line renders as `{index}. {name} {amount}`.
- * - The club/date header leads the FIRST message. When a QR is present the scan
- *   prompt trails the LAST text message and the QR image is appended as the final
- *   message. With no QR, no scan prompt and no image are added (text only).
- * - The result is clamped to LINE's 5-messages-per-push limit; `overflow` is true
- *   when clamping actually dropped a trailing message so the caller can report it.
+ * - The club/date header leads the FIRST kept message. When a QR is present the
+ *   scan prompt trails the LAST kept text message and the QR image is appended as
+ *   the final message. With no QR, no scan prompt and no image are added (text only).
+ * - The chunk list is clamped to LINE's 5-messages-per-push limit BEFORE composing,
+ *   so the header/scan-prompt land on messages that are actually sent. `overflow`
+ *   is true when clamping dropped trailing chunks, and `sentPlayerIds` names exactly
+ *   the players whose line made it into the push — the caller stamps only those, so
+ *   dropped players are never marked billed for a message they never received.
  */
 export function buildGroupBillListMessages(params: {
   lines: GroupBillListLine[];
   clubName: string;
   dateStr?: string;
   qrImageUrl: string | null;
-}): { messages: LineMessage[]; overflow: boolean } {
+}): { messages: LineMessage[]; overflow: boolean; sentPlayerIds: string[] } {
   const { lines, clubName, dateStr, qrImageUrl } = params;
 
-  // 1. Pack lines into chunks, each holding at most 20 mentioned lines.
+  // 1. Pack lines into chunks. Start a new chunk when either the 20-mention cap or
+  //    the total-lines cap (guest-heavy guard) would be exceeded by the next line.
   const chunks: GroupBillListLine[][] = [];
   let current: GroupBillListLine[] = [];
   let mentionsInChunk = 0;
   for (const line of lines) {
-    if (line.mentioned && mentionsInChunk >= MAX_MENTIONS_PER_MESSAGE) {
+    const mentionFull = line.mentioned && mentionsInChunk >= MAX_MENTIONS_PER_MESSAGE;
+    const linesFull = current.length >= MAX_LINES_PER_MESSAGE;
+    if (current.length > 0 && (mentionFull || linesFull)) {
       chunks.push(current);
       current = [];
       mentionsInChunk = 0;
@@ -189,14 +204,22 @@ export function buildGroupBillListMessages(params: {
   }
   if (current.length > 0) chunks.push(current);
   // Nothing to bill → no messages at all.
-  if (chunks.length === 0) return { messages: [], overflow: false };
+  if (chunks.length === 0) return { messages: [], overflow: false, sentPlayerIds: [] };
+
+  // 2. Clamp to LINE's 5-messages/push BEFORE composing. The QR is delivery-critical
+  //    (people pay from it), so reserve its slot and drop excess trailing TEXT chunks.
+  //    Clamping here (not after) keeps the header on chunk 0 and the scan prompt on
+  //    the genuinely-last kept chunk, and lets us report which players were sent.
+  const image: LineMessage[] = qrImageUrl ? [buildImageMessage(qrImageUrl)] : [];
+  const maxText = MAX_MESSAGES_PER_PUSH - image.length;
+  const keptChunks = chunks.slice(0, maxText);
+  const overflow = chunks.length > keptChunks.length;
 
   const header = buildGroupBillHeader(clubName, dateStr);
-  const scanPrompt = GROUP_BILL_SCAN_PROMPT;
-  const lastChunkIdx = chunks.length - 1;
+  const lastKeptIdx = keptChunks.length - 1;
 
-  // 2. Turn each chunk into one textV2 message.
-  const textMessages: LineMessage[] = chunks.map((chunk, ci) => {
+  // 3. Turn each KEPT chunk into one textV2 message.
+  const textMessages: LineMessage[] = keptChunks.map((chunk, ci) => {
     const substitution: Record<string, LineMentionSubstitution> = {};
     let mIdx = 0; // substitution keys are per-message (m0..m19)
     const rows = chunk.map((line) => {
@@ -215,20 +238,14 @@ export function buildGroupBillListMessages(params: {
     const parts: string[] = [];
     if (ci === 0) parts.push(header);
     parts.push(rows.join("\n"));
-    if (ci === lastChunkIdx && qrImageUrl) parts.push(scanPrompt);
+    if (ci === lastKeptIdx && qrImageUrl) parts.push(GROUP_BILL_SCAN_PROMPT);
 
     const msg: LineTextV2Message = { type: "textV2", text: parts.join("\n") };
     if (Object.keys(substitution).length > 0) msg.substitution = substitution;
     return msg;
   });
 
-  const image: LineMessage[] = qrImageUrl ? [buildImageMessage(qrImageUrl)] : [];
-
-  // Clamp to LINE's 5-messages/push. The QR is delivery-critical (people pay from
-  // it), so reserve its slot and drop excess trailing TEXT chunks instead —
-  // `overflow` flags that some list rows didn't make it into the push.
-  const maxText = MAX_MESSAGES_PER_PUSH - image.length;
-  const keptText = textMessages.slice(0, maxText);
-  const messages = [...keptText, ...image];
-  return { messages, overflow: textMessages.length > keptText.length };
+  const messages = [...textMessages, ...image];
+  const sentPlayerIds = keptChunks.flat().map((l) => l.playerId);
+  return { messages, overflow, sentPlayerIds };
 }

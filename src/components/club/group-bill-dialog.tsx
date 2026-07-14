@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { format } from "date-fns";
 import QRCode from "qrcode";
 import { toast } from "sonner";
@@ -48,7 +48,6 @@ type Props = {
 
 export function GroupBillDialog({ clubId, club, unpaid, open, onOpenChange, onDone }: Props) {
   const t = useTranslations("club.payment");
-  const locale = useLocale();
   const [sending, startSending] = useTransition();
 
   // Reuse the exact server helper so the preview list can never drift from what
@@ -77,10 +76,13 @@ export function GroupBillDialog({ clubId, club, unpaid, open, onOpenChange, onDo
       ? "image"
       : "none";
 
+  // LINE bodies are Thai-only by project convention, and the server builds the sent
+  // header with dateFnsLocaleOf("th"). Pin the preview to "th" too (NOT the admin's
+  // UI locale) so the preview date can't diverge from what actually gets posted.
   let dateStr = "";
   try {
     dateStr = club.play_date
-      ? format(new Date(club.play_date), "dd MMM yyyy", { locale: dateFnsLocaleOf(locale) })
+      ? format(new Date(club.play_date), "dd MMM yyyy", { locale: dateFnsLocaleOf("th") })
       : "";
   } catch {
     dateStr = club.play_date ?? "";

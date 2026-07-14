@@ -43,6 +43,14 @@ describe("buildGroupBillLines", () => {
     buildGroupBillLines(input);
     expect(input.map((p) => p.playerId)).toEqual(SCENARIO.map((p) => p.playerId));
   });
+
+  it("treats an empty-string lineUserId as un-mentioned (not a wasted mention slot)", () => {
+    const lines = buildGroupBillLines([
+      { playerId: "a", displayName: "a", lineUserId: "", amount: 50 },
+    ]);
+    // Boolean("") is false → renders as a plain name, consumes no mention budget.
+    expect(lines[0].mentioned).toBe(false);
+  });
 });
 
 describe("formatBillAmount", () => {
@@ -91,7 +99,7 @@ describe("buildGroupBillHeader — shared by message + preview", () => {
 describe("buildGroupBillListMessages — one consolidated bill", () => {
   it("renders header + numbered list (mention placeholders + plain names) + scan prompt + QR", () => {
     const lines = buildGroupBillLines(SCENARIO);
-    const { messages, overflow } = buildGroupBillListMessages({
+    const { messages, overflow, sentPlayerIds } = buildGroupBillListMessages({
       lines,
       clubName: "ก๊วนเช้า",
       dateStr: "15 ก.ค. 68",
@@ -100,6 +108,8 @@ describe("buildGroupBillListMessages — one consolidated bill", () => {
 
     expect(overflow).toBe(false);
     expect(messages).toHaveLength(2); // 1 text + 1 image
+    // normal (no clamp) → every payable player is reported as sent
+    expect(sentPlayerIds).toEqual(["p-bee", "p-pang", "p-bank", "p-da"]);
 
     const [text, image] = messages;
     expect(text.type).toBe("textV2");
@@ -212,7 +222,8 @@ describe("buildGroupBillListMessages — one consolidated bill", () => {
     }
   });
 
-  it("plain-name lines do NOT consume the 20-mention budget (stay in one message)", () => {
+  it("plain-name lines do NOT consume the 20-mention budget (all 20 mentions in the first message)", () => {
+    // 20 mentioned + 15 plain = 35 lines, under the 40-line cap → one message.
     const players: GroupBillPlayer[] = [
       ...Array.from({ length: 20 }, (_, i) => ({
         playerId: `L${i}`,
@@ -220,7 +231,7 @@ describe("buildGroupBillListMessages — one consolidated bill", () => {
         lineUserId: `U${i}`,
         amount: 100,
       })),
-      ...Array.from({ length: 30 }, (_, i) => ({
+      ...Array.from({ length: 15 }, (_, i) => ({
         playerId: `G${i}`,
         displayName: `G${i}`,
         lineUserId: null,
@@ -233,12 +244,37 @@ describe("buildGroupBillListMessages — one consolidated bill", () => {
       clubName: "c",
       qrImageUrl: null,
     });
-    // 20 mentions + 30 plain → still ONE text message (guests don't split it).
     expect(overflow).toBe(false);
     expect(messages).toHaveLength(1);
     const t = messages[0] as LineTextV2Message;
-    expect(Object.keys(t.substitution!)).toHaveLength(20);
-    expect(t.text).toContain("50. G29 100"); // last line numbered 50
+    expect(Object.keys(t.substitution!)).toHaveLength(20); // all 20 mentions, guests didn't force a split
+    expect(t.text).toContain("35. G14 100"); // last line numbered 35
+  });
+
+  it("splits a guest-heavy roster on the total-lines cap so no single message goes oversized", () => {
+    // 100 plain guests, zero mentions → the 20-mention cap never trips; only the
+    // 40-line cap keeps each message a safe size (LINE ~5000-char text limit).
+    const guests: GroupBillPlayer[] = Array.from({ length: 100 }, (_, i) => ({
+      playerId: `G${i}`,
+      displayName: `Guest${i}`,
+      lineUserId: null,
+      amount: 100,
+    }));
+    const lines = buildGroupBillLines(guests);
+    const { messages, overflow, sentPlayerIds } = buildGroupBillListMessages({
+      lines,
+      clubName: "c",
+      qrImageUrl: null,
+    });
+    // 100 lines / 40 per chunk = 3 text messages (40 + 40 + 20), all within the push cap.
+    expect(messages).toHaveLength(3);
+    expect(overflow).toBe(false);
+    expect(sentPlayerIds).toHaveLength(100);
+    for (const m of messages) {
+      if (m.type === "textV2") {
+        expect(m.text.split("\n").filter((l) => /^\d+\./.test(l)).length).toBeLessThanOrEqual(40);
+      }
+    }
   });
 
   it("clamps to 5 messages, keeping the QR and dropping excess TEXT chunks", () => {
@@ -249,12 +285,12 @@ describe("buildGroupBillListMessages — one consolidated bill", () => {
       amount: 120,
     }));
     const lines = buildGroupBillLines(many);
-    const { messages, overflow } = buildGroupBillListMessages({
+    const { messages, overflow, sentPlayerIds } = buildGroupBillListMessages({
       lines,
       clubName: "c",
       qrImageUrl: "https://cdn/qr.png",
     });
-    // 85 mentions → 5 text chunks + 1 image = 6 → clamp to 5: keep 4 text + the QR.
+    // 85 mentions → 5 text chunks (20×4 + 5) + 1 image = 6 → clamp to 5: keep 4 text + the QR.
     expect(messages).toHaveLength(5);
     expect(overflow).toBe(true);
     // QR is delivery-critical → it survives; the excess text chunk is what's dropped.
@@ -263,7 +299,15 @@ describe("buildGroupBillListMessages — one consolidated bill", () => {
       originalContentUrl: "https://cdn/qr.png",
       previewImageUrl: "https://cdn/qr.png",
     });
-    expect(messages.filter((m) => m.type === "textV2")).toHaveLength(4);
+    const textMsgs = messages.filter((m) => m.type === "textV2") as LineTextV2Message[];
+    expect(textMsgs).toHaveLength(4);
+    // The scan prompt must ride the LAST KEPT text chunk (chunk 4), not the dropped
+    // 5th chunk — otherwise the QR ships with no caption on every overflow push.
+    expect(textMsgs[textMsgs.length - 1].text.endsWith(GROUP_BILL_SCAN_PROMPT)).toBe(true);
+    // Only the 80 players whose line was actually sent are reported → the caller
+    // stamps exactly these, so the 5 dropped players are never marked billed.
+    expect(sentPlayerIds).toHaveLength(80);
+    expect(sentPlayerIds).not.toContain("p84"); // 85th player (index 84) was dropped
   });
 
   it("returns no messages for an empty list", () => {
