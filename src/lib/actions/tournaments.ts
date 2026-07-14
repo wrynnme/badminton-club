@@ -270,7 +270,7 @@ export async function updateTournamentStatusAction(id: string, status: "draft" |
     ongoing: "กำลังแข่งขัน",
     completed: "จบการแข่งขัน",
   };
-  notifyTournamentEvent(id, "status", `สถานะเปลี่ยนเป็น: ${statusLabel[status] ?? status}`).catch(() => {});
+  notifyTournamentEvent(id, "status", "notifyStatus", { status: statusLabel[status] ?? status }).catch(() => {});
   return { ok: true };
 }
 

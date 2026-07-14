@@ -24,14 +24,17 @@ import {
   takeSides,
   type QueuePlayer,
   type MatchSide,
+  type LockedPair,
 } from "@/lib/club/queue";
 import {
   generateBatchQueue,
   buildPairHistory,
   countFixedAppearances,
   computePlayerTargets,
+  deriveLockBudgets,
   planRerollSwap,
   type BatchCountableMatch,
+  type LockRow,
   type RerollSwapMatch,
 } from "@/lib/club/batch-queue";
 import {
@@ -129,7 +132,15 @@ type QueueContext = {
   pool: QueuePlayer[];
   /** ids currently in a pending / in_progress match */
   activePlayerIds: Set<string>;
-  lockedPairs: [string, string][];
+  /** ACTIVE locked pairs only — an N-game lock whose quota is already spent by
+   *  scheduled/played teammate matches is excluded (it no longer forces pairing) */
+  lockedPairs: LockedPair[];
+  /** pairKey → live remaining budget for the active locks (for the generator to
+   *  deplete within a batch); NULL-quota locks map to Infinity */
+  lockBudget: Map<string, number>;
+  /** all non-cancelled matches this session (status + 4 slots) — reused for
+   *  top-up counting, variety history, and lock-budget derivation */
+  matches: BatchCountableMatch[];
   /** raw eligible rows — carries the pro-rate fields (start/end/check-in) */
   playerRows: Array<{
     id: string;
@@ -168,13 +179,16 @@ async function loadClubQueueContext(
     .eq("status", "active");
   if (playersFetchError || !allPlayers) return { error: t("club.loadPlayersFailed") };
 
-  const { data: activeMatches } = await sb
+  // One fetch of all non-cancelled matches (status + slots), reused for: busy-set,
+  // top-up counting, variety history, AND lock-budget derivation.
+  const { data: allMatchRows } = await sb
     .from("club_matches")
-    .select("side_a_player1, side_a_player2, side_b_player1, side_b_player2")
-    .eq("club_id", clubId)
-    .in("status", ["pending", "in_progress"]);
+    .select("status, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
+    .eq("club_id", clubId);
+  const matches = (allMatchRows ?? []) as BatchCountableMatch[];
   const activePlayerIds = new Set<string>();
-  for (const m of activeMatches ?? []) {
+  for (const m of matches) {
+    if (m.status !== "pending" && m.status !== "in_progress") continue;
     for (const id of [m.side_a_player1, m.side_a_player2, m.side_b_player1, m.side_b_player2]) {
       if (id) activePlayerIds.add(id);
     }
@@ -200,12 +214,15 @@ async function loadClubQueueContext(
 
   const { data: lockRows } = await sb
     .from("club_locked_pairs")
-    .select("player1_id, player2_id")
+    .select("player1_id, player2_id, games_remaining")
     .eq("club_id", clubId);
-  const lockedPairs: [string, string][] = (lockRows ?? []).map((r) => [
-    r.player1_id,
-    r.player2_id,
-  ]);
+  // games_remaining is the immutable QUOTA (NULL = forever); live remaining is
+  // derived from how many teammate matches already exist, so cancel/delete refunds
+  // automatically. Only still-active pairs force pairing.
+  const { active: lockedPairs, budget: lockBudget } = deriveLockBudgets(
+    (lockRows ?? []) as LockRow[],
+    matches,
+  );
 
   return {
     settings,
@@ -215,6 +232,8 @@ async function loadClubQueueContext(
     pool,
     activePlayerIds,
     lockedPairs,
+    lockBudget,
+    matches,
     playerRows: eligible.map((p) => ({
       id: p.id,
       start_time: p.start_time,
@@ -259,13 +278,9 @@ export async function generateClubQueueAction(
   const ctx = await loadClubQueueContext(sb, clubId, t);
   if ("error" in ctx) return ctx;
 
-  // Top-up: everything already scheduled or played this session counts.
-  const { data: allMatches, error: matchesError } = await sb
-    .from("club_matches")
-    .select("status, side_a_player1, side_a_player2, side_b_player1, side_b_player2")
-    .eq("club_id", clubId);
-  if (matchesError) return { error: matchesError.message };
-  const countable = (allMatches ?? []) as BatchCountableMatch[];
+  // Top-up: everything already scheduled or played this session counts. Reuse the
+  // matches loadClubQueueContext already fetched (also used to derive lock budgets).
+  const countable = ctx.matches;
   const existing = countFixedAppearances(countable);
   // Seed variety from who has already partnered / opposed whom tonight, so a
   // top-up avoids repeating the matchups that are already queued or played.
@@ -288,6 +303,7 @@ export async function generateClubQueueAction(
     pool: ctx.pool,
     settings: ctx.settings,
     lockedPairs: ctx.lockedPairs,
+    lockBudget: ctx.lockBudget,
     remaining,
     laneCount: ctx.courts.length,
     history,

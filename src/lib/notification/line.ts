@@ -1,9 +1,15 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import { getTournamentSettings } from "@/lib/tournament/settings.server";
+import { getAppSettings } from "@/lib/app-settings";
+import { resolveBotMessage, type BotMessageKey, type Vars } from "@/lib/bot-messages";
 import type { LineNotifyFlags, TournamentSettings } from "@/lib/tournament/settings";
 
 /**
  * Phase 11 — gated wrapper. Skips push when `settings.line_notify[event] === false`.
+ *
+ * The message body is resolved from a site-admin-editable template (`key` +
+ * `vars`) — see `@/lib/bot-messages`. Resolution (and the `app_settings` fetch it
+ * needs) happens only AFTER the gate passes, so a disabled event costs nothing.
  *
  * Pass `settings` when the caller already has it in scope to avoid a redundant
  * DB fetch.
@@ -17,13 +23,15 @@ import type { LineNotifyFlags, TournamentSettings } from "@/lib/tournament/setti
 export async function notifyTournamentEvent(
   tournamentId: string,
   event: keyof LineNotifyFlags,
-  text: string,
+  key: BotMessageKey,
+  vars: Vars = {},
   settings?: TournamentSettings,
 ): Promise<void> {
   try {
     const s = settings ?? (await getTournamentSettings(tournamentId));
     if (!s.line_notify[event]) return;
-    await notifyTournamentAdmins(tournamentId, text);
+    const { messages } = await getAppSettings();
+    await notifyTournamentAdmins(tournamentId, resolveBotMessage(messages, key, vars));
   } catch (err) {
     console.error("[LINE] gate exception:", err);
   }

@@ -38,6 +38,7 @@ import { ClubInfoRow } from "@/components/club/club-info-row";
 import { getTranslations } from "next-intl/server";
 import { getClubLevelsAction } from "@/lib/actions/levels";
 import { getAppSettings, resolveQrLogoUrl } from "@/lib/app-settings";
+import { resolveBotMessage } from "@/lib/bot-messages";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
 import type { ClubMatch, ClubLockedPair, Level, ClubPreset, ClubLinkPoolRequest } from "@/lib/types";
@@ -333,9 +334,18 @@ export default async function ClubDetailPage({
               {queueSettings.players_per_team === 2 && (
                 <ClubLockedPairs
                   clubId={club.id}
-                  players={players.map((p) => ({ id: p.id, display_name: p.display_name }))}
+                  players={players.map((p) => ({
+                    id: p.id,
+                    display_name: p.display_name,
+                    start_time: p.start_time,
+                    end_time: p.end_time,
+                    checked_in_at: p.checked_in_at,
+                  }))}
                   locks={lockedPairs}
+                  matches={clubMatches}
                   canManage={canManage}
+                  clubStart={String(club.start_time).slice(0, 5)}
+                  clubEnd={String(club.end_time).slice(0, 5)}
                 />
               )}
               <ClubQueuePanel
@@ -349,6 +359,7 @@ export default async function ClubDetailPage({
                   start_time: p.start_time,
                   end_time: p.end_time,
                 }))}
+                locks={lockedPairs}
                 settings={queueSettings}
                 courts={clubCourts}
                 canManage={canManage}
@@ -427,6 +438,7 @@ export default async function ClubDetailPage({
                   matches={clubMatches}
                   expenses={expenses}
                   qrLogoUrl={resolveQrLogoUrl(appSettings)}
+                  scanPrompt={resolveBotMessage(appSettings.messages, "groupBillScanPrompt")}
                   lineReachableIds={lineReachableIds}
                   lineGroupBound={!!club.line_group_id}
                 />

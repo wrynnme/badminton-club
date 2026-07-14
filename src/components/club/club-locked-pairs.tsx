@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { ChevronDown, Link2, Unlink, Users } from "lucide-react";
+import { AlertTriangle, ChevronDown, Link2, Unlink, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -31,22 +31,41 @@ import {
   createClubLockedPairAction,
   releaseClubLockedPairAction,
 } from "@/lib/actions/club-matches";
+import {
+  findLockedPairMismatches,
+  type LockedPairMismatch,
+  type LockPlayerTimes,
+} from "@/lib/club/queue-preview";
+import {
+  countLockedTeammateMatches,
+  deriveLockRemaining,
+  type BatchCountableMatch,
+} from "@/lib/club/batch-queue";
 import type { ClubLockedPair } from "@/lib/types";
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
-type Player = { id: string; display_name: string };
+type Player = LockPlayerTimes;
 
 export function ClubLockedPairs({
   clubId,
   players,
   locks,
+  matches,
   canManage,
+  clubStart,
+  clubEnd,
 }: {
   clubId: string;
   players: Player[];
   locks: ClubLockedPair[];
+  /** non-cancelled matches — used to derive each N-game lock's live remaining
+   *  (quota − teammate matches already queued/played) */
+  matches: BatchCountableMatch[];
   canManage: boolean;
+  /** "HH:MM" club session window — used to flag locked pairs with unequal presence. */
+  clubStart: string;
+  clubEnd: string;
 }) {
   const t = useTranslations("club.lockedPairs");
   const router = useRouter();
@@ -93,6 +112,8 @@ export function ClubLockedPairs({
                 clubId={clubId}
                 players={players}
                 nameMap={nameMap}
+                clubStart={clubStart}
+                clubEnd={clubEnd}
                 onSuccess={() => router.refresh()}
               />
             )}
@@ -100,8 +121,12 @@ export function ClubLockedPairs({
             {/* Active locks list */}
             <LockList
               locks={locks}
+              players={players}
+              matches={matches}
               nameMap={nameMap}
               canManage={canManage}
+              clubStart={clubStart}
+              clubEnd={clubEnd}
               onSuccess={() => router.refresh()}
             />
           </CardContent>
@@ -117,11 +142,15 @@ function CreateLockForm({
   clubId,
   players,
   nameMap,
+  clubStart,
+  clubEnd,
   onSuccess,
 }: {
   clubId: string;
   players: Player[];
   nameMap: Map<string, string>;
+  clubStart: string;
+  clubEnd: string;
   onSuccess: () => void;
 }) {
   const t = useTranslations("club.lockedPairs");
@@ -130,6 +159,19 @@ function CreateLockForm({
   const [mode, setMode] = useState<"forever" | "n_games">("forever");
   const [nGames, setNGames] = useState(3);
   const [busy, startTransition] = useTransition();
+
+  // Warn when the two selected players are present for different amounts of the
+  // session — a lock forces them to play together, so the shorter-staying one is
+  // dragged up to the other's match count, overriding their (lower) pro-rated target.
+  const mismatch =
+    player1Id && player2Id && player1Id !== player2Id
+      ? findLockedPairMismatches(
+          players,
+          [{ player1_id: player1Id, player2_id: player2Id }],
+          clubStart,
+          clubEnd,
+        )[0]
+      : undefined;
 
   const canSubmit =
     !busy &&
@@ -252,6 +294,19 @@ function CreateLockForm({
         )}
       </div>
 
+      {/* Time-mismatch warning */}
+      {mismatch && (
+        <div className="flex gap-1.5 rounded-md border border-warning/40 bg-warning/10 px-2.5 py-2 text-xs text-warning-foreground">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+          <span>
+            {t("windowWarnCreate", {
+              shorter: mismatch.shorterName,
+              longer: mismatch.longerName,
+            })}
+          </span>
+        </div>
+      )}
+
       {/* Submit */}
       <Tooltip>
         <TooltipTrigger
@@ -279,13 +334,21 @@ function CreateLockForm({
 
 function LockList({
   locks,
+  players,
+  matches,
   nameMap,
   canManage,
+  clubStart,
+  clubEnd,
   onSuccess,
 }: {
   locks: ClubLockedPair[];
+  players: Player[];
+  matches: BatchCountableMatch[];
   nameMap: Map<string, string>;
   canManage: boolean;
+  clubStart: string;
+  clubEnd: string;
   onSuccess: () => void;
 }) {
   const t = useTranslations("club.lockedPairs");
@@ -303,7 +366,15 @@ function LockList({
         <LockRow
           key={lock.id}
           lock={lock}
+          teammateCount={countLockedTeammateMatches(
+            matches,
+            lock.player1_id,
+            lock.player2_id,
+          )}
           nameMap={nameMap}
+          mismatch={
+            findLockedPairMismatches(players, [lock], clubStart, clubEnd)[0]
+          }
           canManage={canManage}
           onSuccess={onSuccess}
         />
@@ -316,12 +387,17 @@ function LockList({
 
 function LockRow({
   lock,
+  teammateCount,
   nameMap,
+  mismatch,
   canManage,
   onSuccess,
 }: {
   lock: ClubLockedPair;
+  /** matches where this pair are already teammates (queued + played) */
+  teammateCount: number;
   nameMap: Map<string, string>;
+  mismatch?: LockedPairMismatch;
   canManage: boolean;
   onSuccess: () => void;
 }) {
@@ -330,6 +406,12 @@ function LockRow({
 
   const name1 = nameMap.get(lock.player1_id) ?? "—";
   const name2 = nameMap.get(lock.player2_id) ?? "—";
+
+  // games_remaining is the immutable quota (NULL = forever). Live remaining is
+  // derived so cancel/delete refunds automatically. overBy > 0 = queued past quota.
+  const quota = lock.games_remaining;
+  const remaining = quota == null ? null : deriveLockRemaining(quota, teammateCount);
+  const overBy = quota == null ? 0 : Math.max(0, teammateCount - quota);
 
   function handleRelease() {
     startTransition(async () => {
@@ -351,14 +433,56 @@ function LockRow({
         {name2}
       </span>
 
+      {mismatch && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                className="inline-flex shrink-0 text-warning-foreground"
+                aria-label={t("windowWarnRow", {
+                  shorter: mismatch.shorterName,
+                  longer: mismatch.longerName,
+                })}
+              >
+                <AlertTriangle className="h-4 w-4" />
+              </button>
+            }
+          />
+          <TooltipContent>
+            {t("windowWarnRow", {
+              shorter: mismatch.shorterName,
+              longer: mismatch.longerName,
+            })}
+          </TooltipContent>
+        </Tooltip>
+      )}
+
       <Badge
-        variant="secondary"
-        className="text-xs shrink-0"
+        variant={overBy > 0 ? "outline" : "secondary"}
+        className={`text-xs shrink-0${overBy > 0 ? " border-warning/40 text-warning-foreground" : ""}`}
       >
-        {lock.games_remaining == null
+        {quota == null
           ? t("badgeForever")
-          : t("badgeRemaining", { count: lock.games_remaining })}
+          : t("badgeRemaining", { count: remaining ?? 0 })}
       </Badge>
+
+      {overBy > 0 && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                type="button"
+                className="inline-flex shrink-0 text-warning-foreground"
+                aria-label={t("overQuota", { count: overBy })}
+              >
+                <AlertTriangle className="h-4 w-4" />
+              </button>
+            }
+          />
+          <TooltipContent>{t("overQuota", { count: overBy })}</TooltipContent>
+        </Tooltip>
+      )}
 
       {canManage && (
         <Tooltip>
