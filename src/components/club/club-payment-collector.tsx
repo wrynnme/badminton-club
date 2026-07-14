@@ -76,6 +76,8 @@ type Props = {
   expenses: ClubExpense[];
   /** Site-wide centre-of-QR logo URL (/admin setting); null = logo turned off. */
   qrLogoUrl: string | null;
+  /** Site-admin-editable "scan the QR" prompt (/admin setting); resolved server-side. */
+  scanPrompt: string;
   /** club_players.id values whose linked profile has a non-null line_user_id. */
   lineReachableIds: string[];
   /** true when clubs.line_group_id is bound — gates the group-billing button. */
@@ -99,7 +101,7 @@ type PushSlipItem = {
   playerName: string;
 };
 
-export function ClubPaymentCollector({ clubId, club, players, matches, expenses, qrLogoUrl, lineReachableIds, lineGroupBound }: Props) {
+export function ClubPaymentCollector({ clubId, club, players, matches, expenses, qrLogoUrl, scanPrompt, lineReachableIds, lineGroupBound }: Props) {
   const t = useTranslations("club.payment");
   const tSlip = useTranslations("club.slip");
   const locale = useLocale();
@@ -496,6 +498,7 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
       clubId={clubId}
       club={club}
       unpaid={unpaidForGroupBill}
+      scanPrompt={scanPrompt}
       onDone={() => {
         setGroupDlgOpen(false);
         router.refresh();

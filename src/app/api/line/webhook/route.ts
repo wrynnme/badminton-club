@@ -41,6 +41,8 @@ import {
   type RosterCandidate,
 } from "@/lib/club/line-self-link";
 import { createAdminClient } from "@/lib/supabase/server";
+import { getAppSettings } from "@/lib/app-settings";
+import { resolveBotMessage } from "@/lib/bot-messages";
 
 // Manager posts "ผูกก๊วน <join_token>" in the group to bind it.
 const BIND_RE = /^\s*ผูกก๊วน\s+(\S+)\s*$/;
@@ -137,6 +139,8 @@ async function handleBind(ev: LineEvent, groupId: string, text: string): Promise
   const token = match[1];
 
   const sb = await createAdminClient();
+  // Site-admin-editable reply templates (blank/missing → code default).
+  const { messages } = await getAppSettings();
 
   const { data: club } = await sb
     .from("clubs")
@@ -145,7 +149,7 @@ async function handleBind(ev: LineEvent, groupId: string, text: string): Promise
     .maybeSingle();
 
   if (!club) {
-    await reply(ev, "❌ โค้ดผูกก๊วนไม่ถูกต้อง");
+    await reply(ev, resolveBotMessage(messages, "bindInvalid"));
     return;
   }
 
@@ -159,15 +163,12 @@ async function handleBind(ev: LineEvent, groupId: string, text: string): Promise
     if (error) {
       // Most likely the group is already bound to a different club (unique index).
       console.error("[LINE webhook] bind update error:", error.message);
-      await reply(ev, "❌ ผูกกลุ่มไม่สำเร็จ — กลุ่มนี้อาจถูกผูกกับก๊วนอื่นอยู่แล้ว");
+      await reply(ev, resolveBotMessage(messages, "bindConflict"));
       return;
     }
   }
 
-  await reply(
-    ev,
-    `✅ ผูกกลุ่มนี้กับก๊วน "${club.name}" แล้ว — ต่อไปเรียกเก็บเงินในกลุ่มนี้ได้เลย`,
-  );
+  await reply(ev, resolveBotMessage(messages, "bindSuccess", { club: club.name }));
 }
 
 // ---------------------------------------------------------------------------
@@ -182,8 +183,12 @@ async function handleSelfLink(ev: LineEvent, groupId: string, text: string): Pro
   const parsed = parseSelfLinkCommand(text, mentionedSelf, mentionees);
   if (!parsed) return; // bot not addressed, or no keyword — ignore silently
 
+  // Site-admin-editable reply templates. Fetched only AFTER the addressed-bot
+  // guard above, so ordinary group chatter never triggers a settings read.
+  const { messages } = await getAppSettings();
+
   if (parsed.kind === "usage") {
-    await reply(ev, "พิมพ์แบบนี้นะ: แท็กบอทแล้วต่อด้วย  เชื่อมไลน์ <ชื่อในโพย>  เช่น  เชื่อมไลน์ โจ้");
+    await reply(ev, resolveBotMessage(messages, "selfLinkUsage"));
     return;
   }
 
@@ -191,29 +196,26 @@ async function handleSelfLink(ev: LineEvent, groupId: string, text: string): Pro
   // allow it; without it we can't identify the sender.
   const userId = ev.source?.userId;
   if (!userId) {
-    await reply(ev, "❌ ระบุตัวตนไม่ได้ ลองใหม่ในแอป LINE บนมือถือ หรือใช้ลิงก์เชิญจากผู้ดูแลก๊วน");
+    await reply(ev, resolveBotMessage(messages, "selfLinkNoUser"));
     return;
   }
 
   const outcome = await resolveSelfLink({ groupId, userId, rosterName: parsed.rosterName });
   switch (outcome.kind) {
     case "no_club":
-      await reply(ev, "❌ กลุ่มนี้ยังไม่ได้ผูกก๊วน — ให้ผู้ดูแลพิมพ์  ผูกก๊วน <โค้ด>  ก่อน");
+      await reply(ev, resolveBotMessage(messages, "selfLinkNoClub"));
       break;
     case "profile_failed":
-      await reply(ev, "❌ ดึงโปรไฟล์ไม่สำเร็จ ลองใหม่อีกครั้งนะ");
+      await reply(ev, resolveBotMessage(messages, "selfLinkProfileFailed"));
       break;
     case "linked":
-      await reply(
-        ev,
-        `✅ เชื่อม LINE กับ "${outcome.playerName}" ในก๊วนเรียบร้อย — จากนี้จะได้รับบิลและแจ้งเตือนทาง LINE`,
-      );
+      await reply(ev, resolveBotMessage(messages, "selfLinkLinked", { player: outcome.playerName }));
       break;
     case "already_linked":
-      await reply(ev, `ℹ️ คุณเชื่อมกับ "${outcome.playerName}" ในก๊วนนี้อยู่แล้ว`);
+      await reply(ev, resolveBotMessage(messages, "selfLinkAlready", { player: outcome.playerName }));
       break;
     case "pooled":
-      await reply(ev, "📝 รับคำขอแล้ว — ไม่พบชื่อที่ตรงพอดี ผู้ดูแลก๊วนจะจับคู่ให้เอง");
+      await reply(ev, resolveBotMessage(messages, "selfLinkPooled"));
       break;
   }
 }

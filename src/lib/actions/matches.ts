@@ -900,7 +900,7 @@ export async function generateKnockoutAction(tournamentId: string) {
       entity_id: tournamentId,
       description: "สร้างสายน็อกเอาต์",
     });
-    notifyTournamentEvent(tournamentId, "bracket", "สร้างสายน็อคเอ้าแล้ว").catch(() => {});
+    notifyTournamentEvent(tournamentId, "bracket", "notifyBracket").catch(() => {});
     return { ok: true, count: allMatches.filter((m) => !m.isBye).length };
   }
 
@@ -998,7 +998,7 @@ export async function generateKnockoutAction(tournamentId: string) {
     entity_id: tournamentId,
     description: `สร้างสายน็อกเอาต์`,
   });
-  notifyTournamentEvent(tournamentId, "bracket", "สร้างสายน็อคเอ้าแล้ว").catch(() => {});
+  notifyTournamentEvent(tournamentId, "bracket", "notifyBracket").catch(() => {});
   return { ok: true, count: allMatches.filter((m) => !m.isBye && m.bracket !== "grand_final").length };
 }
 
@@ -1226,8 +1226,13 @@ export async function recordMatchScoreAction(input: {
       }
 
       const gameDetail = input.games.map((g) => `${g.a}-${g.b}`).join(", ");
-      const msg = `🏸 ${nameA} vs ${nameB}\nเกมที่ชนะ: ${gamesWonA}:${gamesWonB} (${gameDetail})\nผู้ชนะ: ${winnerName}`;
-      await notifyTournamentEvent(input.tournamentId, "score", msg, settings);
+      await notifyTournamentEvent(
+        input.tournamentId,
+        "score",
+        "notifyScore",
+        { a: nameA, b: nameB, scoreA: gamesWonA, scoreB: gamesWonB, detail: gameDetail, winner: winnerName },
+        settings,
+      );
     } catch {}
   })();
 
@@ -1469,8 +1474,13 @@ export async function recordMatchScoreAction(input: {
                 nameB = nextPending.team_b_id ? byId.get(nextPending.team_b_id) ?? "—" : "—";
               }
               const courtTag = courtAssigned && inheritedCourt ? ` (สนาม ${inheritedCourt})` : "";
-              const text = `🏸 เรียกแมตช์ #${nextPending.match_number}${courtTag}\n${nameA} vs ${nameB}`;
-              await notifyTournamentEvent(input.tournamentId, "start", text, settings);
+              await notifyTournamentEvent(
+                input.tournamentId,
+                "start",
+                "notifyMatchCall",
+                { num: nextPending.match_number, a: nameA, b: nameB, court: courtTag },
+                settings,
+              );
             } catch (notifyErr) {
               console.error("[auto_advance_next] line notify failed:", notifyErr);
             }
@@ -2123,8 +2133,13 @@ export async function startMatchAction(matchId: string, tournamentId: string) {
         nameB = match.team_b_id ? byId.get(match.team_b_id) ?? "—" : "—";
       }
       const courtPart = match.court ? ` (สนาม ${match.court})` : "";
-      const msg = `🏸 เรียกแมตช์ #${match.match_number}${courtPart}\n${nameA} vs ${nameB}`;
-      await notifyTournamentEvent(tournamentId, "start", msg, settings);
+      await notifyTournamentEvent(
+        tournamentId,
+        "start",
+        "notifyMatchCall",
+        { num: match.match_number, a: nameA, b: nameB, court: courtPart },
+        settings,
+      );
     } catch {}
   })();
 

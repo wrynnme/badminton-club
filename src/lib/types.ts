@@ -1,3 +1,5 @@
+import type { BotMessageKey } from "@/lib/bot-messages";
+
 export type Profile = {
   id: string;
   line_user_id: string | null;
@@ -12,6 +14,10 @@ export type Profile = {
 export type AppSettings = {
   qr_logo_enabled: boolean;
   qr_logo_url: string | null; // null = bundled default (/thaiqr-logo.png)
+  // Site-admin overrides for the bot's automated LINE messages. A key present
+  // here (non-blank) replaces the code default for that message; missing keys
+  // fall back to the built-in default (see @/lib/bot-messages).
+  messages: Partial<Record<BotMessageKey, string>>;
 };
 
 export type Club = {

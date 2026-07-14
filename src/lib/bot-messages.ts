@@ -106,8 +106,11 @@ export const BOT_MESSAGE_SPECS: Record<BotMessageKey, BotMessageSpec> = {
     default: `🏸 {a} vs {b}\nเกมที่ชนะ: {scoreA}:{scoreB} ({detail})\nผู้ชนะ: {winner}`,
   },
   notifyMatchCall: {
+    // `{court}` is OPTIONAL — the caller passes a pre-formatted " (สนาม X)" (or ""
+    // when no court). Its parentheses/spacing stay code-controlled; only its
+    // position in the line is template-editable.
     required: ["num", "a", "b"],
-    default: `🏸 เรียกแมตช์ #{num}\n{a} vs {b}`,
+    default: `🏸 เรียกแมตช์ #{num}{court}\n{a} vs {b}`,
   },
   groupBillScanPrompt: {
     required: [],
@@ -117,12 +120,41 @@ export const BOT_MESSAGE_SPECS: Record<BotMessageKey, BotMessageSpec> = {
 
 export const BOT_MESSAGE_KEYS = Object.keys(BOT_MESSAGE_SPECS) as BotMessageKey[];
 
+/**
+ * Example values for the /admin live preview — plausible placeholder fills so the
+ * editor can render each template the way a real send would look. Preview-only.
+ */
+export const BOT_MESSAGE_SAMPLE_VARS: Record<BotMessageKey, Vars> = {
+  bindSuccess: { club: "ก๊วนสุขสันต์" },
+  bindInvalid: {},
+  bindConflict: {},
+  selfLinkUsage: {},
+  selfLinkNoUser: {},
+  selfLinkNoClub: {},
+  selfLinkProfileFailed: {},
+  selfLinkLinked: { player: "โจ้" },
+  selfLinkAlready: { player: "โจ้" },
+  selfLinkPooled: {},
+  notifyStatus: { status: "กำลังแข่งขัน" },
+  notifyBracket: {},
+  notifyScore: {
+    a: "ทีมแดง",
+    b: "ทีมน้ำเงิน",
+    scoreA: 2,
+    scoreB: 1,
+    detail: "21-15, 18-21, 21-19",
+    winner: "ทีมแดง",
+  },
+  notifyMatchCall: { num: 5, a: "ทีมแดง", b: "ทีมน้ำเงิน", court: " (สนาม 3)" },
+  groupBillScanPrompt: {},
+};
+
 /** Just the built-in defaults, keyed. */
 export const DEFAULT_BOT_MESSAGES: Record<BotMessageKey, string> = Object.fromEntries(
   BOT_MESSAGE_KEYS.map((k) => [k, BOT_MESSAGE_SPECS[k].default]),
 ) as Record<BotMessageKey, string>;
 
-type Vars = Record<string, string | number>;
+export type Vars = Record<string, string | number>;
 
 const PLACEHOLDER_RE = /\{(\w+)\}/g;
 

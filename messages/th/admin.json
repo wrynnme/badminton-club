@@ -33,5 +33,34 @@
     "validationReal": "ค่าตัวเลขต้องเป็นตัวเลข",
     "validationLabel": "ต้องมีชื่อระดับ",
     "deleteWarning": "ลบระดับกลางแล้ว ผู้เล่นในก๊วนที่ใช้ค่ากลางจะถูกล้างระดับ (ก๊วนที่ปรับเองไม่กระทบ)"
+  },
+  "botMessages": {
+    "title": "ข้อความบอท LINE",
+    "description": "แก้ข้อความที่บอทตอบ/แจ้งเตือนอัตโนมัติ เว้นว่าง = ใช้ค่าเริ่มต้น; ตัวแปรในวงเล็บปีกกาจะถูกแทนค่าตอนส่งจริง",
+    "saveButton": "บันทึกข้อความ",
+    "saving": "กำลังบันทึก…",
+    "saved": "บันทึกแล้ว",
+    "resetTooltip": "คืนค่าเริ่มต้น",
+    "usingDefault": "ใช้ค่าเริ่มต้น",
+    "previewLabel": "ตัวอย่าง",
+    "requiredLabel": "ต้องมีตัวแปร:",
+    "missingError": "ขาดตัวแปรจำเป็น: {missing}",
+    "label": {
+      "bindSuccess": "ผูกกลุ่มกับก๊วนสำเร็จ",
+      "bindInvalid": "โค้ดผูกก๊วนไม่ถูกต้อง",
+      "bindConflict": "ผูกกลุ่มไม่สำเร็จ",
+      "selfLinkUsage": "วิธีพิมพ์เชื่อมไลน์",
+      "selfLinkNoUser": "ระบุตัวตนไม่ได้",
+      "selfLinkNoClub": "กลุ่มยังไม่ผูกก๊วน",
+      "selfLinkProfileFailed": "ดึงโปรไฟล์ไม่สำเร็จ",
+      "selfLinkLinked": "เชื่อมไลน์สำเร็จ",
+      "selfLinkAlready": "เชื่อมไลน์อยู่แล้ว",
+      "selfLinkPooled": "รับคำขอเชื่อมไลน์",
+      "notifyStatus": "แจ้งเปลี่ยนสถานะทัวร์",
+      "notifyBracket": "แจ้งสร้างสายน็อคเอ้า",
+      "notifyScore": "แจ้งผลแมตช์",
+      "notifyMatchCall": "แจ้งเรียกแมตช์",
+      "groupBillScanPrompt": "ข้อความชวนสแกน QR (บิลกลุ่ม)"
+    }
   }
 }
