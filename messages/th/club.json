@@ -897,7 +897,19 @@
     "pushGroupDisabledTip": "ยังไม่ได้ผูกกลุ่มไลน์ — ผูกกลุ่มก่อน",
     "pushGroupResult": "โพสต์เข้ากลุ่มแล้ว {amounts} ยอด · แท็ก {tagged} คน",
     "pushGroupNoLineNote": "{n} คนยังไม่ได้เชื่อม LINE",
-    "pushGroupNoSlipNote": "สร้างสลิปไม่สำเร็จ {n} ยอด"
+    "pushGroupNoSlipNote": "สร้างสลิปไม่สำเร็จ {n} ยอด",
+    "groupBillPreviewTitle": "ตัวอย่างบิลกลุ่ม",
+    "groupBillMentionBadge": "LINE",
+    "groupBillNoQr": "ก๊วนนี้ยังไม่ได้ตั้งพร้อมเพย์ — จะส่งเฉพาะข้อความ (ไม่มี QR)",
+    "groupBillQrLabel": "QR พร้อมเพย์ (ไม่ระบุยอด)",
+    "groupBillCount": "ค้างจ่าย {total} คน · แท็ก LINE {mentioned} · ไม่มี LINE {plain}",
+    "groupBillChunkWarn": "รายชื่อยาว จะถูกแตกเป็น {n} ข้อความ",
+    "groupBillConfirm": "ส่งเข้ากลุ่ม",
+    "groupBillSending": "กำลังส่ง…",
+    "groupBillResult": "ส่งบิลเข้ากลุ่มแล้ว · {billed} คน (แท็ก {mentioned})",
+    "groupBillOverflowNote": "รายชื่อยาวเกิน ตัดบางส่วนออก",
+    "groupBillCancel": "ยกเลิก",
+    "groupBillCancelTip": "ปิดหน้าต่างโดยไม่ส่งบิลเข้ากลุ่ม"
   },
   "slip": {
     "sendSlip": "ส่งสลิป",
