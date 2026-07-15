@@ -22,6 +22,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.45.0",
+    date: "2026-07-16",
+    groups: [
+      {
+        type: "new",
+        items: [
+          "แท็บ \"สถิติ\" บนหน้าก๊วนถาวร — สถิติสมาชิกสะสมข้ามทุกนัด: มากี่นัด เล่นกี่แมตช์ ชนะ-แพ้ อัตราชนะ และเล่นล่าสุดเมื่อไหร่",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.44.0",
     date: "2026-07-16",
     groups: [
