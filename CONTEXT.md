@@ -160,9 +160,13 @@ court allocator is the pure helper `planBulkStartCourts` (`src/lib/club/bulk-sta
 
 ## Club series (ก๊วนถาวร + นัด)
 
-Design locked 2026-07-15 (grilled, 10 decisions); **NOT built yet** — see ADR 0002
-and `spec.md` § "📐 Design — ผูกครั้งเดียวใช้ได้ตลอด". Once built, these terms
-supersede the "one `clubs` row = one club" reading used elsewhere in this file.
+Design locked 2026-07-15 (grilled, 15 decisions) and **BUILT**: P1 (LINE surfaces
+resolve via series) shipped to prod v0.42.0; P2 (series home + จัดก๊วน + URL
+restructure + preset retirement, v0.43.0), P3 (payment/receipt/co-admins lift —
+migration-gated), and P4 (cross-session stats) implemented 2026-07-15 (PRs
+pending merge). See ADR 0002 and `spec.md` § "📐 Design — ผูกครั้งเดียวใช้ได้ตลอด".
+These terms supersede the "one `clubs` row = one club" reading used elsewhere
+in this file.
 
 - **Club series / ก๊วน (ถาวร)** — the persistent real-world club (e.g. "MUGGLE"): a
   `club_series` row owning the LINE group binding (`line_group_id`), the join link
