@@ -740,6 +740,7 @@
     "numberPriorityNote": "กำลังใช้เบอร์พร้อมเพย์ — รูปนี้จะถูกใช้เมื่อไม่ได้กรอกเบอร์",
     "pushLineBtn": "เรียกเก็บผ่าน LINE",
     "pushLineTip": "ส่งบิล + QR ให้ผู้เล่นที่ผูก LINE ทุกคนที่ยังไม่จ่าย",
+    "pushLineTempDisabledTip": "ปิดใช้งานชั่วคราว — ใช้ \"เรียกเก็บเข้ากลุ่มไลน์\" แทนไปก่อน",
     "pushResult": "ส่งบิลแล้ว {pushed} คน · ไม่มี LINE {noLine} · ส่งไม่สำเร็จ {failed}",
     "pushNoSlipNote": "สร้างสลิปไม่สำเร็จ {n} คน",
     "slipRenderFailed": "สร้างรูปสลิปไม่สำเร็จ",

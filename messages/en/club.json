@@ -740,6 +740,7 @@
     "numberPriorityNote": "Using the PromptPay number — this image is used only when no number is set",
     "pushLineBtn": "Bill via LINE",
     "pushLineTip": "Send bill + QR to all LINE-linked players who haven't paid yet",
+    "pushLineTempDisabledTip": "Temporarily disabled — use \"Bill the LINE group\" instead for now",
     "pushResult": "Sent to {pushed} · No LINE {noLine} · Failed {failed}",
     "pushNoSlipNote": "{n} slip(s) failed to generate",
     "slipRenderFailed": "Couldn't generate the slip image",
