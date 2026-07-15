@@ -180,7 +180,7 @@ async function openSessionCore(
     if (rows.length > 0) {
       const { error: adminErr } = await sb.from("club_admins").insert(rows);
       // 23505 = duplicate co-admin row — never possible on a brand-new club_id,
-      // but tolerate it the same way applyClubPresetAction does for consistency.
+      // but tolerated so a benign race can't kill the whole open-session flow.
       if (adminErr && adminErr.code !== "23505") {
         await rollback();
         return { error: adminErr.message };

@@ -45,10 +45,9 @@ export const DEFAULT_SESSION_DEFAULTS: SessionDefaults = SessionDefaultsSchema.p
 
 /**
  * Hardcoded fallbacks used only when OPENING a session and the series has no
- * explicit default for that field yet (null) — same values
- * `applyClubPresetAction` used for a brand-new club from a preset. Fees/splits/
- * courts fall back to 0/"even"/[] inline in `buildSessionInsert` instead of
- * living here, since those are the schema's own natural empty values.
+ * explicit default for that field yet (null). Fees/splits/courts fall back to
+ * 0/"even"/[] inline in `buildSessionInsert` instead of living here, since
+ * those are the schema's own natural empty values.
  */
 export const SESSION_FALLBACKS = {
   venue: "ก๊วน",

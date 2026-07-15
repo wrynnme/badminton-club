@@ -52,8 +52,7 @@ export type RosterSeedRow = {
 /**
  * Regulars auto-seed the roster (decision #2), ordered by `first_linked_at`
  * asc (ties broken by name for determinism) — overflow beyond `maxPlayers`
- * becomes 'reserve', same split rule `applyClubPresetAction` used for its
- * regulars list. Non-regular members are never auto-seeded.
+ * becomes 'reserve'. Non-regular members are never auto-seeded.
  */
 export function buildRosterSeedRows(args: {
   members: SeriesMemberForSeed[];

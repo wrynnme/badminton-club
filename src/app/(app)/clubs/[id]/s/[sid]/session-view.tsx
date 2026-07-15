@@ -30,10 +30,8 @@ import { ClubLevelsManager } from "@/components/club/club-levels-manager";
 import { ClubQueuePanel } from "@/components/club/club-queue-panel";
 import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
 import { ClubLiveWrapper } from "@/components/club/club-live-wrapper";
-import { SaveClubAsPresetDialog } from "@/components/club/save-club-as-preset-dialog";
 import { UpgradeAdhocCard } from "@/components/club/upgrade-adhoc-card";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
-import { hasBankReceiver, parseReceiptTemplate } from "@/lib/club/receipt";
 import { resolveClubCourts } from "@/lib/club/courts";
 import { ClubInfoRow } from "@/components/club/club-info-row";
 import { getTranslations } from "next-intl/server";
@@ -43,7 +41,7 @@ import { resolveBotMessage } from "@/lib/bot-messages";
 import { resolveLineGroupId } from "@/lib/club/series.server";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
-import type { ClubMatch, ClubLockedPair, Level, ClubPreset, ClubSeries } from "@/lib/types";
+import type { ClubMatch, ClubLockedPair, Level, ClubSeries } from "@/lib/types";
 
 export async function ClubSessionView({ clubId }: { clubId: string }) {
   const sb = await createAdminClient();
@@ -58,7 +56,7 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes, lineRes, seriesRes] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, lineRes, seriesRes] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -92,15 +90,6 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
       .order("created_at", { ascending: true }),
     getClubLevelsAction(clubId),
     getAppSettings(),
-    // SaveClubAsPresetDialog only needs id+name for its target <Select>; the
-    // full-config consumer (PresetManager) lives on /clubs/mine instead.
-    session && !session.isGuest
-      ? sb
-          .from("club_presets")
-          .select("id, name")
-          .eq("owner_id", session.profileId)
-          .order("created_at", { ascending: false })
-      : Promise.resolve({ data: null }),
     // Line reachability for ClubPaymentCollector (cost tab). Narrow join fetched
     // in-wave (parallel) instead of a serial post-wave lookup; this array stays
     // server-side — only the derived id list ships to the client, never line_user_id.
@@ -171,10 +160,6 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
   const series: ClubSeries | null = (seriesRes.data as ClubSeries | null) ?? null;
   const resolvedLineGroupId = resolveLineGroupId(series, club);
 
-  const ownedPresets: Pick<ClubPreset, "id" | "name">[] = (presetsRes.data ?? []).map(
-    (row) => ({ id: row.id as string, name: row.name as string }),
-  );
-
   const queueSettings = parseQueueSettings(club.queue_settings);
 
   // Named courts (clubs.courts), else a legacy ['1'..'N'] fallback (see resolveClubCourts).
@@ -193,15 +178,6 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
 
   const locale = await getLocale();
   const t = await getTranslations("club");
-  const receiptTemplate = parseReceiptTemplate(club.receipt_template);
-  const presetSummary = {
-    coAdminCount: coAdmins.length,
-    regularCount: players.length,
-    hasPromptPay: Boolean(club.promptpay_id),
-    hasQrImage: Boolean(club.promptpay_qr_image),
-    hasBank: hasBankReceiver(receiptTemplate.bank),
-    themeLabel: t(`receipt.theme_${receiptTemplate.theme}`),
-  };
 
   return (
     <ClubLiveWrapper clubId={club.id} realtimeEnabled={queueSettings.realtime_enabled}>
@@ -436,18 +412,6 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
           }
           settings={
             <div className="space-y-4">
-              {canManage && session && !session.isGuest && (
-                <Card>
-                  <CardContent>
-                    <SaveClubAsPresetDialog
-                      clubId={club.id}
-                      defaultName={club.name}
-                      presets={ownedPresets}
-                      summary={presetSummary}
-                    />
-                  </CardContent>
-                </Card>
-              )}
               {isOwner && <EditClubForm club={club} />}
               {isOwner && (
                 <ClubVisibilityControls clubId={club.id} isPublic={club.is_public} appUrl={appUrl} />

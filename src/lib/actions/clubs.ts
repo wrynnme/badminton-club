@@ -12,7 +12,6 @@ import {
   parseQueueSettings,
 } from "@/lib/club/queue-settings";
 import { loginRedirect, assertClubOwner, assertCanManageClub } from "@/lib/club/permissions";
-import { ensureSeriesForClub } from "@/lib/club/series.server";
 import { revalidateClubTree } from "@/lib/club/revalidate";
 import type { ClubSeries } from "@/lib/types";
 
@@ -36,48 +35,6 @@ const ClubSchema = clubSchema("name_too_short", "venue_required");
 
 export type CreateClubInput = z.infer<typeof ClubSchema>;
 export type UpdateClubInput = CreateClubInput & { id: string };
-
-export async function createClubAction(input: CreateClubInput) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
-
-  const parsed = clubSchema(t("club.clubNameTooShort"), t("club.clubVenueRequired")).safeParse(input);
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
-  }
-
-  const sb = await createAdminClient();
-  const { data, error } = await sb
-    .from("clubs")
-    .insert({ ...parsed.data, owner_id: session.profileId })
-    .select("id")
-    .single();
-
-  if (error || !data) return { error: error?.message ?? t("club.createClubFailed") };
-
-  // Best-effort (ADR 0002): attach/create a series for this club and point its
-  // active_session_id at the new session — closes the gap where a club created
-  // via this legacy form would otherwise have no series until some other flow
-  // (join link, LINE bind, etc.) lazily attaches one. Never fails club creation.
-  // seriesId (when the attach succeeds) drives the P2 canonical redirect below
-  // (/clubs/[seriesId]/s/[sessionId]); a failure falls back to the legacy
-  // /clubs/[sessionId] URL, which the dispatcher still resolves correctly.
-  let seriesId: string | null = null;
-  try {
-    const series = await ensureSeriesForClub(sb, data.id);
-    seriesId = series.id;
-    if (series.active_session_id !== data.id) {
-      await sb.from("club_series").update({ active_session_id: data.id }).eq("id", series.id);
-    }
-  } catch (seriesError) {
-    console.error("[createClubAction] ensureSeriesForClub", seriesError);
-  }
-
-  revalidateClubTree();
-  redirect(seriesId ? `/clubs/${seriesId}/s/${data.id}` : `/clubs/${data.id}`);
-}
 
 export async function updateClubAction(input: UpdateClubInput) {
   const session = await getSession();

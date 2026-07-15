@@ -5,10 +5,13 @@ import * as React from "react";
 import * as z from "zod";
 import { useTranslations } from "next-intl";
 import { useForm } from "@tanstack/react-form";
+import { useRouter } from "@bprogress/next/app";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
+  FieldDescription,
   FieldError,
   FieldGroup,
   FieldLabel,
@@ -20,7 +23,7 @@ import {
   InputGroupText,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
-import { createClubAction } from "@/lib/actions/clubs";
+import { createClubSeriesAction } from "@/lib/actions/club-series";
 
 function toDateStr(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -37,8 +40,16 @@ const TIME_PRESETS = [
 
 const MAX_PRESETS = [8, 10, 12, 16, 20];
 
-export function CreateClubForm() {
+/**
+ * CreateSeriesForm — the "จัดก๊วนใหม่" entry point (ADR 0002 decision #8/#12).
+ * Submits `createClubSeriesAction`, which creates the persistent `club_series`
+ * row + opens its first session in one shot. Replaces the retired
+ * `CreateClubForm` + preset system: `club_series.session_defaults` (decision
+ * #15) is the living successor of a preset, seeded straight from this form.
+ */
+export function CreateSeriesForm() {
   const t = useTranslations("club.createForm");
+  const router = useRouter();
 
   const DATE_PRESETS = [
     { label: t("dateToday"), getValue: () => toDateStr(new Date()) },
@@ -61,95 +72,115 @@ export function CreateClubForm() {
     },
   ];
 
-  const formSchema = z.object({
-    name: z.string().min(2, t("validationName")),
-    venue: z.string().min(2, t("validationVenue")),
-    play_date: z.string().min(1, t("validationDate")),
-    start_time: z.string().min(1, t("validationStart")),
-    end_time: z.string().min(1, t("validationEnd")),
-    max_players: z.number().int().min(2, t("validationMaxMin")).max(40, t("validationMaxMax")),
-    shuttle_info: z.string(),
-    notes: z.string(),
-  });
+  // Mirrors createClubSeriesAction's server zod (src/lib/actions/club-series.ts
+  // CreateSeriesSchema + the name/isAdhoc branch below it): name may be empty
+  // ONLY when isAdhoc is on (auto-named server-side); a non-empty name must
+  // still be >= 2 chars either way.
+  const formSchema = z
+    .object({
+      name: z.string(),
+      isAdhoc: z.boolean(),
+      venue: z.string(),
+      playDate: z.string().min(1, t("validationDate")),
+      startTime: z.string().min(1, t("validationStart")),
+      endTime: z.string().min(1, t("validationEnd")),
+      maxPlayers: z.number().int().min(2, t("validationMaxMin")).max(40, t("validationMaxMax")),
+      shuttleInfo: z.string(),
+      notes: z.string(),
+    })
+    .superRefine((values, ctx) => {
+      const trimmed = values.name.trim();
+      const invalid =
+        (trimmed.length > 0 && trimmed.length < 2) || (trimmed.length === 0 && !values.isAdhoc);
+      if (invalid) {
+        ctx.addIssue({ code: "custom", message: t("validationName"), path: ["name"] });
+      }
+    });
 
   const form = useForm({
     defaultValues: {
       name: "",
+      isAdhoc: false,
       venue: "",
-      play_date: "",
-      start_time: "",
-      end_time: "",
-      max_players: 12,
-      shuttle_info: "",
+      playDate: toDateStr(new Date()),
+      startTime: "",
+      endTime: "",
+      maxPlayers: 12,
+      shuttleInfo: "",
       notes: "",
     },
     validators: { onSubmit: formSchema },
     onSubmit: async ({ value }) => {
-      const res = await createClubAction(value);
-      if (res?.error) toast.error(res.error);
+      const res = await createClubSeriesAction(value);
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      router.push(`/clubs/${res.seriesId}/s/${res.clubId}`);
     },
   });
 
   return (
     <form
-      id="create-club-form"
+      id="create-series-form"
       onSubmit={(e) => {
         e.preventDefault();
         form.handleSubmit();
       }}
     >
       <FieldGroup>
-        <form.Field
-          name="name"
-          children={(field) => {
-            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
-            return (
-              <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={field.name}>{t("nameLabel")}</FieldLabel>
-                <Input
-                  id={field.name}
-                  name={field.name}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  aria-invalid={isInvalid}
-                  placeholder={t("namePlaceholder")}
-                />
-                {isInvalid && (
-                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                )}
-              </Field>
-            );
-          }}
-        />
+        <form.Subscribe selector={(s) => s.values.isAdhoc}>
+          {(isAdhoc) => (
+            <form.Field
+              name="name"
+              children={(field) => {
+                const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
+                return (
+                  <Field data-invalid={isInvalid}>
+                    <FieldLabel htmlFor={field.name}>
+                      {isAdhoc ? t("nameLabelOptional") : t("nameLabel")}
+                    </FieldLabel>
+                    <Input
+                      id={field.name}
+                      name={field.name}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      aria-invalid={isInvalid}
+                      placeholder={isAdhoc ? t("namePlaceholderAdhoc") : t("namePlaceholder")}
+                    />
+                    {isInvalid && (
+                      <FieldError errors={fieldErrors(field.state.meta.errors)} />
+                    )}
+                  </Field>
+                );
+              }}
+            />
+          )}
+        </form.Subscribe>
 
         <form.Field
-          name="venue"
-          children={(field) => {
-            const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
-            return (
-              <Field data-invalid={isInvalid}>
-                <FieldLabel htmlFor={field.name}>{t("venueLabel")}</FieldLabel>
-                <Input
-                  id={field.name}
-                  name={field.name}
-                  value={field.state.value}
-                  onBlur={field.handleBlur}
-                  onChange={(e) => field.handleChange(e.target.value)}
-                  aria-invalid={isInvalid}
-                  placeholder={t("venuePlaceholder")}
-                />
-                {isInvalid && (
-                  <FieldError errors={fieldErrors(field.state.meta.errors)} />
-                )}
-              </Field>
-            );
-          }}
+          name="isAdhoc"
+          children={(field) => (
+            <Field orientation="horizontal" className="items-start gap-2">
+              <Checkbox
+                id={field.name}
+                checked={field.state.value}
+                onCheckedChange={(checked) => field.handleChange(!!checked)}
+              />
+              <div className="space-y-1">
+                <FieldLabel htmlFor={field.name} className="font-normal">
+                  {t("adhocToggleLabel")}
+                </FieldLabel>
+                <FieldDescription>{t("adhocToggleHelper")}</FieldDescription>
+              </div>
+            </Field>
+          )}
         />
 
         {/* Date field + presets */}
         <form.Field
-          name="play_date"
+          name="playDate"
           children={(field) => {
             const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
             return (
@@ -187,7 +218,7 @@ export function CreateClubForm() {
         />
 
         {/* Time fields + presets */}
-        <form.Subscribe selector={(s) => ({ start: s.values.start_time, end: s.values.end_time })}>
+        <form.Subscribe selector={(s) => ({ start: s.values.startTime, end: s.values.endTime })}>
           {({ start, end }) => (
             <Field>
               <FieldLabel>{t("timeLabel")}</FieldLabel>
@@ -200,8 +231,8 @@ export function CreateClubForm() {
                     size="sm"
                     className="h-7 text-xs px-2"
                     onClick={() => {
-                      form.setFieldValue("start_time", p.start);
-                      form.setFieldValue("end_time", p.end);
+                      form.setFieldValue("startTime", p.start);
+                      form.setFieldValue("endTime", p.end);
                     }}
                   >
                     {p.label}
@@ -210,7 +241,7 @@ export function CreateClubForm() {
               </div>
               <div className="grid grid-cols-1 gap-2">
                 <form.Field
-                  name="start_time"
+                  name="startTime"
                   children={(field) => {
                     const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
                     return (
@@ -233,7 +264,7 @@ export function CreateClubForm() {
                   }}
                 />
                 <form.Field
-                  name="end_time"
+                  name="endTime"
                   children={(field) => {
                     const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
                     return (
@@ -262,7 +293,7 @@ export function CreateClubForm() {
 
         {/* Max players + presets */}
         <form.Field
-          name="max_players"
+          name="maxPlayers"
           children={(field) => {
             const isInvalid = field.state.meta.isTouched && !field.state.meta.isValid;
             return (
@@ -308,7 +339,24 @@ export function CreateClubForm() {
         />
 
         <form.Field
-          name="shuttle_info"
+          name="venue"
+          children={(field) => (
+            <Field>
+              <FieldLabel htmlFor={field.name}>{t("venueLabel")}</FieldLabel>
+              <Input
+                id={field.name}
+                name={field.name}
+                value={field.state.value}
+                onBlur={field.handleBlur}
+                onChange={(e) => field.handleChange(e.target.value)}
+                placeholder={t("venuePlaceholder")}
+              />
+            </Field>
+          )}
+        />
+
+        <form.Field
+          name="shuttleInfo"
           children={(field) => (
             <Field>
               <FieldLabel htmlFor={field.name}>{t("shuttleLabel")}</FieldLabel>
