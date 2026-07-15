@@ -37,8 +37,10 @@ import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field
 import { Input } from "@/components/ui/input";
 import { NumberInput } from "@/components/ui/number-input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ClubQueueSettings } from "@/components/club/club-queue-settings";
 import { adoptSessionAsDefaultsAction, updateSessionDefaultsAction } from "@/lib/actions/club-series";
 import { SESSION_FALLBACKS, type SessionDefaults } from "@/lib/club/session-defaults";
+import type { ClubQueueSettings as ClubQueueSettingsType } from "@/lib/club/queue-settings";
 import type { CourtSplit, ShuttleSplit } from "@/lib/types";
 
 type FormValues = {
@@ -213,6 +215,41 @@ function AdoptDefaultsButton({
   );
 }
 
+/**
+ * Queue defaults sub-section (ADR 0002 decision #15) — reuses the full
+ * `ClubQueueSettings` form (see `club-queue-settings.tsx`) via its `onSave`
+ * override so this writes `session_defaults.queue_settings` through
+ * `updateSessionDefaultsAction` instead of the per-session
+ * `updateClubQueueSettingsAction`. Kept as its own component (rather than
+ * inlined in the form above) since it manages its own draft/baseline state,
+ * independent of the TanStack form for the venue/time/fee fields.
+ */
+function QueueDefaultsSection({
+  seriesId,
+  initial,
+}: {
+  seriesId: string;
+  initial: ClubQueueSettingsType;
+}) {
+  const t = useTranslations("club.sessionDefaults");
+
+  return (
+    <div className="space-y-2">
+      <h2 className="font-semibold">{t("queueSectionHeading")}</h2>
+      <ClubQueueSettings
+        initial={initial}
+        onSave={async (next) => {
+          const res = await updateSessionDefaultsAction({
+            seriesId,
+            patch: { queue_settings: next },
+          });
+          if ("error" in res) return { error: res.error };
+        }}
+      />
+    </div>
+  );
+}
+
 export function SessionDefaultsEditor({
   seriesId,
   initial,
@@ -266,6 +303,7 @@ export function SessionDefaultsEditor({
   });
 
   return (
+    <div className="space-y-6">
     <Card>
       <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
         <CardTitle className="text-base">{t("title")}</CardTitle>
@@ -479,5 +517,8 @@ export function SessionDefaultsEditor({
         </form>
       </CardContent>
     </Card>
+
+    <QueueDefaultsSection seriesId={seriesId} initial={initial.queue_settings} />
+    </div>
   );
 }

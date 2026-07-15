@@ -20,8 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { openClubSessionAction } from "@/lib/actions/club-series";
 
-// Mirrors `toDateStr` in `create-form.tsx` — kept local since it's a one-line
-// helper, same convention as that component.
+// Mirrors `toDateStr` in `create-series-form.tsx` — kept local since it's a
+// one-line helper, same convention as that component.
 function toDateStr(d: Date) {
   return d.toISOString().slice(0, 10);
 }

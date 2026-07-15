@@ -19,6 +19,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect } from "@/lib/club/permissions";
 import { assertCanManageSeries, assertSeriesOwner } from "@/lib/club/series-permissions";
+import { normalizeRosterName } from "@/lib/club/line-self-link";
 import { revalidateClubTree } from "@/lib/club/revalidate";
 import { getGlobalLevelsAction } from "@/lib/actions/levels";
 import {
@@ -68,7 +69,14 @@ async function openSessionCore(
   const clubId = club.id as string;
 
   const rollback = async (): Promise<void> => {
-    await sb.from("clubs").delete().eq("id", clubId);
+    const { error: rollbackErr } = await sb.from("clubs").delete().eq("id", clubId);
+    if (rollbackErr) {
+      // Orphaned half-seeded session — surface loudly so ops can find it.
+      console.error(
+        `[openSessionCore] rollback failed — orphaned clubs row ${clubId} (series ${series.id})`,
+        rollbackErr,
+      );
+    }
   };
 
   // Seed regulars (decision #2) — read the current membership registry fresh
@@ -263,7 +271,15 @@ export async function createClubSeriesAction(
   });
   if ("error" in result) {
     // Roll back the series row too — a series with zero sessions must never persist.
-    await sb.from("club_series").delete().eq("id", series.id);
+    // (If openSessionCore's own club rollback failed, this delete hits the
+    // clubs.series_id ON DELETE RESTRICT and fails as well — log the orphan ids.)
+    const { error: rollbackErr } = await sb.from("club_series").delete().eq("id", series.id);
+    if (rollbackErr) {
+      console.error(
+        `[createClubSeriesAction] series rollback failed — orphaned club_series row ${series.id}`,
+        rollbackErr,
+      );
+    }
     return { error: result.error || t("club.openSessionFailed") };
   }
 
@@ -324,6 +340,7 @@ export async function updateSessionDefaultsAction(input: {
   if (!session) return await loginRedirect();
   const t = await getTranslations("actions");
   if (session.isGuest) return { error: t("club.requireLineForClub") };
+  if (!z.string().uuid().safeParse(input.seriesId).success) return { error: t("club.invalidData") };
 
   const sb = await createAdminClient();
   if (!(await assertCanManageSeries(sb, input.seriesId, session.profileId)))
@@ -570,10 +587,6 @@ export async function deleteClubSeriesAction(input: { seriesId: string }): Promi
 // Member registry (decisions #2/#7/#11)
 // ---------------------------------------------------------------------------
 
-function normalizeMemberName(name: string): string {
-  return name.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
 const AddMemberSchema = z.object({
   seriesId: z.string().uuid(),
   name: z.string().trim().min(1).max(60),
@@ -604,8 +617,8 @@ export async function addSeriesMemberAction(input: {
     .from("series_members")
     .select("canonical_name")
     .eq("series_id", seriesId);
-  const target = normalizeMemberName(name);
-  if ((existing ?? []).some((m) => normalizeMemberName(m.canonical_name as string) === target)) {
+  const target = normalizeRosterName(name);
+  if ((existing ?? []).some((m) => normalizeRosterName(m.canonical_name as string) === target)) {
     return { error: t("club.memberDuplicate") };
   }
 
@@ -662,13 +675,13 @@ export async function updateSeriesMemberAction(input: {
   if (!member) return { error: t("club.memberNotFound") };
 
   if (patch.canonicalName !== undefined) {
-    const target = normalizeMemberName(patch.canonicalName);
+    const target = normalizeRosterName(patch.canonicalName);
     const { data: existing } = await sb
       .from("series_members")
       .select("canonical_name")
       .eq("series_id", seriesId)
       .neq("id", memberId);
-    if ((existing ?? []).some((m) => normalizeMemberName(m.canonical_name as string) === target)) {
+    if ((existing ?? []).some((m) => normalizeRosterName(m.canonical_name as string) === target)) {
       return { error: t("club.memberDuplicate") };
     }
   }

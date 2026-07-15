@@ -459,21 +459,21 @@
     "validationMaxMax": "สูงสุด 40 คน"
   },
   "deleteClub": {
-    "triggerButton": "ลบก๊วน",
-    "dialogTitle": "ลบก๊วน \"{name}\"?",
+    "triggerButton": "ลบนัด",
+    "dialogTitle": "ลบนัด \"{name}\"?",
     "dialogDescription": "การลบจะมีผลดังนี้:",
     "bullet1": "ผู้เล่น / แมตช์ / ค่าใช้จ่าย ทั้งหมด",
     "bullet1Pre": "ลบ",
-    "bullet1Post": "ของก๊วนนี้",
+    "bullet1Post": "ของนัดนี้",
     "bullet2": "ผู้ช่วยดูแล (co-admin) และการตั้งค่าทั้งหมดจะถูกลบไปด้วย",
     "permanent": "ลบถาวร — กู้คืนไม่ได้",
-    "confirmLabel": "พิมพ์ชื่อก๊วน \"{name}\" เพื่อยืนยัน",
+    "confirmLabel": "พิมพ์ชื่อนัด \"{name}\" เพื่อยืนยัน",
     "cancel": "ยกเลิก",
     "deleting": "กำลังลบ…",
-    "confirm": "ลบก๊วนถาวร"
+    "confirm": "ลบนัดถาวร"
   },
   "editForm": {
-    "title": "แก้ไขข้อมูลก๊วน",
+    "title": "แก้ไขข้อมูลนัด",
     "nameLabel": "ชื่อก๊วน *",
     "venueLabel": "สนาม *",
     "dateLabel": "วันที่ *",
@@ -565,7 +565,7 @@
     "expenseSummaryHeading": "สรุปค่าใช้จ่าย",
     "expenseEmpty": "ยังไม่มีข้อมูลค่าใช้จ่าย",
     "dangerZoneHeading": "เขตอันตราย",
-    "dangerZoneDesc": "ลบก๊วนนี้ถาวร พร้อมผู้เล่น แมตช์ และค่าใช้จ่ายทั้งหมด — กู้คืนไม่ได้",
+    "dangerZoneDesc": "ลบนัดนี้ถาวร พร้อมผู้เล่น แมตช์ และค่าใช้จ่ายทั้งหมด — กู้คืนไม่ได้",
     "newClubTitle": "สร้างก๊วน",
     "myListHeading": "ก๊วนของฉัน",
     "listHeading": "ก๊วนทั้งหมด",
@@ -905,7 +905,11 @@
     "setActiveButton": "ตั้งเป็นนัดปัจจุบัน",
     "setActiveTooltip": "ตั้งนัดนี้เป็นนัดปัจจุบันของก๊วน",
     "setActiveSuccessToast": "ตั้งเป็นนัดปัจจุบันแล้ว",
-    "linkNoSessionsHint": "เปิดนัดก่อนจึงจะจัดการลิงก์เข้าร่วม/เชื่อม LINE ได้"
+    "linkNoSessionsHint": "เปิดนัดก่อนจึงจะจัดการลิงก์เข้าร่วม/เชื่อม LINE ได้",
+    "archivedHeading": "เก็บถาวร",
+    "archivedRestoreButton": "กู้คืน",
+    "archivedRestoreTooltip": "กู้คืนก๊วนนี้กลับมาแสดงในรายการ",
+    "archivedRestoreSuccess": "กู้คืนก๊วนแล้ว"
   },
   "seriesTabs": {
     "overview": "ภาพรวม",
@@ -994,7 +998,8 @@
     "toastAdopted": "ใช้ค่าจากนัดปัจจุบันแล้ว",
     "validationMaxMin": "ต้องมีผู้เล่นอย่างน้อย 2 คน",
     "validationMaxMax": "ผู้เล่นสูงสุดไม่เกิน 40 คน",
-    "validationFeeMin": "ค่าใช้จ่ายต้องไม่ติดลบ"
+    "validationFeeMin": "ค่าใช้จ่ายต้องไม่ติดลบ",
+    "queueSectionHeading": "คิว (ค่าเริ่มต้น)"
   },
   "seriesDangerZone": {
     "heading": "เขตอันตราย",

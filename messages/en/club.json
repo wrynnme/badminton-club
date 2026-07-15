@@ -459,21 +459,21 @@
     "validationMaxMax": "Maximum 40 players"
   },
   "deleteClub": {
-    "triggerButton": "Delete club",
-    "dialogTitle": "Delete club \"{name}\"?",
+    "triggerButton": "Delete session",
+    "dialogTitle": "Delete session \"{name}\"?",
     "dialogDescription": "This will permanently:",
     "bullet1": "players / matches / expenses",
     "bullet1Pre": "Delete all",
-    "bullet1Post": "in this club",
+    "bullet1Post": "in this session",
     "bullet2": "Remove all co-admins and settings",
     "permanent": "Permanent — cannot be undone",
-    "confirmLabel": "Type the club name \"{name}\" to confirm",
+    "confirmLabel": "Type the session name \"{name}\" to confirm",
     "cancel": "Cancel",
     "deleting": "Deleting…",
-    "confirm": "Permanently delete club"
+    "confirm": "Permanently delete session"
   },
   "editForm": {
-    "title": "Edit club details",
+    "title": "Edit session details",
     "nameLabel": "Club name *",
     "venueLabel": "Venue *",
     "dateLabel": "Date *",
@@ -565,7 +565,7 @@
     "expenseSummaryHeading": "Cost summary",
     "expenseEmpty": "No cost data yet",
     "dangerZoneHeading": "Danger zone",
-    "dangerZoneDesc": "Permanently delete this club including all players, matches, and expenses — cannot be undone",
+    "dangerZoneDesc": "Permanently delete this session including all players, matches, and expenses — cannot be undone",
     "newClubTitle": "Create a club",
     "myListHeading": "My Clubs",
     "listHeading": "All clubs",
@@ -905,7 +905,11 @@
     "setActiveButton": "Set as current",
     "setActiveTooltip": "Make this the club's current session",
     "setActiveSuccessToast": "Set as the current session",
-    "linkNoSessionsHint": "Open a session first to manage the join link / LINE binding"
+    "linkNoSessionsHint": "Open a session first to manage the join link / LINE binding",
+    "archivedHeading": "Archived",
+    "archivedRestoreButton": "Restore",
+    "archivedRestoreTooltip": "Restore this club back into the list",
+    "archivedRestoreSuccess": "Club restored"
   },
   "seriesTabs": {
     "overview": "Overview",
@@ -994,7 +998,8 @@
     "toastAdopted": "Defaults updated from the current session",
     "validationMaxMin": "At least 2 players are required",
     "validationMaxMax": "Max players cannot exceed 40",
-    "validationFeeMin": "Cost cannot be negative"
+    "validationFeeMin": "Cost cannot be negative",
+    "queueSectionHeading": "Queue (defaults)"
   },
   "seriesDangerZone": {
     "heading": "Danger zone",

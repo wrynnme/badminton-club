@@ -104,6 +104,49 @@ export async function deleteClubAction(clubId: string): Promise<{ error: string 
     series = seriesRow;
   }
 
+  // Pending series-scoped join requests are stamped with whichever session was
+  // active at request time (club_link_requests.club_id NOT NULL, ON DELETE
+  // CASCADE) — deleting that session must not swallow them: they are
+  // series-level state (ADR 0002). Repoint them at another session of the
+  // series before the delete; when no session remains they cascade with the
+  // club (a series with zero sessions has nothing to link into anyway).
+  // Best-effort: a failed repoint degrades to the old cascade behavior.
+  if (series) {
+    const { data: fallback } = await sb
+      .from("clubs")
+      .select("id")
+      .eq("series_id", series.id)
+      .neq("id", clubId)
+      .order("play_date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const target =
+      series.active_session_id && series.active_session_id !== clubId
+        ? series.active_session_id
+        : (fallback?.id ?? null);
+    if (target) {
+      // Skip profiles that already hold a request row on the target session —
+      // UNIQUE(club_id, profile_id) would fail the whole repoint otherwise.
+      const { data: targetRows } = await sb
+        .from("club_link_requests")
+        .select("profile_id")
+        .eq("club_id", target);
+      const taken = (targetRows ?? []).map((r) => r.profile_id as string);
+      let repoint = sb
+        .from("club_link_requests")
+        .update({ club_id: target })
+        .eq("club_id", clubId)
+        .eq("status", "pending")
+        .not("series_id", "is", null);
+      if (taken.length > 0) repoint = repoint.not("profile_id", "in", `(${taken.join(",")})`);
+      const { error: repointErr } = await repoint;
+      if (repointErr) {
+        console.error("[deleteClubAction] pending link-request repoint failed", repointErr);
+      }
+    }
+  }
+
   const { error } = await sb.from("clubs").delete().eq("id", clubId);
   if (error) return { error: error.message };
 

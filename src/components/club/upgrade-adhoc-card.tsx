@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { upgradeAdhocSeriesAction } from "@/lib/actions/club-series";
 
 export function UpgradeAdhocCard({ seriesId }: { seriesId: string }) {
@@ -59,9 +60,16 @@ export function UpgradeAdhocCard({ seriesId }: { seriesId: string }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">{t("cardDesc")}</p>
-        <Button type="button" size="sm" onClick={() => setOpen(true)}>
-          {t("upgradeButton")}
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button type="button" size="sm" onClick={() => setOpen(true)}>
+                {t("upgradeButton")}
+              </Button>
+            }
+          />
+          <TooltipContent>{t("upgradeTooltip")}</TooltipContent>
+        </Tooltip>
       </CardContent>
 
       <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setName(""); }}>
