@@ -35,6 +35,11 @@ uses only the **global** level set — do not conflate it with club `level_id`.
   editable; a profile-linked player's name stays editable by a manager too.
 - **Manager** — the club **owner** or a **co-admin** (`canManage` / `assertCanManageClub`).
   Only managers may add or edit roster players, manage the level catalog, or run LINE linking.
+- **Site admin** — a system-wide operator (`profiles.is_site_admin`, gate in
+  `src/lib/auth/site-admin.ts`) using the `/admin` page. Cross-club support powers
+  (global level catalog, bot messages, LINE-group bindings) — NOT a Manager: a site
+  admin's authority spans clubs but does not make them a member/manager of any club.
+  Never shorten either role to just "admin"; the word is ambiguous in this domain.
 
 ## Club presets
 

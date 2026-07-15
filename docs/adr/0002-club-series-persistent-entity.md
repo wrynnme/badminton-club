@@ -145,6 +145,11 @@ preset removal) → **P3** (lift promptpay/receipt/co-admins) → **P4** (stats,
   person's identity once; re-confirming each session adds friction, not safety.
 - Club presets are deprecated post-P2 and deleted at CONTRACT — new-club setup
   becomes a plain series-creation form.
+- **Known consumers of `clubs.line_group_id` to repoint at P1**: webhook
+  bind/self-link, `pushGroupBillsAction`, `unbindClubLineGroupAction`, and the
+  site-admin bindings manager on `/admin` (grilled 2026-07-15 — list-all +
+  per-club/bulk unbind + owner 1:1 notice; deliberately built thin on the current
+  column so this cutover is a two-line repoint).
 - `/clubs` becomes a list of series; legacy standalone sessions remain reachable via
   redirects until backfill assigns them to a series.
 
