@@ -3,7 +3,7 @@
 - **Status**: Accepted (2026-07-15, grilled — 15 decisions locked in two rounds).
   **EXPAND + backfill + P1 shipped to prod 2026-07-15 (v0.42.0)** — LINE surfaces
   resolve via series with legacy fallback; membership auto-link live.
-  **P2 implemented + ship-checked (v0.43.0, PR #71)**: series home (overview /
+  **P2 shipped to prod 2026-07-16 (v0.43.0, PR #71 → release #74)**: series home (overview /
   members / settings), จัดก๊วน open-session seeding, URL restructure with legacy
   redirects, preset system retired (UI + actions; table stays). **P3 implemented
   (PR #72, ⛔ gated)**: payment/receipt/co-admins lifted to series — merge ONLY
