@@ -52,13 +52,19 @@ export function toPublicClub(club: Club): Club {
     join_token: null,
     // Bound LINE group id — a private binding target; never expose publicly.
     line_group_id: null,
+    // Club series (ADR 0002) FK — a structural id, not sensitive; safe to copy
+    // through (mirrors id/owner_id). Never resolved into the series row itself
+    // on this surface (no public series data exists in P1).
+    series_id: club.series_id,
   };
 }
 
 /**
  * Per-player sanitized view for the public page. Same allowlist fail-safe as
- * toPublicClub. Sensitive: profile_id (account link), note (free text), discount
- * (money). Player names render publicly (they are the point of the roster).
+ * toPublicClub. Sensitive: profile_id (account link), member_id (ADR 0002 series
+ * membership link — an even stronger cross-session identity link than profile_id,
+ * same redaction), note (free text), discount (money). Player names render
+ * publicly (they are the point of the roster).
  */
 export function toPublicPlayer(p: ClubPlayer): ClubPlayer {
   return {
@@ -76,6 +82,7 @@ export function toPublicPlayer(p: ClubPlayer): ClubPlayer {
     last_finished_at: p.last_finished_at,
     // sensitive
     profile_id: null,
+    member_id: null,
     note: null,
     discount: 0,
     paid_at: null,       // payment status is manager-only money data

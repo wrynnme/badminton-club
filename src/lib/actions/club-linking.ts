@@ -1,18 +1,28 @@
 "use server";
 
 /**
- * club-linking.ts — LINE linking for club rosters (see docs/adr/0001).
+ * club-linking.ts — LINE linking for club rosters (see docs/adr/0001, amended by
+ * ADR 0002 P1 — "club series", `docs/adr/0002-club-series-persistent-entity.md`).
  *
  * Attaches a real LINE account (a `profiles` row) to an existing GUEST
  * `club_players` row (`profile_id IS NULL`) so outbound pushes (bills,
  * notifications) reach a player who was previously unreachable (skippedNoLine).
  *
- * Mechanism = manager-confirmed pool (NOT auto-claim):
- *   1. A manager generates a per-club `join_token` and shares the join link.
+ * Mechanism = manager-confirmed pool (NOT auto-claim) — PLUS decision #4's
+ * "returning member" exception:
+ *   1. A manager generates a per-SERIES `join_token` and shares the join link
+ *      (once, forever — stable across sessions; see `ensureSeriesForClub`).
  *   2. A player opens /clubs/join/[token], logs in with LINE, and
- *      `requestClubLinkAction` drops a `pending` row into `club_link_requests`.
+ *      `requestClubLinkAction` either (a) auto-links immediately if they're
+ *      already a confirmed `series_members` row with a clean roster-name match
+ *      (decision #4 — amends ADR 0001's "always manager-confirmed"), or
+ *      (b)/(c) drops a `pending` row into `club_link_requests` (series-scoped).
  *   3. A manager links a pending request to a guest row (`linkClubPlayerAction`)
  *      or dismisses it (`dismissClubLinkRequestAction`).
+ *
+ * Every successful link (manager-confirmed or auto) writes through to the
+ * series member registry (`upsertSeriesMember`) and stamps the roster row's
+ * `member_id`, so the NEXT session inherits the link without re-confirming.
  *
  * All reads/writes use the service-role client; `club_link_requests` is
  * service-role-only (RLS on, no policy) and `profiles.line_user_id` never
@@ -26,6 +36,14 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession, type SessionPayload } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 import { pushTextToUser } from "@/lib/notification/line-club";
+import { classifyRosterMatch, type RosterCandidate } from "@/lib/club/line-self-link";
+import {
+  clearSeriesBinding,
+  ensureSeriesForClub,
+  hasPendingSeriesRequest,
+  resolveSeriesEntryByToken,
+  upsertSeriesMember,
+} from "@/lib/club/series.server";
 import type { LinkableKnownProfile } from "@/lib/types";
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
@@ -61,10 +79,70 @@ async function pushLinkConfirm(sb: AdminClient, clubId: string, lineUserId: stri
   );
 }
 
+/**
+ * Shared "member write-through" hunk duplicated in linkClubPlayerAction /
+ * linkKnownProfileAction: resolve/create the club's series and write through to
+ * the member registry BEFORE attaching, so member_id can be stamped in the SAME
+ * club_players write as profile_id (decision #4/#11 — every successful link
+ * updates series_members). Attach guards: `.is("profile_id", null)` stops two
+ * profiles claiming the SAME row, and the partial UNIQUE index
+ * uniq_club_players_profile on club_players (club_id, profile_id) WHERE
+ * profile_id IS NOT NULL (migration 20260711000300) stops ONE profile being
+ * linked to TWO rows at once. Returns the raw update result so each caller keeps
+ * its own error handling/logging/comments (23505 vs 0-rows-matched differ per
+ * caller's context).
+ */
+async function writeThroughMemberLink(
+  sb: AdminClient,
+  args: {
+    clubId: string;
+    targetPlayerId: string;
+    profileId: string;
+    targetDisplayName: string;
+    targetLevelId: string | null;
+    useLineName: boolean;
+    lineDisplayName: string | null;
+  },
+) {
+  const { clubId, targetPlayerId, profileId, targetDisplayName, targetLevelId, useLineName, lineDisplayName } = args;
+  const finalName = useLineName && lineDisplayName ? lineDisplayName : targetDisplayName;
+  const series = await ensureSeriesForClub(sb, clubId);
+  const memberId = await upsertSeriesMember(sb, {
+    seriesId: series.id,
+    profileId,
+    name: finalName,
+    levelId: targetLevelId,
+  });
+
+  const update: { profile_id: string; member_id: string; display_name?: string } = {
+    profile_id: profileId,
+    member_id: memberId,
+  };
+  if (useLineName && lineDisplayName) update.display_name = lineDisplayName;
+
+  return sb
+    .from("club_players")
+    .update(update)
+    .eq("id", targetPlayerId)
+    .eq("club_id", clubId)
+    .is("profile_id", null)
+    .select("id")
+    .maybeSingle();
+}
+
 // ---------------------------------------------------------------------------
 // Manager: generate / revoke the per-club join link token
 // ---------------------------------------------------------------------------
 
+/**
+ * decision #15 — the join token lives on the SERIES now (once, forever; stable
+ * across every session). Returns the existing series token when one is already
+ * set instead of minting a new one, so re-generating never invalidates a link
+ * already shared. Legacy per-session `clubs.join_token` values are left alone —
+ * old shared links keep working as separate aliases into the same series (join
+ * tokens are not exclusive the way a LINE group binding is; see the join page's
+ * fallback resolution).
+ */
 export async function generateClubJoinTokenAction(clubId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -75,8 +153,13 @@ export async function generateClubJoinTokenAction(clubId: string) {
     return { error: t("club.noPermission") };
   }
 
+  const series = await ensureSeriesForClub(sb, clubId);
+  if (series.join_token) {
+    return { ok: true as const, token: series.join_token };
+  }
+
   const token = crypto.randomUUID();
-  const { error } = await sb.from("clubs").update({ join_token: token }).eq("id", clubId);
+  const { error } = await sb.from("club_series").update({ join_token: token }).eq("id", series.id);
   if (error) {
     console.error("[generateClubJoinTokenAction]", error);
     return { error: t("club.linkTokenFailed") };
@@ -87,6 +170,16 @@ export async function generateClubJoinTokenAction(clubId: string) {
   return { ok: true as const, token };
 }
 
+/**
+ * Revoke = NOTHING keeps working. Same both-levels rule as
+ * `unbindClubLineGroupAction` (see `clearSeriesBinding` — owns the invariant):
+ * clears the series-level join token AND every session's legacy
+ * `clubs.join_token` under that series — the join page falls back to legacy
+ * tokens (`resolveJoinToken`), so a sibling session's pre-series token would
+ * otherwise keep resolving into this series after a revoke (the backfill copied
+ * the series token FROM one of those sessions, so at least one live alias is
+ * guaranteed to exist for migrated clubs).
+ */
 export async function revokeClubJoinTokenAction(clubId: string) {
   const session = await getSession();
   if (!session) return await loginRedirect();
@@ -97,11 +190,8 @@ export async function revokeClubJoinTokenAction(clubId: string) {
     return { error: t("club.noPermission") };
   }
 
-  const { error } = await sb.from("clubs").update({ join_token: null }).eq("id", clubId);
-  if (error) {
-    console.error("[revokeClubJoinTokenAction]", error);
-    return { error: t("club.linkTokenFailed") };
-  }
+  const result = await clearSeriesBinding(sb, clubId, "join_token", "revokeClubJoinTokenAction");
+  if (!result.ok) return { error: t("club.linkTokenFailed") };
 
   await writeClubAudit(sb, clubId, session, "join_token_revoked", "");
   revalidatePath(`/clubs/${clubId}`);
@@ -113,11 +203,15 @@ export async function revokeClubJoinTokenAction(clubId: string) {
 // ---------------------------------------------------------------------------
 
 /**
- * Clear `clubs.line_group_id` so this club is no longer bound to a LINE group.
- * Group billing is gated on that column, so unbinding disables it until the
- * manager rebinds (posts `ผูกก๊วน <join_token>` in a group again). Binding
+ * Clear the LINE group binding so this club's series is no longer bound.
+ * Group billing is gated on the resolved binding, so unbinding disables it until
+ * a manager rebinds (posts `ผูกก๊วน <join_token>` in a group again). Binding
  * itself only happens through the webhook — there is no inbound unbind command,
  * so this action is the only way to release the group from the app.
+ *
+ * ADR 0002 P1 — both-levels clear (see `clearSeriesBinding` — owns the "sharpest
+ * trap" invariant: clearing ONLY the series column would silently resurrect the
+ * old binding via `resolveLineGroupId`'s legacy fallback).
  */
 export async function unbindClubLineGroupAction(clubId: string) {
   const session = await getSession();
@@ -129,11 +223,8 @@ export async function unbindClubLineGroupAction(clubId: string) {
     return { error: t("club.noPermission") };
   }
 
-  const { error } = await sb.from("clubs").update({ line_group_id: null }).eq("id", clubId);
-  if (error) {
-    console.error("[unbindClubLineGroupAction]", error);
-    return { error: t("club.unbindGroupFailed") };
-  }
+  const result = await clearSeriesBinding(sb, clubId, "line_group_id", "unbindClubLineGroupAction");
+  if (!result.ok) return { error: t("club.unbindGroupFailed") };
 
   await writeClubAudit(sb, clubId, session, "line_group_unbound", "");
   revalidatePath(`/clubs/${clubId}`);
@@ -146,9 +237,20 @@ export async function unbindClubLineGroupAction(clubId: string) {
 
 /**
  * Called from the /clubs/join/[token] page after the player is logged in.
- * Idempotent per UNIQUE(club_id, profile_id): a repeat login upserts the same
- * row back to `pending` rather than duplicating. Returns a coarse state only —
- * never any other member's data.
+ *
+ * ADR 0002 P1 (decision #4 — amends ADR 0001's "always manager-confirmed"):
+ *   (a) the profile is already a `series_members` row of this series AND an
+ *       exact+unique still-guest roster row matches their canonical_name →
+ *       AUTO-LINK immediately, no manager needed (same rule as keyword
+ *       self-link) — returns state "linked".
+ *   (b) a member but no clean roster match, or (c) not a member at all →
+ *       drop a `pending` row into `club_link_requests` (stamped with BOTH the
+ *       active session's club_id — for UI back-compat — and series_id).
+ *
+ * Idempotent two ways: the legacy UNIQUE(club_id, profile_id) still guards the
+ * upsert, AND a pending request is checked by (series_id, profile_id) FIRST so a
+ * repeat visit after the active session switches never double-requests.
+ * Returns a coarse state only — never any other member's data.
  */
 export async function requestClubLinkAction(token: string) {
   const session = await getSession();
@@ -157,28 +259,84 @@ export async function requestClubLinkAction(token: string) {
   const t = await getTranslations("actions");
   const sb = await createAdminClient();
 
-  const { data: club } = await sb
-    .from("clubs")
-    .select("id, name")
-    .eq("join_token", token)
-    .maybeSingle();
-  if (!club) return { error: t("club.linkInvalidToken") };
+  // 1/2. Resolve the token → series + target roster (the series' active session,
+  //      decision #3; falls back to a legacy-matched club when the series has no
+  //      active pointer yet — see resolveSeriesEntryByToken).
+  const entry = await resolveSeriesEntryByToken(sb, token);
+  if (!entry || !entry.activeClub) return { error: t("club.linkInvalidToken") };
+  const { series, activeClub: club } = entry;
 
-  // Already linked to a roster row in this club → nothing to do.
-  const { data: existing } = await sb
-    .from("club_players")
-    .select("id")
-    .eq("club_id", club.id)
-    .eq("profile_id", session.profileId)
-    .maybeSingle();
-  if (existing) {
+  // 3/4. Already linked to a roster row in the active session, and decision #4's
+  //      returning-member auto-link check are independent reads — run them
+  //      together instead of serially.
+  const [existingRes, memberRes] = await Promise.all([
+    sb.from("club_players").select("id").eq("club_id", club.id).eq("profile_id", session.profileId).maybeSingle(),
+    sb
+      .from("series_members")
+      .select("id, canonical_name")
+      .eq("series_id", series.id)
+      .eq("profile_id", session.profileId)
+      .maybeSingle(),
+  ]);
+  if (existingRes.data) {
     return { ok: true as const, state: "already_linked" as const, clubName: club.name };
+  }
+
+  // decision #4 — a returning confirmed member auto-links on an exact+unique
+  // still-guest roster-name match, no manager confirmation needed.
+  const member = memberRes.data;
+  if (member) {
+    const { data: rosterRows } = await sb
+      .from("club_players")
+      .select("id, display_name, profile_id")
+      .eq("club_id", club.id);
+    const match = classifyRosterMatch((rosterRows ?? []) as RosterCandidate[], member.canonical_name);
+    if (match.kind === "unique") {
+      const { data: linked, error: linkErr } = await sb
+        .from("club_players")
+        .update({ profile_id: session.profileId, member_id: member.id })
+        .eq("id", match.playerId)
+        .eq("club_id", club.id)
+        .is("profile_id", null)
+        .select("id, display_name")
+        .maybeSingle();
+      if (!linkErr && linked) {
+        await sb
+          .from("series_members")
+          .update({ last_linked_at: new Date().toISOString() })
+          .eq("id", member.id);
+        await writeClubAudit(
+          sb,
+          club.id,
+          session,
+          "player_linked_autolink",
+          `${linked.display_name} ← ${session.profileId} (member auto-link)`,
+        );
+        revalidatePath(`/clubs/${club.id}`);
+        return {
+          ok: true as const,
+          state: "linked" as const,
+          clubName: club.name,
+          playerName: linked.display_name,
+        };
+      }
+      // Lost the race (row claimed concurrently) or write failed — fall through
+      // to the pool instead of erroring; a manager can still finish the link.
+      if (linkErr) console.error("[requestClubLinkAction] autolink", linkErr);
+    }
+  }
+
+  // 5. Idempotent per series — an existing PENDING request for (series_id,
+  //    profile_id) means don't duplicate, regardless of which session's club_id
+  //    it was originally stamped with (the active session may have switched).
+  if (await hasPendingSeriesRequest(sb, series.id, session.profileId)) {
+    return { ok: true as const, state: "pending" as const, clubName: club.name };
   }
 
   const { error } = await sb
     .from("club_link_requests")
     .upsert(
-      { club_id: club.id, profile_id: session.profileId, status: "pending" },
+      { club_id: club.id, series_id: series.id, profile_id: session.profileId, status: "pending" },
       { onConflict: "club_id,profile_id" },
     );
   if (error) {
@@ -216,12 +374,19 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
     return { error: t("club.noPermission") };
   }
 
-  // 1. The request must belong to this club and still be pending.
+  // 1. The request must belong to this club — or its SERIES: the pool lists
+  //    pending requests series-wide (they survive active-session pointer moves),
+  //    so a request stamped with a sibling session's club_id must still be
+  //    actionable from this page.
+  const { data: clubScope } = await sb.from("clubs").select("series_id").eq("id", clubId).maybeSingle();
+  const requestScope = clubScope?.series_id
+    ? `club_id.eq.${clubId},series_id.eq.${clubScope.series_id}`
+    : `club_id.eq.${clubId}`;
   const { data: req } = await sb
     .from("club_link_requests")
     .select("id, profile_id, status")
     .eq("id", requestId)
-    .eq("club_id", clubId)
+    .or(requestScope)
     .maybeSingle();
   if (!req || req.status !== "pending") return { error: t("club.linkRequestNotFound") };
   const profileId = req.profile_id;
@@ -238,7 +403,7 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
   // 3. The target must be a guest row (profile_id NULL) in this club.
   const { data: target } = await sb
     .from("club_players")
-    .select("id, profile_id, display_name")
+    .select("id, profile_id, display_name, level_id")
     .eq("id", targetPlayerId)
     .eq("club_id", clubId)
     .maybeSingle();
@@ -253,22 +418,17 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
     .maybeSingle();
   if (!profile) return { error: t("club.linkRequestNotFound") };
 
-  // 5. Attach: set profile_id (+ optionally adopt the LINE name). Two guards make this
-  //    race-safe: `.is("profile_id", null)` stops two profiles claiming the SAME row,
-  //    and the partial UNIQUE index uniq_club_players_profile on club_players
-  //    (club_id, profile_id) WHERE profile_id IS NOT NULL (migration 20260711000300)
-  //    stops ONE profile being linked to TWO different rows at once.
-  const update: { profile_id: string; display_name?: string } = { profile_id: profileId };
-  if (useLineName && profile.display_name) update.display_name = profile.display_name;
-
-  const { data: updated, error: upErr } = await sb
-    .from("club_players")
-    .update(update)
-    .eq("id", targetPlayerId)
-    .eq("club_id", clubId)
-    .is("profile_id", null)
-    .select("id")
-    .maybeSingle();
+  // 5/6. Member write-through (decision #4/#11) + guarded attach — shared with
+  //      linkKnownProfileAction, see writeThroughMemberLink.
+  const { data: updated, error: upErr } = await writeThroughMemberLink(sb, {
+    clubId,
+    targetPlayerId,
+    profileId,
+    targetDisplayName: target.display_name,
+    targetLevelId: target.level_id,
+    useLineName,
+    lineDisplayName: profile.display_name,
+  });
   if (upErr) {
     // 23505 = uniq_club_players_profile rejected linking this profile to a second row
     // (a concurrent link won the race). Safe — no false success; a retry hits the
@@ -289,7 +449,7 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
   if (matchErr) console.error("[linkClubPlayerAction] status=matched", matchErr);
   await writeClubAudit(sb, clubId, session, "player_linked", `${target.display_name} ← ${profileId}`);
 
-  // 6. Fire-and-forget confirmation push (never blocks or fails the link).
+  // 7. Fire-and-forget confirmation push (never blocks or fails the link).
   await pushLinkConfirm(sb, clubId, profile.line_user_id);
 
   revalidatePath(`/clubs/${clubId}`);
@@ -316,11 +476,17 @@ export async function dismissClubLinkRequestAction(input: DismissClubLinkInput) 
     return { error: t("club.noPermission") };
   }
 
+  // Series-aware scope — mirrors linkClubPlayerAction: the pool is series-wide,
+  // so a sibling session's pending request must be dismissable from this page.
+  const { data: clubScope } = await sb.from("clubs").select("series_id").eq("id", clubId).maybeSingle();
+  const dismissScope = clubScope?.series_id
+    ? `club_id.eq.${clubId},series_id.eq.${clubScope.series_id}`
+    : `club_id.eq.${clubId}`;
   const { data: dismissed, error } = await sb
     .from("club_link_requests")
     .update({ status: "rejected" })
     .eq("id", requestId)
-    .eq("club_id", clubId)
+    .or(dismissScope)
     .eq("status", "pending")
     .select("id")
     .maybeSingle();
@@ -344,9 +510,15 @@ const UnlinkSchema = z.object({
 export type UnlinkClubPlayerInput = z.infer<typeof UnlinkSchema>;
 
 /**
- * Detach a LINE account from a roster row: set profile_id back to NULL (the row
- * becomes a guest again) and return its link request to `pending` so it reappears
- * in the pool for re-matching. display_name is left as-is.
+ * Detach a LINE account from a roster row: set profile_id (+ member_id) back to
+ * NULL (the row becomes a guest again) and return its link request to `pending`
+ * so it reappears in the pool for re-matching. display_name is left as-is.
+ *
+ * Unlink ≠ removing a member (ADR 0002 decision — "Unlink in a session ≠ delete
+ * member"): `series_members` is NEVER touched here. The person is still a
+ * confirmed member of the series; only this session's attendance row loses the
+ * LINE attachment. Removing someone from the series entirely is a separate,
+ * not-yet-built action (a mis-linked-person cleanup case, out of P1 scope).
  */
 export async function unlinkClubPlayerAction(input: UnlinkClubPlayerInput) {
   const session = await getSession();
@@ -374,7 +546,7 @@ export async function unlinkClubPlayerAction(input: UnlinkClubPlayerInput) {
 
   const { error } = await sb
     .from("club_players")
-    .update({ profile_id: null })
+    .update({ profile_id: null, member_id: null })
     .eq("id", playerId)
     .eq("club_id", clubId);
   if (error) {
@@ -521,7 +693,7 @@ export async function linkKnownProfileAction(input: LinkKnownProfileInput) {
   // 3. The target must be a guest row (profile_id NULL) in this club.
   const { data: target } = await sb
     .from("club_players")
-    .select("id, profile_id, display_name")
+    .select("id, profile_id, display_name, level_id")
     .eq("id", targetPlayerId)
     .eq("club_id", clubId)
     .maybeSingle();
@@ -536,21 +708,17 @@ export async function linkKnownProfileAction(input: LinkKnownProfileInput) {
     .maybeSingle();
   if (!profile) return { error: t("club.linkRequestNotFound") };
 
-  // 5. Attach. Same two race guards as linkClubPlayerAction: `.is("profile_id", null)`
-  //    (row still a guest) + the partial UNIQUE uniq_club_players_profile on
-  //    (club_id, profile_id) WHERE profile_id IS NOT NULL (migration 20260711000300),
-  //    which caps a profile at one linked row per club.
-  const update: { profile_id: string; display_name?: string } = { profile_id: profileId };
-  if (useLineName && profile.display_name) update.display_name = profile.display_name;
-
-  const { data: updated, error: upErr } = await sb
-    .from("club_players")
-    .update(update)
-    .eq("id", targetPlayerId)
-    .eq("club_id", clubId)
-    .is("profile_id", null)
-    .select("id")
-    .maybeSingle();
+  // 5/6. Member write-through (decision #4/#11) + guarded attach — shared with
+  //      linkClubPlayerAction, see writeThroughMemberLink.
+  const { data: updated, error: upErr } = await writeThroughMemberLink(sb, {
+    clubId,
+    targetPlayerId,
+    profileId,
+    targetDisplayName: target.display_name,
+    targetLevelId: target.level_id,
+    useLineName,
+    lineDisplayName: profile.display_name,
+  });
   if (upErr) {
     console.error("[linkKnownProfileAction]", upErr);
     return { error: t("club.linkFailed") };
@@ -558,7 +726,7 @@ export async function linkKnownProfileAction(input: LinkKnownProfileInput) {
   // 0 rows matched = the guest row was claimed by a concurrent link. No false success.
   if (!updated) return { error: t("club.linkTargetNotGuest") };
 
-  // 6. If a pending pool request for this profile exists in THIS club, retire it so the
+  // 7. If a pending pool request for this profile exists in THIS club, retire it so the
   //    pool and the picker stay consistent (best-effort — absent when the player only
   //    scanned another of the manager's clubs).
   const { error: matchErr } = await sb
@@ -571,7 +739,7 @@ export async function linkKnownProfileAction(input: LinkKnownProfileInput) {
 
   await writeClubAudit(sb, clubId, session, "player_linked", `${target.display_name} ← ${profileId}`);
 
-  // 7. Fire-and-forget confirmation push (never blocks or fails the link).
+  // 8. Fire-and-forget confirmation push (never blocks or fails the link).
   await pushLinkConfirm(sb, clubId, profile.line_user_id);
 
   revalidatePath(`/clubs/${clubId}`);

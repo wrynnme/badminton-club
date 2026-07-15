@@ -39,9 +39,10 @@ import { getTranslations } from "next-intl/server";
 import { getClubLevelsAction } from "@/lib/actions/levels";
 import { getAppSettings, resolveQrLogoUrl } from "@/lib/app-settings";
 import { resolveBotMessage } from "@/lib/bot-messages";
+import { resolveLineGroupId, resolveJoinToken } from "@/lib/club/series.server";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
-import type { ClubMatch, ClubLockedPair, Level, ClubPreset, ClubLinkPoolRequest } from "@/lib/types";
+import type { ClubMatch, ClubLockedPair, Level, ClubPreset, ClubLinkPoolRequest, ClubSeries } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -63,7 +64,7 @@ export default async function ClubDetailPage({
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes, lineRes, linkReqRes] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes, lineRes, linkReqRes, seriesRes] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -116,12 +117,29 @@ export default async function ClubDetailPage({
     // Pending LINE-link requests (the pool). Only the requesting profile's public
     // fields ship to the client — line_user_id is never selected here, and the row's
     // own club_id/profile_id/status are unused by the pool UI (the dialog acts by id).
-    sb
-      .from("club_link_requests")
-      .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
-      .eq("club_id", id)
-      .eq("status", "pending")
-      .order("created_at", { ascending: true }),
+    // Series-scoped when this club has a series (F) so a pending request survives
+    // the active-session pointer moving to a different `clubs` row under the same
+    // series; a not-yet-migrated club (no series_id) falls back to club_id.
+    club.series_id
+      ? sb
+          .from("club_link_requests")
+          .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
+          .eq("series_id", club.series_id)
+          .eq("status", "pending")
+          .order("created_at", { ascending: true })
+      : sb
+          .from("club_link_requests")
+          .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
+          .eq("club_id", id)
+          .eq("status", "pending")
+          .order("created_at", { ascending: true }),
+    // Club series (ADR 0002 P1) — already-fetched club.series_id avoids a second
+    // round-trip through getSeriesForClub's own clubs lookup. null series_id (a
+    // club created between backfill and this ship) stays null below — a GET
+    // render must never mutate (E), so no ensureSeriesForClub fallback here.
+    club.series_id
+      ? sb.from("club_series").select("*").eq("id", club.series_id).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const owner = ownerRes.data;
@@ -150,22 +168,14 @@ export default async function ClubDetailPage({
     .filter((r) => r.profile?.line_user_id)
     .map((r) => r.id);
 
-  // Pending LINE-link requests (the pool) + the guest rows a manager can link them to.
-  // line_user_id is never selected/derived here — only public profile fields reach the client.
+  // Pending LINE-link requests (the pool) — final shape (incl. the decision #4
+  // member badge) built after the canManage gate below, once the series is
+  // resolved. line_user_id is never selected/derived here — only public profile
+  // fields reach the client.
   type LinkReqRow = {
     id: string;
     profile: { id: string; display_name: string; picture_url: string | null } | null;
   };
-  const pendingLinkRequests: ClubLinkPoolRequest[] = ((linkReqRes.data ?? []) as unknown as LinkReqRow[])
-    .filter((r) => r.profile)
-    .map((r) => ({
-      id: r.id,
-      profile: {
-        id: r.profile!.id,
-        display_name: r.profile!.display_name,
-        picture_url: r.profile!.picture_url,
-      },
-    }));
   const guestPlayers = players
     .filter((p) => p.profile_id == null)
     .map((p) => ({ id: p.id, display_name: p.display_name }));
@@ -186,6 +196,48 @@ export default async function ClubDetailPage({
     }
     redirect("/clubs");
   }
+
+  // ADR 0002 P1 — this club's series (E — read-only; a GET render must never
+  // mutate). `seriesRes` covers the normal case (club.series_id already set, all
+  // 8 prod clubs post-backfill); a club created between backfill and this ship
+  // stays null here (the lazy `ensureSeriesForClub` migration only runs from a
+  // mutating action, e.g. generateClubJoinTokenAction) — every helper below
+  // (resolveLineGroupId/resolveJoinToken) already tolerates a null series.
+  const series: ClubSeries | null = (seriesRes.data as ClubSeries | null) ?? null;
+  const resolvedLineGroupId = resolveLineGroupId(series, club);
+  const resolvedJoinToken = resolveJoinToken(series, club);
+
+  // Pending LINE-link requests (the pool) + the decision #4 member badge: a
+  // requester who is already a `series_members` row of this club's series shows
+  // as a returning member even though THIS particular request still needs a
+  // manager (ambiguous / no clean roster-name match at auto-link time). No
+  // series (rare/defensive) → no member registry to check against.
+  const rawLinkReqs = ((linkReqRes.data ?? []) as unknown as LinkReqRow[]).filter((r) => r.profile);
+  const pendingProfileIds = rawLinkReqs.map((r) => r.profile!.id);
+  let memberNameByProfileId = new Map<string, string>();
+  if (series && pendingProfileIds.length > 0) {
+    const { data: memberRows } = await sb
+      .from("series_members")
+      .select("profile_id, canonical_name")
+      .eq("series_id", series.id)
+      .in("profile_id", pendingProfileIds);
+    memberNameByProfileId = new Map(
+      (memberRows ?? [])
+        .filter((m) => m.profile_id)
+        .map((m) => [m.profile_id as string, m.canonical_name as string]),
+    );
+  }
+  const pendingLinkRequests: ClubLinkPoolRequest[] = rawLinkReqs.map((r) => ({
+    id: r.id,
+    profile: {
+      id: r.profile!.id,
+      display_name: r.profile!.display_name,
+      picture_url: r.profile!.picture_url,
+    },
+    member: memberNameByProfileId.has(r.profile!.id)
+      ? { canonicalName: memberNameByProfileId.get(r.profile!.id)! }
+      : null,
+  }));
 
   const ownedPresets: Pick<ClubPreset, "id" | "name">[] = (presetsRes.data ?? []).map(
     (row) => ({ id: row.id as string, name: row.name as string }),
@@ -440,7 +492,7 @@ export default async function ClubDetailPage({
                   qrLogoUrl={resolveQrLogoUrl(appSettings)}
                   scanPrompt={resolveBotMessage(appSettings.messages, "groupBillScanPrompt")}
                   lineReachableIds={lineReachableIds}
-                  lineGroupBound={!!club.line_group_id}
+                  lineGroupBound={!!resolvedLineGroupId}
                 />
               )}
             </div>
@@ -478,11 +530,11 @@ export default async function ClubDetailPage({
               {canManage && (
                 <ClubLinkControls
                   clubId={club.id}
-                  joinToken={club.join_token}
+                  joinToken={resolvedJoinToken}
                   appUrl={appUrl}
                   pendingRequests={pendingLinkRequests}
                   guestPlayers={guestPlayers}
-                  lineGroupBound={!!club.line_group_id}
+                  lineGroupBound={!!resolvedLineGroupId}
                 />
               )}
               {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}
