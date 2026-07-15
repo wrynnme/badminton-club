@@ -126,7 +126,8 @@
     "resetMemberLevelsFailed": "Failed to reset member levels",
     "pairMemberTaken": "This player is already in a partner pair",
     "addPairFailed": "Failed to add partner pair",
-    "removePairFailed": "Failed to remove partner pair"
+    "removePairFailed": "Failed to remove partner pair",
+    "loadCoAdminsFailed": "Failed to load co-admins"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",

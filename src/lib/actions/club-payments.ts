@@ -9,6 +9,24 @@ import { isValidPromptPayId } from "@/lib/club/promptpay";
 import { ReceiptTemplateSchema, hasBankReceiver, type ReceiptTemplate } from "@/lib/club/receipt";
 import { revalidateClubTree } from "@/lib/club/revalidate";
 
+type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
+
+/**
+ * ADR 0002 P3 — payment/receipt config lives on the series once a club has one
+ * (`clubs.series_id` set); every write in this file targets that row instead of
+ * the legacy per-session `clubs` columns. A club with no series yet (created
+ * between backfill and P1, or a lazily-migrated ad-hoc row not yet attached)
+ * falls back to writing the legacy column directly — `resolvePaymentConfig` /
+ * `resolveReceiptConfig` (`series-payment.ts`) read it back the same way.
+ */
+async function resolveConfigWriteTarget(
+  sb: AdminClient,
+  clubId: string,
+): Promise<{ table: "club_series" | "clubs"; id: string }> {
+  const { data } = await sb.from("clubs").select("series_id").eq("id", clubId).maybeSingle();
+  return data?.series_id ? { table: "club_series", id: data.series_id as string } : { table: "clubs", id: clubId };
+}
+
 const PaymentConfigSchema = z.object({
   promptpay_id: z.string().trim().max(40).nullable().optional(),
   promptpay_name: z.string().trim().max(80).nullable().optional(),
@@ -37,10 +55,11 @@ export async function updateClubPaymentConfigAction(clubId: string, input: Payme
     return { error: t("club.noPermission") };
   }
 
+  const target = await resolveConfigWriteTarget(sb, clubId);
   const { error } = await sb
-    .from("clubs")
+    .from(target.table)
     .update({ promptpay_id, promptpay_name })
-    .eq("id", clubId);
+    .eq("id", target.id);
   if (error) return { error: error.message };
 
   revalidateClubTree();
@@ -117,6 +136,8 @@ export async function uploadClubPromptPayQrAction(input: { clubId: string; dataU
   }
 
   // One object per club (fixed path + upsert) → replacing never orphans the old file.
+  // Storage path stays clubId-scoped even when the URL is written to the series —
+  // only the DB write target moves (see resolveConfigWriteTarget).
   const uploaded = await decodeAndUploadImage(
     sb,
     `${input.clubId}/promptpay`,
@@ -125,10 +146,11 @@ export async function uploadClubPromptPayQrAction(input: { clubId: string; dataU
   );
   if ("error" in uploaded) return { error: uploaded.error };
 
+  const target = await resolveConfigWriteTarget(sb, input.clubId);
   const { error } = await sb
-    .from("clubs")
+    .from(target.table)
     .update({ promptpay_qr_image: uploaded.url })
-    .eq("id", input.clubId);
+    .eq("id", target.id);
   if (error) return { error: error.message };
 
   revalidateClubTree();
@@ -192,7 +214,8 @@ export async function removeClubPromptPayQrAction(clubId: string) {
   }
 
   await sb.storage.from("club-qr").remove([`${clubId}/promptpay`]); // best-effort
-  const { error } = await sb.from("clubs").update({ promptpay_qr_image: null }).eq("id", clubId);
+  const target = await resolveConfigWriteTarget(sb, clubId);
+  const { error } = await sb.from(target.table).update({ promptpay_qr_image: null }).eq("id", target.id);
   if (error) return { error: error.message };
 
   revalidateClubTree();
@@ -250,12 +273,15 @@ export async function updateClubReceiptTemplateAction(clubId: string, template: 
     return { error: t("club.noPermission") };
   }
 
+  const target = await resolveConfigWriteTarget(sb, clubId);
   const { error } = await sb
-    .from("clubs")
+    .from(target.table)
     .update({ receipt_template: parsed.data })
-    .eq("id", clubId);
+    .eq("id", target.id);
   if (error) return { error: error.message };
 
+  // Audit log stays keyed to the SESSION (clubId) — audit history is per-นัด,
+  // unlike the config value it's describing (series-level from P3 on).
   await sb.from("club_audit_logs").insert({
     club_id: clubId,
     actor_id: session.profileId,
@@ -291,10 +317,11 @@ export async function uploadClubReceiptLogoAction(input: { clubId: string; dataU
   );
   if ("error" in uploaded) return { error: uploaded.error };
 
+  const target = await resolveConfigWriteTarget(sb, input.clubId);
   const { error } = await sb
-    .from("clubs")
+    .from(target.table)
     .update({ receipt_logo_url: uploaded.url })
-    .eq("id", input.clubId);
+    .eq("id", target.id);
   if (error) return { error: error.message };
 
   revalidateClubTree();
@@ -313,7 +340,8 @@ export async function removeClubReceiptLogoAction(clubId: string) {
   }
 
   await sb.storage.from("club-qr").remove([`${clubId}/receipt-logo`]); // best-effort
-  const { error } = await sb.from("clubs").update({ receipt_logo_url: null }).eq("id", clubId);
+  const target = await resolveConfigWriteTarget(sb, clubId);
+  const { error } = await sb.from(target.table).update({ receipt_logo_url: null }).eq("id", target.id);
   if (error) return { error: error.message };
 
   revalidateClubTree();
