@@ -18,8 +18,39 @@ const selfMention = (index: number): Mentionee => ({
 });
 
 describe("parseSelfLinkCommand", () => {
-  it("ignores a message that does not @mention the bot", () => {
-    expect(parseSelfLinkCommand("เชื่อมไลน์ โจ้", false)).toBeNull();
+  // --- no @mention: STRICT keyword (ไลน์/line token required) ---
+
+  it("links from a plain message with the full keyword (no mention needed)", () => {
+    expect(parseSelfLinkCommand("เชื่อมไลน์ บี", false)).toEqual({
+      kind: "link",
+      rosterName: "บี",
+    });
+    expect(parseSelfLinkCommand("เชื่อม line โจ้", false)).toEqual({
+      kind: "link",
+      rosterName: "โจ้",
+    });
+  });
+
+  it("ignores a bare 'เชื่อม <name>' without ไลน์/line when the bot is not mentioned", () => {
+    expect(parseSelfLinkCommand("เชื่อม บี", false)).toBeNull();
+  });
+
+  it("ignores ordinary chat that merely starts with เชื่อม", () => {
+    expect(parseSelfLinkCommand("เชื่อมต่อไม่ได้เลยวันนี้", false)).toBeNull();
+  });
+
+  it("returns usage for a plain keyword with no name", () => {
+    expect(parseSelfLinkCommand("เชื่อมไลน์", false)).toEqual({ kind: "usage" });
+  });
+
+  // --- bot @mentioned: lenient keyword (ไลน์/line optional) ---
+
+  it("still accepts the short 'เชื่อม <name>' form when the bot is mentioned", () => {
+    const text = `${BOT_TAG} เชื่อม บี`;
+    expect(parseSelfLinkCommand(text, true, [selfMention(0)])).toEqual({
+      kind: "link",
+      rosterName: "บี",
+    });
   });
 
   it("ignores a bot @mention with no keyword", () => {
