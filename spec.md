@@ -803,6 +803,8 @@ Design ล็อกจาก grilling 2026-07-07 — **priority ladder (strict)*
 
 ### 📐 Design — "ผูกครั้งเดียวใช้ได้ตลอด" ทาง C เต็มรูป: ก๊วนถาวร + นัด — ออกแบบ 2026-07-15 (user เลือก C จาก 3 ทาง A/C1/C-full), ยังไม่ implement
 
+> **🔤 Vocabulary lock 2026-07-16 (v0.48.2, user):** UI copy เรียก session ว่า **"รอบตี"** (แทน "นัด" ทั้งหมดใน copy ฝั่ง club) และปุ่มเปิด session เปลี่ยน "จัดก๊วน" → **"เปิดรอบตี"**; register กันเอง (LINE notification bodies) ใช้ **"นัดตี"** ได้. "ก๊วน" = กลุ่มถาวรเท่านั้น. ⚠️ "นัด" ใน tournament copy = *แมตช์* (คนละความหมาย ไม่แตะ). DB/URL/ชื่อ action ไม่เปลี่ยน. คำเต็มอยู่ `CONTEXT.md` § "Club series (ก๊วน + รอบตี)" — เอกสารภายใน (spec/ADR) ที่เขียนไว้ก่อนหน้ายังใช้ "นัด" ตามประวัติ.
+
 > **เอกสารคู่กัน:** ADR `docs/adr/0002-club-series-persistent-entity.md` (decision record + code facts พร้อม file:line + guardrails สำหรับ implementer) · glossary `CONTEXT.md` § "Club series (ก๊วนถาวร + นัด)" (คำเรียกมาตรฐาน). อ่าน ADR 0002 ก่อนเริ่ม implement เสมอ.
 
 **ปัญหา:** 1 `clubs` row = 1 นัด → binding ทุกตัวตายตามนัด: `line_group_id` + `join_token` ไม่อยู่ใน preset (ต้องพิมพ์ `ผูกก๊วน <token>` ในกลุ่ม + แชร์ลิงก์ใหม่ทุกนัด); `club_players.profile_id` ติดมาผ่าน preset แบบ snapshot ที่ stale; known-profile picker derive จาก `club_link_requests` ซึ่ง CASCADE ตายเมื่อลบ club เก่า. **ระบบเรียก "นัด" ว่า "ก๊วน" — ไม่มีตัวตนถาวรของก๊วนจริง (เช่น MUGGLE) ให้ binding/สมาชิกเกาะข้ามนัด.**
