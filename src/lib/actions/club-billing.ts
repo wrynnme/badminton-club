@@ -16,6 +16,8 @@ import {
 import { getAppSettings } from "@/lib/app-settings";
 import { resolveBotMessage } from "@/lib/bot-messages";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
+import { resolveLineGroupId } from "@/lib/club/series.server";
+import type { ClubSeries } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -259,7 +261,10 @@ export type PushGroupBillsResult =
  * so they're covered too. The list splits across messages at LINE's 20-mention
  * cap with continuous numbering (see buildGroupBillListMessages).
  *
- * Requires `clubs.line_group_id` (bind the group first via the webhook command).
+ * Requires a bound LINE group — the club's SERIES binding first (ADR 0002 P1,
+ * `club_series.line_group_id`, "once, forever"), falling back to the legacy
+ * per-session `clubs.line_group_id` for any club not yet migrated onto a series
+ * (see `resolveLineGroupId`). Bind via the webhook command (`ผูกก๊วน <token>`).
  * `input.qrImageUrl` is the client-rendered open QR PNG (or the club's uploaded
  * promptpay_qr_image); null → text-only bill (club has no PromptPay). On a
  * successful push, bill_amount + bill_pushed_at are stamped on every listed
@@ -282,9 +287,11 @@ export async function pushGroupBillsAction(input: {
     return { error: t("club.noPermission") };
   }
 
-  // 1. Fetch data (mirrors pushClubBillsAction / page.tsx).
+  // 1. Fetch data (mirrors pushClubBillsAction / page.tsx). The FK embed pulls
+  //    the club's series (if any) in the SAME round-trip instead of a follow-up
+  //    getSeriesForClub call.
   const [clubRes, playersRes, matchesRes, expensesRes] = await Promise.all([
-    sb.from("clubs").select("*").eq("id", input.clubId).single(),
+    sb.from("clubs").select("*, series:club_series!series_id(*)").eq("id", input.clubId).single(),
     sb
       .from("club_players")
       .select("*")
@@ -309,7 +316,13 @@ export async function pushGroupBillsAction(input: {
   }
 
   const club = clubRes.data;
-  if (!club.line_group_id) {
+
+  // ADR 0002 P1 — resolve the bound LINE group via the series first, falling
+  // back to the legacy per-session column (see resolveLineGroupId). `series`
+  // came back on the club row itself (FK embed above), no extra round-trip.
+  const series = (club as unknown as { series: ClubSeries | null }).series ?? null;
+  const lineGroupId = resolveLineGroupId(series, club);
+  if (!lineGroupId) {
     return { error: t("club.noLineGroup") };
   }
 
@@ -395,7 +408,7 @@ export async function pushGroupBillsAction(input: {
     scanPrompt: resolveBotMessage(botMessages, "groupBillScanPrompt"),
   });
 
-  const ok = await pushMessagesToGroup(club.line_group_id, messages);
+  const ok = await pushMessagesToGroup(lineGroupId, messages);
   if (!ok) {
     return { error: t("club.groupPushFailed") };
   }

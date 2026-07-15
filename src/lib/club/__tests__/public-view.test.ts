@@ -35,6 +35,7 @@ const baseClub: Club = {
   receipt_logo_url: "https://example.com/logo.png",
   join_token: "secret-join-token",
   line_group_id: "Csecretgroupid",
+  series_id: "series-1",
 };
 
 const basePlayer: ClubPlayer = {
@@ -57,6 +58,7 @@ const basePlayer: ClubPlayer = {
   bill_amount: 330,
   paid_method: "manual",
   bill_pushed_at: "2026-06-10T10:00:00Z",
+  member_id: "member-1",
 };
 
 describe("toPublicClub", () => {
@@ -88,6 +90,8 @@ describe("toPublicClub", () => {
     expect(pub.is_public).toBe(true);
     expect(pub.courts).toEqual(["1", "2", "3"]);
     expect(pub.court_split).toBe("even");
+    // series_id (ADR 0002) is a structural FK, not sensitive — passes through.
+    expect(pub.series_id).toBe("series-1");
   });
 
   it("strips unknown/future jsonb keys from queue_settings (re-derived via parseQueueSettings)", () => {
@@ -102,9 +106,12 @@ describe("toPublicClub", () => {
 });
 
 describe("toPublicPlayer", () => {
-  it("nulls profile_id + note and zeroes discount", () => {
+  it("nulls profile_id + member_id + note and zeroes discount", () => {
     const pub = toPublicPlayer(basePlayer);
     expect(pub.profile_id).toBeNull();
+    // member_id (ADR 0002) is an even stronger cross-session identity link than
+    // profile_id — same redaction.
+    expect(pub.member_id).toBeNull();
     expect(pub.note).toBeNull();
     expect(pub.discount).toBe(0);
     expect(pub.paid_at).toBeNull();

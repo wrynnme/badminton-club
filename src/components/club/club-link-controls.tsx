@@ -20,6 +20,7 @@ import { useRouter as useProgressRouter } from "@bprogress/next/app";
 import { Check, Copy, Link2, Link2Off, Loader2, UserPlus, X, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
@@ -418,6 +419,21 @@ function PoolRow({
         <AvatarFallback>{req.profile.display_name.slice(0, 1)}</AvatarFallback>
       </Avatar>
       <span className="min-w-0 flex-1 truncate text-sm">{req.profile.display_name}</span>
+      {/* decision #4 badge (ADR 0002, P1) — this requester is already a series
+          member; the manager sees they're returning, even though this particular
+          request needed manual confirmation (ambiguous/no-clean roster match). */}
+      {req.member && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Badge variant="secondary" className="shrink-0 whitespace-nowrap">
+                {t("memberBadge")}
+              </Badge>
+            }
+          />
+          <TooltipContent>{t("memberBadgeName", { name: req.member.canonicalName })}</TooltipContent>
+        </Tooltip>
+      )}
       <Tooltip>
         <TooltipTrigger
           render={

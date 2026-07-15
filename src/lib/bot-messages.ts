@@ -26,7 +26,8 @@
 export type BotMessageKey =
   | "bindSuccess"
   | "bindInvalid"
-  | "bindConflict"
+  | "bindConflictGroup"
+  | "bindConflictSeries"
   | "selfLinkUsage"
   | "selfLinkNoUser"
   | "selfLinkNoClub"
@@ -61,9 +62,15 @@ export const BOT_MESSAGE_SPECS: Record<BotMessageKey, BotMessageSpec> = {
     required: [],
     default: `❌ โค้ดผูกก๊วนไม่ถูกต้อง`,
   },
-  bindConflict: {
-    required: [],
-    default: `❌ ผูกกลุ่มไม่สำเร็จ — กลุ่มนี้อาจถูกผูกกับก๊วนอื่นอยู่แล้ว`,
+  // ADR 0002 decision #14 — webhook rebind conflicts: explicit error BOTH
+  // directions, naming the currently-bound ก๊วน, never a silent rebind.
+  bindConflictGroup: {
+    required: ["club"],
+    default: `❌ กลุ่มนี้ผูกกับก๊วน "{club}" อยู่แล้ว — ถ้าต้องการย้าย ให้ยกเลิกการเชื่อมกลุ่มในแอปก่อน`,
+  },
+  bindConflictSeries: {
+    required: ["club"],
+    default: `❌ ก๊วน "{club}" ผูกกับกลุ่มไลน์อื่นอยู่แล้ว — ถ้าต้องการย้าย ให้ยกเลิกการเชื่อมกลุ่มในแอปก่อน`,
   },
   selfLinkUsage: {
     required: [],
@@ -127,7 +134,8 @@ export const BOT_MESSAGE_KEYS = Object.keys(BOT_MESSAGE_SPECS) as BotMessageKey[
 export const BOT_MESSAGE_SAMPLE_VARS: Record<BotMessageKey, Vars> = {
   bindSuccess: { club: "ก๊วนสุขสันต์" },
   bindInvalid: {},
-  bindConflict: {},
+  bindConflictGroup: { club: "ก๊วนสุขสันต์" },
+  bindConflictSeries: { club: "ก๊วนสุขสันต์" },
   selfLinkUsage: {},
   selfLinkNoUser: {},
   selfLinkNoClub: {},

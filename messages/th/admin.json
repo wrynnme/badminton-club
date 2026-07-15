@@ -48,7 +48,8 @@
     "label": {
       "bindSuccess": "ผูกกลุ่มกับก๊วนสำเร็จ",
       "bindInvalid": "โค้ดผูกก๊วนไม่ถูกต้อง",
-      "bindConflict": "ผูกกลุ่มไม่สำเร็จ",
+      "bindConflictGroup": "กลุ่มนี้ผูกก๊วนอื่นอยู่แล้ว",
+      "bindConflictSeries": "ก๊วนนี้ผูกกลุ่มอื่นอยู่แล้ว",
       "selfLinkUsage": "วิธีพิมพ์เชื่อมไลน์",
       "selfLinkNoUser": "ระบุตัวตนไม่ได้",
       "selfLinkNoClub": "กลุ่มยังไม่ผูกก๊วน",
