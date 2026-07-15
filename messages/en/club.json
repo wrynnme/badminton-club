@@ -914,7 +914,21 @@
   "seriesTabs": {
     "overview": "Overview",
     "members": "Members",
+    "stats": "Stats",
     "settings": "Settings"
+  },
+  "seriesStats": {
+    "empty": "No completed matches in this club yet",
+    "totalSessionsLabel": "{count} sessions total",
+    "totalMatchesLabel": "{count} completed matches total",
+    "tableTitle": "Member stats",
+    "colName": "Name",
+    "colLevel": "Level",
+    "colSessions": "Sessions",
+    "colMatches": "Matches",
+    "colRecord": "W-L",
+    "colWinRate": "Win rate",
+    "colLastPlayed": "Last played"
   },
   "seriesMembers": {
     "heading": "Club members",
