@@ -121,18 +121,16 @@ function ToggleRow({
  * lets `session-defaults-editor.tsx` reuse this entire form to edit
  * `club_series.session_defaults.queue_settings` via
  * `updateSessionDefaultsAction` without touching per-session behavior.
- * `clubId` is only required on the default (per-session) call path — callers
- * that pass `onSave` (no per-session `clubId` to give) may omit it.
+ * The save target is a discriminated union: EITHER `clubId` (default
+ * per-session write) OR `onSave` (custom persist) — never both, never neither.
  */
-export function ClubQueueSettings({
-  clubId,
-  initial,
-  onSave,
-}: {
-  clubId?: string;
-  initial: ClubQueueSettings;
-  onSave?: (next: ClubQueueSettings) => Promise<{ error?: string } | void>;
-}) {
+type ClubQueueSettingsProps = { initial: ClubQueueSettings } & (
+  | { clubId: string; onSave?: never }
+  | { clubId?: never; onSave: (next: ClubQueueSettings) => Promise<{ error?: string } | void> }
+);
+
+export function ClubQueueSettings(props: ClubQueueSettingsProps) {
+  const { initial } = props;
   const t = useTranslations("club.queueSettings");
   const [draft, setDraft] = useState<ClubQueueSettings>(initial);
   const [baseline, setBaseline] = useState<ClubQueueSettings>(initial);
@@ -174,9 +172,9 @@ export function ClubQueueSettings({
 
   function save() {
     startTransition(async () => {
-      const res = onSave
-        ? await onSave(draft)
-        : await updateClubQueueSettingsAction(clubId as string, draft);
+      const res = props.onSave
+        ? await props.onSave(draft)
+        : await updateClubQueueSettingsAction(props.clubId, draft);
       if (res && "error" in res && res.error) {
         toast.error(res.error);
         return;

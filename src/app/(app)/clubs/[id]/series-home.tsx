@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import { format } from "date-fns";
 import { CalendarDays, MapPin, Users } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -26,27 +26,32 @@ import type { ClubLinkPoolRequest, ClubSeries, Level, SeriesMember, SeriesPartne
  * (`club_series` row): ภาพรวม (จัดก๊วน + active session + ประวัตินัด) ·
  * สมาชิก (member registry + คู่ประจำ) · ตั้งค่า (session defaults editor +
  * LINE link pool + rename/archive/delete danger zone — moved off the
- * per-session settings tab in C2). Owns its own auth gate + fetch (mirrors
- * `ClubSessionView`).
+ * per-session settings tab in C2). Owns its own auth gate (mirrors
+ * `ClubSessionView`); the series row itself comes from the dispatcher
+ * (`page.tsx`), which already fetched it to route here.
  */
-export async function SeriesHome({ seriesId }: { seriesId: string }) {
+export async function SeriesHome({ series }: { series: ClubSeries }) {
   const sb = await createAdminClient();
   const session = await getSession();
 
   // Series are owner/co-admin only — same gate shape as ClubSessionView
   // (login redirect preserves redirectTo; logged-in non-manager → club list).
+  // The owner check runs against the row we already hold; only non-owners pay
+  // for assertCanManageSeries' co-admin walk.
   if (!session) {
-    redirect(`/?auth_error=login_required&redirectTo=${encodeURIComponent(`/clubs/${seriesId}`)}`);
+    redirect(`/?auth_error=login_required&redirectTo=${encodeURIComponent(`/clubs/${series.id}`)}`);
   }
 
-  const canManage = await assertCanManageSeries(sb, seriesId, session.profileId);
+  const canManage =
+    session.profileId === series.owner_id ||
+    (await assertCanManageSeries(sb, series.id, session.profileId));
   if (!canManage) redirect("/clubs");
 
-  const [seriesRes, sessionsRes, membersRes, pairsRes, levelsRes, playerCountsRes] = await Promise.all([
-    sb.from("club_series").select("*").eq("id", seriesId).maybeSingle(),
+  const seriesId = series.id;
+  const [sessionsRes, membersRes, pairsRes, levelsRes, playerCountsRes] = await Promise.all([
     sb
       .from("clubs")
-      .select("id, name, venue, play_date, created_at")
+      .select("id, name, venue, play_date, created_at, join_token, line_group_id")
       .eq("series_id", seriesId)
       .order("play_date", { ascending: false })
       .order("created_at", { ascending: false }),
@@ -67,8 +72,6 @@ export async function SeriesHome({ seriesId }: { seriesId: string }) {
     sb.from("club_players").select("club_id, club:clubs!inner(series_id)").eq("club.series_id", seriesId),
   ]);
 
-  if (!seriesRes.data) notFound();
-  const series = seriesRes.data as ClubSeries;
   const sessions = sessionsRes.data ?? [];
   const members = (membersRes.data ?? []) as SeriesMember[];
   const pairs = (pairsRes.data ?? []) as SeriesPartnerPair[];
@@ -96,7 +99,7 @@ export async function SeriesHome({ seriesId }: { seriesId: string }) {
   let resolvedLineGroupId: string | null = null;
 
   if (linkSessionClub) {
-    const [linkReqRes, guestRes, bindingRes] = await Promise.all([
+    const [linkReqRes, guestRes] = await Promise.all([
       sb
         .from("club_link_requests")
         .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
@@ -108,7 +111,6 @@ export async function SeriesHome({ seriesId }: { seriesId: string }) {
         .select("id, display_name")
         .eq("club_id", linkSessionClub.id)
         .is("profile_id", null),
-      sb.from("clubs").select("join_token, line_group_id").eq("id", linkSessionClub.id).maybeSingle(),
     ]);
 
     type LinkReqRow = {
@@ -134,8 +136,10 @@ export async function SeriesHome({ seriesId }: { seriesId: string }) {
       display_name: p.display_name as string,
     }));
 
-    resolvedJoinToken = resolveJoinToken(series, { join_token: bindingRes.data?.join_token ?? null });
-    resolvedLineGroupId = resolveLineGroupId(series, { line_group_id: bindingRes.data?.line_group_id ?? null });
+    // Legacy per-session binding columns came along on the wave-1 sessions
+    // select — no extra clubs round-trip needed for the resolve fallback.
+    resolvedJoinToken = resolveJoinToken(series, { join_token: linkSessionClub.join_token ?? null });
+    resolvedLineGroupId = resolveLineGroupId(series, { line_group_id: linkSessionClub.line_group_id ?? null });
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
@@ -286,7 +290,7 @@ export async function SeriesHome({ seriesId }: { seriesId: string }) {
         {series.archived_at && <Badge variant="outline">{t("series.archivedBadge")}</Badge>}
       </div>
 
-      <SeriesTabs overview={overview} members={membersTab} settings={settingsTab} showSettings={canManage} />
+      <SeriesTabs overview={overview} members={membersTab} settings={settingsTab} />
     </div>
   );
 }

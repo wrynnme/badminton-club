@@ -1,5 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/server";
+import { latestSessionOfSeries } from "@/lib/club/series.server";
+import type { ClubSeries } from "@/lib/types";
 import { ClubSessionView } from "./s/[sid]/session-view";
 import { SeriesHome } from "./series-home";
 
@@ -29,36 +31,22 @@ export default async function ClubDispatchPage({
   const { id } = await params;
   const sb = await createAdminClient();
 
-  const { data: series } = await sb
-    .from("club_series")
-    .select("id, is_adhoc, active_session_id")
-    .eq("id", id)
-    .maybeSingle();
+  const { data: seriesRow } = await sb.from("club_series").select("*").eq("id", id).maybeSingle();
 
-  if (series) {
+  if (seriesRow) {
+    const series = seriesRow as ClubSeries;
     if (!series.is_adhoc) {
-      return <SeriesHome seriesId={series.id} />;
+      return <SeriesHome series={series} />;
     }
 
-    let targetId = series.active_session_id as string | null;
-    if (!targetId) {
-      const { data: latest } = await sb
-        .from("clubs")
-        .select("id")
-        .eq("series_id", series.id)
-        .order("play_date", { ascending: false })
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      targetId = latest?.id ?? null;
-    }
+    const targetId = series.active_session_id ?? (await latestSessionOfSeries(sb, series.id));
     if (targetId) {
       redirect(`/clubs/${series.id}/s/${targetId}`);
     }
     // Zero sessions under this ad-hoc series (should not normally happen —
     // decision #12 deletes the hidden series along with its last session).
     // Render the shell rather than crash.
-    return <SeriesHome seriesId={series.id} />;
+    return <SeriesHome series={series} />;
   }
 
   const { data: club } = await sb.from("clubs").select("id, series_id").eq("id", id).maybeSingle();

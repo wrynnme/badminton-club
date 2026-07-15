@@ -59,7 +59,7 @@ export const SESSION_FALLBACKS = {
 /**
  * Per-field fallback parse: if the whole-object parse passes, return it;
  * otherwise keep any field that parses individually instead of dropping
- * everything (mirrors `parseQueueSettings` / `parsePresetConfig`). Never throws.
+ * everything (mirrors `parseQueueSettings`). Never throws.
  */
 export function parseSessionDefaults(raw: unknown): SessionDefaults {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {

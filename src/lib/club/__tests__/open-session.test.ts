@@ -3,6 +3,7 @@ import {
   buildLockedPairRows,
   buildRosterSeedRows,
   buildSessionInsert,
+  remapMemberLevelsToGlobal,
   type SeriesMemberForSeed,
 } from "@/lib/club/open-session";
 import { DEFAULT_SESSION_DEFAULTS, SESSION_FALLBACKS } from "@/lib/club/session-defaults";
@@ -126,6 +127,58 @@ describe("buildRosterSeedRows", () => {
       maxPlayers: 12,
     });
     expect(rows).toEqual([]);
+  });
+});
+
+describe("remapMemberLevelsToGlobal", () => {
+  it("remaps a club-scoped level id to the global id sharing its label", () => {
+    const members = [member({ id: "m1", default_level_id: "club-lvl-1" })];
+    const out = remapMemberLevelsToGlobal(
+      members,
+      [{ id: "club-lvl-1", label: "S", club_id: "club-1" }],
+      [{ id: "global-lvl-1", label: "S" }],
+    );
+    expect(out[0].default_level_id).toBe("global-lvl-1");
+  });
+
+  it("leaves a global level id untouched", () => {
+    const members = [member({ id: "m1", default_level_id: "global-lvl-1" })];
+    const out = remapMemberLevelsToGlobal(
+      members,
+      [{ id: "global-lvl-1", label: "S", club_id: null }],
+      [{ id: "global-lvl-1", label: "S" }],
+    );
+    expect(out[0].default_level_id).toBe("global-lvl-1");
+    // No club-scoped rows at all → the input array passes through as-is.
+    expect(out).toBe(members);
+  });
+
+  it("nulls a club-scoped id whose label has no global match (same as an unset level)", () => {
+    const out = remapMemberLevelsToGlobal(
+      [member({ id: "m1", default_level_id: "club-lvl-x" })],
+      [{ id: "club-lvl-x", label: "custom-only", club_id: "club-1" }],
+      [{ id: "global-lvl-1", label: "S" }],
+    );
+    expect(out[0].default_level_id).toBeNull();
+  });
+
+  it("only touches members whose id sits in the scoped remap; others pass through", () => {
+    const out = remapMemberLevelsToGlobal(
+      [
+        member({ id: "m1", default_level_id: "club-lvl-1" }),
+        member({ id: "m2", default_level_id: "unrelated-id" }),
+        member({ id: "m3", default_level_id: null }),
+      ],
+      [{ id: "club-lvl-1", label: "S", club_id: "club-1" }],
+      [{ id: "global-lvl-1", label: "S" }],
+    );
+    expect(out.map((m) => m.default_level_id)).toEqual(["global-lvl-1", "unrelated-id", null]);
+  });
+
+  it("returns members unchanged on empty inputs", () => {
+    const members = [member({ id: "m1", default_level_id: "club-lvl-1" })];
+    expect(remapMemberLevelsToGlobal(members, [], [])).toBe(members);
+    expect(remapMemberLevelsToGlobal([], [], [])).toEqual([]);
   });
 });
 

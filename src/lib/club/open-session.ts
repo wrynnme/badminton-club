@@ -40,7 +40,38 @@ export type SeriesMemberForSeed = Pick<
   "id" | "profile_id" | "canonical_name" | "default_level_id" | "is_regular" | "first_linked_at"
 >;
 
-export type RosterSeedRow = {
+/**
+ * `default_level_id` may point at a CLUB-SCOPED `levels` row (club_id NOT NULL)
+ * — `clone_global_levels_to_club` (see `resolveClubLevelTargetId` in
+ * `src/lib/actions/levels.ts`) clones the global set by label the first time a
+ * club customizes its levels, so a member's stored id can be a club-scoped row
+ * minted by whichever session last wrote it. A brand-new session always starts
+ * on the GLOBAL set (`levels.club_id IS NULL`), so seeding a raw club-scoped id
+ * would render a blank level chip. Remap every club-scoped id in `levelRows`
+ * to the GLOBAL row sharing its label (no match → null, same as an unset
+ * level); ids not present in `levelRows` (already-global ones included) pass
+ * through untouched. Pure — the caller does the two fetches.
+ */
+export function remapMemberLevelsToGlobal<M extends { default_level_id: string | null }>(
+  members: M[],
+  levelRows: { id: string; label: string; club_id: string | null }[],
+  globalLevels: { id: string; label: string }[],
+): M[] {
+  const scoped = levelRows.filter((l) => l.club_id !== null);
+  if (scoped.length === 0) return members;
+
+  const globalIdByLabel = new Map(globalLevels.map((l) => [l.label, l.id]));
+  const remap = new Map<string, string | null>(
+    scoped.map((l) => [l.id, globalIdByLabel.get(l.label) ?? null]),
+  );
+  return members.map((m) =>
+    m.default_level_id && remap.has(m.default_level_id)
+      ? { ...m, default_level_id: remap.get(m.default_level_id) ?? null }
+      : m,
+  );
+}
+
+type RosterSeedRow = {
   display_name: string;
   profile_id: string | null;
   member_id: string;
@@ -77,7 +108,7 @@ export function buildRosterSeedRows(args: {
 }
 
 export type SeriesPairForSeed = { id: string; member1_id: string; member2_id: string };
-export type LockedPairSeedRow = { player1_id: string; player2_id: string; games_remaining: null };
+type LockedPairSeedRow = { player1_id: string; player2_id: string; games_remaining: null };
 
 /**
  * Instantiate series-level partner pairs (decision #6) into per-session locked

@@ -34,16 +34,8 @@ import {
   resetSeriesMemberLevelsAction,
   updateSeriesMemberAction,
 } from "@/lib/actions/club-series";
+import { NONE_SENTINEL, levelTriggerLabel } from "@/lib/club/levels-ui";
 import type { Level, SeriesMember } from "@/lib/types";
-
-// Radix/Base UI Select can't hold an empty-string value; mirrors the sentinel
-// used across the club domain (see `add-guest-player.tsx` / `sortable-player-list.tsx`).
-const NONE_SENTINEL = "__none__";
-
-function levelLabel(levels: Level[], id: string | null, noneLabel: string): string {
-  if (!id) return noneLabel;
-  return levels.find((l) => l.id === id)?.label ?? noneLabel;
-}
 
 // ─── Member row ────────────────────────────────────────────────────────────
 
@@ -174,7 +166,7 @@ function MemberRow({
         disabled={pendingLevel}
       >
         <SelectTrigger size="sm" className="h-8 w-28 text-xs shrink-0">
-          <SelectValue>{(v: string) => levelLabel(levels, v === NONE_SENTINEL ? null : v, t("levelNone"))}</SelectValue>
+          <SelectValue>{(v: string) => levelTriggerLabel(levels, v === NONE_SENTINEL ? null : v, t("levelNone"))}</SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={NONE_SENTINEL}>{t("levelNone")}</SelectItem>
@@ -358,7 +350,7 @@ function AddMemberButton({ seriesId, levels }: { seriesId: string; levels: Level
               <Label className="text-xs">{t("levelLabel")}</Label>
               <Select value={levelId} onValueChange={(v) => { if (v) setLevelId(v); }}>
                 <SelectTrigger className="h-8 w-full text-sm">
-                  <SelectValue>{(v: string) => levelLabel(levels, v === NONE_SENTINEL ? null : v, t("levelNone"))}</SelectValue>
+                  <SelectValue>{(v: string) => levelTriggerLabel(levels, v === NONE_SENTINEL ? null : v, t("levelNone"))}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE_SENTINEL}>{t("levelNone")}</SelectItem>

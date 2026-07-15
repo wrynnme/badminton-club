@@ -24,10 +24,7 @@ import {
   InputGroupTextarea,
 } from "@/components/ui/input-group";
 import { createClubSeriesAction } from "@/lib/actions/club-series";
-
-function toDateStr(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
+import { toDateStr } from "@/lib/utils";
 
 const TIME_PRESETS = [
   { label: "06:00–08:00", start: "06:00", end: "08:00" },

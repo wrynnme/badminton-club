@@ -32,12 +32,47 @@ import {
   buildLockedPairRows,
   buildRosterSeedRows,
   buildSessionInsert,
+  remapMemberLevelsToGlobal,
   type SeriesMemberForSeed,
   type SeriesPairForSeed,
 } from "@/lib/club/open-session";
 import type { Club, ClubSeries } from "@/lib/types";
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
+
+// ---------------------------------------------------------------------------
+// Shared internal: per-action guard prologue.
+// ---------------------------------------------------------------------------
+
+/**
+ * Session + guest + seriesId-shape + permission gate shared by every series
+ * action. `level` picks the permission check: "manage" = owner or a co-admin
+ * of any session (`assertCanManageSeries`), "owner" = owner only
+ * (`assertSeriesOwner`). A missing session throws Next's login redirect (via
+ * `loginRedirect()`, which never returns); every other failure comes back as
+ * `{ ok: false, res }` for the action to return as-is. The uuid check makes a
+ * malformed seriesId a uniform `club.invalidData` before any DB round-trip.
+ */
+async function guardSeries(seriesId: string, level: "manage" | "owner") {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
+  if (session.isGuest) {
+    return { ok: false as const, res: { error: t("club.requireLineForClub") } };
+  }
+  if (!z.string().uuid().safeParse(seriesId).success) {
+    return { ok: false as const, res: { error: t("club.invalidData") } };
+  }
+
+  const sb = await createAdminClient();
+  const allowed =
+    level === "owner"
+      ? await assertSeriesOwner(sb, seriesId, session.profileId)
+      : await assertCanManageSeries(sb, seriesId, session.profileId);
+  if (!allowed) return { ok: false as const, res: { error: t("club.noPermission") } };
+
+  return { ok: true as const, sb, t, profileId: session.profileId };
+}
 
 // ---------------------------------------------------------------------------
 // Shared internal: open a brand-new session under an existing series row.
@@ -60,6 +95,23 @@ async function openSessionCore(
     notes: opts?.notes?.trim() || null,
   };
 
+  // Independent reads in one wave (writes below stay strictly sequenced):
+  // membership registry for the regular seed (decision #2 — read fresh, not
+  // cached on `series`, which may be stale by the time this runs), partner
+  // pairs (decision #6), and the previously-active session's co-admins
+  // (decision #3).
+  const [memberRes, pairRes, prevAdminRes] = await Promise.all([
+    sb
+      .from("series_members")
+      .select("id, profile_id, canonical_name, default_level_id, is_regular, first_linked_at")
+      .eq("series_id", series.id),
+    sb.from("series_partner_pairs").select("id, member1_id, member2_id").eq("series_id", series.id),
+    series.active_session_id
+      ? sb.from("club_admins").select("user_id").eq("club_id", series.active_session_id)
+      : Promise.resolve({ data: null }),
+  ]);
+  const members = (memberRes.data ?? []) as SeriesMemberForSeed[];
+
   const { data: club, error: clubErr } = await sb
     .from("clubs")
     .insert(insertPayload)
@@ -79,24 +131,10 @@ async function openSessionCore(
     }
   };
 
-  // Seed regulars (decision #2) — read the current membership registry fresh
-  // (not cached on `series`, which may be stale by the time this runs).
-  const { data: memberRows } = await sb
-    .from("series_members")
-    .select("id, profile_id, canonical_name, default_level_id, is_regular, first_linked_at")
-    .eq("series_id", series.id);
-  const members = (memberRows ?? []) as SeriesMemberForSeed[];
-
-  // `default_level_id` may point at a CLUB-SCOPED `levels` row (club_id NOT
-  // NULL) — `clone_global_levels_to_club` (see `resolveClubLevelTargetId` in
-  // `src/lib/actions/levels.ts`) clones the global set by label the first
-  // time a club customizes its levels, so a member's stored id can be a
-  // club-scoped row minted by whichever session last wrote it. A brand-new
-  // session always starts on the GLOBAL set (`levels.club_id IS NULL`), so
-  // seeding a raw club-scoped id would render a blank level chip. Remap every
-  // regular's default_level_id to the GLOBAL row sharing its label (no match
-  // → null, same as an unset level) before building seed rows — keep
-  // `buildRosterSeedRows` pure by doing the remap here, not inside it.
+  // Remap club-scoped default_level_id values onto the GLOBAL level set before
+  // building seed rows (see `remapMemberLevelsToGlobal` in
+  // `src/lib/club/open-session.ts` for the why) — only regulars get seeded, so
+  // only their level ids need resolving.
   const scopedLevelIds = Array.from(
     new Set(
       members
@@ -106,23 +144,15 @@ async function openSessionCore(
   );
   let remappedMembers = members;
   if (scopedLevelIds.length > 0) {
-    const { data: levelRows } = await sb
-      .from("levels")
-      .select("id, label, club_id")
-      .in("id", scopedLevelIds);
-    const scoped = (levelRows ?? []).filter((l) => l.club_id !== null);
-    if (scoped.length > 0) {
-      const globalLevels = await getGlobalLevelsAction();
-      const globalIdByLabel = new Map(globalLevels.map((l) => [l.label, l.id]));
-      const remap = new Map<string, string | null>(
-        scoped.map((l) => [l.id as string, globalIdByLabel.get(l.label as string) ?? null]),
-      );
-      remappedMembers = members.map((m) =>
-        m.default_level_id && remap.has(m.default_level_id)
-          ? { ...m, default_level_id: remap.get(m.default_level_id) ?? null }
-          : m,
-      );
-    }
+    const [levelRes, globalLevels] = await Promise.all([
+      sb.from("levels").select("id, label, club_id").in("id", scopedLevelIds),
+      getGlobalLevelsAction(),
+    ]);
+    remappedMembers = remapMemberLevelsToGlobal(
+      members,
+      (levelRes.data ?? []) as { id: string; label: string; club_id: string | null }[],
+      globalLevels,
+    );
   }
 
   const seedRows = buildRosterSeedRows({
@@ -134,17 +164,7 @@ async function openSessionCore(
   if (seedRows.length > 0) {
     const { data: inserted, error: seedErr } = await sb
       .from("club_players")
-      .insert(
-        seedRows.map((r) => ({
-          club_id: clubId,
-          display_name: r.display_name,
-          profile_id: r.profile_id,
-          member_id: r.member_id,
-          level_id: r.level_id,
-          position: r.position,
-          status: r.status,
-        })),
-      )
+      .insert(seedRows.map((r) => ({ club_id: clubId, ...r })))
       .select("id, member_id");
     if (seedErr) {
       await rollback();
@@ -156,12 +176,8 @@ async function openSessionCore(
   }
 
   // Seed locked pairs (decision #6) — only pairs whose both members were just seeded.
-  const { data: pairRows } = await sb
-    .from("series_partner_pairs")
-    .select("id, member1_id, member2_id")
-    .eq("series_id", series.id);
   const lockedRows = buildLockedPairRows({
-    pairs: (pairRows ?? []) as SeriesPairForSeed[],
+    pairs: (pairRes.data ?? []) as SeriesPairForSeed[],
     playerIdByMemberId: memberIdToPlayerId,
   });
   if (lockedRows.length > 0) {
@@ -177,19 +193,15 @@ async function openSessionCore(
   // Carry co-admins forward from the previously-active session, if any (decision #3 —
   // co-admins stay per-session until P3, so a new session starts blank otherwise).
   if (series.active_session_id) {
-    const { data: prevAdmins } = await sb
-      .from("club_admins")
-      .select("user_id")
-      .eq("club_id", series.active_session_id);
-    const rows = (prevAdmins ?? [])
+    const rows = (prevAdminRes.data ?? [])
       .map((a) => a.user_id as string)
       .filter((uid) => uid !== series.owner_id)
       .map((uid) => ({ club_id: clubId, user_id: uid, added_by: actorId }));
     if (rows.length > 0) {
+      // Source rows come from the PK-deduped club_admins table onto a
+      // brand-new club_id — any insert failure is a real error.
       const { error: adminErr } = await sb.from("club_admins").insert(rows);
-      // 23505 = duplicate co-admin row — never possible on a brand-new club_id,
-      // but tolerated so a benign race can't kill the whole open-session flow.
-      if (adminErr && adminErr.code !== "23505") {
+      if (adminErr) {
         await rollback();
         return { error: adminErr.message };
       }
@@ -223,7 +235,7 @@ const CreateSeriesSchema = z.object({
   shuttleInfo: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
 });
-export type CreateClubSeriesInput = z.infer<typeof CreateSeriesSchema>;
+type CreateClubSeriesInput = z.infer<typeof CreateSeriesSchema>;
 
 export async function createClubSeriesAction(
   input: CreateClubSeriesInput,
@@ -300,17 +312,13 @@ export async function openClubSessionAction(input: {
   seriesId: string;
   playDate: string;
 }): Promise<{ clubId: string } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
+  const guard = await guardSeries(input.seriesId, "manage");
+  if (!guard.ok) return guard.res;
+  const { sb, t, profileId } = guard;
 
   const parsed = OpenSessionSchema.safeParse(input);
   if (!parsed.success) return { error: t("club.invalidData") };
   const { seriesId, playDate } = parsed.data;
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) return { error: t("club.noPermission") };
 
   const { data: seriesRow, error: seriesErr } = await sb
     .from("club_series")
@@ -321,7 +329,7 @@ export async function openClubSessionAction(input: {
   const series = seriesRow as ClubSeries;
   if (series.archived_at) return { error: t("club.seriesArchived") };
 
-  const result = await openSessionCore(sb, series, playDate, session.profileId);
+  const result = await openSessionCore(sb, series, playDate, profileId);
   if ("error" in result) return { error: result.error || t("club.openSessionFailed") };
 
   revalidateClubTree();
@@ -336,15 +344,9 @@ export async function updateSessionDefaultsAction(input: {
   seriesId: string;
   patch: Partial<SessionDefaults>;
 }): Promise<{ ok: true; defaults: SessionDefaults } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
-  if (!z.string().uuid().safeParse(input.seriesId).success) return { error: t("club.invalidData") };
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, input.seriesId, session.profileId)))
-    return { error: t("club.noPermission") };
+  const guard = await guardSeries(input.seriesId, "manage");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const { data: seriesRow, error: fetchErr } = await sb
     .from("club_series")
@@ -381,17 +383,13 @@ export async function adoptSessionAsDefaultsAction(input: {
   seriesId: string;
   clubId: string;
 }): Promise<{ ok: true } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
+  const guard = await guardSeries(input.seriesId, "manage");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const parsed = AdoptDefaultsSchema.safeParse(input);
   if (!parsed.success) return { error: t("club.invalidData") };
   const { seriesId, clubId } = parsed.data;
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) return { error: t("club.noPermission") };
 
   const { data: club, error: clubErr } = await sb.from("clubs").select("*").eq("id", clubId).maybeSingle();
   if (clubErr || !club || (club as Club).series_id !== seriesId) return { error: t("club.clubNotFound") };
@@ -427,19 +425,14 @@ export async function renameClubSeriesAction(input: {
   seriesId: string;
   name: string;
 }): Promise<{ ok: true } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
+  const guard = await guardSeries(input.seriesId, "owner");
+  if (!guard.ok) return guard.res;
+  const { sb, t, profileId } = guard;
 
   const parsed = RenameSeriesSchema.safeParse(input);
   if (!parsed.success) return { error: t("club.clubNameTooShort") };
 
-  const sb = await createAdminClient();
-  if (!(await assertSeriesOwner(sb, parsed.data.seriesId, session.profileId)))
-    return { error: t("club.noPermission") };
-
-  if (await isSeriesNameTaken(sb, session.profileId, parsed.data.name, parsed.data.seriesId))
+  if (await isSeriesNameTaken(sb, profileId, parsed.data.name, parsed.data.seriesId))
     return { error: t("club.seriesNameTaken") };
 
   const { error } = await sb
@@ -455,13 +448,9 @@ export async function renameClubSeriesAction(input: {
 export async function archiveClubSeriesAction(input: {
   seriesId: string;
 }): Promise<{ ok: true } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
-
-  const sb = await createAdminClient();
-  if (!(await assertSeriesOwner(sb, input.seriesId, session.profileId))) return { error: t("club.noPermission") };
+  const guard = await guardSeries(input.seriesId, "owner");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const { error } = await sb
     .from("club_series")
@@ -476,13 +465,9 @@ export async function archiveClubSeriesAction(input: {
 export async function unarchiveClubSeriesAction(input: {
   seriesId: string;
 }): Promise<{ ok: true } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
-
-  const sb = await createAdminClient();
-  if (!(await assertSeriesOwner(sb, input.seriesId, session.profileId))) return { error: t("club.noPermission") };
+  const guard = await guardSeries(input.seriesId, "owner");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const { error } = await sb.from("club_series").update({ archived_at: null }).eq("id", input.seriesId);
   if (error) return { error: t("club.unarchiveFailed") };
@@ -498,19 +483,14 @@ export async function upgradeAdhocSeriesAction(input: {
   seriesId: string;
   name: string;
 }): Promise<{ ok: true } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
+  const guard = await guardSeries(input.seriesId, "owner");
+  if (!guard.ok) return guard.res;
+  const { sb, t, profileId } = guard;
 
   const parsed = UpgradeAdhocSchema.safeParse(input);
   if (!parsed.success || parsed.data.name.length < 2) return { error: t("club.adhocNameRequired") };
 
-  const sb = await createAdminClient();
-  if (!(await assertSeriesOwner(sb, parsed.data.seriesId, session.profileId)))
-    return { error: t("club.noPermission") };
-
-  if (await isSeriesNameTaken(sb, session.profileId, parsed.data.name, parsed.data.seriesId))
+  if (await isSeriesNameTaken(sb, profileId, parsed.data.name, parsed.data.seriesId))
     return { error: t("club.seriesNameTaken") };
 
   const { error } = await sb
@@ -530,17 +510,12 @@ export async function setActiveSessionAction(input: {
   seriesId: string;
   clubId: string;
 }): Promise<{ ok: true } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
+  const guard = await guardSeries(input.seriesId, "manage");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const parsed = SetActiveSessionSchema.safeParse(input);
   if (!parsed.success) return { error: t("club.invalidData") };
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, parsed.data.seriesId, session.profileId)))
-    return { error: t("club.noPermission") };
 
   const { data: club, error: clubErr } = await sb
     .from("clubs")
@@ -565,13 +540,9 @@ export async function setActiveSessionAction(input: {
  * removes members/pairs/link requests when the delete does succeed.
  */
 export async function deleteClubSeriesAction(input: { seriesId: string }): Promise<{ ok: true } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
-
-  const sb = await createAdminClient();
-  if (!(await assertSeriesOwner(sb, input.seriesId, session.profileId))) return { error: t("club.noPermission") };
+  const guard = await guardSeries(input.seriesId, "owner");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const { error } = await sb.from("club_series").delete().eq("id", input.seriesId);
   if (error) {
@@ -601,17 +572,13 @@ export async function addSeriesMemberAction(input: {
   levelId?: string | null;
   isRegular?: boolean;
 }): Promise<{ ok: true; memberId: string } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
+  const guard = await guardSeries(input.seriesId, "manage");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const parsed = AddMemberSchema.safeParse(input);
   if (!parsed.success) return { error: t("club.invalidData") };
   const { seriesId, name, levelId, isRegular } = parsed.data;
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) return { error: t("club.noPermission") };
 
   const { data: existing } = await sb
     .from("series_members")
@@ -654,17 +621,13 @@ export async function updateSeriesMemberAction(input: {
   memberId: string;
   patch: { canonicalName?: string; defaultLevelId?: string | null; isRegular?: boolean };
 }): Promise<{ ok: true } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
+  const guard = await guardSeries(input.seriesId, "manage");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const parsed = UpdateMemberSchema.safeParse(input);
   if (!parsed.success) return { error: t("club.invalidData") };
   const { seriesId, memberId, patch } = parsed.data;
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) return { error: t("club.noPermission") };
 
   const { data: member } = await sb
     .from("series_members")
@@ -708,14 +671,9 @@ export async function removeSeriesMemberAction(input: {
   seriesId: string;
   memberId: string;
 }): Promise<{ ok: true } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, input.seriesId, session.profileId)))
-    return { error: t("club.noPermission") };
+  const guard = await guardSeries(input.seriesId, "manage");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const { error } = await sb
     .from("series_members")
@@ -732,14 +690,9 @@ export async function removeSeriesMemberAction(input: {
 export async function resetSeriesMemberLevelsAction(input: {
   seriesId: string;
 }): Promise<{ ok: true; count: number } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, input.seriesId, session.profileId)))
-    return { error: t("club.noPermission") };
+  const guard = await guardSeries(input.seriesId, "manage");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const { data, error } = await sb
     .from("series_members")
@@ -768,18 +721,14 @@ export async function addSeriesPartnerPairAction(input: {
   member1Id: string;
   member2Id: string;
 }): Promise<{ ok: true; pairId: string } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
+  const guard = await guardSeries(input.seriesId, "manage");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const parsed = AddPairSchema.safeParse(input);
   if (!parsed.success) return { error: t("club.invalidData") };
   const { seriesId, member1Id, member2Id } = parsed.data;
   if (member1Id === member2Id) return { error: t("club.selectTwoDifferentPlayers") };
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) return { error: t("club.noPermission") };
 
   const { data: members } = await sb
     .from("series_members")
@@ -816,14 +765,9 @@ export async function removeSeriesPartnerPairAction(input: {
   seriesId: string;
   pairId: string;
 }): Promise<{ ok: true } | { error: string }> {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, input.seriesId, session.profileId)))
-    return { error: t("club.noPermission") };
+  const guard = await guardSeries(input.seriesId, "manage");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
 
   const { error } = await sb
     .from("series_partner_pairs")

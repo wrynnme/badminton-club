@@ -19,12 +19,7 @@ import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { openClubSessionAction } from "@/lib/actions/club-series";
-
-// Mirrors `toDateStr` in `create-series-form.tsx` — kept local since it's a
-// one-line helper, same convention as that component.
-function toDateStr(d: Date) {
-  return d.toISOString().slice(0, 10);
-}
+import { toDateStr } from "@/lib/utils";
 
 /**
  * "จัดก๊วน" primary action (ADR 0002 decision #10 — button label is the verb

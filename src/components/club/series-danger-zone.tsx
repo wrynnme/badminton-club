@@ -11,7 +11,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { AlertTriangle, Archive, ArchiveRestore, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Loader2, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -26,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { TypedDeleteDialog } from "@/components/club/typed-delete-dialog";
 import {
   archiveClubSeriesAction,
   deleteClubSeriesAction,
@@ -203,74 +204,39 @@ function DeleteSeriesButton({
 }) {
   const t = useTranslations("club.seriesDangerZone");
   const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [typed, setTyped] = useState("");
-  const [pending, start] = useTransition();
-
-  const confirmed = typed.trim() === seriesName.trim();
-
-  function handleDelete() {
-    if (!confirmed) return;
-    start(async () => {
-      const res = await deleteClubSeriesAction({ seriesId });
-      if ("error" in res) {
-        toast.error(res.error);
-        return;
-      }
-      router.push("/clubs");
-    });
-  }
-
-  const trigger = (
-    <Button type="button" size="sm" variant="destructive" disabled={hasSessions} onClick={() => setOpen(true)}>
-      <Trash2 className="h-3.5 w-3.5 mr-1" />
-      {t("deleteButton")}
-    </Button>
-  );
 
   return (
-    <>
-      <Tooltip>
-        <TooltipTrigger render={trigger} />
-        <TooltipContent>{hasSessions ? t("deleteDisabledTooltip") : t("deleteTooltip")}</TooltipContent>
-      </Tooltip>
-
-      <Dialog
-        open={open}
-        onOpenChange={(o) => {
-          setOpen(o);
-          if (!o) setTyped("");
-        }}
-      >
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
-              {t("deleteDialogTitle", { name: seriesName })}
-            </DialogTitle>
-            <DialogDescription>{t("deleteDialogDesc")}</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-1.5">
-            <Label htmlFor="series-delete-confirm">{t("deleteConfirmLabel", { name: seriesName })}</Label>
-            <Input
-              id="series-delete-confirm"
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              placeholder={seriesName}
-              autoComplete="off"
-              disabled={pending}
-            />
-          </div>
-          <DialogFooter className="gap-2">
-            <DialogClose render={<Button variant="outline" disabled={pending}>{t("deleteCancel")}</Button>} />
-            <Button variant="destructive" onClick={handleDelete} disabled={!confirmed || pending}>
-              {pending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              {pending ? t("deleting") : t("deleteConfirmButton")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+    <TypedDeleteDialog
+      renderTrigger={(open) => (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button type="button" size="sm" variant="destructive" disabled={hasSessions} onClick={open}>
+                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                {t("deleteButton")}
+              </Button>
+            }
+          />
+          <TooltipContent>{hasSessions ? t("deleteDisabledTooltip") : t("deleteTooltip")}</TooltipContent>
+        </Tooltip>
+      )}
+      title={t("deleteDialogTitle", { name: seriesName })}
+      description={t("deleteDialogDesc")}
+      expectedName={seriesName}
+      inputId="series-delete-confirm"
+      inputLabel={t("deleteConfirmLabel", { name: seriesName })}
+      cancelLabel={t("deleteCancel")}
+      confirmLabel={t("deleteConfirmButton")}
+      pendingLabel={t("deleting")}
+      onConfirm={async () => {
+        const res = await deleteClubSeriesAction({ seriesId });
+        if ("error" in res) {
+          toast.error(res.error);
+          return;
+        }
+        router.push("/clubs");
+      }}
+    />
   );
 }
 

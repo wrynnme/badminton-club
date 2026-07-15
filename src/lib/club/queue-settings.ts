@@ -51,13 +51,11 @@ export const DEFAULT_QUEUE_SETTINGS: ClubQueueSettings = ClubQueueSettingsSchema
 
 /**
  * Fold removed legacy enum values onto their surviving twin, in place, before any
- * schema parse — shared by parseQueueSettings and parsePresetConfig so the two
- * translators can't drift. `queue_mode "smart"` ≡ `"level_match"` (identical
- * ordering + level split); `queue_mode "fifo"` → `"rest_longest"` (fifo removed —
- * both are pure queue-order modes, rest_longest just orders by rest instead of
- * intake); `balance_strictness "loose"` ≡ `"balanced"` (only "strict" ever
- * branched). Preset configs have no balance_strictness field, so the last mapping
- * is simply a no-op there. Keeps existing clubs working with no DB migration.
+ * schema parse. `queue_mode "smart"` ≡ `"level_match"` (identical ordering +
+ * level split); `queue_mode "fifo"` → `"rest_longest"` (fifo removed — both are
+ * pure queue-order modes, rest_longest just orders by rest instead of intake);
+ * `balance_strictness "loose"` ≡ `"balanced"` (only "strict" ever branched).
+ * Keeps existing clubs working with no DB migration.
  */
 export function normalizeLegacyQueueValues(
   rec: Record<string, unknown>,
@@ -98,11 +96,11 @@ export function parseQueueSettings(raw: unknown): ClubQueueSettings {
   const rec = normalizeLegacyQueueValues({ ...(raw as Record<string, unknown>) });
   // Whether the stored config carried an explicit skill_level_enabled. Since
   // v0.25.0 the flag has no standalone control — it is implied by the queue mode
-  // (on iff level_match). Configs written before the coupling, or written by a
-  // path that omits the flag (preset apply builds queue_settings by hand without
-  // it), must have it DERIVED so a level_match config actually uses levels and a
-  // non-level_match one doesn't. An explicitly-stored value is preserved so
-  // legacy rows keep their behavior until re-saved through the settings card.
+  // (on iff level_match). Configs written before the coupling, or by any older
+  // write path that omitted the flag, must have it DERIVED so a level_match
+  // config actually uses levels and a non-level_match one doesn't. An
+  // explicitly-stored value is preserved so legacy rows keep their behavior
+  // until re-saved through the settings card.
   const hasSkillFlag = "skill_level_enabled" in rec;
   const withCoupling = (s: ClubQueueSettings): ClubQueueSettings =>
     hasSkillFlag
