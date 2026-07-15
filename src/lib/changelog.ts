@@ -22,6 +22,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.48.2",
+    date: "2026-07-16",
+    groups: [
+      {
+        type: "improved",
+        items: [
+          "เปลี่ยนชื่อหน้า \"ก๊วนของฉัน\" เป็น \"นัดที่ฉันดูแล\" (ทั้งหัวข้อหน้าและเมนู) ให้ตรงกับเนื้อหา — หน้านี้แสดงนัดที่คุณเป็นเจ้าของหรือผู้ดูแล",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.48.1",
     date: "2026-07-16",
     groups: [
