@@ -23,6 +23,8 @@
   },
   "coAdmin": {
     "title": "Co-admins",
+    "seriesHint": "Co-admins now live at the club (series) level and apply to every session — this list still works for this session specifically.",
+    "seriesHintLink": "Go to club settings →",
     "empty": "No co-admins yet",
     "noName": "(No name)",
     "removeAriaLabel": "Remove {name}",

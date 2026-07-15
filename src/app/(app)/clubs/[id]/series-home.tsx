@@ -16,11 +16,13 @@ import { SeriesMembersManager } from "@/components/club/series-members-manager";
 import { SeriesPartnerPairs } from "@/components/club/series-partner-pairs";
 import { SessionDefaultsEditor } from "@/components/club/session-defaults-editor";
 import { SeriesDangerZone } from "@/components/club/series-danger-zone";
+import { SeriesCoAdminControls } from "@/components/club/series-co-admin-controls";
 import { ClubLinkControls } from "@/components/club/club-link-controls";
 import { SeriesStatsView } from "@/components/club/series-stats-view";
 import { parseSessionDefaults } from "@/lib/club/session-defaults";
 import { resolveJoinToken, resolveLineGroupId } from "@/lib/club/series.server";
 import { computeSeriesStats, type SeriesStatsMatch, type SeriesStatsPlayer } from "@/lib/club/series-stats";
+import type { SeriesAdmin } from "@/lib/actions/club-series";
 import type { ClubLinkPoolRequest, ClubSeries, Level, SeriesMember, SeriesPartnerPair } from "@/lib/types";
 
 /**
@@ -50,7 +52,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   if (!canManage) redirect("/clubs");
 
   const seriesId = series.id;
-  const [sessionsRes, membersRes, pairsRes, levelsRes, playersRes, seriesMatchesRes] = await Promise.all([
+  const [sessionsRes, membersRes, pairsRes, levelsRes, playersRes, seriesMatchesRes, seriesAdminsRes] = await Promise.all([
     sb
       .from("clubs")
       .select("id, name, venue, play_date, created_at, join_token, line_group_id")
@@ -88,6 +90,14 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
       )
       .eq("club.series_id", seriesId)
       .eq("status", "completed"),
+    // ADR 0002 P3 — series-level co-admins (owner-only settings section below).
+    // Fetched unconditionally alongside everything else (mirrors the club_admins
+    // fetch in ClubSessionView) — cheap even when the viewer isn't the owner.
+    sb
+      .from("series_admins")
+      .select("series_id, user_id, added_by, added_at, profile:profiles!series_admins_user_id_fkey(display_name, line_user_id)")
+      .eq("series_id", seriesId)
+      .order("added_at", { ascending: true }),
   ]);
 
   const sessions = sessionsRes.data ?? [];
@@ -96,6 +106,22 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   const levels = (levelsRes.data ?? []) as Level[];
   const seriesPlayers = (playersRes.data ?? []) as SeriesStatsPlayer[];
   const seriesMatches = (seriesMatchesRes.data ?? []) as SeriesStatsMatch[];
+
+  type SeriesAdminRow = {
+    series_id: string;
+    user_id: string;
+    added_by: string | null;
+    added_at: string;
+    profile: { display_name: string | null; line_user_id: string | null } | null;
+  };
+  const seriesAdmins: SeriesAdmin[] = ((seriesAdminsRes.data ?? []) as unknown as SeriesAdminRow[]).map((r) => ({
+    series_id: r.series_id,
+    user_id: r.user_id,
+    display_name: r.profile?.display_name ?? null,
+    line_user_id: r.profile?.line_user_id ?? null,
+    added_by: r.added_by,
+    added_at: r.added_at,
+  }));
 
   const playerCountByClubId = new Map<string, number>();
   for (const row of seriesPlayers) {
@@ -298,6 +324,8 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
           <CardContent className="pt-4 text-sm text-muted-foreground">{t("series.linkNoSessionsHint")}</CardContent>
         </Card>
       )}
+
+      {isOwner && <SeriesCoAdminControls seriesId={series.id} initialAdmins={seriesAdmins} />}
 
       {isOwner && (
         <SeriesDangerZone

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition, useEffect } from "react";
-import Link from "next/link";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { Check, ChevronsUpDown, UserPlus, Trash2, Loader2 } from "lucide-react";
@@ -17,26 +16,27 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import {
-  addClubCoAdminAction,
-  removeClubCoAdminAction,
-  searchClubProfilesAction,
-} from "@/lib/actions/club-admins";
-import type { ClubAdmin, ClubProfileSearchResult } from "@/lib/actions/club-admins";
+  addSeriesCoAdminAction,
+  removeSeriesCoAdminAction,
+  searchSeriesProfilesAction,
+  type SeriesAdmin,
+} from "@/lib/actions/club-series";
+import type { ClubProfileSearchResult } from "@/lib/actions/club-admins";
 
-export function ClubCoAdminControls({
-  clubId,
+/**
+ * ADR 0002 P3 — series-level co-admin management (owner-only), mounted in the
+ * series settings tab. Mirrors `ClubCoAdminControls` exactly (same UX/shape),
+ * keyed on `seriesId` + `series_admins` instead of `clubId` + `club_admins`.
+ */
+export function SeriesCoAdminControls({
+  seriesId,
   initialAdmins,
-  seriesId = null,
 }: {
-  clubId: string;
-  initialAdmins: ClubAdmin[];
-  /** ADR 0002 P3 — co-admin management moved to the series settings tab; a
-   *  non-null id renders a hint pointing there. null = club has no series yet
-   *  (legacy row) — this panel stays the only place to manage co-admins. */
-  seriesId?: string | null;
+  seriesId: string;
+  initialAdmins: SeriesAdmin[];
 }) {
   const t = useTranslations("club.coAdmin");
-  const [admins, setAdmins] = useState<ClubAdmin[]>(initialAdmins);
+  const [admins, setAdmins] = useState<SeriesAdmin[]>(initialAdmins);
   const [isPending, startTransition] = useTransition();
 
   const [open, setOpen] = useState(false);
@@ -55,7 +55,7 @@ export function ClubCoAdminControls({
     }
     setSearching(true);
     const timer = setTimeout(async () => {
-      const res = await searchClubProfilesAction(clubId, q);
+      const res = await searchSeriesProfilesAction({ seriesId, query: q });
       if ("ok" in res) setResults(res.results);
       else {
         setResults([]);
@@ -64,19 +64,19 @@ export function ClubCoAdminControls({
       setSearching(false);
     }, 250);
     return () => clearTimeout(timer);
-  }, [query, clubId]);
+  }, [query, seriesId]);
 
   async function handleAdd() {
     if (!selected) return;
     setAdding(true);
-    const res = await addClubCoAdminAction(clubId, selected.id);
+    const res = await addSeriesCoAdminAction({ seriesId, profileId: selected.id });
     setAdding(false);
     if ("error" in res) { toast.error(res.error); return; }
     toast.success(t("toastAdded"));
     setAdmins((prev) => [
       ...prev,
       {
-        club_id: clubId,
+        series_id: seriesId,
         user_id: selected.id,
         display_name: selected.display_name,
         line_user_id: null,
@@ -92,7 +92,7 @@ export function ClubCoAdminControls({
 
   function handleRemove(userId: string) {
     startTransition(async () => {
-      const res = await removeClubCoAdminAction(clubId, userId);
+      const res = await removeSeriesCoAdminAction({ seriesId, userId });
       if ("error" in res) { toast.error(res.error); return; }
       toast.success(t("toastRemoved"));
       setAdmins((prev) => prev.filter((a) => a.user_id !== userId));
@@ -105,14 +105,6 @@ export function ClubCoAdminControls({
         <CardTitle className="text-base">{t("title")}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {seriesId && (
-          <p className="text-xs text-muted-foreground">
-            {t("seriesHint")}{" "}
-            <Link href={`/clubs/${seriesId}?tab=settings`} className="underline underline-offset-2 hover:text-foreground">
-              {t("seriesHintLink")}
-            </Link>
-          </p>
-        )}
         {admins.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("empty")}</p>
         ) : (

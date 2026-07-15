@@ -15,10 +15,13 @@ export async function assertSeriesOwner(
 }
 
 /**
- * Owner OR a co-admin of ANY session (`clubs` row) under this series. Co-admins
- * are still per-session until P3 lifts them to the series level (see ADR 0002
- * roadmap) — so this walks every session's `club_admins` instead of a
- * series-level admin table that doesn't exist yet.
+ * Owner OR a series-level co-admin (`series_admins`, P3) OR — legacy fallback —
+ * a co-admin of ANY session (`clubs` row) under this series. Co-admin
+ * management moved to the series settings tab in P3 (`addSeriesCoAdminAction` /
+ * `removeSeriesCoAdminAction` in `club-series.ts`), but a club created before
+ * P3 (or whose co-admins were never re-added at the series level) still has its
+ * co-admins sitting on the per-session `club_admins` table only — EXPAND
+ * discipline keeps that path readable until CONTRACT (see docs/adr/0002).
  */
 export async function assertCanManageSeries(
   sb: AdminClient,
@@ -34,6 +37,15 @@ export async function assertCanManageSeries(
   if (!series) return false;
   if (series.owner_id === profileId) return true;
 
+  const { data: seriesAdmin } = await sb
+    .from("series_admins")
+    .select("user_id")
+    .eq("series_id", seriesId)
+    .eq("user_id", profileId)
+    .maybeSingle();
+  if (seriesAdmin) return true;
+
+  // Legacy fallback — see doc comment above.
   const { data: clubs } = await sb.from("clubs").select("id").eq("series_id", seriesId);
   const clubIds = (clubs ?? []).map((c) => c.id as string);
   if (clubIds.length === 0) return false;
