@@ -3,7 +3,7 @@
 -- (new requests keep stamping it with the active session for UI back-compat);
 -- series-level idempotency is enforced in the action layer (legacy rows may
 -- legitimately hold multiple sessions' requests for one profile, so no new
--- unique index here). NOT applied to prod yet — apply with the P1 ship gate.
+-- unique index here). Applied to prod 2026-07-15 (P1 ship-check gate).
 
 alter table public.club_link_requests
   add column if not exists series_id uuid references public.club_series(id) on delete cascade;

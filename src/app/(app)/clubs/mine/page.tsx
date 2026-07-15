@@ -5,9 +5,6 @@ import { Button } from "@/components/ui/button";
 import { getTranslations } from "next-intl/server";
 import { ClubCard, type ClubCardData } from "@/components/club/club-card";
 import { ownerOrAdminOrFilter } from "@/lib/owner-scope";
-import { PresetManager } from "@/components/club/preset-manager";
-import { listClubPresetsAction } from "@/lib/actions/club-presets";
-import type { ClubPreset } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -43,12 +40,6 @@ export default async function MyClubsPage() {
     }
   }
 
-  let presets: ClubPreset[] = [];
-  if (canCreate) {
-    const presetsResult = await listClubPresetsAction();
-    if ("presets" in presetsResult) presets = presetsResult.presets;
-  }
-
   const t = await getTranslations("club");
 
   return (
@@ -73,8 +64,6 @@ export default async function MyClubsPage() {
           ))}
         </div>
       )}
-
-      {canCreate && <PresetManager presets={presets} />}
     </div>
   );
 }

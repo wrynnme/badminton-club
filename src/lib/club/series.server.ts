@@ -17,6 +17,7 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Club, ClubSeries } from "@/lib/types";
 import { classifyRosterMatch } from "@/lib/club/line-self-link";
+import { buildSessionDefaultsFromClub } from "@/lib/club/session-defaults";
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
 
@@ -82,7 +83,7 @@ export async function ensureSeriesForClub(sb: AdminClient, clubId: string): Prom
       owner_id: row.owner_id,
       name: row.name,
       active_session_id: row.id,
-      session_defaults: buildSessionDefaults(row),
+      session_defaults: buildSessionDefaultsFromClub(row),
     };
     let { data: created, error: createErr } = await sb
       .from("club_series")
@@ -112,20 +113,104 @@ export async function ensureSeriesForClub(sb: AdminClient, clubId: string): Prom
   return series;
 }
 
-/** session_defaults shape (decision #15) — must match the backfill migration's jsonb_build_object. */
-function buildSessionDefaults(club: Club): Record<string, unknown> {
-  return {
-    venue: club.venue,
-    start_time: club.start_time,
-    end_time: club.end_time,
-    max_players: club.max_players,
-    court_fee: club.court_fee,
-    shuttle_price: club.shuttle_price,
-    court_split: club.court_split,
-    shuttle_split: club.shuttle_split,
-    courts: club.courts,
-    queue_settings: club.queue_settings,
-  };
+/**
+ * Latest session (`clubs` row) of a series — play_date desc, created_at desc.
+ * `excludeId` skips one session (e.g. the row about to be deleted). Returns the
+ * session id, or null when none match.
+ */
+export async function latestSessionOfSeries(
+  sb: AdminClient,
+  seriesId: string,
+  excludeId?: string,
+): Promise<string | null> {
+  let q = sb
+    .from("clubs")
+    .select("id")
+    .eq("series_id", seriesId)
+    .order("play_date", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (excludeId) q = q.neq("id", excludeId);
+  const { data } = await q.maybeSingle();
+  return (data?.id as string | undefined) ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Session-delete invariants (called by deleteClubAction)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pending series-scoped join requests are stamped with whichever session was
+ * active at request time (`club_link_requests.club_id` NOT NULL, ON DELETE
+ * CASCADE) — deleting that session must not swallow them: they are
+ * series-level state (ADR 0002). Repoint them at another session of the series
+ * BEFORE the delete; when no session remains they cascade with the club (a
+ * series with zero sessions has nothing to link into anyway). Best-effort: a
+ * failed repoint degrades to the old cascade behavior.
+ *
+ * `fallbackId` is the latest remaining session (pre-computed by the caller via
+ * `latestSessionOfSeries(sb, series.id, clubId)`); it is only consulted when
+ * the active pointer is missing or is the session being deleted.
+ */
+export async function repointPendingLinkRequestsBeforeDelete(
+  sb: AdminClient,
+  clubId: string,
+  series: Pick<ClubSeries, "id" | "active_session_id">,
+  fallbackId: string | null,
+): Promise<void> {
+  const target =
+    series.active_session_id && series.active_session_id !== clubId
+      ? series.active_session_id
+      : fallbackId;
+  if (!target) return;
+
+  // Skip profiles that already hold a request row on the target session —
+  // UNIQUE(club_id, profile_id) would fail the whole repoint otherwise.
+  const { data: targetRows } = await sb
+    .from("club_link_requests")
+    .select("profile_id")
+    .eq("club_id", target);
+  const taken = (targetRows ?? []).map((r) => r.profile_id as string);
+  let repoint = sb
+    .from("club_link_requests")
+    .update({ club_id: target })
+    .eq("club_id", clubId)
+    .eq("status", "pending")
+    .not("series_id", "is", null);
+  if (taken.length > 0) repoint = repoint.not("profile_id", "in", `(${taken.join(",")})`);
+  const { error: repointErr } = await repoint;
+  if (repointErr) {
+    console.error("[deleteClubAction] pending link-request repoint failed", repointErr);
+  }
+}
+
+/**
+ * Best-effort series cleanup AFTER a session delete succeeded — never throws
+ * (the delete itself is already committed): hidden ad-hoc series GC (ADR 0002
+ * decision #12 — the last session of an ad-hoc series takes the series with
+ * it) + active-session pointer re-aim (decision #3 — the FK ON DELETE SET NULL
+ * already cleared a pointer at the deleted club; re-aim it at `fallbackId`,
+ * the latest remaining session computed pre-delete).
+ */
+export async function cleanupSeriesAfterSessionDelete(
+  sb: AdminClient,
+  clubId: string,
+  series: Pick<ClubSeries, "id" | "is_adhoc" | "active_session_id">,
+  fallbackId: string | null,
+): Promise<void> {
+  try {
+    const { count } = await sb
+      .from("clubs")
+      .select("*", { count: "exact", head: true })
+      .eq("series_id", series.id);
+    if ((count ?? 0) === 0 && series.is_adhoc) {
+      await sb.from("club_series").delete().eq("id", series.id);
+    } else if (series.active_session_id === clubId && fallbackId) {
+      await sb.from("club_series").update({ active_session_id: fallbackId }).eq("id", series.id);
+    }
+  } catch (cleanupError) {
+    console.error("[deleteClubAction] series cleanup", cleanupError);
+  }
 }
 
 // ---------------------------------------------------------------------------

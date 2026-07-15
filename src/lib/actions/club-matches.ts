@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateClubTree } from "@/lib/club/revalidate";
 import { getTranslations } from "next-intl/server";
 import { z } from "zod";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -361,7 +361,7 @@ export async function generateClubQueueAction(
     if (pointerError) return { error: pointerError.message };
   }
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true, created: plans.length };
 }
 
@@ -552,7 +552,7 @@ export async function rebuildClubPendingMatchAction(
         .select("id");
       if (updateError) return { error: updateError.message };
       if (!updated || updated.length === 0) return { error: t("club.rebuildOnlyPending") };
-      revalidatePath(`/clubs/${match.club_id}`);
+      revalidateClubTree();
       return { ok: true };
     }
   }
@@ -580,7 +580,7 @@ export async function rebuildClubPendingMatchAction(
   // planRerollSwap already excludes every unsafe swap, so a raised error here is a
   // rare race (a donor just started) — show a friendly retry, not the raw RPC code.
   if (swapError) return { error: t("club.rebuildSwapFailed") };
-  revalidatePath(`/clubs/${match.club_id}`);
+  revalidateClubTree();
   return { ok: true, swapped: true };
 }
 
@@ -646,7 +646,7 @@ export async function startClubMatchAction(
     return { error: updateError.message };
   }
 
-  revalidatePath(`/clubs/${match.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -700,7 +700,7 @@ export async function setClubMatchCourtAction(input: {
   }
   if (!updated) return { error: t("club.matchCannotChangeCourt") };
 
-  revalidatePath(`/clubs/${match.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -774,7 +774,7 @@ export async function finishClubMatchAction(input: {
   });
   if (rpcError) return { error: rpcError.message };
 
-  revalidatePath(`/clubs/${match.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -800,7 +800,7 @@ export async function cancelClubMatchAction(
     .in("status", ["pending", "in_progress"]);
   if (updateError) return { error: updateError.message };
 
-  revalidatePath(`/clubs/${match.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -838,7 +838,7 @@ export async function revertClubMatchToPendingAction(
   // by a concurrent action) — don't report a misleading success.
   if (!updated) return { error: t("club.matchNotInProgress") };
 
-  revalidatePath(`/clubs/${match.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -898,7 +898,7 @@ export async function createClubLockedPairAction(input: {
     return { error: rpcError.message };
   }
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -929,7 +929,7 @@ export async function releaseClubLockedPairAction(
     .eq("id", lockId);
   if (deleteError) return { error: deleteError.message };
 
-  revalidatePath(`/clubs/${lock.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -960,7 +960,7 @@ export async function setClubMatchShuttlesAction(
     .neq("status", "cancelled"); // shuttles only feed cost for non-cancelled matches
   if (updateError) return { error: updateError.message };
 
-  revalidatePath(`/clubs/${match.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -1037,7 +1037,7 @@ export async function createClubManualMatchAction(input: {
     .single();
   if (insertError || !newMatch) return { error: insertError?.message ?? t("club.createMatchFailed") };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true, match: newMatch as ClubMatch };
 }
 
@@ -1110,7 +1110,7 @@ export async function setClubMatchPlayersAction(input: {
   if (error) return { error: error.message };
   if (!updated) return { error: t("club.matchCannotEditPlayers") };
 
-  revalidatePath(`/clubs/${match.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -1169,7 +1169,7 @@ export async function reorderClubQueueAction(
     if (error) return { error: error.message };
   }
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -1195,7 +1195,7 @@ export async function deleteClubMatchAction(
   const { error: rpcError } = await sb.rpc("delete_club_match", { p_match_id: matchId });
   if (rpcError) return { error: rpcError.message };
 
-  revalidatePath(`/clubs/${match.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -1276,7 +1276,7 @@ export async function bulkSetClubMatchCourtAction(input: {
     .select("id");
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, updated: (updated ?? []).length };
 }
 
@@ -1317,7 +1317,7 @@ export async function bulkCancelClubMatchesAction(input: {
     .select("id");
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, cancelled: (cancelled ?? []).length };
 }
 
@@ -1373,7 +1373,7 @@ export async function bulkDeleteClubMatchesAction(input: {
     else failed++;
   }
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, deleted, failed };
 }
 
@@ -1494,6 +1494,6 @@ export async function bulkStartClubMatchesAction(input: {
   const started = results.filter(Boolean).length;
   const skipped = plan.skipped.length + (plan.toStart.length - started);
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, started, skipped };
 }

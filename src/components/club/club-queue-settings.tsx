@@ -115,14 +115,22 @@ function ToggleRow({
  * `club-court-manager.tsx` intentionally keeps its own auto-save debounce
  * (renaming a court moves live matches, so partial/uncommitted state there is
  * not a safe "draft" concept) — do not port this pattern back onto it.
+ *
+ * `onSave` override (ADR 0002 decision #15): when provided, Save calls
+ * `onSave(draft)` instead of `updateClubQueueSettingsAction(clubId, draft)` —
+ * lets `session-defaults-editor.tsx` reuse this entire form to edit
+ * `club_series.session_defaults.queue_settings` via
+ * `updateSessionDefaultsAction` without touching per-session behavior.
+ * The save target is a discriminated union: EITHER `clubId` (default
+ * per-session write) OR `onSave` (custom persist) — never both, never neither.
  */
-export function ClubQueueSettings({
-  clubId,
-  initial,
-}: {
-  clubId: string;
-  initial: ClubQueueSettings;
-}) {
+type ClubQueueSettingsProps = { initial: ClubQueueSettings } & (
+  | { clubId: string; onSave?: never }
+  | { clubId?: never; onSave: (next: ClubQueueSettings) => Promise<{ error?: string } | void> }
+);
+
+export function ClubQueueSettings(props: ClubQueueSettingsProps) {
+  const { initial } = props;
   const t = useTranslations("club.queueSettings");
   const [draft, setDraft] = useState<ClubQueueSettings>(initial);
   const [baseline, setBaseline] = useState<ClubQueueSettings>(initial);
@@ -164,7 +172,9 @@ export function ClubQueueSettings({
 
   function save() {
     startTransition(async () => {
-      const res = await updateClubQueueSettingsAction(clubId, draft);
+      const res = props.onSave
+        ? await props.onSave(draft)
+        : await updateClubQueueSettingsAction(props.clubId, draft);
       if (res && "error" in res && res.error) {
         toast.error(res.error);
         return;
