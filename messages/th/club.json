@@ -916,7 +916,21 @@
   "seriesTabs": {
     "overview": "ภาพรวม",
     "members": "สมาชิก",
+    "stats": "สถิติ",
     "settings": "ตั้งค่า"
+  },
+  "seriesStats": {
+    "empty": "ยังไม่มีแมตช์ที่จบในก๊วนนี้",
+    "totalSessionsLabel": "{count} นัดทั้งหมด",
+    "totalMatchesLabel": "{count} แมตช์จบทั้งหมด",
+    "tableTitle": "สถิติสมาชิก",
+    "colName": "ชื่อ",
+    "colLevel": "ระดับ",
+    "colSessions": "นัดที่มา",
+    "colMatches": "แมตช์",
+    "colRecord": "ชนะ-แพ้",
+    "colWinRate": "อัตราชนะ",
+    "colLastPlayed": "เล่นล่าสุด"
   },
   "seriesMembers": {
     "heading": "สมาชิกก๊วน",

@@ -18,8 +18,10 @@ import { SessionDefaultsEditor } from "@/components/club/session-defaults-editor
 import { SeriesDangerZone } from "@/components/club/series-danger-zone";
 import { SeriesCoAdminControls } from "@/components/club/series-co-admin-controls";
 import { ClubLinkControls } from "@/components/club/club-link-controls";
+import { SeriesStatsView } from "@/components/club/series-stats-view";
 import { parseSessionDefaults } from "@/lib/club/session-defaults";
 import { resolveJoinToken, resolveLineGroupId } from "@/lib/club/series.server";
+import { computeSeriesStats, type SeriesStatsMatch, type SeriesStatsPlayer } from "@/lib/club/series-stats";
 import type { SeriesAdmin } from "@/lib/actions/club-series";
 import type { ClubLinkPoolRequest, ClubSeries, Level, SeriesMember, SeriesPartnerPair } from "@/lib/types";
 
@@ -50,7 +52,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   if (!canManage) redirect("/clubs");
 
   const seriesId = series.id;
-  const [sessionsRes, membersRes, pairsRes, levelsRes, playerCountsRes, seriesAdminsRes] = await Promise.all([
+  const [sessionsRes, membersRes, pairsRes, levelsRes, playersRes, seriesMatchesRes, seriesAdminsRes] = await Promise.all([
     sb
       .from("clubs")
       .select("id, name, venue, play_date, created_at, join_token, line_group_id")
@@ -68,10 +70,26 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
     // level is series-scoped, not tied to any one session's (possibly
     // customized) level set.
     sb.from("levels").select("*").is("club_id", null).order("sort_order", { ascending: true }),
-    // Per-session roster size for the history list — ONE grouped query (join
-    // on the club_players → clubs FK, filtered by series) instead of one
-    // query per session row. Grouped client-side below.
-    sb.from("club_players").select("club_id, club:clubs!inner(series_id)").eq("club.series_id", seriesId),
+    // Per-session roster size for the history list AND cross-session member
+    // stats (P4) share this one grouped query — join on the club_players →
+    // clubs FK, filtered by series, instead of one query per session row or a
+    // second round-trip for stats. Grouped/aggregated client-side below.
+    sb
+      .from("club_players")
+      .select("id, club_id, member_id, club:clubs!inner(series_id)")
+      .eq("club.series_id", seriesId),
+    // Completed matches across every session of the series (P4 cross-session
+    // stats — ADR 0002 decision #9, read-only). Same join-filter pattern as
+    // the players query above; only `status='completed'` rows are needed —
+    // see computeSeriesStats' doc comment for why pending/in_progress/
+    // cancelled matches are excluded from member stats.
+    sb
+      .from("club_matches")
+      .select(
+        "club_id, status, winner_side, side_a_player1, side_a_player2, side_b_player1, side_b_player2, club:clubs!inner(series_id)",
+      )
+      .eq("club.series_id", seriesId)
+      .eq("status", "completed"),
     // ADR 0002 P3 — series-level co-admins (owner-only settings section below).
     // Fetched unconditionally alongside everything else (mirrors the club_admins
     // fetch in ClubSessionView) — cheap even when the viewer isn't the owner.
@@ -86,6 +104,8 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   const members = (membersRes.data ?? []) as SeriesMember[];
   const pairs = (pairsRes.data ?? []) as SeriesPartnerPair[];
   const levels = (levelsRes.data ?? []) as Level[];
+  const seriesPlayers = (playersRes.data ?? []) as SeriesStatsPlayer[];
+  const seriesMatches = (seriesMatchesRes.data ?? []) as SeriesStatsMatch[];
 
   type SeriesAdminRow = {
     series_id: string;
@@ -104,10 +124,15 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   }));
 
   const playerCountByClubId = new Map<string, number>();
-  for (const row of playerCountsRes.data ?? []) {
-    const clubId = row.club_id as string;
-    playerCountByClubId.set(clubId, (playerCountByClubId.get(clubId) ?? 0) + 1);
+  for (const row of seriesPlayers) {
+    playerCountByClubId.set(row.club_id, (playerCountByClubId.get(row.club_id) ?? 0) + 1);
   }
+
+  const seriesStats = computeSeriesStats(
+    sessions.map((s) => ({ id: s.id, play_date: s.play_date })),
+    seriesPlayers,
+    seriesMatches,
+  );
 
   const activeSession = sessions.find((s) => s.id === series.active_session_id) ?? null;
   const isOwner = session.profileId === series.owner_id;
@@ -274,6 +299,8 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
     </div>
   );
 
+  const statsTab = <SeriesStatsView members={members} levels={levels} stats={seriesStats} />;
+
   const settingsTab = (
     <div className="space-y-6">
       <SessionDefaultsEditor
@@ -318,7 +345,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
         {series.archived_at && <Badge variant="outline">{t("series.archivedBadge")}</Badge>}
       </div>
 
-      <SeriesTabs overview={overview} members={membersTab} settings={settingsTab} />
+      <SeriesTabs overview={overview} members={membersTab} stats={statsTab} settings={settingsTab} />
     </div>
   );
 }
