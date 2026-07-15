@@ -10,6 +10,10 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-16 (migration apply → ✅ PASS) — drop `club_presets` (ดึงมาก่อน CONTRACT)
+
+migration `20260716000100_drop_club_presets` **APPLIED prod** ตามคำสั่ง user (preview → approve → apply). ก่อน drop: โค้ดไม่มี reference (ถอด UI+actions ตั้งแต่ v0.43.0), ไม่มี FK ชี้เข้า, ข้อมูล 1 แถว stale ("MUGGLE" 2026-07-05 — หน้าที่ถูกแทนด้วย `session_defaults` ของก๊วน MUGGLE แล้ว). verify หลัง apply: `information_schema.tables` = 0 แถว ✓. CONTRACT ที่เหลือ (legacy `clubs.line_group_id`/`join_token`/payment + `club_admins` เก่า) ยังรอ soak ตาม gate เดิม. ไม่ bump version (internal-only — ไม่มี user-facing change).
+
 ### 2026-07-16 (gates → ✅ PASS) — เชื่อมไลน์ self-link ไม่ต้องแท็กบอท (v0.47.0, PR #81)
 
 branch `feat/selflink-no-mention`. `parseSelfLinkCommand` เลิก return null เมื่อไม่ @mention — ใช้ keyword 2 ระดับ: แท็กบอท → หลวม (`เชื่อม <ชื่อ>`), ไม่แท็ก → เข้ม (`STRICT_KEYWORD_RE` บังคับคำ ไลน์/line) กัน false-trigger จากแชทปกติ. usage message + comment route.ts + spec sync. **Gates:** tsc 0 · vitest 909/909 (line-self-link 21, +4 เคส strict-path) · next build OK · ไม่แตะ messages/ (ไม่ต้องเช็ค i18n). ⚠️ ยังไม่ได้ลองในกลุ่ม LINE จริง — prod ตอนนี้ไม่มี binding เหลือ (ล้างหมดตอนทดสอบ bulk-unbind) ต้อง ผูกก๊วน ใหม่ก่อนแล้วพิมพ์ `เชื่อมไลน์ <ชื่อ>` แบบไม่แท็กหลัง deploy.
