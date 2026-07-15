@@ -48,7 +48,8 @@
     "label": {
       "bindSuccess": "Group bound to club",
       "bindInvalid": "Invalid bind code",
-      "bindConflict": "Bind failed",
+      "bindConflictGroup": "Group already bound to another club",
+      "bindConflictSeries": "Club already bound to another group",
       "selfLinkUsage": "Self-link usage hint",
       "selfLinkNoUser": "Cannot identify user",
       "selfLinkNoClub": "Group not bound yet",

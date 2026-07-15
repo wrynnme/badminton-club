@@ -70,7 +70,52 @@ export type Club = {
   // the group, bucketed by amount). Captured when a manager posts the bind command
   // + join_token in the group (LINE only exposes groupId via webhook). null = not
   // bound. Enforced unique across clubs via uniq_clubs_line_group_id.
+  // DEPRECATED (ADR 0002, P1): the LIVE binding lives on club_series.line_group_id
+  // now — the webhook only writes here for a club with no series (should not exist
+  // post-backfill). Kept readable as a fallback (see resolveLineGroupId); dropped
+  // at CONTRACT.
   line_group_id: string | null;
+  // Club series (ก๊วนถาวร — ADR 0002) this session (นัด) belongs to. Nullable only
+  // for not-yet-migrated legacy rows — see ensureSeriesForClub, which lazily
+  // attaches/creates one on first need (mirrors the backfill's (owner_id, name) rule).
+  series_id: string | null;
+};
+
+// A persistent club entity (ก๊วนถาวร — ADR 0002 / docs/adr/0002) above per-session
+// `clubs` rows: owns the LINE group binding + join link "once, forever", the member
+// registry, and (post-P3) payment config/co-admins. RLS-on no-policy (service-role
+// only, like every club table). See src/lib/club/series.server.ts.
+export type ClubSeries = {
+  id: string;
+  owner_id: string;
+  name: string;
+  line_group_id: string | null;
+  join_token: string | null;
+  // "นัดปัจจุบัน" pointer (decision #3) — the session webhook keyword-link +
+  // join-link auto-link target. Null only transiently (e.g. the pointed session
+  // was deleted without a manual switch).
+  active_session_id: string | null;
+  is_adhoc: boolean;
+  archived_at: string | null;
+  // Explicit session defaults (decision #15) — venue/times/fees/queue_settings/
+  // courts. "จัดก๊วน" (P2) reads this; per-session edits never write back.
+  session_defaults: Record<string, unknown>;
+  created_at: string;
+};
+
+// A series-level member registry row (สมาชิกก๊วน — decision #11): survives every
+// session, unlike a `club_players` roster row (attendance of one นัด).
+// profile_id NULL = a name-only member (no LINE, added by a manager) — first-class,
+// upgrades in place when they later link LINE (see upsertSeriesMember).
+export type SeriesMember = {
+  id: string;
+  series_id: string;
+  profile_id: string | null;
+  canonical_name: string;
+  default_level_id: string | null;
+  is_regular: boolean;
+  first_linked_at: string;
+  last_linked_at: string;
 };
 
 // Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").
@@ -108,6 +153,11 @@ export type ClubPlayer = {
   bill_amount: number | null; // amount snapshotted when the LINE bill was pushed
   paid_method: "promptpay_slip" | "manual" | null; // how paid_at was set
   bill_pushed_at: string | null; // ISO; null = bill not pushed
+  // Series membership (ADR 0002, P1) this attendance row is stamped from once a
+  // LINE link succeeds (manager-confirmed, self-service keyword, or decision #4
+  // auto-link) — null for walk-ins with no membership. Never rekeyed off; the
+  // roster still keys everything by club_id/id as before.
+  member_id: string | null;
 };
 
 // A pending LINE-link request as shown to a manager in the pool: a profile that opted
@@ -117,6 +167,12 @@ export type ClubPlayer = {
 export type ClubLinkPoolRequest = {
   id: string;
   profile: Pick<Profile, "id" | "display_name" | "picture_url">;
+  // decision #4 badge (ADR 0002, P1): set when this requester is already a
+  // `series_members` row of the club's series — the manager sees they're a
+  // returning member (with their prior canonical_name) rather than a stranger,
+  // even though this particular request needed a manager because the auto-link
+  // name match was ambiguous / not clean. null = not a known series member.
+  member: { canonicalName: string } | null;
 };
 
 // A profile a manager may link WITHOUT a fresh scan: it already opted into one of the

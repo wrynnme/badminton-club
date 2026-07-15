@@ -7,14 +7,18 @@
  *
  *   1. Bind (manager)      ผูกก๊วน <join_token>
  *      Captures `source.groupId` (LINE exposes a groupId only through webhook
- *      events — there is no group-list API) and stores it on `clubs.line_group_id`.
+ *      events — there is no group-list API) and stores it on the club's SERIES
+ *      (`club_series.line_group_id` — ADR 0002, "once, forever"; see
+ *      `@/lib/club/series.server`). A legacy `clubs.join_token` is still accepted
+ *      and lazily migrated onto a series via `ensureSeriesForClub`.
  *
  *   2. Self-link (player)  @<bot> เชื่อมไลน์ <ชื่อในโพย>
  *      A player @mentions the bot and types their roster name to link their LINE
  *      account themselves — a fast-path alongside the manager-confirmed pool. A
  *      clean unique guest-name match auto-links; anything else drops into the pool.
  *      Matching/parsing logic lives in `@/lib/club/line-self-link` (pure, tested);
- *      the DB orchestration is `resolveSelfLink` below.
+ *      the DB orchestration is `resolveSelfLink` below. Every successful link also
+ *      writes through to `series_members` (decision #4/#11).
  *
  * No slip/image processing exists (that feature was removed in v0.22.0); this is
  * not a revival of it.
@@ -38,8 +42,14 @@ import {
   parseSelfLinkCommand,
   classifyRosterMatch,
   type Mentionee,
-  type RosterCandidate,
 } from "@/lib/club/line-self-link";
+import {
+  findGroupBindingConflict,
+  hasPendingSeriesRequest,
+  resolveSeriesEntryByGroupId,
+  resolveSeriesEntryByToken,
+  upsertSeriesMember,
+} from "@/lib/club/series.server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getAppSettings } from "@/lib/app-settings";
 import { resolveBotMessage } from "@/lib/bot-messages";
@@ -130,7 +140,10 @@ async function reply(ev: LineEvent, text: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// handleBind — bind the group to a club when the bind command is posted.
+// handleBind — bind the group to the club's SERIES when the bind command is
+// posted (ADR 0002 P1 — decision #14: explicit conflict error both directions,
+// never a silent rebind; decision #15 — the series owns the binding "once,
+// forever", never a per-session row).
 // ---------------------------------------------------------------------------
 
 async function handleBind(ev: LineEvent, groupId: string, text: string): Promise<void> {
@@ -142,33 +155,54 @@ async function handleBind(ev: LineEvent, groupId: string, text: string): Promise
   // Site-admin-editable reply templates (blank/missing → code default).
   const { messages } = await getAppSettings();
 
-  const { data: club } = await sb
-    .from("clubs")
-    .select("id, name, line_group_id")
-    .eq("join_token", token)
-    .maybeSingle();
-
-  if (!club) {
+  // 1. Resolve the target series — series-level join_token first, else the
+  //    legacy per-session `clubs.join_token` lazily migrated onto a series
+  //    (same (owner_id, name) rule as the backfill). activeClub is unused here —
+  //    binding a group targets the series, not any one session.
+  const entry = await resolveSeriesEntryByToken(sb, token);
+  if (!entry) {
     await reply(ev, resolveBotMessage(messages, "bindInvalid"));
     return;
   }
+  const { series } = entry;
 
-  // Already bound to this same group → idempotent success.
-  if (club.line_group_id !== groupId) {
-    const { error } = await sb
-      .from("clubs")
-      .update({ line_group_id: groupId })
-      .eq("id", club.id);
-
-    if (error) {
-      // Most likely the group is already bound to a different club (unique index).
-      console.error("[LINE webhook] bind update error:", error.message);
-      await reply(ev, resolveBotMessage(messages, "bindConflict"));
-      return;
-    }
+  // Already bound to this same group (including the series just created above,
+  // which starts unbound) → idempotent success.
+  if (series.line_group_id === groupId) {
+    await reply(ev, resolveBotMessage(messages, "bindSuccess", { club: series.name }));
+    return;
   }
 
-  await reply(ev, resolveBotMessage(messages, "bindSuccess", { club: club.name }));
+  // 2a. Conflict direction A — this LINE group is already bound to a DIFFERENT
+  //     series (or still sits on a legacy clubs.line_group_id of a different
+  //     series, pre-P1 data).
+  const conflict = await findGroupBindingConflict(sb, groupId, series.id);
+  if (conflict) {
+    await reply(ev, resolveBotMessage(messages, "bindConflictGroup", { club: conflict.name }));
+    return;
+  }
+
+  // 2b. Conflict direction B — the target series is already bound to a
+  //     DIFFERENT group.
+  if (series.line_group_id) {
+    await reply(ev, resolveBotMessage(messages, "bindConflictSeries", { club: series.name }));
+    return;
+  }
+
+  const { error } = await sb
+    .from("club_series")
+    .update({ line_group_id: groupId })
+    .eq("id", series.id);
+
+  if (error) {
+    // Most likely uniq_club_series_line_group_id caught a race with a concurrent
+    // bind — report the same explicit conflict rather than a bare failure.
+    console.error("[LINE webhook] bind update error:", error.message);
+    await reply(ev, resolveBotMessage(messages, "bindConflictGroup", { club: series.name }));
+    return;
+  }
+
+  await reply(ev, resolveBotMessage(messages, "bindSuccess", { club: series.name }));
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +266,13 @@ type SelfLinkOutcome =
  * #50: upsert the profile by the Messaging-webhook userId (the id group @mentions
  * resolve against), auto-link ONLY a still-guest row (never overwrite), and let the
  * DB's uniq_club_players_profile guard + the pool absorb every non-clean case.
+ *
+ * ADR 0002 P1: the group resolves to a SERIES first (`club_series.line_group_id`),
+ * falling back to a legacy `clubs.line_group_id` match that gets lazily migrated
+ * onto a series; the roster acted on is always the series' active session
+ * (decision #3), falling back to the legacy-matched club when the series has no
+ * active pointer yet. Every successful link also writes through to
+ * `series_members` (decision #4/#11) and stamps the roster row's `member_id`.
  */
 async function resolveSelfLink(args: {
   groupId: string;
@@ -241,19 +282,18 @@ async function resolveSelfLink(args: {
   const { groupId, userId, rosterName } = args;
   const sb = await createAdminClient();
 
-  // 1. Which club owns this group?
-  const { data: club } = await sb
-    .from("clubs")
-    .select("id, name")
-    .eq("line_group_id", groupId)
-    .maybeSingle();
-  if (!club) return { kind: "no_club" };
+  // 1/2. Which series owns this group + its target roster (the series' active
+  //      session, decision #3; falls back to a legacy-matched club when the
+  //      series has no active pointer yet) — see resolveSeriesEntryByGroupId.
+  const entry = await resolveSeriesEntryByGroupId(sb, groupId);
+  if (!entry || !entry.activeClub) return { kind: "no_club" };
+  const { series, activeClub: club } = entry;
 
-  // 2. Name the sender — group-member endpoint needs no friend/consent.
+  // 3. Name the sender — group-member endpoint needs no friend/consent.
   const member = await getGroupMemberProfile(groupId, userId);
   if (!member) return { kind: "profile_failed" };
 
-  // 3. Upsert the profiles row keyed by the Messaging userId. Same-provider ⇒ this
+  // 4. Upsert the profiles row keyed by the Messaging userId. Same-provider ⇒ this
   //    dedups with any existing Login-created row via the unique line_user_id.
   const profile = await upsertLineProfile({
     userId,
@@ -262,63 +302,80 @@ async function resolveSelfLink(args: {
   });
   if (!profile) return { kind: "profile_failed" };
 
-  // 4. Idempotency: already linked to a row in this club?
-  const { data: existing } = await sb
-    .from("club_players")
-    .select("id, display_name")
-    .eq("club_id", club.id)
-    .eq("profile_id", profile.id)
-    .maybeSingle();
-  if (existing) return { kind: "already_linked", playerName: existing.display_name };
-
-  // 5. Classify the typed name against the roster.
+  // 5/6. Fetch the roster ONCE — used both for the already-linked idempotency
+  //      check and the roster-name classification (previously two separate
+  //      queries over the same club_players set).
   const { data: rows } = await sb
     .from("club_players")
-    .select("id, display_name, profile_id")
+    .select("id, display_name, profile_id, level_id")
     .eq("club_id", club.id);
-  const match = classifyRosterMatch((rows ?? []) as RosterCandidate[], rosterName);
+  const roster = rows ?? [];
 
-  // 6. Clean unique guest match → auto-link. `.is("profile_id", null)` + the partial
+  const existing = roster.find((r) => r.profile_id === profile.id);
+  if (existing) return { kind: "already_linked", playerName: existing.display_name };
+
+  const match = classifyRosterMatch(roster, rosterName);
+
+  // 7. Clean unique guest match → auto-link. `.is("profile_id", null)` + the partial
   //    UNIQUE uniq_club_players_profile make this race-safe and non-destructive.
   if (match.kind === "unique") {
-    const { data: updated, error } = await sb
-      .from("club_players")
-      .update({ profile_id: profile.id })
-      .eq("id", match.playerId)
-      .eq("club_id", club.id)
-      .is("profile_id", null)
-      .select("id, display_name")
-      .maybeSingle();
-
-    if (!error && updated) {
-      await sb.from("club_audit_logs").insert({
-        club_id: club.id,
-        actor_id: profile.id,
-        actor_name: member.displayName,
-        event_type: "player_linked_keyword",
-        detail: `${updated.display_name} ← ${profile.id} (keyword)`,
+    const candidate = roster.find((r) => r.id === match.playerId);
+    if (candidate) {
+      // Upsert the member FIRST, mirroring linkClubPlayerAction/linkKnownProfileAction's
+      // order (decision #4/#11), so ONE club_players write carries profile_id +
+      // member_id instead of update→upsert→update.
+      const memberId = await upsertSeriesMember(sb, {
+        seriesId: series.id,
+        profileId: profile.id,
+        name: candidate.display_name,
+        levelId: candidate.level_id,
       });
-      // Confirmation is the in-group reply (see handleSelfLink). No 1:1 push — a
-      // group member need not be a bot friend, so a DM would 403 for exactly the
-      // users this flow targets, and the group reply already confirms.
-      return { kind: "linked", playerName: updated.display_name };
+
+      const { data: updated, error } = await sb
+        .from("club_players")
+        .update({ profile_id: profile.id, member_id: memberId })
+        .eq("id", match.playerId)
+        .eq("club_id", club.id)
+        .is("profile_id", null) // race guard: only claim if still a guest row
+        .select("id, display_name")
+        .maybeSingle();
+
+      if (!error && updated) {
+        await sb.from("club_audit_logs").insert({
+          club_id: club.id,
+          actor_id: profile.id,
+          actor_name: member.displayName,
+          event_type: "player_linked_keyword",
+          detail: `${updated.display_name} ← ${profile.id} (keyword)`,
+        });
+        // Confirmation is the in-group reply (see handleSelfLink). No 1:1 push — a
+        // group member need not be a bot friend, so a DM would 403 for exactly the
+        // users this flow targets, and the group reply already confirms.
+        return { kind: "linked", playerName: updated.display_name };
+      }
+      // 23505 = this profile already links another row in the club (race the step-4
+      // check missed); 0 rows = the guest row was claimed concurrently. Either way,
+      // fall through to the pool instead of erroring.
+      if (error) console.error("[LINE webhook] self-link update error:", error.message);
     }
-    // 23505 = this profile already links another row in the club (race the step-4
-    // check missed); 0 rows = the guest row was claimed concurrently. Either way,
-    // fall through to the pool instead of erroring.
-    if (error) console.error("[LINE webhook] self-link update error:", error.message);
   }
 
-  // 7. Ambiguous / taken / not-found / lost-the-race → drop a pending pool request
-  //    so a manager finishes it. ignoreDuplicates = insert-when-absent only: never
-  //    resurrect a request a manager already dismissed (rejected) back to pending;
-  //    an existing pending row is left as-is.
-  await sb
-    .from("club_link_requests")
-    .upsert(
-      { club_id: club.id, profile_id: profile.id, status: "pending" },
-      { onConflict: "club_id,profile_id", ignoreDuplicates: true },
-    );
+  // 8. Ambiguous / taken / not-found / lost-the-race → drop a pending pool request
+  //    so a manager finishes it (series-scoped — ADR 0002 P1). ignoreDuplicates =
+  //    insert-when-absent only: never resurrect a request a manager already
+  //    dismissed (rejected) back to pending; an existing pending row is left as-is.
+  //    Series-level idempotency FIRST (mirrors requestClubLinkAction): the active
+  //    session pointer may have moved since an earlier request, so the legacy
+  //    (club_id, profile_id) conflict target alone would happily create a second
+  //    pending row for the same profile in the same series.
+  if (!(await hasPendingSeriesRequest(sb, series.id, profile.id))) {
+    await sb
+      .from("club_link_requests")
+      .upsert(
+        { club_id: club.id, series_id: series.id, profile_id: profile.id, status: "pending" },
+        { onConflict: "club_id,profile_id", ignoreDuplicates: true },
+      );
+  }
   await sb.from("club_audit_logs").insert({
     club_id: club.id,
     actor_id: profile.id,

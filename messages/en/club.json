@@ -1017,7 +1017,11 @@
     "joinPendingDesc": "Waiting for {club}'s owner to match your account",
     "joinAlreadyTitle": "Already linked",
     "joinAlreadyDesc": "Your LINE account is linked to {club}",
+    "joinLinkedTitle": "Linked!",
+    "joinLinkedDesc": "Linked your LINE account to {club} as \"{player}\" — recognized from a previous link, no need to wait for the owner to match you",
     "joinInvalidTitle": "Invalid link",
-    "joinInvalidDesc": "This join link is invalid or has been revoked — ask the club owner for a new one"
+    "joinInvalidDesc": "This join link is invalid or has been revoked — ask the club owner for a new one",
+    "memberBadge": "Member",
+    "memberBadgeName": "Member — previously {name}"
   }
 }

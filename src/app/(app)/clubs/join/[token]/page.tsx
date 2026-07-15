@@ -5,14 +5,25 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ClubJoinConfirm } from "@/components/club/club-join-confirm";
+import { findSeriesByJoinToken, getSeriesForClub, hasPendingSeriesRequest } from "@/lib/club/series.server";
 
 /**
- * /clubs/join/[token] — public LINE-linking entry point (see docs/adr/0001).
+ * /clubs/join/[token] — public LINE-linking entry point (see docs/adr/0001,
+ * amended by ADR 0002 P1 — "club series").
  *
  * A player opens the manager's join link, logs in with LINE (redirected here
- * after), and lands in the club's link pool. This page only READS state; the
- * pending-request insert happens through the ClubJoinConfirm client action so no
- * mutation runs during a GET render.
+ * after), and lands in the club's link pool (or auto-links immediately if
+ * they're a returning confirmed member — decision #4, see requestClubLinkAction).
+ * This page only READS state — a GET render must never mutate. A not-yet-
+ * migrated legacy club (rare/defensive; every existing prod club already has a
+ * series post-backfill) resolves its series via the read-only `getSeriesForClub`
+ * and TOLERATES a null series, falling back to club-scoped behavior (skips the
+ * series-pending check below) rather than lazily attaching one — that lazy
+ * migration (`ensureSeriesForClub`) only runs in the POST action
+ * (`requestClubLinkAction`).
+ *
+ * Token resolution (decision #15): series-level `join_token` first, else a
+ * legacy per-session `clubs.join_token` → that club's series.
  */
 export const dynamic = "force-dynamic";
 
@@ -25,13 +36,26 @@ export default async function ClubJoinPage({
   const t = await getTranslations("club.linking");
 
   const sb = await createAdminClient();
-  const { data: club } = await sb
-    .from("clubs")
-    .select("id, name")
-    .eq("join_token", token)
-    .maybeSingle();
 
-  // Invalid / revoked token — nothing to join.
+  let series = await findSeriesByJoinToken(sb, token);
+  let legacyClub: { id: string; name: string } | null = null;
+  if (!series) {
+    const { data } = await sb.from("clubs").select("id, name").eq("join_token", token).maybeSingle();
+    if (data) {
+      legacyClub = data;
+      series = await getSeriesForClub(sb, data.id);
+    }
+  }
+
+  // Target = the series' active session (decision #3); fall back to the
+  // legacy-matched club when the series has no active pointer yet (or no series).
+  const targetClubId = series?.active_session_id ?? legacyClub?.id ?? null;
+  const club = targetClubId
+    ? (await sb.from("clubs").select("id, name").eq("id", targetClubId).maybeSingle()).data
+    : null;
+
+  // Invalid / revoked token — nothing to join. `club` only resolves when either
+  // `series` or `legacyClub` resolved, so this covers both.
   if (!club) {
     return (
       <JoinShell>
@@ -54,20 +78,26 @@ export default async function ClubJoinPage({
     redirect(`/api/auth/line?redirectTo=${encodeURIComponent(`/clubs/join/${token}`)}`);
   }
 
-  // Already linked, or a pending request already sitting in the pool.
-  const [memberRes, reqRes] = await Promise.all([
+  // Already linked, or a pending request already sitting in the pool
+  // (series-scoped — matches requestClubLinkAction's own idempotency check).
+  // No series (rare/defensive) → fall back to the legacy club-scoped check.
+  const [memberRes, hasPending] = await Promise.all([
     sb
       .from("club_players")
       .select("id")
       .eq("club_id", club.id)
       .eq("profile_id", session.profileId)
       .maybeSingle(),
-    sb
-      .from("club_link_requests")
-      .select("status")
-      .eq("club_id", club.id)
-      .eq("profile_id", session.profileId)
-      .maybeSingle(),
+    series
+      ? hasPendingSeriesRequest(sb, series.id, session.profileId)
+      : sb
+          .from("club_link_requests")
+          .select("id")
+          .eq("club_id", club.id)
+          .eq("profile_id", session.profileId)
+          .eq("status", "pending")
+          .limit(1)
+          .then((r) => (r.data?.length ?? 0) > 0),
   ]);
 
   if (memberRes.data) {
@@ -88,7 +118,7 @@ export default async function ClubJoinPage({
     );
   }
 
-  if (reqRes.data?.status === "pending") {
+  if (hasPending) {
     return (
       <JoinShell>
         <CardHeader>
