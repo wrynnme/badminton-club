@@ -1,4 +1,4 @@
-// Route-level loading UI for /clubs/[id] (club detail).
+// Route-level loading UI for /clubs/[id]/s/[sid] (session detail).
 import { Skeleton, SkeletonCard } from "@/components/ui/skeleton";
 
 export default function Loading() {

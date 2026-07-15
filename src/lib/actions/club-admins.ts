@@ -1,10 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertClubOwner } from "@/lib/club/permissions";
+import { revalidateClubTree } from "@/lib/club/revalidate";
 
 // line_user_id omitted (PII) — exposing it to the owner turns profile search into a
 // PII-enumeration oracle. The add-co-admin flow keys on the opaque profile id instead.
@@ -59,7 +59,7 @@ export async function addClubCoAdminAction(
     return { error: t("club.addCoAdminFailed") };
   }
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -81,7 +81,7 @@ export async function removeClubCoAdminAction(
     .eq("user_id", userId);
   if (deleteError) return { error: t("club.removeCoAdminFailed") };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 

@@ -1023,5 +1023,15 @@
     "joinInvalidDesc": "This join link is invalid or has been revoked — ask the club owner for a new one",
     "memberBadge": "Member",
     "memberBadgeName": "Member — previously {name}"
+  },
+  "series": {
+    "archivedBadge": "Archived",
+    "activeSessionBadge": "Current session",
+    "noActiveSession": "No active session yet",
+    "historyHeading": "Session history",
+    "noSessions": "No sessions in this club yet",
+    "sessionCountLabel": "{count} sessions",
+    "memberCountLabel": "{count} members",
+    "adhocHeading": "Ad-hoc"
   }
 }

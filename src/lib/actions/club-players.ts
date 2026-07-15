@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidateClubTree } from "@/lib/club/revalidate";
 import { z } from "zod";
 import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -98,7 +98,7 @@ export async function addGuestPlayerAction(input: AddGuestInput) {
       .eq("id", inserted.id);
   }
 
-  revalidatePath(`/clubs/${parsed.data.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -120,7 +120,7 @@ export async function reorderPlayersAction(clubId: string, orderedIds: string[])
     if (error) return { error: t("club.reorderFailed") };
   }
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -141,7 +141,7 @@ export async function kickPlayerAction(formData: FormData) {
     p_player_id: playerId,
     p_club_id: clubId,
   });
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -183,7 +183,7 @@ export async function promoteClubReserveAction(input: { clubId: string; playerId
     if (current?.status !== "active") return { error: t("club.cannotPromotePlayer") };
   }
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -214,7 +214,7 @@ export async function toggleCheckInAction(input: { club_id: string; player_id: s
     .eq("club_id", input.club_id);
 
   if (error) return { error: error.message };
-  revalidatePath(`/clubs/${input.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -241,7 +241,7 @@ export async function leaveClubAction(formData: FormData) {
     });
   }
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
 }
 
 // ─── Per-player discount + guest rename ───────────────────────────────────────
@@ -269,7 +269,7 @@ export async function updateClubPlayerDiscountAction(
     .eq("club_id", clubId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -444,7 +444,7 @@ export async function importClubPlayersAction(
     }
   }
 
-  revalidatePath(`/clubs/${club_id}`);
+  revalidateClubTree();
   return { ok: true, added, reserved, skipped, failed };
 }
 
@@ -492,7 +492,7 @@ export async function bulkCheckInClubPlayersAction(input: {
   const { data, error } = await query.select("id");
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, count: data?.length ?? 0 };
 }
 
@@ -529,7 +529,7 @@ export async function bulkSetClubPlayerStatusAction(input: {
 
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, count: data?.length ?? 0 };
 }
 
@@ -586,7 +586,7 @@ export async function bulkUpdateClubPlayerSessionAction(input: {
 
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, count: data?.length ?? 0 };
 }
 
@@ -624,7 +624,7 @@ export async function bulkDeleteClubPlayersAction(input: {
     }
   }
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, deleted, failed };
 }
 
@@ -710,7 +710,7 @@ export async function updateClubPlayerDetailsAction(
     }
   }
 
-  revalidatePath(`/clubs/${club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -771,6 +771,6 @@ export async function bulkSetClubPlayerLevelAction(input: {
     }
   }
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, count: data?.length ?? 0 };
 }

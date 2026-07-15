@@ -1023,5 +1023,15 @@
     "joinInvalidDesc": "ลิงก์เข้าร่วมนี้ใช้ไม่ได้หรือถูกยกเลิกแล้ว — ขอลิงก์ใหม่จากเจ้าของก๊วน",
     "memberBadge": "สมาชิก",
     "memberBadgeName": "สมาชิก — ชื่อเดิม {name}"
+  },
+  "series": {
+    "archivedBadge": "เก็บถาวร",
+    "activeSessionBadge": "นัดปัจจุบัน",
+    "noActiveSession": "ยังไม่มีนัดที่ใช้งานอยู่",
+    "historyHeading": "ประวัตินัด",
+    "noSessions": "ยังไม่มีนัดในก๊วนนี้",
+    "sessionCountLabel": "{count} นัด",
+    "memberCountLabel": "{count} สมาชิก",
+    "adhocHeading": "เฉพาะกิจ"
   }
 }

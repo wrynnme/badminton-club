@@ -29,7 +29,7 @@
  * reaches the client.
  */
 
-import { revalidatePath } from "next/cache";
+import { revalidateClubTree } from "@/lib/club/revalidate";
 import { z } from "zod";
 import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -166,7 +166,7 @@ export async function generateClubJoinTokenAction(clubId: string) {
   }
 
   await writeClubAudit(sb, clubId, session, "join_token_generated", "");
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const, token };
 }
 
@@ -194,7 +194,7 @@ export async function revokeClubJoinTokenAction(clubId: string) {
   if (!result.ok) return { error: t("club.linkTokenFailed") };
 
   await writeClubAudit(sb, clubId, session, "join_token_revoked", "");
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }
 
@@ -227,7 +227,7 @@ export async function unbindClubLineGroupAction(clubId: string) {
   if (!result.ok) return { error: t("club.unbindGroupFailed") };
 
   await writeClubAudit(sb, clubId, session, "line_group_unbound", "");
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }
 
@@ -312,7 +312,7 @@ export async function requestClubLinkAction(token: string) {
           "player_linked_autolink",
           `${linked.display_name} ← ${session.profileId} (member auto-link)`,
         );
-        revalidatePath(`/clubs/${club.id}`);
+        revalidateClubTree();
         return {
           ok: true as const,
           state: "linked" as const,
@@ -344,7 +344,7 @@ export async function requestClubLinkAction(token: string) {
     return { error: t("club.linkRequestFailed") };
   }
 
-  revalidatePath(`/clubs/${club.id}`);
+  revalidateClubTree();
   return { ok: true as const, state: "pending" as const, clubName: club.name };
 }
 
@@ -452,7 +452,7 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
   // 7. Fire-and-forget confirmation push (never blocks or fails the link).
   await pushLinkConfirm(sb, clubId, profile.line_user_id);
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }
 
@@ -499,7 +499,7 @@ export async function dismissClubLinkRequestAction(input: DismissClubLinkInput) 
   if (!dismissed) return { ok: true as const, noop: true as const };
 
   await writeClubAudit(sb, clubId, session, "link_dismissed", requestId);
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }
 
@@ -562,7 +562,7 @@ export async function unlinkClubPlayerAction(input: UnlinkClubPlayerInput) {
     .eq("profile_id", profileId);
 
   await writeClubAudit(sb, clubId, session, "player_unlinked", `${player.display_name} ✕ ${profileId}`);
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }
 
@@ -766,6 +766,6 @@ export async function linkKnownProfileAction(input: LinkKnownProfileInput) {
   // 8. Fire-and-forget confirmation push (never blocks or fails the link).
   await pushLinkConfirm(sb, clubId, profile.line_user_id);
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }

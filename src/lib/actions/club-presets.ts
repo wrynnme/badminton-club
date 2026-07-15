@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -13,6 +12,7 @@ import {
   type ClubPresetConfig,
 } from "@/lib/club/preset";
 import { assertCanManageClub } from "@/lib/club/permissions";
+import { revalidateClubTree } from "@/lib/club/revalidate";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
 import { isValidPromptPayId } from "@/lib/club/promptpay";
 import {
@@ -290,7 +290,7 @@ export async function createClubPresetAction(input: {
 
   if (error || !data) return { error: error?.message ?? t("club.createPresetFailed") };
 
-  revalidatePath("/clubs");
+  revalidateClubTree();
   return { id: data.id as string };
 }
 
@@ -337,7 +337,7 @@ export async function updateClubPresetAction(
   const { error } = await sb.from("club_presets").update(patch).eq("id", presetId);
   if (error) return { error: error.message };
 
-  revalidatePath("/clubs");
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -429,9 +429,7 @@ export async function saveClubAsPresetAction(input: {
     result = { id: data.id as string, mode: "created" };
   }
 
-  revalidatePath("/clubs");
-  revalidatePath("/clubs/mine");
-  revalidatePath(`/clubs/${parsed.data.clubId}`);
+  revalidateClubTree();
   return result;
 }
 
@@ -453,7 +451,7 @@ export async function deleteClubPresetAction(
   const { error } = await sb.from("club_presets").delete().eq("id", presetId);
   if (error) return { error: error.message };
 
-  revalidatePath("/clubs");
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -682,6 +680,6 @@ export async function applyClubPresetAction(
     }
   }
 
-  revalidatePath("/clubs");
+  revalidateClubTree();
   return { clubId };
 }

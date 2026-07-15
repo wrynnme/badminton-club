@@ -13,6 +13,7 @@ import {
 } from "@/lib/club/queue-settings";
 import { loginRedirect, assertClubOwner, assertCanManageClub } from "@/lib/club/permissions";
 import { ensureSeriesForClub } from "@/lib/club/series.server";
+import { revalidateClubTree } from "@/lib/club/revalidate";
 import type { ClubSeries } from "@/lib/types";
 
 // Max length of a single court name (shared by updateClubCourtsAction + renameClubCourtAction).
@@ -60,8 +61,13 @@ export async function createClubAction(input: CreateClubInput) {
   // active_session_id at the new session — closes the gap where a club created
   // via this legacy form would otherwise have no series until some other flow
   // (join link, LINE bind, etc.) lazily attaches one. Never fails club creation.
+  // seriesId (when the attach succeeds) drives the P2 canonical redirect below
+  // (/clubs/[seriesId]/s/[sessionId]); a failure falls back to the legacy
+  // /clubs/[sessionId] URL, which the dispatcher still resolves correctly.
+  let seriesId: string | null = null;
   try {
     const series = await ensureSeriesForClub(sb, data.id);
+    seriesId = series.id;
     if (series.active_session_id !== data.id) {
       await sb.from("club_series").update({ active_session_id: data.id }).eq("id", series.id);
     }
@@ -69,8 +75,8 @@ export async function createClubAction(input: CreateClubInput) {
     console.error("[createClubAction] ensureSeriesForClub", seriesError);
   }
 
-  revalidatePath("/clubs");
-  redirect(`/clubs/${data.id}`);
+  revalidateClubTree();
+  redirect(seriesId ? `/clubs/${seriesId}/s/${data.id}` : `/clubs/${data.id}`);
 }
 
 export async function updateClubAction(input: UpdateClubInput) {
@@ -103,7 +109,7 @@ export async function updateClubAction(input: UpdateClubInput) {
     await promoteReservesToFill(sb, id, parsed.data.max_players);
   }
 
-  revalidatePath(`/clubs/${id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -176,7 +182,7 @@ export async function deleteClubAction(clubId: string): Promise<{ error: string 
     }
   }
 
-  revalidatePath("/clubs");
+  revalidateClubTree();
   redirect("/clubs");
 }
 
@@ -200,7 +206,7 @@ export async function setClubVisibilityAction(
   const { error } = await sb.from("clubs").update({ is_public: isPublic }).eq("id", clubId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   revalidatePath(`/c/${clubId}`);
   return { ok: true };
 }
@@ -308,7 +314,7 @@ export async function updateClubQueueSettingsAction(
     .eq("id", clubId);
   if (writeError) return { error: writeError.message };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -339,7 +345,7 @@ export async function updateClubCourtsAction(
     return { error: t("club.saveCourtsFailed") };
   }
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true, courts: deduped };
 }
 
@@ -397,6 +403,6 @@ export async function renameClubCourtAction(
     .select("id");
   if (matchErr) console.error("[renameClubCourtAction] match cascade", matchErr);
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true, courts: next, movedMatches: moved?.length ?? 0 };
 }
