@@ -6,6 +6,7 @@ import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { assertCanManageClub } from "@/lib/club/permissions";
+import { revalidateClubTree } from "@/lib/club/revalidate";
 import { isSiteAdmin } from "@/lib/auth/site-admin";
 import type { Level } from "@/lib/types";
 
@@ -121,7 +122,7 @@ export async function createLevelAction(input: {
     if (error.code === "23505") return { error: t("club.levelAlreadyExists") };
     return { error: error.message };
   }
-  revalidatePath("/clubs", "layout");
+  revalidateClubTree();
   revalidatePath(`/c/${input.clubId}`);
   return { ok: true };
 }
@@ -163,7 +164,7 @@ export async function updateLevelAction(input: {
     if (error.code === "23505") return { error: t("club.levelAlreadyExists") };
     return { error: error.message };
   }
-  revalidatePath("/clubs", "layout");
+  revalidateClubTree();
   revalidatePath(`/c/${input.clubId}`);
   return { ok: true };
 }
@@ -202,7 +203,7 @@ export async function deleteLevelAction(input: {
     .eq("id", targetId)
     .eq("club_id", input.clubId); // scope to this club only
   if (error) return { error: error.message };
-  revalidatePath("/clubs", "layout");
+  revalidateClubTree();
   revalidatePath(`/c/${input.clubId}`);
   return { ok: true };
 }

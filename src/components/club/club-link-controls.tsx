@@ -70,8 +70,8 @@ function BindCommandRow({
 }) {
   const command = `ผูกก๊วน ${token}`;
   return (
-    <div className="flex gap-2">
-      <code className="h-8 flex-1 overflow-x-auto whitespace-nowrap rounded-md border bg-muted/40 px-2 font-mono text-xs leading-8">
+    <div className="flex items-start gap-2">
+      <code className="h-auto flex-1 whitespace-normal break-all rounded-md border bg-muted/40 px-2 py-1.5 font-mono text-xs leading-normal">
         {command}
       </code>
       <Tooltip>

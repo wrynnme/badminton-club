@@ -118,6 +118,17 @@ export type SeriesMember = {
   last_linked_at: string;
 };
 
+// A series-level partner pair (คู่ประจำ — decision #6): instantiated into a
+// per-session `club_locked_pairs` row on open-session (see open-session.ts /
+// buildLockedPairRows), only when both members are seeded into that session.
+export type SeriesPartnerPair = {
+  id: string;
+  series_id: string;
+  member1_id: string;
+  member2_id: string;
+  created_at: string;
+};
+
 // Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").
 export type Level = {
   id: string;
@@ -395,16 +406,6 @@ export type TournamentWithTeams = Tournament & { teams: TeamWithPlayers[] };
 export type ClubWithPlayers = Club & {
   players: ClubPlayer[];
   owner?: Pick<Profile, "display_name" | "picture_url"> | null;
-};
-
-import type { ClubPresetConfig } from "@/lib/club/preset";
-
-export type ClubPreset = {
-  id: string;
-  owner_id: string;
-  name: string;
-  config: ClubPresetConfig;
-  created_at: string;
 };
 
 // Payment slip record — created when a player uploads a transfer slip for verification.

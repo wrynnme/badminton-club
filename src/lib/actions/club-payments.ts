@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -8,6 +7,7 @@ import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 import { isValidPromptPayId } from "@/lib/club/promptpay";
 import { ReceiptTemplateSchema, hasBankReceiver, type ReceiptTemplate } from "@/lib/club/receipt";
+import { revalidateClubTree } from "@/lib/club/revalidate";
 
 const PaymentConfigSchema = z.object({
   promptpay_id: z.string().trim().max(40).nullable().optional(),
@@ -43,7 +43,7 @@ export async function updateClubPaymentConfigAction(clubId: string, input: Payme
     .eq("id", clubId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -74,7 +74,7 @@ export async function toggleClubPlayerPaidAction(input: { clubId: string; player
     .eq("club_id", input.clubId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, paid: next !== null };
 }
 
@@ -131,7 +131,7 @@ export async function uploadClubPromptPayQrAction(input: { clubId: string; dataU
     .eq("id", input.clubId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, url: uploaded.url };
 }
 
@@ -195,7 +195,7 @@ export async function removeClubPromptPayQrAction(clubId: string) {
   const { error } = await sb.from("clubs").update({ promptpay_qr_image: null }).eq("id", clubId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -218,7 +218,7 @@ export async function resetAllPaidAction(clubId: string) {
     .not("paid_at", "is", null);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -264,7 +264,7 @@ export async function updateClubReceiptTemplateAction(clubId: string, template: 
     detail: `footer ${parsed.data.footer_note ? "set" : "none"}; bank ${parsed.data.payment_show.bank ? "on" : "off"}; theme ${parsed.data.theme}`,
   });
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true, template: parsed.data };
 }
 
@@ -297,7 +297,7 @@ export async function uploadClubReceiptLogoAction(input: { clubId: string; dataU
     .eq("id", input.clubId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
   return { ok: true, url: uploaded.url };
 }
 
@@ -316,6 +316,6 @@ export async function removeClubReceiptLogoAction(clubId: string) {
   const { error } = await sb.from("clubs").update({ receipt_logo_url: null }).eq("id", clubId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }

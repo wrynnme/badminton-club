@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { format } from "date-fns";
 import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -17,6 +16,7 @@ import { getAppSettings } from "@/lib/app-settings";
 import { resolveBotMessage } from "@/lib/bot-messages";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { resolveLineGroupId } from "@/lib/club/series.server";
+import { revalidateClubTree } from "@/lib/club/revalidate";
 import type { ClubSeries } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -233,7 +233,7 @@ export async function pushClubBillsAction(
   // ------------------------------------------------------------------
   // 7. Revalidate.
   // ------------------------------------------------------------------
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
 
   return { ok: true, pushed, failed, skippedNoLine, skippedNoSlip };
 }
@@ -453,7 +453,7 @@ export async function pushGroupBillsAction(input: {
     detail: `billed ${sentLines.length}, mentioned ${mentioned}, plain ${plain}, qr ${input.qrImageUrl ? "yes" : "no"}${overflow ? `, overflow (dropped ${lines.length - sentLines.length})` : ""}`,
   });
 
-  revalidatePath(`/clubs/${input.clubId}`);
+  revalidateClubTree();
 
   return {
     ok: true,

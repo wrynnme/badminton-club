@@ -29,7 +29,7 @@
  * reaches the client.
  */
 
-import { revalidatePath } from "next/cache";
+import { revalidateClubTree } from "@/lib/club/revalidate";
 import { z } from "zod";
 import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -166,7 +166,7 @@ export async function generateClubJoinTokenAction(clubId: string) {
   }
 
   await writeClubAudit(sb, clubId, session, "join_token_generated", "");
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const, token };
 }
 
@@ -194,7 +194,7 @@ export async function revokeClubJoinTokenAction(clubId: string) {
   if (!result.ok) return { error: t("club.linkTokenFailed") };
 
   await writeClubAudit(sb, clubId, session, "join_token_revoked", "");
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }
 
@@ -227,7 +227,7 @@ export async function unbindClubLineGroupAction(clubId: string) {
   if (!result.ok) return { error: t("club.unbindGroupFailed") };
 
   await writeClubAudit(sb, clubId, session, "line_group_unbound", "");
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }
 
@@ -312,7 +312,7 @@ export async function requestClubLinkAction(token: string) {
           "player_linked_autolink",
           `${linked.display_name} ← ${session.profileId} (member auto-link)`,
         );
-        revalidatePath(`/clubs/${club.id}`);
+        revalidateClubTree();
         return {
           ok: true as const,
           state: "linked" as const,
@@ -344,7 +344,7 @@ export async function requestClubLinkAction(token: string) {
     return { error: t("club.linkRequestFailed") };
   }
 
-  revalidatePath(`/clubs/${club.id}`);
+  revalidateClubTree();
   return { ok: true as const, state: "pending" as const, clubName: club.name };
 }
 
@@ -452,7 +452,7 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
   // 7. Fire-and-forget confirmation push (never blocks or fails the link).
   await pushLinkConfirm(sb, clubId, profile.line_user_id);
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }
 
@@ -499,7 +499,7 @@ export async function dismissClubLinkRequestAction(input: DismissClubLinkInput) 
   if (!dismissed) return { ok: true as const, noop: true as const };
 
   await writeClubAudit(sb, clubId, session, "link_dismissed", requestId);
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }
 
@@ -562,7 +562,7 @@ export async function unlinkClubPlayerAction(input: UnlinkClubPlayerInput) {
     .eq("profile_id", profileId);
 
   await writeClubAudit(sb, clubId, session, "player_unlinked", `${player.display_name} ✕ ${profileId}`);
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }
 
@@ -589,8 +589,13 @@ async function managerClubIds(sb: AdminClient, profileId: string): Promise<strin
 /**
  * List profiles a manager may link to a guest row WITHOUT asking the player to scan
  * again: anyone who opted into one of the manager's own clubs (a club_link_requests
- * row, ANY status) and is not already linked to a roster row in THIS club. Only public
- * profile fields are returned — line_user_id stays server-side.
+ * row, ANY status), UNION (ADR 0002 P2 — series-aware) anyone already a confirmed
+ * `series_members` row of THIS club's series (profile_id NOT NULL) — a member linked
+ * only via a sibling session under the same series is "known" too, even if this
+ * particular club never saw its own club_link_requests row. Excludes profiles already
+ * linked to a roster row in THIS club. Falls back to the legacy club_link_requests-only
+ * behavior when the club has no series yet. Only public profile fields are returned —
+ * line_user_id stays server-side.
  */
 export async function listLinkableKnownProfilesAction(clubId: string) {
   const session = await getSession();
@@ -602,19 +607,38 @@ export async function listLinkableKnownProfilesAction(clubId: string) {
     return { error: t("club.noPermission") };
   }
 
-  const myClubIds = await managerClubIds(sb, session.profileId);
-  if (myClubIds.length === 0) return { ok: true as const, profiles: [] as LinkableKnownProfile[] };
+  const [myClubIds, clubRow] = await Promise.all([
+    managerClubIds(sb, session.profileId),
+    sb.from("clubs").select("series_id").eq("id", clubId).maybeSingle(),
+  ]);
+  const seriesId = clubRow.data?.series_id as string | null | undefined;
 
-  // Profiles that opted into any of my clubs, excluding ones a manager explicitly
-  // dismissed (status=rejected) — a dismiss means "not this person", so the picker
-  // must not silently resurface them.
-  const { data: reqs } = await sb
-    .from("club_link_requests")
-    .select("profile_id")
-    .in("club_id", myClubIds)
-    .neq("status", "rejected");
-  const candidateIds = [...new Set((reqs ?? []).map((r) => r.profile_id))];
-  if (candidateIds.length === 0) return { ok: true as const, profiles: [] as LinkableKnownProfile[] };
+  const candidateIds = new Set<string>();
+
+  // Legacy source: profiles that opted into any of my clubs, excluding ones a
+  // manager explicitly dismissed (status=rejected) — a dismiss means "not this
+  // person", so the picker must not silently resurface them.
+  if (myClubIds.length > 0) {
+    const { data: reqs } = await sb
+      .from("club_link_requests")
+      .select("profile_id")
+      .in("club_id", myClubIds)
+      .neq("status", "rejected");
+    for (const r of reqs ?? []) candidateIds.add(r.profile_id as string);
+  }
+
+  // Series-aware source: confirmed members of THIS club's series, regardless of
+  // which session they originally opted in from.
+  if (seriesId) {
+    const { data: members } = await sb
+      .from("series_members")
+      .select("profile_id")
+      .eq("series_id", seriesId)
+      .not("profile_id", "is", null);
+    for (const m of members ?? []) candidateIds.add(m.profile_id as string);
+  }
+
+  if (candidateIds.size === 0) return { ok: true as const, profiles: [] as LinkableKnownProfile[] };
 
   // Exclude profiles already linked to a roster row in THIS club.
   const { data: linked } = await sb
@@ -623,7 +647,7 @@ export async function listLinkableKnownProfilesAction(clubId: string) {
     .eq("club_id", clubId)
     .not("profile_id", "is", null);
   const linkedSet = new Set((linked ?? []).map((l) => l.profile_id));
-  const freeIds = candidateIds.filter((id) => !linkedSet.has(id));
+  const freeIds = [...candidateIds].filter((id) => !linkedSet.has(id));
   if (freeIds.length === 0) return { ok: true as const, profiles: [] as LinkableKnownProfile[] };
 
   const { data: profiles, error } = await sb
@@ -742,6 +766,6 @@ export async function linkKnownProfileAction(input: LinkKnownProfileInput) {
   // 8. Fire-and-forget confirmation push (never blocks or fails the link).
   await pushLinkConfirm(sb, clubId, profile.line_user_id);
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true as const };
 }

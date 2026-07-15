@@ -12,6 +12,13 @@ import {
   parseQueueSettings,
 } from "@/lib/club/queue-settings";
 import { loginRedirect, assertClubOwner, assertCanManageClub } from "@/lib/club/permissions";
+import { revalidateClubTree } from "@/lib/club/revalidate";
+import {
+  cleanupSeriesAfterSessionDelete,
+  latestSessionOfSeries,
+  repointPendingLinkRequestsBeforeDelete,
+} from "@/lib/club/series.server";
+import type { ClubSeries } from "@/lib/types";
 
 // Max length of a single court name (shared by updateClubCourtsAction + renameClubCourtAction).
 const COURT_NAME_MAX = 40;
@@ -33,30 +40,6 @@ const ClubSchema = clubSchema("name_too_short", "venue_required");
 
 export type CreateClubInput = z.infer<typeof ClubSchema>;
 export type UpdateClubInput = CreateClubInput & { id: string };
-
-export async function createClubAction(input: CreateClubInput) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-  const t = await getTranslations("actions");
-  if (session.isGuest) return { error: t("club.requireLineForClub") };
-
-  const parsed = clubSchema(t("club.clubNameTooShort"), t("club.clubVenueRequired")).safeParse(input);
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? t("club.invalidData") };
-  }
-
-  const sb = await createAdminClient();
-  const { data, error } = await sb
-    .from("clubs")
-    .insert({ ...parsed.data, owner_id: session.profileId })
-    .select("id")
-    .single();
-
-  if (error || !data) return { error: error?.message ?? t("club.createClubFailed") };
-
-  revalidatePath("/clubs");
-  redirect(`/clubs/${data.id}`);
-}
 
 export async function updateClubAction(input: UpdateClubInput) {
   const session = await getSession();
@@ -88,7 +71,7 @@ export async function updateClubAction(input: UpdateClubInput) {
     await promoteReservesToFill(sb, id, parsed.data.max_players);
   }
 
-  revalidatePath(`/clubs/${id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -107,15 +90,51 @@ export async function deleteClubAction(clubId: string): Promise<{ error: string 
   const sb = await createAdminClient();
   const { data: club } = await sb
     .from("clubs")
-    .select("owner_id")
+    .select("owner_id, series_id")
     .eq("id", clubId)
     .single();
   if (!club || club.owner_id !== session.profileId) return { error: t("club.noPermission") };
 
+  // Capture the series (if any) BEFORE the delete — the post-delete cleanup
+  // below (ADR 0002 decision #12 hidden-adhoc-series removal / decision #3
+  // active-session repoint) needs its pre-delete state.
+  const seriesId = club.series_id as string | null;
+  let series: Pick<ClubSeries, "id" | "is_adhoc" | "active_session_id"> | null = null;
+  if (seriesId) {
+    const { data: seriesRow } = await sb
+      .from("club_series")
+      .select("id, is_adhoc, active_session_id")
+      .eq("id", seriesId)
+      .maybeSingle();
+    series = seriesRow;
+  }
+
+  // "Latest remaining session" fallback, computed ONCE pre-delete and shared by
+  // both series invariants (see `repointPendingLinkRequestsBeforeDelete` +
+  // `cleanupSeriesAfterSessionDelete` in `src/lib/club/series.server.ts`): the
+  // pre-delete latest-excluding-this-club IS the post-delete latest. Only
+  // needed when the active pointer is missing or is the session being deleted —
+  // otherwise the repoint targets the active session and the post-delete
+  // pointer re-aim never fires.
+  let fallbackId: string | null = null;
+  if (series && (!series.active_session_id || series.active_session_id === clubId)) {
+    fallbackId = await latestSessionOfSeries(sb, series.id, clubId);
+  }
+
+  if (series) {
+    await repointPendingLinkRequestsBeforeDelete(sb, clubId, series, fallbackId);
+  }
+
   const { error } = await sb.from("clubs").delete().eq("id", clubId);
   if (error) return { error: error.message };
 
-  revalidatePath("/clubs");
+  // Best-effort post-delete series cleanup (hidden ad-hoc GC + active-pointer
+  // re-aim) — never blocks the delete itself, which already succeeded above.
+  if (series) {
+    await cleanupSeriesAfterSessionDelete(sb, clubId, series, fallbackId);
+  }
+
+  revalidateClubTree();
   redirect("/clubs");
 }
 
@@ -139,7 +158,7 @@ export async function setClubVisibilityAction(
   const { error } = await sb.from("clubs").update({ is_public: isPublic }).eq("id", clubId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   revalidatePath(`/c/${clubId}`);
   return { ok: true };
 }
@@ -247,7 +266,7 @@ export async function updateClubQueueSettingsAction(
     .eq("id", clubId);
   if (writeError) return { error: writeError.message };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -278,7 +297,7 @@ export async function updateClubCourtsAction(
     return { error: t("club.saveCourtsFailed") };
   }
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true, courts: deduped };
 }
 
@@ -336,6 +355,6 @@ export async function renameClubCourtAction(
     .select("id");
   if (matchErr) console.error("[renameClubCourtAction] match cascade", matchErr);
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true, courts: next, movedMatches: moved?.length ?? 0 };
 }

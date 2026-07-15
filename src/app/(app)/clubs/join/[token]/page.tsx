@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { CheckCircle2, LinkIcon, XCircle } from "lucide-react";
+import { CalendarX, CheckCircle2, LinkIcon, XCircle } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -53,6 +53,27 @@ export default async function ClubJoinPage({
   const club = targetClubId
     ? (await sb.from("clubs").select("id, name").eq("id", targetClubId).maybeSingle()).data
     : null;
+
+  // A valid series resolved, but it has no target session (no active pointer
+  // and no legacy-matched club) — distinct from an outright invalid token: the
+  // link itself is fine, the organizer just hasn't opened a session yet.
+  if (!club && series) {
+    return (
+      <JoinShell>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CalendarX className="h-5 w-5 text-muted-foreground" />
+            {t("joinNoSessionTitle")}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            {t("joinNoSessionDesc", { series: series.name })}
+          </p>
+        </CardContent>
+      </JoinShell>
+    );
+  }
 
   // Invalid / revoked token — nothing to join. `club` only resolves when either
   // `series` or `legacyClub` resolved, so this covers both.

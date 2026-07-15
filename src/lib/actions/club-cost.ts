@@ -1,11 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getTranslations } from "next-intl/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
+import { revalidateClubTree } from "@/lib/club/revalidate";
 
 const CostConfigSchema = z.object({
   court_fee: z.coerce.number().min(0).max(1_000_000),
@@ -74,7 +74,7 @@ export async function updateClubCostConfigAction(clubId: string, input: CostConf
   const { error } = await sb.from("clubs").update(parsed.data).eq("id", clubId);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${clubId}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -104,7 +104,7 @@ export async function addExpenseAction(input: { club_id: string; label: string; 
   });
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${parsed.data.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -131,7 +131,7 @@ export async function updateExpenseAction(input: { id: string; club_id: string; 
     .eq("club_id", parsed.data.club_id);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${parsed.data.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -151,7 +151,7 @@ export async function deleteExpenseAction(input: { id: string; club_id: string }
     .eq("club_id", input.club_id);
   if (error) return { error: error.message };
 
-  revalidatePath(`/clubs/${input.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
 
@@ -180,6 +180,6 @@ export async function setTotalCostAction(input: { club_id: string; total_cost: n
     .eq("id", input.club_id);
 
   if (error) return { error: error.message };
-  revalidatePath(`/clubs/${input.club_id}`);
+  revalidateClubTree();
   return { ok: true };
 }
