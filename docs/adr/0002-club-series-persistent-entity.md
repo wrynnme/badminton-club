@@ -1,6 +1,9 @@
 # 0002 — Club series: a persistent club entity above per-session rows
 
-- **Status**: Accepted (2026-07-15, grilled — 15 decisions locked in two rounds). **NOT implemented yet.**
+- **Status**: Accepted (2026-07-15, grilled — 15 decisions locked in two rounds).
+  **EXPAND + backfill + P1 shipped to prod 2026-07-15 (v0.42.0)** — LINE surfaces
+  resolve via series with legacy fallback; membership auto-link live. P2–P4 and
+  CONTRACT not started.
 - **Scope**: Club side only. Tournaments unaffected. Amends ADR 0001 (see Consequences).
 - **Companion docs**: full design + phase roadmap in `spec.md` § "📐 Design — ผูกครั้งเดียวใช้ได้ตลอด"; glossary terms in `CONTEXT.md` § "Club series".
 
