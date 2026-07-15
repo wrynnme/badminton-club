@@ -85,6 +85,10 @@ type Props = {
 };
 
 /** Reads a rendered slip PNG Blob back out as a base64 data URL for upload. */
+// Kill-switch for the 1:1 "เรียกเก็บผ่าน LINE" push (user request 2026-07-16:
+// park it while the group bill is the billing path). Flip to false to restore.
+const PUSH_LINE_TEMP_DISABLED = true;
+
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -350,6 +354,8 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                 {paidCount > 0 && <ResetPaidButton clubId={clubId} onReset={() => setPaidIds(new Set())} />}
               </div>
               <div className="pt-1 flex flex-wrap gap-2">
+                {/* 1:1 push disabled per user request 2026-07-16 (use the group
+                    bill instead) — re-enable by flipping PUSH_LINE_TEMP_DISABLED */}
                 <Tooltip>
                   <TooltipTrigger
                     render={
@@ -358,7 +364,7 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                         size="sm"
                         variant="outline"
                         className="h-8 gap-1.5 text-xs"
-                        disabled={pushing || payable.length === 0}
+                        disabled={PUSH_LINE_TEMP_DISABLED || pushing || payable.length === 0}
                         onClick={pushBillsWithSlips}
                       />
                     }
@@ -370,7 +376,9 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
                         : t("pushing")
                       : t("pushLineBtn")}
                   </TooltipTrigger>
-                  <TooltipContent>{t("pushLineTip")}</TooltipContent>
+                  <TooltipContent>
+                    {PUSH_LINE_TEMP_DISABLED ? t("pushLineTempDisabledTip") : t("pushLineTip")}
+                  </TooltipContent>
                 </Tooltip>
 
                 {/* Open the group-bill preview dialog: one consolidated numbered list +

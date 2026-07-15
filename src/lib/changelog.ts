@@ -22,6 +22,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.48.1",
+    date: "2026-07-16",
+    groups: [
+      {
+        type: "improved",
+        items: [
+          "ปิดปุ่ม \"เรียกเก็บผ่าน LINE\" (ส่งบิลรายคน) ไว้ชั่วคราว — ใช้ \"เรียกเก็บเข้ากลุ่มไลน์\" แทนไปก่อน",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.48.0",
     date: "2026-07-16",
     groups: [
