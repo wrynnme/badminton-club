@@ -22,6 +22,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.41.0",
+    date: "2026-07-15",
+    groups: [
+      {
+        type: "improved",
+        items: [
+          "บิลรวมที่ส่งเข้ากลุ่มไลน์ เปลี่ยนจาก QR เปล่าๆ เป็นรูปสลิปมีแบรนด์ก๊วน — QR ไม่ระบุยอด (สแกนแล้วกรอกยอดเอง) พร้อมข้อมูลผู้รับเงิน ให้หน้าตาเดียวกับสลิปรายคน",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.40.0",
     date: "2026-07-15",
     groups: [

@@ -1,9 +1,9 @@
 "use client";
 
-import { useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { flushSync } from "react-dom";
 import { useTranslations } from "next-intl";
 import { format } from "date-fns";
-import QRCode from "qrcode";
 import { toast } from "sonner";
 import { Loader2, Send } from "lucide-react";
 import {
@@ -16,8 +16,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { GeneratedQr } from "@/components/club/generated-qr";
-import { buildPromptPayPayload, isValidPromptPayId } from "@/lib/club/promptpay";
+import { GroupBillSlipCard } from "@/components/club/group-bill-slip-card";
+import { resolveSlipPayment } from "@/lib/club/slip-payment";
+import { renderSlipBlob, blobToDataUrl, SLIP_QR_SETTLE_MS } from "@/components/club/club-slip-card";
+import { isValidPromptPayId } from "@/lib/club/promptpay";
 import {
   buildGroupBillLines,
   buildGroupBillHeader,
@@ -29,6 +31,13 @@ import { uploadBillSlipAction } from "@/lib/actions/club-payments";
 import { pushGroupBillsAction } from "@/lib/actions/club-billing";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import type { Club } from "@/lib/types";
+
+/** Scale factor for the LIVE slip preview inside the dialog (the full-size 360px
+ *  card would make an already-tall roster dialog unwieldy). CSS `zoom` shrinks the
+ *  layout box too (unlike transform), so no measuring wrapper is needed. A separate
+ *  full-size OFF-SCREEN instance (below) is what actually gets captured for the
+ *  LINE push — capturing a scaled node risks size-dependent capture artifacts. */
+const PREVIEW_SCALE = 0.72;
 
 type UnpaidPlayer = {
   playerId: string;
@@ -60,6 +69,13 @@ export function GroupBillDialog({
   const t = useTranslations("club.payment");
   const [sending, startSending] = useTransition();
 
+  // Off-screen full-size GroupBillSlipCard mount used ONLY to capture the PNG sent
+  // to LINE (see renderGroupSlipDataUrl below). Mirrors club-payment-collector.tsx's
+  // pushSlipContainerRef pattern: mount → flushSync → capture firstElementChild →
+  // unmount, kept separate from the scaled-down visual preview further down.
+  const captureContainerRef = useRef<HTMLDivElement>(null);
+  const [captureMounted, setCaptureMounted] = useState(false);
+
   // Reuse the exact server helper so the preview list can never drift from what
   // actually gets sent — the real lineUserId is server-only (PII); this fake
   // "linked" token only drives the `mentioned` flag for preview purposes.
@@ -78,13 +94,13 @@ export function GroupBillDialog({
 
   const ppNumber = !!club.promptpay_id && isValidPromptPayId(club.promptpay_id);
   const qrImage = club.promptpay_qr_image || null;
-  // One QR-source decision, shared by the preview render and the send handler so
-  // the two can never disagree on which QR (if any) is attached.
-  const qrSource: "promptpay" | "image" | "none" = ppNumber
-    ? "promptpay"
-    : qrImage
-      ? "image"
-      : "none";
+  // Single source of truth for "does the slip actually carry a QR": the same pure
+  // resolver GroupBillSlipCard renders from — so the attach decision can never
+  // disagree with what the slip body shows (e.g. a club with a PromptPay number
+  // but payment_show.promptpay=false must NOT push a slip whose body is the
+  // admin-facing empty state). No QR → text-only push, like before this feature.
+  const payment = resolveSlipPayment(club, ppNumber, qrImage);
+  const hasQr = !!(payment.qrValue || payment.ppImage);
 
   // LINE bodies are Thai-only by project convention, and the server builds the sent
   // header with dateFnsLocaleOf("th"). Pin the preview to "th" too (NOT the admin's
@@ -98,29 +114,49 @@ export function GroupBillDialog({
     dateStr = club.play_date ?? "";
   }
 
+  /** Mounts the off-screen GroupBillSlipCard, waits for the commit + QR/font
+   *  render, captures it to a PNG, and returns a base64 data URL — or null on
+   *  failure. Mirrors `renderOffscreenSlipDataUrl` in club-payment-collector.tsx. */
+  async function renderGroupSlipDataUrl(): Promise<string | null> {
+    // flushSync forces the off-screen mount to commit synchronously before we read
+    // the DOM below — startSending's async callback isn't itself a transition, but
+    // this still guards against the node not existing yet on the first paint.
+    flushSync(() => setCaptureMounted(true));
+    // Give the SlipQr's async QR (qrcode.toDataURL in a useEffect) time to draw.
+    await new Promise<void>((resolve) => setTimeout(resolve, SLIP_QR_SETTLE_MS));
+    const node = captureContainerRef.current?.firstElementChild as HTMLElement | null;
+    if (!node) {
+      setCaptureMounted(false);
+      return null;
+    }
+    try {
+      const blob = await renderSlipBlob(node);
+      return await blobToDataUrl(blob);
+    } catch {
+      return null;
+    } finally {
+      setCaptureMounted(false);
+    }
+  }
+
   function handleSend() {
     startSending(async () => {
-      // 1. Resolve the amount-less QR image URL to attach.
+      // 1. Render + upload the slip-styled, amount-less QR image (both the
+      //    promptpay-number and uploaded-image branches render inside the same
+      //    slip — GroupBillSlipCard picks the right one internally).
       let qrImageUrl: string | null = null;
-      if (qrSource === "promptpay") {
-        try {
-          const dataUrl = await QRCode.toDataURL(buildPromptPayPayload(club.promptpay_id!), {
-            errorCorrectionLevel: "H",
-            margin: 1,
-            width: 600,
-          });
-          const up = await uploadBillSlipAction({ clubId, kind: "amount", key: "open-qr", dataUrl });
-          if ("error" in up) {
-            toast.error(up.error);
-            return;
-          }
-          qrImageUrl = up.url;
-        } catch {
+      if (hasQr) {
+        const dataUrl = await renderGroupSlipDataUrl();
+        if (!dataUrl) {
           toast.error(t("slipRenderFailed"));
           return;
         }
-      } else if (qrSource === "image") {
-        qrImageUrl = qrImage;
+        const up = await uploadBillSlipAction({ clubId, kind: "amount", key: "open-qr", dataUrl });
+        if ("error" in up) {
+          toast.error(up.error);
+          return;
+        }
+        qrImageUrl = up.url;
       }
 
       // 2. Send.
@@ -137,6 +173,7 @@ export function GroupBillDialog({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -162,22 +199,22 @@ export function GroupBillDialog({
             ))}
           </div>
 
-          {qrSource !== "none" && (
-            // The scan-prompt line the message carries just above the QR image.
-            <p className="text-xs text-muted-foreground">{scanPrompt}</p>
+          {hasQr ? (
+            <>
+              {/* The scan-prompt line the message carries just above the QR image. */}
+              <p className="text-xs text-muted-foreground">{scanPrompt}</p>
+              {/* Live preview of the exact slip image that gets attached (scaled
+                  down to fit the dialog) — the full-size capture instance used for
+                  the actual upload is mounted off-screen, below. */}
+              <div className="flex justify-center" style={{ zoom: PREVIEW_SCALE }}>
+                <GroupBillSlipCard club={club} payment={payment} dateStr={dateStr} />
+              </div>
+            </>
+          ) : (
+            <p className="rounded-lg border p-3 text-center text-xs text-muted-foreground">
+              {t("groupBillNoQr")}
+            </p>
           )}
-
-          <div className="flex flex-col items-center gap-2 rounded-lg border p-3">
-            <span className="text-xs text-muted-foreground">{t("groupBillQrLabel")}</span>
-            {qrSource === "promptpay" ? (
-              <GeneratedQr value={buildPromptPayPayload(club.promptpay_id!)} size={160} logoUrl={null} />
-            ) : qrSource === "image" ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={qrImage!} alt={t("groupBillQrLabel")} className="h-40 w-40 rounded-lg border bg-white object-contain p-1" />
-            ) : (
-              <p className="text-center text-xs text-muted-foreground">{t("groupBillNoQr")}</p>
-            )}
-          </div>
 
           <p className="text-xs text-muted-foreground">
             {t("groupBillCount", { total: lines.length, mentioned: mentionedCount, plain: plainCount })}
@@ -224,5 +261,19 @@ export function GroupBillDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Off-screen full-size slip capture — invisible, used only to render the PNG
+        that gets uploaded + attached to the push. Mirrors the off-screen container
+        pattern in club-payment-collector.tsx (lines ~474-493). */}
+    {captureMounted && (
+      <div
+        ref={captureContainerRef}
+        aria-hidden="true"
+        style={{ position: "fixed", top: -9999, left: -9999, pointerEvents: "none", zIndex: -1 }}
+      >
+        <GroupBillSlipCard club={club} payment={payment} dateStr={dateStr} />
+      </div>
+    )}
+    </>
   );
 }
