@@ -22,6 +22,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.48.0",
+    date: "2026-07-16",
+    groups: [
+      {
+        type: "improved",
+        items: [
+          "หน้าผู้ดูแลระบบ (/admin) จัดระเบียบใหม่ — มีเมนูลัดกระโดดไปแต่ละเครื่องมือ คำอธิบายชัดว่าแต่ละส่วนทำอะไร และการ์ดทางเข้าในหน้าตั้งค่าบอกชัดว่าเป็นหน้าผู้ดูแลระบบ",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.47.0",
     date: "2026-07-16",
     groups: [
