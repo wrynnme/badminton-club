@@ -12,6 +12,8 @@ import {
   parseQueueSettings,
 } from "@/lib/club/queue-settings";
 import { loginRedirect, assertClubOwner, assertCanManageClub } from "@/lib/club/permissions";
+import { ensureSeriesForClub } from "@/lib/club/series.server";
+import type { ClubSeries } from "@/lib/types";
 
 // Max length of a single court name (shared by updateClubCourtsAction + renameClubCourtAction).
 const COURT_NAME_MAX = 40;
@@ -53,6 +55,19 @@ export async function createClubAction(input: CreateClubInput) {
     .single();
 
   if (error || !data) return { error: error?.message ?? t("club.createClubFailed") };
+
+  // Best-effort (ADR 0002): attach/create a series for this club and point its
+  // active_session_id at the new session — closes the gap where a club created
+  // via this legacy form would otherwise have no series until some other flow
+  // (join link, LINE bind, etc.) lazily attaches one. Never fails club creation.
+  try {
+    const series = await ensureSeriesForClub(sb, data.id);
+    if (series.active_session_id !== data.id) {
+      await sb.from("club_series").update({ active_session_id: data.id }).eq("id", series.id);
+    }
+  } catch (seriesError) {
+    console.error("[createClubAction] ensureSeriesForClub", seriesError);
+  }
 
   revalidatePath("/clubs");
   redirect(`/clubs/${data.id}`);
@@ -107,13 +122,59 @@ export async function deleteClubAction(clubId: string): Promise<{ error: string 
   const sb = await createAdminClient();
   const { data: club } = await sb
     .from("clubs")
-    .select("owner_id")
+    .select("owner_id, series_id")
     .eq("id", clubId)
     .single();
   if (!club || club.owner_id !== session.profileId) return { error: t("club.noPermission") };
 
+  // Capture the series (if any) BEFORE the delete — the post-delete cleanup
+  // below (ADR 0002 decision #12 hidden-adhoc-series removal / decision #3
+  // active-session repoint) needs its pre-delete state.
+  const seriesId = club.series_id as string | null;
+  let series: Pick<ClubSeries, "id" | "is_adhoc" | "active_session_id"> | null = null;
+  if (seriesId) {
+    const { data: seriesRow } = await sb
+      .from("club_series")
+      .select("id, is_adhoc, active_session_id")
+      .eq("id", seriesId)
+      .maybeSingle();
+    series = seriesRow;
+  }
+
   const { error } = await sb.from("clubs").delete().eq("id", clubId);
   if (error) return { error: error.message };
+
+  // Best-effort post-delete series cleanup — never blocks the delete itself,
+  // which already succeeded above.
+  if (series) {
+    try {
+      const { count } = await sb
+        .from("clubs")
+        .select("*", { count: "exact", head: true })
+        .eq("series_id", series.id);
+      if ((count ?? 0) === 0 && series.is_adhoc) {
+        // Last session of a hidden ad-hoc series is gone → delete the series too
+        // (decision #12 — no orphaned "เฉพาะกิจ" entries left in the list).
+        await sb.from("club_series").delete().eq("id", series.id);
+      } else if (series.active_session_id === clubId) {
+        // The deleted club WAS the active pointer (FK ON DELETE SET NULL already
+        // cleared it) — repoint at the latest remaining session, if any.
+        const { data: latest } = await sb
+          .from("clubs")
+          .select("id")
+          .eq("series_id", series.id)
+          .order("play_date", { ascending: false })
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (latest) {
+          await sb.from("club_series").update({ active_session_id: latest.id }).eq("id", series.id);
+        }
+      }
+    } catch (cleanupError) {
+      console.error("[deleteClubAction] series cleanup", cleanupError);
+    }
+  }
 
   revalidatePath("/clubs");
   redirect("/clubs");

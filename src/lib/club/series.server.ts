@@ -17,6 +17,7 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Club, ClubSeries } from "@/lib/types";
 import { classifyRosterMatch } from "@/lib/club/line-self-link";
+import { buildSessionDefaultsFromClub } from "@/lib/club/session-defaults";
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
 
@@ -82,7 +83,7 @@ export async function ensureSeriesForClub(sb: AdminClient, clubId: string): Prom
       owner_id: row.owner_id,
       name: row.name,
       active_session_id: row.id,
-      session_defaults: buildSessionDefaults(row),
+      session_defaults: buildSessionDefaultsFromClub(row),
     };
     let { data: created, error: createErr } = await sb
       .from("club_series")
@@ -110,22 +111,6 @@ export async function ensureSeriesForClub(sb: AdminClient, clubId: string): Prom
   }
 
   return series;
-}
-
-/** session_defaults shape (decision #15) — must match the backfill migration's jsonb_build_object. */
-function buildSessionDefaults(club: Club): Record<string, unknown> {
-  return {
-    venue: club.venue,
-    start_time: club.start_time,
-    end_time: club.end_time,
-    max_players: club.max_players,
-    court_fee: club.court_fee,
-    shuttle_price: club.shuttle_price,
-    court_split: club.court_split,
-    shuttle_split: club.shuttle_split,
-    courts: club.courts,
-    queue_settings: club.queue_settings,
-  };
 }
 
 // ---------------------------------------------------------------------------

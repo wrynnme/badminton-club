@@ -118,6 +118,17 @@ export type SeriesMember = {
   last_linked_at: string;
 };
 
+// A series-level partner pair (คู่ประจำ — decision #6): instantiated into a
+// per-session `club_locked_pairs` row on open-session (see open-session.ts /
+// buildLockedPairRows), only when both members are seeded into that session.
+export type SeriesPartnerPair = {
+  id: string;
+  series_id: string;
+  member1_id: string;
+  member2_id: string;
+  created_at: string;
+};
+
 // Skill level lookup (real numeric for math, label for display, e.g. real 2 = "N").
 export type Level = {
   id: string;

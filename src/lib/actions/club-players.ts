@@ -663,7 +663,7 @@ export async function updateClubPlayerDetailsAction(
 
   const { data: player, error: fetchError } = await sb
     .from("club_players")
-    .select("id, profile_id")
+    .select("id, profile_id, member_id")
     .eq("id", player_id)
     .eq("club_id", club_id)
     .single();
@@ -695,6 +695,20 @@ export async function updateClubPlayerDetailsAction(
     .eq("id", player_id)
     .eq("club_id", club_id);
   if (error) return { error: error.message };
+
+  // Level write-through (ADR 0002 decision #7): a member-linked player's level
+  // also updates the series registry (`series_members.default_level_id`) so it
+  // persists into the next session's auto-seed. Walk-ins (member_id null) are
+  // untouched. Best-effort — never fails an already-successful roster edit.
+  if (level_id !== undefined && player.member_id) {
+    const { error: writeThroughError } = await sb
+      .from("series_members")
+      .update({ default_level_id: level_id })
+      .eq("id", player.member_id);
+    if (writeThroughError) {
+      console.error("[updateClubPlayerDetailsAction] series level write-through", writeThroughError);
+    }
+  }
 
   revalidatePath(`/clubs/${club_id}`);
   return { ok: true };
@@ -737,8 +751,25 @@ export async function bulkSetClubPlayerLevelAction(input: {
       ? q.not("level_id", "is", null)
       : q.or(`level_id.neq.${levelId.data},level_id.is.null`);
 
-  const { data, error } = await q.select("id");
+  const { data, error } = await q.select("id, member_id");
   if (error) return { error: error.message };
+
+  // Level write-through (ADR 0002 decision #7) — batched version of the
+  // single-player write-through in updateClubPlayerDetailsAction. Only rows
+  // that are member-linked (member_id NOT NULL) propagate to the series
+  // registry; walk-ins are untouched. Best-effort — never fails the bulk edit.
+  const memberIds = [
+    ...new Set((data ?? []).map((r) => r.member_id).filter((id): id is string => !!id)),
+  ];
+  if (memberIds.length > 0) {
+    const { error: writeThroughError } = await sb
+      .from("series_members")
+      .update({ default_level_id: levelId.data })
+      .in("id", memberIds);
+    if (writeThroughError) {
+      console.error("[bulkSetClubPlayerLevelAction] series level write-through", writeThroughError);
+    }
+  }
 
   revalidatePath(`/clubs/${input.clubId}`);
   return { ok: true, count: data?.length ?? 0 };
