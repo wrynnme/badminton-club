@@ -471,7 +471,7 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
       </div>
     )}
 
-    {/* Off-screen push-slip capture container — 1:1 flow (variant="full") */}
+    {/* Off-screen push-slip capture container — 1:1 flow */}
     {pushSlipItem && (
       <div
         ref={pushSlipContainerRef}
@@ -487,7 +487,6 @@ export function ClubPaymentCollector({ clubId, club, players, matches, expenses,
           qrImage={ppNumber ? null : qrImage}
           qrLogoUrl={qrLogoUrl}
           locale={locale}
-          variant="full"
         />
       </div>
     )}
