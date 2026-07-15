@@ -316,8 +316,8 @@ function EditPlayerForm({
             </Select>
           </div>
 
-          {/* Session window override — start / end time */}
-          <div className="grid grid-cols-2 gap-2">
+          {/* Session window override — start / end time (stacked, one per line) */}
+          <div className="space-y-3">
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">{t("sessionEditorStart")}</Label>
               <Input
