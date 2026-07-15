@@ -12,8 +12,8 @@
  *      `@/lib/club/series.server`). A legacy `clubs.join_token` is still accepted
  *      and lazily migrated onto a series via `ensureSeriesForClub`.
  *
- *   2. Self-link (player)  @<bot> เชื่อมไลน์ <ชื่อในโพย>
- *      A player @mentions the bot and types their roster name to link their LINE
+ *   2. Self-link (player)  เชื่อมไลน์ <ชื่อในโพย>  (แท็กบอทหรือไม่ก็ได้)
+ *      A player types their roster name after the keyword to link their LINE
  *      account themselves — a fast-path alongside the manager-confirmed pool. A
  *      clean unique guest-name match auto-links; anything else drops into the pool.
  *      Matching/parsing logic lives in `@/lib/club/line-self-link` (pure, tested);
@@ -125,9 +125,10 @@ async function handleEvent(ev: LineEvent): Promise<void> {
   const groupId = ev.source.groupId;
   const text = ev.message.text;
 
-  // Bind (no @mention) takes precedence; otherwise a bot @mention may be a
-  // self-link command. The two are mutually exclusive by content — a self-link
-  // starts with the "@bot" mention text, so it never matches BIND_RE.
+  // Bind takes precedence; anything else may be a self-link command (with or
+  // without a bot @mention — parseSelfLinkCommand applies a stricter keyword
+  // when the bot wasn't tagged). Mutually exclusive by content — a self-link
+  // never matches BIND_RE.
   if (BIND_RE.test(text)) {
     await handleBind(ev, groupId, text);
     return;
@@ -206,8 +207,9 @@ async function handleBind(ev: LineEvent, groupId: string, text: string): Promise
 }
 
 // ---------------------------------------------------------------------------
-// handleSelfLink — a player @mentions the bot + types their roster name to link
-// their own LINE account. Parses/classifies via the pure helpers, then replies.
+// handleSelfLink — a player types "เชื่อมไลน์ <ชื่อ>" (bot tag optional since
+// 2026-07-16) to link their own LINE account. Parses/classifies via the pure
+// helpers, then replies.
 // ---------------------------------------------------------------------------
 
 async function handleSelfLink(ev: LineEvent, groupId: string, text: string): Promise<void> {
@@ -215,7 +217,7 @@ async function handleSelfLink(ev: LineEvent, groupId: string, text: string): Pro
   const mentionedSelf = mentionees?.some((m) => m.isSelf === true) ?? false;
 
   const parsed = parseSelfLinkCommand(text, mentionedSelf, mentionees);
-  if (!parsed) return; // bot not addressed, or no keyword — ignore silently
+  if (!parsed) return; // no link keyword — ordinary chat, ignore silently
 
   // Site-admin-editable reply templates. Fetched only AFTER the addressed-bot
   // guard above, so ordinary group chatter never triggers a settings read.

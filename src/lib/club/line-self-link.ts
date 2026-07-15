@@ -1,21 +1,24 @@
 /**
  * line-self-link.ts — PURE helpers for the self-service LINE keyword-link flow.
  *
- * A player in a bound LINE group @mentions the bot and types their roster name:
+ * A player in a bound LINE group types their roster name after the keyword:
  *
- *     @<bot> เชื่อมไลน์ <ชื่อในโพย>
+ *     เชื่อมไลน์ <ชื่อในโพย>            (plain — no bot tag needed, 2026-07-16)
+ *     @<bot> เชื่อมไลน์ <ชื่อในโพย>     (tagging the bot still works)
  *
  * The webhook (src/app/api/line/webhook/route.ts) captures `source.userId` +
  * `source.groupId`, then uses these pure functions to (1) confirm the message is a
- * self-link command addressed to the bot and pull out the typed roster name, and
- * (2) classify that name against the club's roster. The DB orchestration + reply
- * live in the route; everything here is side-effect-free so it is unit-tested
- * directly (no Supabase, no LINE API).
+ * self-link command and pull out the typed roster name, and (2) classify that
+ * name against the club's roster. The DB orchestration + reply live in the
+ * route; everything here is side-effect-free so it is unit-tested directly
+ * (no Supabase, no LINE API).
  *
- * Design decisions (wayfinder map #49):
- *   - The bot @mention is REQUIRED — a bare prefix is not enough (reduces false
- *     triggers). The route detects it via `mention.mentionees[].isSelf === true`
- *     and passes `mentionedSelf` in.
+ * Design decisions (wayfinder map #49; @mention relaxed 2026-07-16 by user request):
+ *   - Two keyword tiers, because the bot sees EVERY group message:
+ *     · bot @mentioned (`mention.mentionees[].isSelf === true`) → the lenient
+ *       keyword (bare "เชื่อม …" is enough — the user is clearly addressing us);
+ *     · no mention → the STRICT keyword only ("เชื่อมไลน์/เชื่อมline …") so
+ *       ordinary chat starting with "เชื่อม…" ("เชื่อมต่อไม่ได้") never triggers.
  *   - Only a clean, UNIQUE match on a still-guest row (`profile_id IS NULL`)
  *     auto-links; ambiguous / already-claimed / not-found all fall back to the
  *     manager-confirmed pool. So `classifyRosterMatch` returns those four cases.
@@ -47,8 +50,12 @@ export type RosterMatch =
   | { kind: "taken" } // a single name match, but that row is already linked
   | { kind: "not_found" };
 
-// The keyword: เชื่อม optionally followed by ไลน์/ไลน/line, then the roster name.
+// Lenient keyword (bot @mentioned): เชื่อม optionally followed by ไลน์/ไลน/line,
+// then the roster name.
 const KEYWORD_RE = /^เชื่อม\s*(?:ไลน์|ไลน|line)?\s*(.*)$/i;
+// Strict keyword (no mention): the ไลน์/line part is REQUIRED — the bot reads
+// every group message, so a bare "เชื่อม…" must never trigger off normal chat.
+const STRICT_KEYWORD_RE = /^เชื่อม\s*(?:ไลน์|ไลน|line)\s*(.*)$/i;
 
 /** Normalize a name for comparison: trim, lowercase (latin), collapse whitespace. */
 export function normalizeRosterName(name: string): string {
@@ -81,23 +88,22 @@ export function stripMentions(text: string, mentionees?: Mentionee[]): string {
 }
 
 /**
- * Decide whether a group text message is a self-link command addressed to the bot,
- * and extract the typed roster name.
+ * Decide whether a group text message is a self-link command, and extract the
+ * typed roster name.
  *
- *   - `mentionedSelf` false  → null (bot not addressed; ignore)
- *   - keyword absent         → null (bot addressed for some other reason)
- *   - keyword, no name       → { kind: "usage" }
- *   - keyword + name         → { kind: "link", rosterName }
+ *   - bot @mentioned → lenient keyword ("เชื่อม …" is enough)
+ *   - no mention     → strict keyword only ("เชื่อมไลน์ …" / "เชื่อมline …")
+ *   - keyword absent → null (ordinary chat; ignore silently)
+ *   - keyword, no name → { kind: "usage" }
+ *   - keyword + name   → { kind: "link", rosterName }
  */
 export function parseSelfLinkCommand(
   text: string,
   mentionedSelf: boolean,
   mentionees?: Mentionee[],
 ): SelfLinkParse {
-  if (!mentionedSelf) return null;
-
   const clean = stripMentions(text, mentionees).trim();
-  const m = clean.match(KEYWORD_RE);
+  const m = clean.match(mentionedSelf ? KEYWORD_RE : STRICT_KEYWORD_RE);
   if (!m) return null;
 
   const rosterName = m[1].trim();
