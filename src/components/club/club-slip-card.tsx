@@ -19,8 +19,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { buildPromptPayPayload } from "@/lib/club/promptpay";
-import { parseReceiptTemplate, hasBankReceiver, resolveReceiptTheme } from "@/lib/club/receipt";
+import { resolveSlipPayment } from "@/lib/club/slip-payment";
 import QRCode from "qrcode";
 import type { Club } from "@/lib/types";
 import type { ClubCostRow } from "@/lib/club/cost-summary";
@@ -91,11 +90,32 @@ export async function shareOrDownload(
   URL.revokeObjectURL(url);
 }
 
+/** Reads a rendered slip PNG Blob back out as a base64 data URL for upload.
+ *  Used by the group-bill push capture (group-bill-dialog.tsx); note that
+ *  club-payment-collector.tsx still carries its own local equivalent — left
+ *  untouched on purpose (the per-player push flow is frozen by product decision). */
+export function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** How long an off-screen slip mount needs before capture so SlipQr's async
+ *  QRCode.toDataURL <img> (and fonts) have painted. Owned here because the
+ *  timing is SlipQr's implementation detail — capture flows import it instead
+ *  of hardcoding their own guess. */
+export const SLIP_QR_SETTLE_MS = 120;
+
 // QR rendered as a raster <img> (PNG data URL) instead of inline <svg>. modern-
 // screenshot's foreignObject capture renders react-qr-code's inline <svg> BLANK,
 // but a raster <img> serializes cleanly. Same payload + EC level H, so the QR
 // matrix (and scannability) is identical to the on-screen GeneratedQr.
-function SlipQr({ value, size, logoUrl }: { value: string; size: number; logoUrl: string | null }) {
+// Exported so `GroupBillSlipCard` (group-bill-slip-card.tsx) can reuse the exact
+// same rasterization for its amount-less QR.
+export function SlipQr({ value, size, logoUrl }: { value: string; size: number; logoUrl: string | null }) {
   const [dataUrl, setDataUrl] = useState("");
   useEffect(() => {
     let active = true;
@@ -176,17 +196,10 @@ export type SlipCardProps = {
   qrImage: string | null;
   qrLogoUrl: string | null;
   locale: string;
-  /**
-   * "full" (default) = today's per-player slip: name + itemized rows + total + QR.
-   * "group" = a shared-amount slip for group-chat billing — a bucket is shared by
-   * everyone owing the same TOTAL, but their line-item breakdowns differ, so name
-   * + itemized rows are hidden. Only club/date header + Total + QR + footer show.
-   */
-  variant?: "full" | "group";
 };
 
 export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipCard(
-  { club, row, playerName, ppNumber, qrImage, qrLogoUrl, locale, variant = "full" },
+  { club, row, playerName, ppNumber, qrImage, qrLogoUrl, locale },
   ref,
 ) {
   const t = useTranslations("club.slip");
@@ -202,18 +215,11 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
     // keep raw string
   }
 
-  // Receipt customization rides along on the `club` object (parsed here so every call
-  // site — dialog, batch loop, editor preview — gets the same derivation).
-  const tpl = parseReceiptTemplate(club.receipt_template);
-  const theme = resolveReceiptTheme(tpl.theme);
-  const showPromptpay = tpl.payment_show.promptpay;
-  const qrValue =
-    showPromptpay && ppNumber && club.promptpay_id
-      ? buildPromptPayPayload(club.promptpay_id, row.total)
-      : "";
-  const ppImage = showPromptpay && !qrValue && qrImage ? qrImage : null;
-  const showBank = tpl.payment_show.bank && hasBankReceiver(tpl.bank);
-  const anyPayment = !!qrValue || !!ppImage || showBank;
+  // Payment-channel resolution shared with the group-bill slip (slip-payment.ts) —
+  // the per-player slip passes the row total so the QR embeds the amount; the
+  // group slip omits it. One resolver = the priority rules can't drift.
+  const { tpl, theme, showPromptpay, qrValue, ppImage, showBank, anyPayment } =
+    resolveSlipPayment(club, ppNumber, qrImage, row.total);
 
   return (
     <div
@@ -276,9 +282,7 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
 
       {/* Body */}
       <div style={{ padding: "16px 20px 8px", backgroundColor: "#ffffff" }}>
-        {variant === "full" && (
-          <>
-            {/* Player name */}
+        {/* Player name */}
             <div
               style={{
                 fontSize: 16,
@@ -358,19 +362,14 @@ export const SlipCard = forwardRef<HTMLDivElement, SlipCardProps>(function SlipC
                 </div>
               )}
             </div>
-          </>
-        )}
 
-        {/* Divider — only in the full variant; the group variant hides the name +
-            itemized rows above it, so the rule would otherwise sit stray under the header. */}
-        {variant === "full" && (
-          <div
-            style={{
-              borderTop: "1px solid #e5e7eb",
-              margin: "10px 0 8px",
-            }}
-          />
-        )}
+        {/* Divider */}
+        <div
+          style={{
+            borderTop: "1px solid #e5e7eb",
+            margin: "10px 0 8px",
+          }}
+        />
 
         {/* Total */}
         <div

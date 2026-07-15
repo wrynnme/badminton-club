@@ -901,7 +901,6 @@
     "groupBillPreviewTitle": "ตัวอย่างบิลกลุ่ม",
     "groupBillMentionBadge": "LINE",
     "groupBillNoQr": "ก๊วนนี้ยังไม่ได้ตั้งพร้อมเพย์ — จะส่งเฉพาะข้อความ (ไม่มี QR)",
-    "groupBillQrLabel": "QR พร้อมเพย์ (ไม่ระบุยอด)",
     "groupBillCount": "ค้างจ่าย {total} คน · แท็ก LINE {mentioned} · ไม่มี LINE {plain}",
     "groupBillChunkWarn": "รายชื่อยาว จะถูกแตกเป็น {n} ข้อความ",
     "groupBillConfirm": "ส่งเข้ากลุ่ม",

@@ -794,6 +794,67 @@ Design ล็อกจาก grilling 2026-07-07 — **priority ladder (strict)*
 
 (Phase 12 DONE — see below.)
 
+### 📥 User requests — LINE club-link UX (เพิ่ม 2026-07-15)
+
+1. **ผูกก๊วน/ผู้เล่นครั้งเดียวใช้ได้ตลอด (persistent link)** — 📐 **DESIGNED + GRILLED ✅ 2026-07-15, user เลือกทาง C เต็มรูป (ก๊วนถาวร + นัด); decisions ล็อกครบ 10 ข้อ** (ดู "### 📐 Design — ผูกครั้งเดียวใช้ได้ตลอด" ด้านล่าง); ยังไม่ implement — ขั้นถัดไป = EXPAND migration + backfill preview. (ข้อ 1 + ข้อ 3 เดิมเป็นคำขอเดียวกัน — รวมแล้ว)
+2. **ช่องข้อความผูกก๊วน LINE — เอา scrollbar ออก** — UI bug. **ชี้เป้าแล้ว (explore 2026-07-15):** `src/components/club/club-link-controls.tsx` component `BindCommandRow` (~บรรทัด 73) — `<code className="h-8 flex-1 overflow-x-auto whitespace-nowrap ...">` ใส่ `ผูกก๊วน <token>` ที่ token เป็น UUID เต็ม → เกิด horizontal scrollbar ในกล่องสูงคงที่. แก้ด้วย wrap/truncate+copy หรือ auto-fit แทน overflow-x-auto.
+3. **Site admin ยกเลิกการเชื่อมกลุ่ม LINE ได้ทุกก๊วน** — 🔥 **GRILLED ✅ 2026-07-15, พร้อม build** (ไม่มี migration): การ์ด `AdminLineBindingsManager` ใน `/admin` — ตารางทุกก๊วนที่ `line_group_id IS NOT NULL` (ชื่อก๊วน/เจ้าของ/วันเล่น) + ยกเลิกรายก๊วน + **ปุ่ม bulk ยกเลิกทั้งหมด**; confirm dialog ธรรมดาทั้งคู่ (bulk ระบุจำนวน+ผลกระทบ); ตัดแล้ว **push LINE 1:1 แจ้ง owner** ต่อก๊วน (fire-and-forget, ข้อความเป็น bot-message template แก้ได้ที่ /admin); actions gate ด้วย site-admin assert (`src/lib/auth/site-admin.ts`); build บน `clubs.line_group_id` ปัจจุบัน — จด consumer ไว้ใน ADR 0002 แล้ว (P1 ก๊วนถาวร repoint ตาม). คำใน glossary: "Site admin" เพิ่มใน CONTEXT.md แล้ว (ห้ามเรียกสั้นๆ ว่า "admin" — ชนกับ Manager).
+4. **ปุ่ม reset level ของก๊วนนั้นๆ (club-scoped level reset)** — เพิ่มปุ่มให้ owner/co-admin รีเซ็ต level ผู้เล่นในก๊วนนั้น. **ต้อง clarify scope ก่อนทำ:** รีเซ็ตเป็นค่าอะไร (null / ค่า default), กระทบเฉพาะ `club_players` ของก๊วนนี้หรือ level FK ทั้งระบบ (levels เป็น global source of truth — ดู memory `level-system-pending-drops.md`), และเป็น R1 (แก้ข้อมูลผู้เล่นหลายแถว) ต้อง confirm dialog + audit. **หมายเหตุ (grill 2026-07-15):** level ของสมาชิกจะกลาย write-through ที่ `series_members.default_level_id` ตาม design ก๊วนถาวร → reset level ควร implement ที่ระดับสมาชิกก๊วน (จุดเดียวจบ) หลัง P2 ship.
+
+### 📐 Design — "ผูกครั้งเดียวใช้ได้ตลอด" ทาง C เต็มรูป: ก๊วนถาวร + นัด — ออกแบบ 2026-07-15 (user เลือก C จาก 3 ทาง A/C1/C-full), ยังไม่ implement
+
+> **เอกสารคู่กัน:** ADR `docs/adr/0002-club-series-persistent-entity.md` (decision record + code facts พร้อม file:line + guardrails สำหรับ implementer) · glossary `CONTEXT.md` § "Club series (ก๊วนถาวร + นัด)" (คำเรียกมาตรฐาน). อ่าน ADR 0002 ก่อนเริ่ม implement เสมอ.
+
+**ปัญหา:** 1 `clubs` row = 1 นัด → binding ทุกตัวตายตามนัด: `line_group_id` + `join_token` ไม่อยู่ใน preset (ต้องพิมพ์ `ผูกก๊วน <token>` ในกลุ่ม + แชร์ลิงก์ใหม่ทุกนัด); `club_players.profile_id` ติดมาผ่าน preset แบบ snapshot ที่ stale; known-profile picker derive จาก `club_link_requests` ซึ่ง CASCADE ตายเมื่อลบ club เก่า. **ระบบเรียก "นัด" ว่า "ก๊วน" — ไม่มีตัวตนถาวรของก๊วนจริง (เช่น MUGGLE) ให้ binding/สมาชิกเกาะข้ามนัด.**
+
+**ทางเลือกที่พิจารณาแล้วตัดทิ้ง:** (A) clone-นัด + ย้าย `line_group_id`/`join_token` ข้าม row — เล็กสุดแต่เป็นท่าแฮ็ก: บิลนัดเก่าดับหลังย้าย binding, ไม่เปิดทางฟีเจอร์ข้ามนัด; (C1) series-lite additive — ครึ่งทาง. **user เลือก C เต็มรูป 2026-07-15.**
+
+#### โมเดลเป้าหมาย
+
+- **`club_series`** (ก๊วนถาวร — "MUGGLE"): `id, owner_id FK profiles, name, line_group_id text UNIQUE?, join_token text UNIQUE?, active_session_id FK clubs? (นัดปัจจุบัน — pointer ชัดๆ), is_adhoc bool default false (ก๊วนเฉพาะกิจซ่อน — decision #12), archived_at timestamptz? (decision #13), session_defaults jsonb NOT NULL default '{}' (decision #15), created_at` + (P3 ยกของถาวรขึ้น) promptpay/receipt config, co-admins. RLS-on no-policy (service-role only ตาม invariant ตารางก๊วน). **ผูกกลุ่มไลน์ + join link ที่นี่ครั้งเดียวตลอดชีพ — ไม่มีการย้าย binding, บิลนัดเก่า push ได้ตลอด** (resolve นัด → series → `line_group_id`).
+- **`series_members`** (ทะเบียนสมาชิกถาวร): `series_id FK CASCADE, profile_id FK profiles **nullable** (null = สมาชิกชื่ออย่างเดียว ไม่มี LINE — decision #11), canonical_name text, default_level_id FK levels?, is_regular bool default true (ขาประจำ — seed นัดใหม่; toggle ในหน้าสมาชิก), first/last_linked_at, partial UNIQUE(series_id, profile_id) WHERE profile_id IS NOT NULL`. scope ด้วย series (ไม่ใช่ owner) — กันชื่อชนข้ามก๊วนของ owner เดียวกันโดยธรรมชาติ.
+- **`series_partner_pairs`** (คู่ประจำระดับก๊วน — grill Q6): คู่ `member_id` สองคน; ตอนเปิดนัดระบบ instantiate เป็น `club_locked_pairs` ของนัดให้อัตโนมัติ — **queue engine ไม่แตะเลย** (มันอ่าน locked pairs ต่อนัดเหมือนเดิม); ในนัดปลด/เพิ่มล็อคชั่วคราวได้อิสระ ไม่เขียนย้อนขึ้นก๊วน. **เข้า P2.**
+- **`clubs`** = นัด (คอลัมน์เดิมคงหมด — `club_players`/`club_matches`/billing ยัง key ด้วย `club_id` ไม่ rekey): เพิ่ม `series_id FK club_series` (nullable — นัด legacy/standalone = null). `line_group_id`/`join_token` บน clubs → deprecated หลัง backfill (คง column ช่วง transition, drop ตอน CONTRACT).
+- **`club_players`** = attendance ของนัด: เพิ่ม `member_id FK series_members?` (nullable — walk-in ไม่มี membership ได้); `profile_id` เดิมคงไว้ (derive จาก member ตอน link).
+- **`club_link_requests`** → กลายเป็น **คำขอสมัครสมาชิกก๊วน** scope ระดับ series (สมัครครั้งเดียว ไม่ใช่ต่อนัด); pool UI อยู่หน้าก๊วน.
+- **การแบ่งหน้าที่:** membership/identity/LINE link/คู่ประจำ/level default = ระดับก๊วน; roster/คิว/แมตช์/บิล = ระดับนัด (โค้ด queue/cost/billing เดิมแทบไม่แตะ).
+
+#### Decisions จาก grilling (2026-07-15 — ล็อกแล้วทั้ง 10 ข้อ)
+
+1. **URL/IA:** ก๊วนถาวรครอง `/clubs/[id]` (id = series UUID); นัดอยู่ `/clubs/[seriesId]/s/[sessionId]`; `/clubs/<uuid นัดเก่า>` → 302 redirect ไป path ใหม่ (UUID ไม่ชนกัน lookup ได้); `/clubs` list = รายชื่อก๊วนถาวร. (ข้อเท็จจริงรองรับ: ไม่มี URL หน้าก๊วนหลุดออกนอกระบบ — บิล LINE เป็น text+mention ล้วน, ลิงก์แชร์มีแค่ `/clubs/join/[token]` ซึ่งอิง token)
+2. **เปิดนัด seed roster:** สมาชิก `is_regular` ลง roster อัตโนมัติทั้งหมด (พร้อม level/link/member_id) — ไม่มี dialog ติ๊กเลือก, ปรับคนด้วย UI เดิมในหน้านัด; owner + co-admin เปิดนัดได้.
+3. **นัด active:** pointer `club_series.active_session_id` — set อัตโนมัติตอนเปิดนัด + manager สลับเองได้ + badge "นัดปัจจุบัน" ใน UI; ไม่ใช้ date-heuristic. membership upsert เกิดระดับก๊วนเสมอ; pointer ใช้ตัดสินแค่ roster นัดไหนถูก auto-link. ไม่บล็อกการเปิดนัดใหม่ขณะนัดเก่ายังไม่ปิดบิล (บิลนัดเก่า push ได้ตลอดเพราะ binding อยู่บน series).
+4. **Trust auto-link (ผ่อน ADR 0001):** สมาชิกที่เคยยืนยันแล้ว → auto-link เต็ม: ชื่อ roster ตรง exact+unique+ช่องว่าง → ผูกทันทีไม่ผ่าน manager (กติกาชุดเดียวกับ keyword self-link); กำกวม → pool + badge "สมาชิก — ชื่อเดิม X"; คนใหม่ → manager ยืนยันครั้งแรกครั้งเดียว (trust anchor เดิม).
+5. **Backfill:** auto จับกลุ่ม `(owner_id, name)` exact → ทำ preview จาก prod ให้ user เคาะอนุมัติก่อน apply; ย้าย binding ขึ้น series (ตัวล่าสุด non-null ชนะ); สร้าง `series_members` จาก distinct `profile_id` links; stamp `member_id`; ชื่อเพี้ยนตัดสิน merge มือรายกรณี.
+6. **คู่ประจำ:** ระดับก๊วน + seed ลงนัดอัตโนมัติ — **เข้า P2** (ไม่รอ P3).
+7. **Level write-through:** แก้ level ผู้เล่น (ที่เป็นสมาชิก) ในหน้านัด = อัปเดต `series_members.default_level_id` ด้วยเสมอ; walk-in เป็น per-นัด ธรรมชาติ. (TODO "reset level ของก๊วน" implement ที่ระดับสมาชิกหลัง P2)
+8. **Preset: deprecate ทิ้งหลัง P2** (user เลือกแรงกว่า rec) — ถอด UI + actions ทันทีที่ปุ่มเปิดนัด ship; ตาราง `club_presets` drop ตอน CONTRACT.
+9. **RSVP: แยก PRD ใหม่** หลัง P2 ship — P4 เหลือสถิติข้ามนัดอย่างเดียว (read-only, เสี่ยงต่ำ).
+10. **คำเรียก UI (ปรับเป็น hybrid 2026-07-15):** ชั้นถาวร = **"ก๊วน"**, ชั้นรายครั้ง (noun/entity) = **"นัด"** ("นัดปัจจุบัน" / "ประวัตินัด" / "นัดวันพุธ") — แต่**ปุ่ม action หลักสำหรับเปิดนัดใช้ "จัดก๊วน"** (verb, ภาษาพูดจริงของคนเล่นแบด) แทน "เปิดนัดใหม่"; ห้ามใช้ "จัดก๊วน" เป็นคำนามเรียก entity (กันคำ "ก๊วน" ซ้อนสองชั้น); i18n key ใหม่ทั้ง th/en parity.
+11. **สมาชิกไม่มี LINE ได้ (grill รอบ 2):** `series_members.profile_id` เป็น **nullable** — สมาชิก 2 แบบ: ผูก LINE (รับบิล/mention ได้) กับ **ชื่ออย่างเดียว** (manager เพิ่มเอง, seed ตอนจัดก๊วนได้เหมือนกัน); ผูก LINE ทีหลัง = upgrade in-place ผ่าน flow auto-link เดิม; unique เปลี่ยนเป็น partial `UNIQUE(series_id, profile_id) WHERE profile_id IS NOT NULL` (mirror โครง guest/linked ของ `club_players`).
+12. **นัดเฉพาะกิจ (ก๊วนเล่นครั้ง-สองครั้ง) คงอยู่ + ได้ LINE ครบ:** user เลือกให้สร้างนัดแบบไม่มีก๊วนถาวรได้ และมีฟีเจอร์ LINE เต็ม → **implement เป็น "ก๊วนเฉพาะกิจซ่อน"**: การสร้างนัดเฉพาะกิจ = auto-create `club_series` (`is_adhoc=true`, ไม่บังคับตั้งชื่อ, ไม่โชว์เป็นก๊วนเต็มตัวใน list — โชว์เป็นรายการ "เฉพาะกิจ" ชี้ตรงเข้านัด) + นัด 1 นัด — UX ขั้นตอนเดียวเหมือนเดิมแต่ binding LINE วิ่งผ่านกลไก series **ทางเดียวทั้งระบบ** (webhook/บิล/join logic ชุดเดียว, CONTRACT drop คอลัมน์ legacy เดินต่อได้); ปุ่ม **"อัปเกรดเป็นก๊วนถาวร"** = ตั้งชื่อ + flip `is_adhoc` (ข้อมูล/สมาชิก/binding อยู่ครบแล้ว). ลบนัดสุดท้ายของก๊วนเฉพาะกิจ = ลบ series ซ่อนตามไปด้วย (กัน orphan).
+13. **ลบก๊วนถาวร:** **บล็อกถ้ายังมีนัดเหลือ** (ต้องลบนัดหมดก่อน) + เพิ่ม **archive** (`archived_at` — ซ่อนจาก list, ประวัติอยู่ครบ, กู้คืนได้) สำหรับก๊วนเลิกเล่น; ก๊วนเฉพาะกิจนัดเดียวยังลบง่ายเหมือนเดิม.
+14. **Webhook rebind ชนกัน:** `ผูกก๊วน <token>` ในกลุ่มที่ผูกก๊วนอื่นอยู่ (หรือก๊วนผูกกลุ่มอื่นอยู่) → **error ชัดๆ ทั้งสองทิศ ไม่ย้ายอัตโนมัติ** — bot ตอบชื่อก๊วนที่ผูกอยู่ + ให้กดปลดในแอปก่อน (`unbindClubLineGroupAction` ระดับ series) — กัน binding หายเงียบ.
+15. **Config นัดใหม่ = หน้า default ของก๊วน (user เลือก, ต่างจาก rec copy-forward):** เพิ่ม `club_series.session_defaults jsonb` (venue, เวลาเริ่ม-เลิก, max_players, court_fee, shuttle_price, queue_settings เต็ม block, named courts) — แก้ในหน้าตั้งค่าก๊วน; "จัดก๊วน" อ่านจากนี่เสมอ; แก้ config ในนัดไม่เขียนย้อนขึ้น default (explicit ไม่ implicit); ฟอร์มสร้างก๊วนครั้งแรก seed `session_defaults` ในตัว; backfill seed จากนัดล่าสุดของแต่ละก๊วน. = series กลายเป็น "preset ที่มีชีวิต" เต็มตัว สอดคล้อง decision #8 (ถอด preset).
+
+#### Flows หลัก
+
+- **ตั้งก๊วนครั้งเดียว:** สร้าง series → gen `join_token` → พิมพ์ `ผูกก๊วน <token>` ในกลุ่ม LINE (webhook เขียน `line_group_id` ที่ series) — จบ ไม่ต้องทำซ้ำอีก.
+- **เปิดนัด:** จากหน้าก๊วน เลือกวัน → insert `clubs` row (`series_id` set, active pointer ชี้มาที่นัดนี้) + seed roster จากขาประจำ + instantiate คู่ประจำเป็น `club_locked_pairs` — ชื่อ+`member_id`+`profile_id`+level ติดมาครบ ไม่ต้องผูกอะไรเลย.
+- **ผู้เล่นผูกครั้งเดียวตลอดชีพ:** join link (ระดับก๊วน) → LINE login → **ครั้งแรก**: manager ยืนยัน 1 ครั้ง → upsert `series_members`; **ครั้งต่อไป**: auto-link ตาม decision #4. keyword `เชื่อมไลน์ <ชื่อ>` resolve group → series → นัด active (pointer) + upsert membership.
+- **ขาเขียน registry อัตโนมัติ:** `linkClubPlayerAction` · `linkKnownProfileAction` · webhook `resolveSelfLink` → upsert `series_members` ทุกครั้งที่ link สำเร็จ. **Unlink ในนัด ≠ ลบสมาชิก**; ลบสมาชิกออกจากก๊วนเป็น action แยก (เคสผูกผิดคน).
+- **Group bill:** `pushGroupBillsAction` อ่าน `line_group_id` ผ่าน series ของนัดนั้น (fallback legacy `clubs.line_group_id` ช่วง transition) — นัดไหนก็ push ได้.
+- PII: ตารางใหม่อ้าง `profile_id` เท่านั้น ไม่แตะ `line_user_id`; ไม่ส่งลง client.
+
+#### Migration prod (EXPAND → cutover → contract)
+
+1. **EXPAND (additive DDL):** ✅ **APPLIED prod 2026-07-15** (migration `20260715000200_club_series_expand`) — `club_series` (+`active_session_id`/`is_adhoc`/`archived_at`/`session_defaults`) + `series_members` (profile_id nullable, partial unique) + `series_partner_pairs` + `clubs.series_id` (FK **RESTRICT** = decision #13 ระดับ DB) + `club_players.member_id`; RLS-on no-policy ทุกตารางใหม่; FK indexes ครบ. โค้ด live ไม่แตะคอลัมน์ใหม่ = zero behavior change (verified: หลัง apply ไม่มี error). RPC ใหม่ในอนาคตต้อง `REVOKE EXECUTE FROM PUBLIC, anon, authenticated`.
+2. **Backfill (assisted):** ✅ **APPLIED prod 2026-07-15** (migration `20260715000300_club_series_backfill`; preview อนุมัติโดย user — **auto (owner,name) ล้วน ไม่ merge มือ**: MUGGLE×2 เจ้าของแยกกัน, "MUGGLE TUESDAY "/"อังคาร" แยกตามข้อมูล). ผล verify ตรง preview เป๊ะ: **6 series / 8 นัด linked (0 orphan) / 3 members (BEEPANG·BEE·PANG พร้อม level) / 3 attendance stamped / binding parity 0 mismatch / active pointer + session_defaults ครบทุก series**. Binding เป็น **copy ไม่ move** — legacy `clubs.line_group_id`/`join_token` ยังอยู่ให้โค้ด live ใช้จน P1 สลับ. `session_defaults` shape ที่ seed: `{venue, start_time, end_time, max_players, court_fee, shuttle_price, court_split, shuttle_split, courts, queue_settings}` — P2 เขียน zod ตามนี้.
+3. **Cutover เป็น PR ชุด** (แต่ละตัว green + deployable): **(P1)** webhook/บิล/join resolve ผ่าน series + auto-link สมาชิก → **(P2)** หน้าก๊วนถาวร (สมาชิก/ประวัตินัด/ตั้งค่า/URL ใหม่+redirect) + ปุ่มเปิดนัด (seed ขาประจำ+คู่ประจำ+level) + ถอด preset → **(P3)** ยกของถาวรขึ้น series (promptpay/receipt/co-admins) → **(P4 optional)** สถิติข้ามนัด.
+4. **CONTRACT (ทีหลัง, Gate ตาม convention):** drop `clubs.line_group_id`/`join_token` legacy + drop `club_presets` เมื่อทุก path อ่านผ่าน series แล้ว.
+
+**หมายเหตุ:** "เต็มรูป" = commit ทั้ง roadmap ตอนนี้ แต่ engineering ship เป็นเฟส ไม่ทำ mega-PR เดียว (ทุกเฟสผ่าน tsc/vitest/build + e2e ที่เกี่ยว).
+
 ### Schema hygiene — verified NOT drop candidates (ตรวจ 2026-07-07)
 
 Fields ที่ audit/grill-me เคย flag เป็น dead-code drop candidate — **ตรวจแล้วยัง LIVE ทั้งหมด, ห้ามลบ** (trace read path + query prod; ตัวเลข+รายละเอียดใน `bug.md` 2026-07-07 + memory `dead-code-audit-false-positives.md`):

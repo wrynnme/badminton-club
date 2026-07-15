@@ -901,7 +901,6 @@
     "groupBillPreviewTitle": "Group bill preview",
     "groupBillMentionBadge": "LINE",
     "groupBillNoQr": "No PromptPay set for this club — the bill will be text-only (no QR)",
-    "groupBillQrLabel": "PromptPay QR (no amount)",
     "groupBillCount": "{total} unpaid · {mentioned} LINE-tagged · {plain} no LINE",
     "groupBillChunkWarn": "Long list — will be split into {n} messages",
     "groupBillConfirm": "Send to group",
