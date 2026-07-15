@@ -83,7 +83,7 @@ export type Club = {
 
 // A persistent club entity (ก๊วนถาวร — ADR 0002 / docs/adr/0002) above per-session
 // `clubs` rows: owns the LINE group binding + join link "once, forever", the member
-// registry, and (post-P3) payment config/co-admins. RLS-on no-policy (service-role
+// registry, and (P3) payment config/co-admins. RLS-on no-policy (service-role
 // only, like every club table). See src/lib/club/series.server.ts.
 export type ClubSeries = {
   id: string;
@@ -101,6 +101,14 @@ export type ClubSeries = {
   // courts. "จัดก๊วน" (P2) reads this; per-session edits never write back.
   session_defaults: Record<string, unknown>;
   created_at: string;
+  // P3 — payment/receipt config lifted from the per-session `clubs` columns
+  // (mirrors those fields exactly; see resolvePaymentConfig / resolveReceiptConfig
+  // in src/lib/club/series-payment.ts for the series-first, legacy-fallback read).
+  promptpay_id: string | null;
+  promptpay_name: string | null;
+  promptpay_qr_image: string | null;
+  receipt_template: Record<string, unknown>;
+  receipt_logo_url: string | null;
 };
 
 // A series-level member registry row (สมาชิกก๊วน — decision #11): survives every

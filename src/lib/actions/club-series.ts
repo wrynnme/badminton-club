@@ -22,6 +22,7 @@ import { assertCanManageSeries, assertSeriesOwner } from "@/lib/club/series-perm
 import { normalizeRosterName } from "@/lib/club/line-self-link";
 import { revalidateClubTree } from "@/lib/club/revalidate";
 import { getGlobalLevelsAction } from "@/lib/actions/levels";
+import type { ClubProfileSearchResult } from "@/lib/actions/club-admins";
 import {
   SessionDefaultsSchema,
   buildSessionDefaultsFromClub,
@@ -778,4 +779,133 @@ export async function removeSeriesPartnerPairAction(input: {
 
   revalidateClubTree();
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Co-admins (P3 — lifted from per-session `club_admins`; owner-only management,
+// mirrors club-admins.ts' addClubCoAdminAction/removeClubCoAdminAction/
+// searchClubProfilesAction, keyed on seriesId + `series_admins` instead of
+// clubId + `club_admins`). See assertCanManageSeries for the read side (series
+// owner OR series_admins row OR legacy per-session club_admins fallback).
+// ---------------------------------------------------------------------------
+
+export type SeriesAdmin = {
+  series_id: string;
+  user_id: string;
+  display_name: string | null;
+  line_user_id: string | null;
+  added_by: string | null;
+  added_at: string;
+};
+
+export async function addSeriesCoAdminAction(input: {
+  seriesId: string;
+  profileId: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const guard = await guardSeries(input.seriesId, "owner");
+  if (!guard.ok) return guard.res;
+  const { sb, t, profileId: actorId } = guard;
+
+  const trimmed = input.profileId.trim();
+  if (!z.string().uuid().safeParse(trimmed).success) return { error: t("club.selectUserFromSearch") };
+
+  // Resolve by opaque profile id (from searchSeriesProfilesAction) — never by line_user_id.
+  const { data: profile } = await sb.from("profiles").select("id").eq("id", trimmed).maybeSingle();
+  if (!profile) return { error: t("club.userNotFound") };
+  if (profile.id === actorId) return { error: t("club.cannotAddSelfAsCoAdmin") };
+
+  const { error } = await sb.from("series_admins").insert({
+    series_id: input.seriesId,
+    user_id: profile.id,
+    added_by: actorId,
+  });
+  if (error) {
+    if (error.code === "23505") return { error: t("club.alreadyCoAdmin") };
+    return { error: t("club.addCoAdminFailed") };
+  }
+
+  revalidateClubTree();
+  return { ok: true };
+}
+
+export async function removeSeriesCoAdminAction(input: {
+  seriesId: string;
+  userId: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const guard = await guardSeries(input.seriesId, "owner");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
+
+  const { error } = await sb
+    .from("series_admins")
+    .delete()
+    .eq("series_id", input.seriesId)
+    .eq("user_id", input.userId);
+  if (error) return { error: t("club.removeCoAdminFailed") };
+
+  revalidateClubTree();
+  return { ok: true };
+}
+
+export async function listSeriesCoAdminsAction(input: {
+  seriesId: string;
+}): Promise<{ ok: true; admins: SeriesAdmin[] } | { error: string }> {
+  const guard = await guardSeries(input.seriesId, "owner");
+  if (!guard.ok) return guard.res;
+  const { sb, t } = guard;
+
+  type Row = {
+    series_id: string;
+    user_id: string;
+    added_by: string | null;
+    added_at: string;
+    profile: { display_name: string | null; line_user_id: string | null } | null;
+  };
+  const { data, error } = await sb
+    .from("series_admins")
+    .select("series_id, user_id, added_by, added_at, profile:profiles!series_admins_user_id_fkey(display_name, line_user_id)")
+    .eq("series_id", input.seriesId)
+    .order("added_at", { ascending: true });
+  if (error) return { error: t("club.loadCoAdminsFailed") };
+
+  const admins: SeriesAdmin[] = ((data ?? []) as unknown as Row[]).map((r) => ({
+    series_id: r.series_id,
+    user_id: r.user_id,
+    display_name: r.profile?.display_name ?? null,
+    line_user_id: r.profile?.line_user_id ?? null,
+    added_by: r.added_by,
+    added_at: r.added_at,
+  }));
+  return { ok: true, admins };
+}
+
+/** Mirrors `searchClubProfilesAction` (club-admins.ts), scoped to `series_admins`
+ *  instead of `club_admins` — excludes the actor + everyone already a series co-admin. */
+export async function searchSeriesProfilesAction(input: {
+  seriesId: string;
+  query: string;
+}): Promise<{ ok: true; results: ClubProfileSearchResult[] } | { error: string }> {
+  const guard = await guardSeries(input.seriesId, "owner");
+  if (!guard.ok) return guard.res;
+  const { sb, t, profileId: actorId } = guard;
+
+  const q = input.query.trim();
+  if (q.length < 2) return { ok: true, results: [] };
+
+  const { data: existing } = await sb.from("series_admins").select("user_id").eq("series_id", input.seriesId);
+  const excludeIds = [actorId, ...(existing ?? []).map((r) => r.user_id as string)];
+  const escapedQ = q.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
+
+  // excludeIds always has actorId — never empty
+  const { data, error } = await sb
+    .from("profiles")
+    // line_user_id is NOT selected (PII) — only used as a server-side filter to
+    // exclude guests (null line_user_id), never returned to the client.
+    .select("id, display_name")
+    .ilike("display_name", `%${escapedQ}%`)
+    .not("line_user_id", "is", null)
+    .not("id", "in", `(${excludeIds.join(",")})`)
+    .limit(20);
+  if (error) return { error: t("club.searchFailed") };
+  return { ok: true, results: (data ?? []) as ClubProfileSearchResult[] };
 }
