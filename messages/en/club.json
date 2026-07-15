@@ -23,6 +23,8 @@
   },
   "coAdmin": {
     "title": "Co-admins",
+    "seriesHint": "Co-admins now live at the club (series) level and apply to every session — this list still works for this session specifically.",
+    "seriesHintLink": "Go to club settings →",
     "empty": "No co-admins yet",
     "noName": "(No name)",
     "removeAriaLabel": "Remove {name}",
@@ -914,7 +916,21 @@
   "seriesTabs": {
     "overview": "Overview",
     "members": "Members",
+    "stats": "Stats",
     "settings": "Settings"
+  },
+  "seriesStats": {
+    "empty": "No completed matches in this club yet",
+    "totalSessionsLabel": "{count} sessions total",
+    "totalMatchesLabel": "{count} completed matches total",
+    "tableTitle": "Member stats",
+    "colName": "Name",
+    "colLevel": "Level",
+    "colSessions": "Sessions",
+    "colMatches": "Matches",
+    "colRecord": "W-L",
+    "colWinRate": "Win rate",
+    "colLastPlayed": "Last played"
   },
   "seriesMembers": {
     "heading": "Club members",

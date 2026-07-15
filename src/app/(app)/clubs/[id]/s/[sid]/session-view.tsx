@@ -39,6 +39,7 @@ import { getClubLevelsAction } from "@/lib/actions/levels";
 import { getAppSettings, resolveQrLogoUrl } from "@/lib/app-settings";
 import { resolveBotMessage } from "@/lib/bot-messages";
 import { resolveLineGroupId } from "@/lib/club/series.server";
+import { resolvePaymentConfig, resolveReceiptConfig } from "@/lib/club/series-payment";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
 import type { ClubMatch, ClubLockedPair, Level, ClubSeries } from "@/lib/types";
@@ -138,7 +139,20 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
   const full = activeCount >= club.max_players;
   const isOwner = session?.profileId === club.owner_id;
   const isCoAdmin = session ? coAdmins.some((a) => a.user_id === session.profileId) : false;
-  const canManage = isOwner || isCoAdmin;
+  let canManage = isOwner || isCoAdmin;
+
+  // ADR 0002 P3 — a series-level co-admin (`series_admins`) manages every
+  // session of the series (mirrors assertCanManageClub). Checked only when the
+  // per-session gates above failed, so the common owner path costs nothing.
+  if (!canManage && session && club.series_id) {
+    const { data: seriesAdmin } = await sb
+      .from("series_admins")
+      .select("user_id")
+      .eq("series_id", club.series_id)
+      .eq("user_id", session.profileId)
+      .maybeSingle();
+    canManage = !!seriesAdmin;
+  }
 
   // Clubs are owner/co-admin only — non-managers can't view the club at all.
   // Not logged in → login (return here after); logged-in non-manager → club list.
@@ -159,6 +173,18 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
   // needs the resolved group-binding flag for `ClubPaymentCollector`.
   const series: ClubSeries | null = (seriesRes.data as ClubSeries | null) ?? null;
   const resolvedLineGroupId = resolveLineGroupId(series, club);
+
+  // ADR 0002 P3 — promptpay/receipt config lives on the series once set (with
+  // per-field fallback to the legacy per-session columns). Resolved ONCE here,
+  // server-side, and threaded down as a same-shaped `Club` object so every
+  // consumer (ClubPaymentCollector → PromptPayConfig/ReceiptTemplateEditor/
+  // SlipCard/SlipDialog/GroupBillDialog, all fed by the SAME `club` prop) reads
+  // the resolved values with zero prop-shape churn.
+  const resolvedClub = {
+    ...club,
+    ...resolvePaymentConfig(series, club),
+    ...resolveReceiptConfig(series, club),
+  };
 
   const queueSettings = parseQueueSettings(club.queue_settings);
 
@@ -398,7 +424,7 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
               {canManage && (
                 <ClubPaymentCollector
                   clubId={club.id}
-                  club={club}
+                  club={resolvedClub}
                   players={players}
                   matches={clubMatches}
                   expenses={expenses}
@@ -434,7 +460,13 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
                   the upgrade offer here instead, since it has no series home a
                   manager would otherwise navigate to. */}
               {canManage && series && series.is_adhoc && <UpgradeAdhocCard seriesId={series.id} />}
-              {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}
+              {isOwner && (
+                <ClubCoAdminControls
+                  clubId={club.id}
+                  initialAdmins={coAdmins}
+                  seriesId={series?.id ?? null}
+                />
+              )}
               {isOwner && (
                 <div className="border-t border-destructive/30 pt-4 mt-2 space-y-3">
                   <h2 className="font-semibold text-destructive">{t("page.dangerZoneHeading")}</h2>

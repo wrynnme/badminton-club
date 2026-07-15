@@ -23,6 +23,8 @@
   },
   "coAdmin": {
     "title": "ผู้ช่วยดูแล (Co-admin)",
+    "seriesHint": "ผู้ช่วยดูแลย้ายไปจัดการที่ระดับก๊วนแล้ว (ใช้ได้กับทุกนัด) — รายการนี้ยังใช้งานได้สำหรับนัดนี้เป็นการเฉพาะ",
+    "seriesHintLink": "ไปที่ตั้งค่าก๊วน →",
     "empty": "ยังไม่มีผู้ช่วยดูแล",
     "noName": "(ไม่มีชื่อ)",
     "removeAriaLabel": "ลบ {name}",
@@ -914,7 +916,21 @@
   "seriesTabs": {
     "overview": "ภาพรวม",
     "members": "สมาชิก",
+    "stats": "สถิติ",
     "settings": "ตั้งค่า"
+  },
+  "seriesStats": {
+    "empty": "ยังไม่มีแมตช์ที่จบในก๊วนนี้",
+    "totalSessionsLabel": "{count} นัดทั้งหมด",
+    "totalMatchesLabel": "{count} แมตช์จบทั้งหมด",
+    "tableTitle": "สถิติสมาชิก",
+    "colName": "ชื่อ",
+    "colLevel": "ระดับ",
+    "colSessions": "นัดที่มา",
+    "colMatches": "แมตช์",
+    "colRecord": "ชนะ-แพ้",
+    "colWinRate": "อัตราชนะ",
+    "colLastPlayed": "เล่นล่าสุด"
   },
   "seriesMembers": {
     "heading": "สมาชิกก๊วน",
