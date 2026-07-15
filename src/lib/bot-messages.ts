@@ -75,7 +75,7 @@ export const BOT_MESSAGE_SPECS: Record<BotMessageKey, BotMessageSpec> = {
   },
   selfLinkUsage: {
     required: [],
-    default: `พิมพ์แบบนี้นะ: แท็กบอทแล้วต่อด้วย  เชื่อมไลน์ <ชื่อในโพย>  เช่น  เชื่อมไลน์ โจ้`,
+    default: `พิมพ์แบบนี้นะ:  เชื่อมไลน์ <ชื่อในโพย>  เช่น  เชื่อมไลน์ โจ้  (ไม่ต้องแท็กบอทก็ได้)`,
   },
   selfLinkNoUser: {
     required: [],

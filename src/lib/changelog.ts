@@ -22,6 +22,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.47.0",
+    date: "2026-07-16",
+    groups: [
+      {
+        type: "improved",
+        items: [
+          "เชื่อม LINE ในกลุ่มง่ายขึ้น — พิมพ์ \"เชื่อมไลน์ <ชื่อในโพย>\" ได้เลยโดยไม่ต้องแท็กบอท (แท็กแบบเดิมก็ยังใช้ได้)",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.46.0",
     date: "2026-07-16",
     groups: [
