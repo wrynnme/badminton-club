@@ -3,7 +3,8 @@ import { getTranslations } from "next-intl/server";
 import { isSiteAdmin } from "@/lib/auth/site-admin";
 import { getAppSettings, DEFAULT_QR_LOGO } from "@/lib/app-settings";
 import { getGlobalLevelsAction } from "@/lib/actions/levels";
-import { listLineBindingsAction } from "@/lib/actions/admin-line-bindings";
+import { createAdminClient } from "@/lib/supabase/server";
+import { fetchLineBindingInventory } from "@/lib/club/line-bindings.server";
 import { AdminQrLogoManager } from "@/components/admin/admin-qr-logo-manager";
 import { AdminLevelsManager } from "@/components/admin/admin-levels-manager";
 import { AdminBotMessagesManager } from "@/components/admin/admin-bot-messages-manager";
@@ -15,15 +16,15 @@ export default async function AdminPage() {
   // Site owner only — anyone else sees a 404 (don't reveal the page exists).
   if (!(await isSiteAdmin())) notFound();
 
-  const [settings, globalLevels, bindingsRes] = await Promise.all([
+  const sb = await createAdminClient();
+  const [settings, globalLevels, bindingRows] = await Promise.all([
     getAppSettings(),
     getGlobalLevelsAction(),
-    listLineBindingsAction(),
+    // Page is already isSiteAdmin-gated above — call the inventory directly
+    // instead of an action wrapper that would re-run the same gate query.
+    fetchLineBindingInventory(sb),
   ]);
   const t = await getTranslations("admin");
-  // Page already gated on isSiteAdmin above, so the action should never return
-  // its own `{error}` here — default to empty defensively rather than throw.
-  const bindingRows = "rows" in bindingsRes ? bindingsRes.rows : [];
 
   return (
     <div className="mx-auto max-w-lg space-y-6 px-4 py-8">

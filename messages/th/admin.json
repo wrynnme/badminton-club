@@ -87,9 +87,9 @@
     "unbindAllTooltip": "ยกเลิกการเชื่อมกลุ่ม LINE ของทุกก๊วนพร้อมกัน",
     "unbindAllConfirmTitle": "ยกเลิกการเชื่อมกลุ่ม LINE ทุกก๊วน?",
     "unbindAllConfirmDesc": "จะยกเลิกการเชื่อมกลุ่ม LINE ของทั้ง {count} ก๊วน — บิลกลุ่ม/แจ้งเตือนทาง LINE ของก๊วนเหล่านี้จะใช้ไม่ได้จนกว่าจะผูกกลุ่มใหม่ เจ้าของแต่ละก๊วนจะได้รับข้อความแจ้งเตือนทาง LINE",
-    "unbindAllConfirmCancel": "ยกเลิก",
     "unbindAllConfirmButton": "ยืนยันยกเลิกทั้งหมด",
     "unbindAllSuccess": "ยกเลิกการเชื่อมกลุ่มแล้ว {count} ก๊วน",
+    "unbindAllPartial": "ยกเลิกแล้ว {count} ก๊วน — ล้มเหลว {failed} ก๊วน ลองใหม่อีกครั้ง",
     "unbinding": "กำลังยกเลิก…"
   }
 }

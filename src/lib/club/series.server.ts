@@ -366,22 +366,38 @@ export async function clearSeriesBinding(
 ): Promise<{ ok: true } | { ok: false }> {
   const series = await getSeriesForClub(sb, clubId);
   if (series) {
-    const { error: seriesErr } = await sb.from("club_series").update({ [column]: null }).eq("id", series.id);
-    if (seriesErr) {
-      console.error(`[${caller}] series`, seriesErr);
-      return { ok: false };
-    }
-    const { error: legacyErr } = await sb.from("clubs").update({ [column]: null }).eq("series_id", series.id);
-    if (legacyErr) {
-      console.error(`[${caller}] legacy(series)`, legacyErr);
-      return { ok: false };
-    }
-    return { ok: true };
+    return clearBindingBySeriesId(sb, series.id, column, caller);
   }
 
   const { error } = await sb.from("clubs").update({ [column]: null }).eq("id", clubId);
   if (error) {
     console.error(`[${caller}]`, error);
+    return { ok: false };
+  }
+  return { ok: true };
+}
+
+/**
+ * The both-levels core of `clearSeriesBinding` for callers that already hold a
+ * series id (e.g. the site-admin bindings manager) — clears the series column
+ * AND every legacy session row under it, without the walk-up from a session.
+ * Works for a series with zero sessions too (the legacy update just matches
+ * nothing).
+ */
+export async function clearBindingBySeriesId(
+  sb: AdminClient,
+  seriesId: string,
+  column: "join_token" | "line_group_id",
+  caller: string,
+): Promise<{ ok: true } | { ok: false }> {
+  const { error: seriesErr } = await sb.from("club_series").update({ [column]: null }).eq("id", seriesId);
+  if (seriesErr) {
+    console.error(`[${caller}] series`, seriesErr);
+    return { ok: false };
+  }
+  const { error: legacyErr } = await sb.from("clubs").update({ [column]: null }).eq("series_id", seriesId);
+  if (legacyErr) {
+    console.error(`[${caller}] legacy(series)`, legacyErr);
     return { ok: false };
   }
   return { ok: true };

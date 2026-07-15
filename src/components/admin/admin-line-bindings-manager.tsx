@@ -9,12 +9,12 @@
  * `admin-levels-manager.tsx` (Card + table + dialogs + toasts + useTransition
  * + router.refresh).
  *
- * `rows` are fetched server-side (the page calls `listLineBindingsAction`
+ * `rows` are fetched server-side (the page calls `fetchLineBindingInventory`
  * directly) — this component never fetches on mount, only refreshes via
  * `router.refresh()` after a mutation.
  */
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactElement } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations, useLocale } from "next-intl";
 import { toast } from "sonner";
@@ -42,105 +42,51 @@ function targetKey(target: AdminLineBindingTarget): string {
   return target.kind === "series" ? `series:${target.seriesId}` : `legacy:${target.clubId}`;
 }
 
-// ─── Per-row unbind ────────────────────────────────────────────────────────
+// ─── Shared confirm dialog (per-row + bulk use the same scaffold) ──────────
 
-function UnbindRowButton({ row, onDone }: { row: AdminLineBindingRow; onDone: () => void }) {
+function UnbindConfirmDialog({
+  renderTrigger,
+  tooltip,
+  title,
+  description,
+  confirmLabel,
+  onConfirm,
+}: {
+  /** Trigger button — receives the dialog opener; the shared Tooltip wraps it. */
+  renderTrigger: (openDialog: () => void) => ReactElement;
+  tooltip: string;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  /** Runs inside a transition; resolve `true` to close the dialog (success). */
+  onConfirm: () => Promise<boolean>;
+}) {
   const t = useTranslations("admin.lineBindings");
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
 
   function handleConfirm() {
     start(async () => {
-      const res = await adminUnbindLineGroupAction({ target: row.target });
-      if ("error" in res) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success(t("unbindSuccess", { club: row.clubName }));
-      setOpen(false);
-      onDone();
+      if (await onConfirm()) setOpen(false);
     });
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-destructive hover:text-destructive"
-              aria-label={t("unbindTooltip")}
-              onClick={() => setOpen(true)}
-            >
-              <Link2Off className="h-3.5 w-3.5" />
-            </Button>
-          }
-        />
-        <TooltipContent>{t("unbindTooltip")}</TooltipContent>
+        <TooltipTrigger render={renderTrigger(() => setOpen(true))} />
+        <TooltipContent>{tooltip}</TooltipContent>
       </Tooltip>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>{t("unbindConfirmTitle")}</DialogTitle>
-          <DialogDescription>{t("unbindConfirmDesc", { club: row.clubName })}</DialogDescription>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2">
           <DialogClose render={<Button variant="outline" disabled={pending}>{t("unbindConfirmCancel")}</Button>} />
           <Button variant="destructive" onClick={handleConfirm} disabled={pending}>
             {pending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
-            {t("unbindConfirmButton")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ─── Bulk unbind-all ───────────────────────────────────────────────────────
-
-function UnbindAllButton({ count, onDone }: { count: number; onDone: () => void }) {
-  const t = useTranslations("admin.lineBindings");
-  const [open, setOpen] = useState(false);
-  const [pending, start] = useTransition();
-
-  function handleConfirm() {
-    start(async () => {
-      const res = await adminUnbindAllLineGroupsAction();
-      if ("error" in res) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success(t("unbindAllSuccess", { count: res.count }));
-      setOpen(false);
-      onDone();
-    });
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button type="button" variant="destructive" size="sm" disabled={count === 0} onClick={() => setOpen(true)}>
-              <Link2Off className="h-3.5 w-3.5 mr-1" />
-              {t("unbindAllButton")}
-            </Button>
-          }
-        />
-        <TooltipContent>{t("unbindAllTooltip")}</TooltipContent>
-      </Tooltip>
-      <DialogContent className="sm:max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{t("unbindAllConfirmTitle")}</DialogTitle>
-          <DialogDescription>{t("unbindAllConfirmDesc", { count })}</DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="gap-2">
-          <DialogClose render={<Button variant="outline" disabled={pending}>{t("unbindAllConfirmCancel")}</Button>} />
-          <Button variant="destructive" onClick={handleConfirm} disabled={pending}>
-            {pending && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />}
-            {pending ? t("unbinding") : t("unbindAllConfirmButton")}
+            {pending ? t("unbinding") : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -155,8 +101,32 @@ export function AdminLineBindingsManager({ rows }: { rows: AdminLineBindingRow[]
   const locale = useLocale();
   const router = useRouter();
 
-  function refresh() {
+  async function unbindOne(row: AdminLineBindingRow): Promise<boolean> {
+    const res = await adminUnbindLineGroupAction({ target: row.target });
+    if ("error" in res) {
+      toast.error(res.error);
+      return false;
+    }
+    toast.success(t("unbindSuccess", { club: row.clubName }));
     router.refresh();
+    return true;
+  }
+
+  async function unbindAll(): Promise<boolean> {
+    const res = await adminUnbindAllLineGroupsAction();
+    if ("error" in res) {
+      toast.error(res.error);
+      return false;
+    }
+    // Best-effort batch: surface a partial failure instead of a green toast
+    // that silently hides it.
+    if (res.failed > 0) {
+      toast.error(t("unbindAllPartial", { count: res.count, failed: res.failed }));
+    } else {
+      toast.success(t("unbindAllSuccess", { count: res.count }));
+    }
+    router.refresh();
+    return true;
   }
 
   return (
@@ -168,7 +138,19 @@ export function AdminLineBindingsManager({ rows }: { rows: AdminLineBindingRow[]
       <CardContent className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">{t("countLabel", { count: rows.length })}</span>
-          <UnbindAllButton count={rows.length} onDone={refresh} />
+          <UnbindConfirmDialog
+            tooltip={t("unbindAllTooltip")}
+            title={t("unbindAllConfirmTitle")}
+            description={t("unbindAllConfirmDesc", { count: rows.length })}
+            confirmLabel={t("unbindAllConfirmButton")}
+            onConfirm={unbindAll}
+            renderTrigger={(openDialog) => (
+              <Button type="button" variant="destructive" size="sm" disabled={rows.length === 0} onClick={openDialog}>
+                <Link2Off className="h-3.5 w-3.5 mr-1" />
+                {t("unbindAllButton")}
+              </Button>
+            )}
+          />
         </div>
 
         {rows.length === 0 ? (
@@ -189,7 +171,7 @@ export function AdminLineBindingsManager({ rows }: { rows: AdminLineBindingRow[]
                   <TableCell className="font-medium">
                     <span className="flex items-center gap-1.5 whitespace-normal">
                       {row.clubName}
-                      {row.level === "legacy" && (
+                      {row.target.kind === "legacy" && (
                         <Tooltip>
                           <TooltipTrigger render={<Badge variant="outline">{t("legacyBadge")}</Badge>} />
                           <TooltipContent>{t("legacyBadgeTooltip")}</TooltipContent>
@@ -204,7 +186,25 @@ export function AdminLineBindingsManager({ rows }: { rows: AdminLineBindingRow[]
                       : t("noSession")}
                   </TableCell>
                   <TableCell className="text-right">
-                    <UnbindRowButton row={row} onDone={refresh} />
+                    <UnbindConfirmDialog
+                      tooltip={t("unbindTooltip")}
+                      title={t("unbindConfirmTitle")}
+                      description={t("unbindConfirmDesc", { club: row.clubName })}
+                      confirmLabel={t("unbindConfirmButton")}
+                      onConfirm={() => unbindOne(row)}
+                      renderTrigger={(openDialog) => (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                          aria-label={t("unbindTooltip")}
+                          onClick={openDialog}
+                        >
+                          <Link2Off className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    />
                   </TableCell>
                 </TableRow>
               ))}

@@ -87,9 +87,9 @@
     "unbindAllTooltip": "Unbind every club's LINE group at once",
     "unbindAllConfirmTitle": "Unbind every club's LINE group?",
     "unbindAllConfirmDesc": "This will unbind the LINE group for all {count} club(s) — their group billing/notifications will stop working until rebound. Each owner will get a LINE notice.",
-    "unbindAllConfirmCancel": "Cancel",
     "unbindAllConfirmButton": "Confirm unbind all",
     "unbindAllSuccess": "Unbound {count} club(s)",
+    "unbindAllPartial": "Unbound {count} clubs — {failed} failed, please retry",
     "unbinding": "Unbinding…"
   }
 }

@@ -9,9 +9,10 @@
  * by `assertCanManageClub`).
  *
  * Both mutating actions clear the binding via `clearLineBindingByTarget`
- * (which delegates the both-levels invariant to `clearSeriesBinding`, the
- * single owner of that trap) and then fire a best-effort LINE 1:1 notice to
- * the ก๊วน owner — never awaited, never allowed to fail the unbind.
+ * (series targets go through `clearBindingBySeriesId`, the both-levels
+ * invariant's owner; a legacy orphan clears exactly its own row) and then fire
+ * a best-effort LINE 1:1 notice to the ก๊วน owner — never awaited, never
+ * allowed to fail the unbind.
  */
 
 import { revalidatePath } from "next/cache";
@@ -40,7 +41,12 @@ const CALLER = "adminUnbindLineGroupAction";
  * when the owner has no LINE account linked (`profiles.line_user_id` null).
  * Body is the site-admin-editable `adminUnbindNotice` bot-message template.
  */
-function fireAdminUnbindNotice(sb: AdminClient, ownerId: string, clubName: string): void {
+function fireAdminUnbindNotice(
+  sb: AdminClient,
+  ownerId: string,
+  clubName: string,
+  prefetchedMessages?: Awaited<ReturnType<typeof getAppSettings>>["messages"],
+): void {
   void (async () => {
     const { data: profile } = await sb
       .from("profiles")
@@ -49,30 +55,10 @@ function fireAdminUnbindNotice(sb: AdminClient, ownerId: string, clubName: strin
       .maybeSingle();
     const lineUserId = profile?.line_user_id as string | null | undefined;
     if (!lineUserId) return;
-    const { messages } = await getAppSettings();
+    const messages = prefetchedMessages ?? (await getAppSettings()).messages;
     const text = resolveBotMessage(messages, "adminUnbindNotice", { club: clubName });
     await pushTextToUser(lineUserId, text);
   })().catch((err) => console.error(`[${CALLER}] notice push failed`, err));
-}
-
-/**
- * Inventory of every ก๊วน currently bound to a LINE group (series-level UNION
- * legacy orphans, deduped — see `fetchLineBindingInventory`). Site admin only.
- */
-export async function listLineBindingsAction(): Promise<
-  { ok: true; rows: AdminLineBindingRow[] } | { error: string }
-> {
-  const t = await getTranslations("actions");
-  if (!(await isSiteAdmin())) return { error: t("admin.notSiteAdmin") };
-
-  const sb = await createAdminClient();
-  try {
-    const rows = await fetchLineBindingInventory(sb);
-    return { ok: true as const, rows };
-  } catch (err) {
-    console.error("[listLineBindingsAction]", err);
-    return { error: t("club.loadBindingsFailed") };
-  }
 }
 
 const TargetSchema = z.discriminatedUnion("kind", [
@@ -110,7 +96,7 @@ export async function adminUnbindLineGroupAction(input: {
  * transient error on club #7 of 20 shouldn't leave the other 19 untouched).
  */
 export async function adminUnbindAllLineGroupsAction(): Promise<
-  { ok: true; count: number } | { error: string }
+  { ok: true; count: number; failed: number } | { error: string }
 > {
   const t = await getTranslations("actions");
   if (!(await isSiteAdmin())) return { error: t("admin.notSiteAdmin") };
@@ -124,16 +110,25 @@ export async function adminUnbindAllLineGroupsAction(): Promise<
     return { error: t("club.loadBindingsFailed") };
   }
 
+  // One settings fetch for every notice in the batch (getAppSettings hits the
+  // DB per call — mirrors notifyTournamentEvent's hoisted-settings pattern).
+  const { messages } = await getAppSettings();
+
   let count = 0;
+  let failed = 0;
   for (const row of rows) {
     const result = await clearLineBindingByTarget(sb, row.target, "adminUnbindAllLineGroupsAction");
     if (result.ok) {
       count++;
-      fireAdminUnbindNotice(sb, result.ownerId, result.clubName);
+      fireAdminUnbindNotice(sb, result.ownerId, result.clubName, messages);
+    } else {
+      failed++;
     }
   }
 
   revalidatePath("/admin");
   revalidateClubTree();
-  return { ok: true as const, count };
+  // `failed` lets the client distinguish "all clear" from a partial batch —
+  // best-effort per row is by design, silence about failures is not.
+  return { ok: true as const, count, failed };
 }

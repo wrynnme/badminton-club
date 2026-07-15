@@ -21,7 +21,7 @@
  */
 
 import { createAdminClient } from "@/lib/supabase/server";
-import { clearSeriesBinding, latestSessionOfSeries } from "@/lib/club/series.server";
+import { clearBindingBySeriesId } from "@/lib/club/series.server";
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
 
@@ -35,9 +35,6 @@ export type AdminLineBindingTarget =
 
 export type AdminLineBindingRow = {
   target: AdminLineBindingTarget;
-  /** Mirrors `target.kind` — kept as a plain field so the UI doesn't need to
-   *  destructure the discriminated union just to render a badge. */
-  level: "series" | "legacy";
   clubName: string;
   ownerName: string;
   /** ISO date (`clubs.play_date`) of the most recent session under this
@@ -88,7 +85,6 @@ export function buildLineBindingInventory(
     const latest = latestOf(sessions);
     rows.push({
       target: { kind: "series", seriesId: series.id },
-      level: "series",
       clubName: series.name,
       ownerName: ownerNameById.get(series.owner_id) ?? "",
       latestPlayDate: latest?.play_date ?? null,
@@ -100,7 +96,6 @@ export function buildLineBindingInventory(
     if (club.series_id && boundSeriesIds.has(club.series_id)) continue;
     rows.push({
       target: { kind: "legacy", clubId: club.id },
-      level: "legacy",
       clubName: club.name,
       ownerName: ownerNameById.get(club.owner_id) ?? "",
       latestPlayDate: club.play_date,
@@ -163,7 +158,7 @@ export async function fetchLineBindingInventory(sb: AdminClient): Promise<AdminL
 }
 
 // ---------------------------------------------------------------------------
-// DB-glued clear (both-levels invariant delegated to `clearSeriesBinding`)
+// DB-glued clear (series targets → `clearBindingBySeriesId`; legacy → single row)
 // ---------------------------------------------------------------------------
 
 export type ClearLineBindingResult =
@@ -171,10 +166,10 @@ export type ClearLineBindingResult =
   | { ok: false };
 
 /**
- * Force-clear one row's LINE-group binding, both levels (series + every
- * legacy session under it) — reuses `clearSeriesBinding`, the single owner of
- * that invariant. Returns the owner id + club name so the caller can push the
- * owner notice without a second round-trip.
+ * Force-clear one inventory row's LINE-group binding. A series target clears
+ * both levels via `clearBindingBySeriesId` (the invariant's owner); a legacy
+ * target clears exactly its own `clubs` row. Returns the owner id + club name
+ * so the caller can push the owner notice without a second round-trip.
  */
 export async function clearLineBindingByTarget(
   sb: AdminClient,
@@ -188,8 +183,15 @@ export async function clearLineBindingByTarget(
       .eq("id", target.clubId)
       .maybeSingle();
     if (!club) return { ok: false };
-    const cleared = await clearSeriesBinding(sb, target.clubId, "line_group_id", caller);
-    if (!cleared.ok) return { ok: false };
+    // An orphan legacy row IS its own binding (its series has none, by
+    // inventory definition) — clear ONLY this row. Fanning out through the
+    // series would wipe a sibling session's DISTINCT legacy binding that the
+    // inventory lists (and the admin confirmed) as a separate row.
+    const { error } = await sb.from("clubs").update({ line_group_id: null }).eq("id", target.clubId);
+    if (error) {
+      console.error(`[${caller}] legacy(single)`, error);
+      return { ok: false };
+    }
     return { ok: true, ownerId: club.owner_id, clubName: club.name };
   }
 
@@ -200,22 +202,7 @@ export async function clearLineBindingByTarget(
     .maybeSingle();
   if (!series) return { ok: false };
 
-  // clearSeriesBinding walks FROM a session's clubId; find any live session of
-  // this series to drive it (the both-levels clear then covers every session
-  // under the series, not just this one — see clearSeriesBinding's own doc).
-  const sessionId = await latestSessionOfSeries(sb, target.seriesId);
-  if (sessionId) {
-    const cleared = await clearSeriesBinding(sb, sessionId, "line_group_id", caller);
-    if (!cleared.ok) return { ok: false };
-  } else {
-    // Edge case: a bound series with zero sessions (e.g. every session under
-    // it was deleted). No legacy `clubs` row exists to clear — just clear the
-    // series-level column directly.
-    const { error } = await sb.from("club_series").update({ line_group_id: null }).eq("id", target.seriesId);
-    if (error) {
-      console.error(`[${caller}] series(no-sessions)`, error);
-      return { ok: false };
-    }
-  }
+  const cleared = await clearBindingBySeriesId(sb, target.seriesId, "line_group_id", caller);
+  if (!cleared.ok) return { ok: false };
   return { ok: true, ownerId: series.owner_id, clubName: series.name };
 }

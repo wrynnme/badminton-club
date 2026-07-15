@@ -17,7 +17,6 @@ describe("buildLineBindingInventory", () => {
     expect(rows).toEqual([
       {
         target: { kind: "series", seriesId: "s1" },
-        level: "series",
         clubName: "MUGGLE",
         ownerName: "Owner One",
         latestPlayDate: "2026-07-01",
@@ -70,7 +69,6 @@ describe("buildLineBindingInventory", () => {
     expect(rows).toEqual([
       {
         target: { kind: "legacy", clubId: "c9" },
-        level: "legacy",
         clubName: "เฉพาะกิจเก่า",
         ownerName: "Owner Nine",
         latestPlayDate: "2026-05-01",
