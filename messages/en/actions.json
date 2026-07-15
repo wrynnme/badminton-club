@@ -127,7 +127,8 @@
     "pairMemberTaken": "This player is already in a partner pair",
     "addPairFailed": "Failed to add partner pair",
     "removePairFailed": "Failed to remove partner pair",
-    "loadCoAdminsFailed": "Failed to load co-admins"
+    "loadCoAdminsFailed": "Failed to load co-admins",
+    "loadBindingsFailed": "Failed to load LINE-bound clubs"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",
