@@ -52,11 +52,12 @@ export default async function SettingsPage() {
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base">{tAdmin("title")}</CardTitle>
+            <p className="text-xs text-muted-foreground">{tAdmin("subtitle")}</p>
           </CardHeader>
           <CardContent>
-            <Link href="/admin" className={`${buttonVariants({ variant: "outline" })} gap-2`} title={tAdmin("qrLogoDesc")}>
+            <Link href="/admin" className={`${buttonVariants({ variant: "outline" })} gap-2`} title={tAdmin("subtitle")}>
               <ShieldCheck className="h-4 w-4" />
-              {tAdmin("qrLogoTitle")}
+              {tAdmin("openAdminPage")}
             </Link>
           </CardContent>
         </Card>

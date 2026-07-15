@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { RotateCcw, Save } from "lucide-react";
+import { RotateCcw, Save, MessageSquareText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,8 +73,11 @@ export function AdminBotMessagesManager({
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{t("title")}</CardTitle>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <MessageSquareText className="h-4 w-4" />
+          {t("title")}
+        </CardTitle>
         <p className="text-xs text-muted-foreground">{t("description")}</p>
       </CardHeader>
       <CardContent className="space-y-5">

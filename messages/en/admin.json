@@ -1,7 +1,12 @@
 {
   "title": "Admin",
+  "scopeBadge": "Site-wide",
+  "subtitle": "Site-owner tools — changes on this page apply system-wide, across every club and tournament.",
+  "openAdminPage": "Open the admin page",
+  "toolsHeading": "All tools",
   "qrLogoTitle": "Centre QR logo (site-wide)",
   "qrLogoDesc": "Applied to every club's number-generated PromptPay QR",
+  "qrLogoNavDesc": "The logo embedded at the centre of every club's PromptPay QR",
   "enabledLabel": "Show centre QR logo",
   "on": "On",
   "off": "Off",
@@ -17,6 +22,7 @@
     "title": "Global skill levels (site-wide)",
     "description": "The default level set new clubs are seeded with, and the fallback for tournaments",
     "impactNote": "Editing here affects new clubs + clubs that haven't customized their set — customized clubs are unaffected",
+    "navDesc": "The default level set new clubs are seeded with",
     "empty": "No global levels yet",
     "realAriaLabel": "Level numeric value",
     "labelAriaLabel": "Level name",
@@ -37,6 +43,7 @@
   "botMessages": {
     "title": "LINE bot messages",
     "description": "Edit the bot's automatic replies and notifications. Leave a field blank to use the built-in default; the braced placeholders are filled in when the message is sent.",
+    "navDesc": "Edit every automatic reply/notification text the bot sends",
     "saveButton": "Save messages",
     "saving": "Saving…",
     "saved": "Saved",
@@ -68,6 +75,7 @@
   "lineBindings": {
     "title": "LINE group bindings (all clubs)",
     "description": "Every club currently bound to a LINE group — unbind one at a time or all at once. Owners always get a LINE notice.",
+    "navDesc": "View or unbind every club's LINE group connection",
     "countLabel": "{count} club(s) bound to a LINE group",
     "colClub": "Club",
     "colOwner": "Owner",

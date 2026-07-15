@@ -19,7 +19,7 @@ import { useRouter } from "@bprogress/next/app";
 import { useTranslations, useLocale } from "next-intl";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { Link2Off, Loader2 } from "lucide-react";
+import { Link2Off, Loader2, MessagesSquare } from "lucide-react";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,8 +131,11 @@ export function AdminLineBindingsManager({ rows }: { rows: AdminLineBindingRow[]
 
   return (
     <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">{t("title")}</CardTitle>
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <MessagesSquare className="h-4 w-4" />
+          {t("title")}
+        </CardTitle>
         <p className="text-xs text-muted-foreground">{t("description")}</p>
       </CardHeader>
       <CardContent className="space-y-3">
