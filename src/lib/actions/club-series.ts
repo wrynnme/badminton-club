@@ -23,6 +23,7 @@ import { revalidateClubTree } from "@/lib/club/revalidate";
 import { getGlobalLevelsAction } from "@/lib/actions/levels";
 import {
   SessionDefaultsSchema,
+  buildSessionDefaultsFromClub,
   parseSessionDefaults,
   type SessionDefaults,
 } from "@/lib/club/session-defaults";
@@ -33,7 +34,7 @@ import {
   type SeriesMemberForSeed,
   type SeriesPairForSeed,
 } from "@/lib/club/open-session";
-import type { ClubSeries } from "@/lib/types";
+import type { Club, ClubSeries } from "@/lib/types";
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
 
@@ -347,6 +348,43 @@ export async function updateSessionDefaultsAction(input: {
 
   revalidateClubTree();
   return { ok: true, defaults: validated };
+}
+
+const AdoptDefaultsSchema = z.object({ seriesId: z.string().uuid(), clubId: z.string().uuid() });
+
+/**
+ * decision #15's EXPLICIT adopt path — "ใช้ค่าจากนัดปัจจุบัน" (never implicit
+ * copy-forward): snapshot the given session's live config into
+ * `session_defaults`, overwriting whatever was there. `clubId` must be a
+ * session that belongs to `seriesId` — this is a manager-triggered write, so
+ * unlike `openSessionCore`'s READ of session_defaults, this is the reverse
+ * direction and only runs from this one explicit action.
+ */
+export async function adoptSessionAsDefaultsAction(input: {
+  seriesId: string;
+  clubId: string;
+}): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+  const t = await getTranslations("actions");
+  if (session.isGuest) return { error: t("club.requireLineForClub") };
+
+  const parsed = AdoptDefaultsSchema.safeParse(input);
+  if (!parsed.success) return { error: t("club.invalidData") };
+  const { seriesId, clubId } = parsed.data;
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) return { error: t("club.noPermission") };
+
+  const { data: club, error: clubErr } = await sb.from("clubs").select("*").eq("id", clubId).maybeSingle();
+  if (clubErr || !club || (club as Club).series_id !== seriesId) return { error: t("club.clubNotFound") };
+
+  const defaults = parseSessionDefaults(buildSessionDefaultsFromClub(club as Club));
+  const { error } = await sb.from("club_series").update({ session_defaults: defaults }).eq("id", seriesId);
+  if (error) return { error: t("club.defaultsUpdateFailed") };
+
+  revalidateClubTree();
+  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------

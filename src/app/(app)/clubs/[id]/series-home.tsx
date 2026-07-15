@@ -14,14 +14,20 @@ import { SeriesOpenSessionButton } from "@/components/club/series-open-session-b
 import { SeriesSetActiveButton } from "@/components/club/series-set-active-button";
 import { SeriesMembersManager } from "@/components/club/series-members-manager";
 import { SeriesPartnerPairs } from "@/components/club/series-partner-pairs";
-import type { ClubSeries, Level, SeriesMember, SeriesPartnerPair } from "@/lib/types";
+import { SessionDefaultsEditor } from "@/components/club/session-defaults-editor";
+import { SeriesDangerZone } from "@/components/club/series-danger-zone";
+import { ClubLinkControls } from "@/components/club/club-link-controls";
+import { parseSessionDefaults } from "@/lib/club/session-defaults";
+import { resolveJoinToken, resolveLineGroupId } from "@/lib/club/series.server";
+import type { ClubLinkPoolRequest, ClubSeries, Level, SeriesMember, SeriesPartnerPair } from "@/lib/types";
 
 /**
- * Series home (ADR 0002 P2-C1) — tabbed page for a named ก๊วนถาวร (`club_series`
- * row): ภาพรวม (จัดก๊วน + active session + ประวัตินัด) · สมาชิก (member
- * registry + คู่ประจำ) · ตั้งค่า (structure only — the session_defaults /
- * rename / archive / LINE-binding editor lands in the next P2 slice, C2).
- * Owns its own auth gate + fetch (mirrors `ClubSessionView`).
+ * Series home (ADR 0002 P2-C1/C2) — tabbed page for a named ก๊วนถาวร
+ * (`club_series` row): ภาพรวม (จัดก๊วน + active session + ประวัตินัด) ·
+ * สมาชิก (member registry + คู่ประจำ) · ตั้งค่า (session defaults editor +
+ * LINE link pool + rename/archive/delete danger zone — moved off the
+ * per-session settings tab in C2). Owns its own auth gate + fetch (mirrors
+ * `ClubSessionView`).
  */
 export async function SeriesHome({ seriesId }: { seriesId: string }) {
   const sb = await createAdminClient();
@@ -75,6 +81,64 @@ export async function SeriesHome({ seriesId }: { seriesId: string }) {
   }
 
   const activeSession = sessions.find((s) => s.id === series.active_session_id) ?? null;
+  const isOwner = session.profileId === series.owner_id;
+
+  // LINE link section (pool UI moved here from the session settings tab) — powered
+  // by the active session, falling back to the latest session when the series has
+  // no active pointer yet. Null only when the series has zero sessions (rare edge —
+  // createClubSeriesAction always opens a first session, so this only happens if
+  // every session was since deleted).
+  const linkSessionClub = activeSession ?? sessions[0] ?? null;
+
+  let pendingLinkRequests: ClubLinkPoolRequest[] = [];
+  let guestPlayers: { id: string; display_name: string }[] = [];
+  let resolvedJoinToken: string | null = null;
+  let resolvedLineGroupId: string | null = null;
+
+  if (linkSessionClub) {
+    const [linkReqRes, guestRes, bindingRes] = await Promise.all([
+      sb
+        .from("club_link_requests")
+        .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
+        .eq("series_id", series.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: true }),
+      sb
+        .from("club_players")
+        .select("id, display_name")
+        .eq("club_id", linkSessionClub.id)
+        .is("profile_id", null),
+      sb.from("clubs").select("join_token, line_group_id").eq("id", linkSessionClub.id).maybeSingle(),
+    ]);
+
+    type LinkReqRow = {
+      id: string;
+      profile: { id: string; display_name: string; picture_url: string | null } | null;
+    };
+    const rawLinkReqs = ((linkReqRes.data ?? []) as unknown as LinkReqRow[]).filter((r) => r.profile);
+    // decision #4 member badge — derived from the members list already fetched
+    // above instead of a second series_members round-trip.
+    const memberNameByProfileId = new Map(
+      members.filter((m) => m.profile_id).map((m) => [m.profile_id as string, m.canonical_name]),
+    );
+    pendingLinkRequests = rawLinkReqs.map((r) => ({
+      id: r.id,
+      profile: { id: r.profile!.id, display_name: r.profile!.display_name, picture_url: r.profile!.picture_url },
+      member: memberNameByProfileId.has(r.profile!.id)
+        ? { canonicalName: memberNameByProfileId.get(r.profile!.id)! }
+        : null,
+    }));
+
+    guestPlayers = (guestRes.data ?? []).map((p) => ({
+      id: p.id as string,
+      display_name: p.display_name as string,
+    }));
+
+    resolvedJoinToken = resolveJoinToken(series, { join_token: bindingRes.data?.join_token ?? null });
+    resolvedLineGroupId = resolveLineGroupId(series, { line_group_id: bindingRes.data?.line_group_id ?? null });
+  }
+
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   const t = await getTranslations("club");
   const locale = await getLocale();
@@ -180,9 +244,40 @@ export async function SeriesHome({ seriesId }: { seriesId: string }) {
     </div>
   );
 
-  // Settings tab: structure only — session_defaults / rename / archive /
-  // LINE-binding / join-link / co-admin editor lands in ADR 0002 P2-C2.
-  const settingsTab = <div className="space-y-6" />;
+  const settingsTab = (
+    <div className="space-y-6">
+      <SessionDefaultsEditor
+        key={JSON.stringify(series.session_defaults)}
+        seriesId={series.id}
+        initial={parseSessionDefaults(series.session_defaults)}
+        activeSessionId={activeSession?.id ?? null}
+      />
+
+      {linkSessionClub ? (
+        <ClubLinkControls
+          clubId={linkSessionClub.id}
+          joinToken={resolvedJoinToken}
+          appUrl={appUrl}
+          pendingRequests={pendingLinkRequests}
+          guestPlayers={guestPlayers}
+          lineGroupBound={!!resolvedLineGroupId}
+        />
+      ) : (
+        <Card>
+          <CardContent className="pt-4 text-sm text-muted-foreground">{t("series.linkNoSessionsHint")}</CardContent>
+        </Card>
+      )}
+
+      {isOwner && (
+        <SeriesDangerZone
+          seriesId={series.id}
+          seriesName={series.name}
+          archived={!!series.archived_at}
+          hasSessions={sessions.length > 0}
+        />
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-6 max-w-3xl mx-auto">

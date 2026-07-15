@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { format } from "date-fns";
 import { CalendarDays, Clock, MapPin, Users, Wallet } from "lucide-react";
@@ -19,7 +20,6 @@ import { ExpenseManager } from "@/components/club/expense-manager";
 import { ClubCoAdminControls } from "@/components/club/club-co-admin-controls";
 import { DeleteClubButton } from "@/components/club/delete-club-button";
 import { ClubVisibilityControls } from "@/components/club/club-visibility-controls";
-import { ClubLinkControls } from "@/components/club/club-link-controls";
 import { ClubCostManager } from "@/components/club/club-cost-manager";
 import { ClubCostBreakdown } from "@/components/club/club-cost-breakdown";
 import { ClubPaymentCollector } from "@/components/club/club-payment-collector";
@@ -31,6 +31,7 @@ import { ClubQueuePanel } from "@/components/club/club-queue-panel";
 import { ClubLockedPairs } from "@/components/club/club-locked-pairs";
 import { ClubLiveWrapper } from "@/components/club/club-live-wrapper";
 import { SaveClubAsPresetDialog } from "@/components/club/save-club-as-preset-dialog";
+import { UpgradeAdhocCard } from "@/components/club/upgrade-adhoc-card";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
 import { hasBankReceiver, parseReceiptTemplate } from "@/lib/club/receipt";
 import { resolveClubCourts } from "@/lib/club/courts";
@@ -39,10 +40,10 @@ import { getTranslations } from "next-intl/server";
 import { getClubLevelsAction } from "@/lib/actions/levels";
 import { getAppSettings, resolveQrLogoUrl } from "@/lib/app-settings";
 import { resolveBotMessage } from "@/lib/bot-messages";
-import { resolveLineGroupId, resolveJoinToken } from "@/lib/club/series.server";
+import { resolveLineGroupId } from "@/lib/club/series.server";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
-import type { ClubMatch, ClubLockedPair, Level, ClubPreset, ClubLinkPoolRequest, ClubSeries } from "@/lib/types";
+import type { ClubMatch, ClubLockedPair, Level, ClubPreset, ClubSeries } from "@/lib/types";
 
 export async function ClubSessionView({ clubId }: { clubId: string }) {
   const sb = await createAdminClient();
@@ -57,7 +58,7 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
 
   if (!club) notFound();
 
-  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes, lineRes, linkReqRes, seriesRes] = await Promise.all([
+  const [ownerRes, playersRes, expensesRes, adminsRes, matchesRes, lockedPairsRes, levelsRes, appSettings, presetsRes, lineRes, seriesRes] = await Promise.all([
     sb.from("profiles").select("display_name, picture_url").eq("id", club.owner_id).single(),
     sb
       .from("club_players")
@@ -107,25 +108,6 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
       .from("club_players")
       .select("id, profile:profiles!club_players_profile_id_fkey(line_user_id)")
       .eq("club_id", clubId),
-    // Pending LINE-link requests (the pool). Only the requesting profile's public
-    // fields ship to the client — line_user_id is never selected here, and the row's
-    // own club_id/profile_id/status are unused by the pool UI (the dialog acts by id).
-    // Series-scoped when this club has a series (F) so a pending request survives
-    // the active-session pointer moving to a different `clubs` row under the same
-    // series; a not-yet-migrated club (no series_id) falls back to club_id.
-    club.series_id
-      ? sb
-          .from("club_link_requests")
-          .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
-          .eq("series_id", club.series_id)
-          .eq("status", "pending")
-          .order("created_at", { ascending: true })
-      : sb
-          .from("club_link_requests")
-          .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
-          .eq("club_id", clubId)
-          .eq("status", "pending")
-          .order("created_at", { ascending: true }),
     // Club series (ADR 0002 P1) — already-fetched club.series_id avoids a second
     // round-trip through getSeriesForClub's own clubs lookup. null series_id (a
     // club created between backfill and this ship) stays null below — a GET
@@ -161,18 +143,6 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
     .filter((r) => r.profile?.line_user_id)
     .map((r) => r.id);
 
-  // Pending LINE-link requests (the pool) — final shape (incl. the decision #4
-  // member badge) built after the canManage gate below, once the series is
-  // resolved. line_user_id is never selected/derived here — only public profile
-  // fields reach the client.
-  type LinkReqRow = {
-    id: string;
-    profile: { id: string; display_name: string; picture_url: string | null } | null;
-  };
-  const guestPlayers = players
-    .filter((p) => p.profile_id == null)
-    .map((p) => ({ id: p.id, display_name: p.display_name }));
-
   const joined = players.length;
   const activeCount = players.filter((p) => p.status === "active").length;
   const reserveCount = players.filter((p) => p.status === "reserve").length;
@@ -194,43 +164,12 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
   // mutate). `seriesRes` covers the normal case (club.series_id already set, all
   // 8 prod clubs post-backfill); a club created between backfill and this ship
   // stays null here (the lazy `ensureSeriesForClub` migration only runs from a
-  // mutating action, e.g. generateClubJoinTokenAction) — every helper below
-  // (resolveLineGroupId/resolveJoinToken) already tolerates a null series.
+  // mutating action, e.g. generateClubJoinTokenAction) — `resolveLineGroupId`
+  // already tolerates a null series. The LINE join-link + link pool UI moved to
+  // the series settings tab in C2 (`series-home.tsx`) — this page only still
+  // needs the resolved group-binding flag for `ClubPaymentCollector`.
   const series: ClubSeries | null = (seriesRes.data as ClubSeries | null) ?? null;
   const resolvedLineGroupId = resolveLineGroupId(series, club);
-  const resolvedJoinToken = resolveJoinToken(series, club);
-
-  // Pending LINE-link requests (the pool) + the decision #4 member badge: a
-  // requester who is already a `series_members` row of this club's series shows
-  // as a returning member even though THIS particular request still needs a
-  // manager (ambiguous / no clean roster-name match at auto-link time). No
-  // series (rare/defensive) → no member registry to check against.
-  const rawLinkReqs = ((linkReqRes.data ?? []) as unknown as LinkReqRow[]).filter((r) => r.profile);
-  const pendingProfileIds = rawLinkReqs.map((r) => r.profile!.id);
-  let memberNameByProfileId = new Map<string, string>();
-  if (series && pendingProfileIds.length > 0) {
-    const { data: memberRows } = await sb
-      .from("series_members")
-      .select("profile_id, canonical_name")
-      .eq("series_id", series.id)
-      .in("profile_id", pendingProfileIds);
-    memberNameByProfileId = new Map(
-      (memberRows ?? [])
-        .filter((m) => m.profile_id)
-        .map((m) => [m.profile_id as string, m.canonical_name as string]),
-    );
-  }
-  const pendingLinkRequests: ClubLinkPoolRequest[] = rawLinkReqs.map((r) => ({
-    id: r.id,
-    profile: {
-      id: r.profile!.id,
-      display_name: r.profile!.display_name,
-      picture_url: r.profile!.picture_url,
-    },
-    member: memberNameByProfileId.has(r.profile!.id)
-      ? { canonicalName: memberNameByProfileId.get(r.profile!.id)! }
-      : null,
-  }));
 
   const ownedPresets: Pick<ClubPreset, "id" | "name">[] = (presetsRes.data ?? []).map(
     (row) => ({ id: row.id as string, name: row.name as string }),
@@ -267,6 +206,11 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
   return (
     <ClubLiveWrapper clubId={club.id} realtimeEnabled={queueSettings.realtime_enabled}>
     <div className="space-y-6 max-w-3xl mx-auto">
+      {series && !series.is_adhoc && (
+        <Link href={`/clubs/${series.id}`} className="text-sm text-muted-foreground hover:text-foreground">
+          {t("page.backToSeries", { name: series.name })}
+        </Link>
+      )}
       <div>
         <div className="flex items-start justify-between gap-2">
           <h1 className="text-2xl font-bold">{club.name}</h1>
@@ -520,16 +464,12 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
                   isCustomized={isCustomized}
                 />
               )}
-              {canManage && (
-                <ClubLinkControls
-                  clubId={club.id}
-                  joinToken={resolvedJoinToken}
-                  appUrl={appUrl}
-                  pendingRequests={pendingLinkRequests}
-                  guestPlayers={guestPlayers}
-                  lineGroupBound={!!resolvedLineGroupId}
-                />
-              )}
+              {/* ADR 0002 C2 — the LINE join-link + link pool moved to the series
+                  settings tab (`series-home.tsx`); it now lives once per ก๊วน
+                  instead of per นัด. An ad-hoc series (decision #12) still gets
+                  the upgrade offer here instead, since it has no series home a
+                  manager would otherwise navigate to. */}
+              {canManage && series && series.is_adhoc && <UpgradeAdhocCard seriesId={series.id} />}
               {isOwner && <ClubCoAdminControls clubId={club.id} initialAdmins={coAdmins} />}
               {isOwner && (
                 <div className="border-t border-destructive/30 pt-4 mt-2 space-y-3">
