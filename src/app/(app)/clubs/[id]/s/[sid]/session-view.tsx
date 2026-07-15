@@ -139,7 +139,20 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
   const full = activeCount >= club.max_players;
   const isOwner = session?.profileId === club.owner_id;
   const isCoAdmin = session ? coAdmins.some((a) => a.user_id === session.profileId) : false;
-  const canManage = isOwner || isCoAdmin;
+  let canManage = isOwner || isCoAdmin;
+
+  // ADR 0002 P3 — a series-level co-admin (`series_admins`) manages every
+  // session of the series (mirrors assertCanManageClub). Checked only when the
+  // per-session gates above failed, so the common owner path costs nothing.
+  if (!canManage && session && club.series_id) {
+    const { data: seriesAdmin } = await sb
+      .from("series_admins")
+      .select("user_id")
+      .eq("series_id", club.series_id)
+      .eq("user_id", session.profileId)
+      .maybeSingle();
+    canManage = !!seriesAdmin;
+  }
 
   // Clubs are owner/co-admin only — non-managers can't view the club at all.
   // Not logged in → login (return here after); logged-in non-manager → club list.

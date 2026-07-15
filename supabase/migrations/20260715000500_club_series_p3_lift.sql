@@ -35,38 +35,45 @@ alter table public.series_admins enable row level security;
 
 -- ── Backfill (idempotent) ────────────────────────────────────────────────────
 
--- 1) Payment/receipt config: copy from each series' ACTIVE session (fallback:
---    latest session by play_date desc, created_at desc — same tie-break as
---    every other ADR 0002 backfill) onto the series, ONLY where the series'
---    own value is still unset. `coalesce` on the plain nullable columns and an
---    explicit `case` on `receipt_template` (its "unset" value is `'{}'`, not
---    `null`) — so this never overwrites a value already lifted by a previous
---    run or set directly through the P3 UI.
-with source_session as (
-  select distinct on (s.id)
-    s.id as series_id,
-    c.promptpay_id,
-    c.promptpay_name,
-    c.promptpay_qr_image,
-    c.receipt_template,
-    c.receipt_logo_url
-  from public.club_series s
-  join public.clubs c on c.series_id = s.id
-  order by s.id, (c.id = s.active_session_id) desc, c.play_date desc, c.created_at desc
-)
+-- 1) Payment/receipt config: PER-FIELD "latest non-null wins" across the
+--    series' sessions (play_date desc, created_at desc — the P1 binding
+--    backfill's rule), ONLY where the series' own value is still unset.
+--    Deliberately NOT "active session first": a session opened via "จัดก๊วน"
+--    moments before this migration has no payment config yet (P2 does not
+--    copy it — lifting it is exactly this migration's job), so preferring the
+--    active session can lift an empty config and drop the real one (happened
+--    on prod 2026-07-16 — fixed by the per-field rule below). `coalesce` on
+--    the plain nullable columns and an explicit `case` on `receipt_template`
+--    (its "unset" value is `'{}'`, not `null`) — never overwrites a value
+--    already lifted by a previous run or set directly through the P3 UI.
 update public.club_series s
 set
   promptpay_id = coalesce(s.promptpay_id, src.promptpay_id),
   promptpay_name = coalesce(s.promptpay_name, src.promptpay_name),
   promptpay_qr_image = coalesce(s.promptpay_qr_image, src.promptpay_qr_image),
   receipt_template = case
-    when (s.receipt_template is null or s.receipt_template = '{}'::jsonb)
-      and src.receipt_template is not null and src.receipt_template <> '{}'::jsonb
+    when s.receipt_template = '{}'::jsonb and src.receipt_template is not null
     then src.receipt_template
     else s.receipt_template
   end,
   receipt_logo_url = coalesce(s.receipt_logo_url, src.receipt_logo_url)
-from source_session src
+from (
+  select
+    series_id,
+    (array_agg(promptpay_id order by play_date desc, created_at desc)
+       filter (where promptpay_id is not null))[1] as promptpay_id,
+    (array_agg(promptpay_name order by play_date desc, created_at desc)
+       filter (where promptpay_name is not null))[1] as promptpay_name,
+    (array_agg(promptpay_qr_image order by play_date desc, created_at desc)
+       filter (where promptpay_qr_image is not null))[1] as promptpay_qr_image,
+    (array_agg(receipt_template order by play_date desc, created_at desc)
+       filter (where receipt_template <> '{}'::jsonb))[1] as receipt_template,
+    (array_agg(receipt_logo_url order by play_date desc, created_at desc)
+       filter (where receipt_logo_url is not null))[1] as receipt_logo_url
+  from public.clubs
+  where series_id is not null
+  group by series_id
+) src
 where src.series_id = s.id;
 
 -- 2) Co-admins: the DISTINCT club_admins across every session of each series →
