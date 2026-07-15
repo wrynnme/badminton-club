@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { format } from "date-fns";
-import { CalendarDays, MapPin } from "lucide-react";
+import { CalendarDays, MapPin, Users } from "lucide-react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -9,15 +9,19 @@ import { getSession } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { assertCanManageSeries } from "@/lib/club/series-permissions";
-import type { ClubSeries } from "@/lib/types";
+import { SeriesTabs } from "@/components/club/series-tabs";
+import { SeriesOpenSessionButton } from "@/components/club/series-open-session-button";
+import { SeriesSetActiveButton } from "@/components/club/series-set-active-button";
+import { SeriesMembersManager } from "@/components/club/series-members-manager";
+import { SeriesPartnerPairs } from "@/components/club/series-partner-pairs";
+import type { ClubSeries, Level, SeriesMember, SeriesPartnerPair } from "@/lib/types";
 
 /**
- * Series home SHELL (ADR 0002 P2-B, decision #1) — placeholder page for a
- * named ก๊วนถาวร (`club_series` row): header + active session + session
- * history. The members / settings / จัดก๊วน tabs land in the next P2 slice —
- * this shell is deliberately self-contained (owns its own auth gate + fetch,
- * mirroring `ClubSessionView`) so it's easy to extend into a full tab layout
- * later without threading extra props through the dispatcher.
+ * Series home (ADR 0002 P2-C1) — tabbed page for a named ก๊วนถาวร (`club_series`
+ * row): ภาพรวม (จัดก๊วน + active session + ประวัตินัด) · สมาชิก (member
+ * registry + คู่ประจำ) · ตั้งค่า (structure only — the session_defaults /
+ * rename / archive / LINE-binding editor lands in the next P2 slice, C2).
+ * Owns its own auth gate + fetch (mirrors `ClubSessionView`).
  */
 export async function SeriesHome({ seriesId }: { seriesId: string }) {
   const sb = await createAdminClient();
@@ -32,27 +36,55 @@ export async function SeriesHome({ seriesId }: { seriesId: string }) {
   const canManage = await assertCanManageSeries(sb, seriesId, session.profileId);
   if (!canManage) redirect("/clubs");
 
-  const { data: seriesRow } = await sb.from("club_series").select("*").eq("id", seriesId).maybeSingle();
-  if (!seriesRow) notFound();
-  const series = seriesRow as ClubSeries;
+  const [seriesRes, sessionsRes, membersRes, pairsRes, levelsRes, playerCountsRes] = await Promise.all([
+    sb.from("club_series").select("*").eq("id", seriesId).maybeSingle(),
+    sb
+      .from("clubs")
+      .select("id, name, venue, play_date, created_at")
+      .eq("series_id", seriesId)
+      .order("play_date", { ascending: false })
+      .order("created_at", { ascending: false }),
+    sb
+      .from("series_members")
+      .select("*")
+      .eq("series_id", seriesId)
+      .order("is_regular", { ascending: false })
+      .order("canonical_name", { ascending: true }),
+    sb.from("series_partner_pairs").select("*").eq("series_id", seriesId),
+    // GLOBAL levels only (club_id IS NULL) — the member registry's default
+    // level is series-scoped, not tied to any one session's (possibly
+    // customized) level set.
+    sb.from("levels").select("*").is("club_id", null).order("sort_order", { ascending: true }),
+    // Per-session roster size for the history list — ONE grouped query (join
+    // on the club_players → clubs FK, filtered by series) instead of one
+    // query per session row. Grouped client-side below.
+    sb.from("club_players").select("club_id, club:clubs!inner(series_id)").eq("club.series_id", seriesId),
+  ]);
 
-  const { data: sessionsData } = await sb
-    .from("clubs")
-    .select("id, name, venue, play_date")
-    .eq("series_id", seriesId)
-    .order("play_date", { ascending: false })
-    .order("created_at", { ascending: false });
-  const sessions = sessionsData ?? [];
+  if (!seriesRes.data) notFound();
+  const series = seriesRes.data as ClubSeries;
+  const sessions = sessionsRes.data ?? [];
+  const members = (membersRes.data ?? []) as SeriesMember[];
+  const pairs = (pairsRes.data ?? []) as SeriesPartnerPair[];
+  const levels = (levelsRes.data ?? []) as Level[];
+
+  const playerCountByClubId = new Map<string, number>();
+  for (const row of playerCountsRes.data ?? []) {
+    const clubId = row.club_id as string;
+    playerCountByClubId.set(clubId, (playerCountByClubId.get(clubId) ?? 0) + 1);
+  }
+
   const activeSession = sessions.find((s) => s.id === series.active_session_id) ?? null;
 
   const t = await getTranslations("club");
   const locale = await getLocale();
 
-  return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      <div className="flex items-start justify-between gap-2">
-        <h1 className="text-2xl font-bold">{series.name}</h1>
-        {series.archived_at && <Badge variant="outline">{t("series.archivedBadge")}</Badge>}
+  const overview = (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-2">
+        <SeriesOpenSessionButton seriesId={series.id} archived={!!series.archived_at} />
+        <Badge variant="outline">{t("series.sessionCountLabel", { count: sessions.length })}</Badge>
+        <Badge variant="outline">{t("series.memberCountLabel", { count: members.length })}</Badge>
       </div>
 
       <section className="space-y-2">
@@ -78,6 +110,12 @@ export async function SeriesHome({ seriesId }: { seriesId: string }) {
                     })}
                   </span>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  <span>
+                    {t("series.playerCountLabel", { count: playerCountByClubId.get(activeSession.id) ?? 0 })}
+                  </span>
+                </div>
               </CardContent>
             </Card>
           </Link>
@@ -94,33 +132,66 @@ export async function SeriesHome({ seriesId }: { seriesId: string }) {
           <p className="text-sm text-muted-foreground">{t("series.noSessions")}</p>
         ) : (
           <div className="space-y-2">
-            {sessions.map((s) => (
-              <Link key={s.id} href={`/clubs/${series.id}/s/${s.id}`}>
-                <Card className="hover:shadow-md transition">
+            {sessions.map((s) => {
+              const isActive = s.id === series.active_session_id;
+              return (
+                <Card key={s.id} className="hover:shadow-md transition">
                   <CardContent className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
-                    <span className="font-medium line-clamp-1">{s.name}</span>
-                    <div className="flex items-center gap-3 text-muted-foreground">
-                      <span className="flex items-center gap-1">
+                    {/* Link wraps only the row's text content — the "set active"
+                        button below is a sibling, never nested inside an <a>. */}
+                    <Link
+                      href={`/clubs/${series.id}/s/${s.id}`}
+                      className="flex flex-1 min-w-0 flex-wrap items-center gap-3"
+                    >
+                      <span className="font-medium line-clamp-1">{s.name}</span>
+                      <span className="flex items-center gap-1 text-muted-foreground">
                         <CalendarDays className="h-4 w-4" />
                         {format(new Date(s.play_date), "d MMM yyyy", { locale: dateFnsLocaleOf(locale) })}
                       </span>
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1 text-muted-foreground">
                         <MapPin className="h-4 w-4" />
                         <span className="line-clamp-1">{s.venue}</span>
                       </span>
-                      {s.id === series.active_session_id && (
+                      <Badge variant="outline" className="text-xs">
+                        {t("series.playerCountLabel", { count: playerCountByClubId.get(s.id) ?? 0 })}
+                      </Badge>
+                    </Link>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isActive ? (
                         <Badge variant="secondary">{t("series.activeSessionBadge")}</Badge>
+                      ) : (
+                        <SeriesSetActiveButton seriesId={series.id} clubId={s.id} />
                       )}
                     </div>
                   </CardContent>
                 </Card>
-              </Link>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
+    </div>
+  );
 
-      {/* สมาชิก / ตั้งค่า / จัดก๊วน tabs land in the next P2 slice (ADR 0002). */}
+  const membersTab = (
+    <div className="space-y-6">
+      <SeriesMembersManager seriesId={series.id} members={members} levels={levels} />
+      <SeriesPartnerPairs seriesId={series.id} members={members} pairs={pairs} />
+    </div>
+  );
+
+  // Settings tab: structure only — session_defaults / rename / archive /
+  // LINE-binding / join-link / co-admin editor lands in ADR 0002 P2-C2.
+  const settingsTab = <div className="space-y-6" />;
+
+  return (
+    <div className="space-y-6 max-w-3xl mx-auto">
+      <div className="flex items-start justify-between gap-2">
+        <h1 className="text-2xl font-bold">{series.name}</h1>
+        {series.archived_at && <Badge variant="outline">{t("series.archivedBadge")}</Badge>}
+      </div>
+
+      <SeriesTabs overview={overview} members={membersTab} settings={settingsTab} showSettings={canManage} />
     </div>
   );
 }

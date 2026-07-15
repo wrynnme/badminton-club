@@ -20,6 +20,7 @@ import { getSession } from "@/lib/auth/session";
 import { loginRedirect } from "@/lib/club/permissions";
 import { assertCanManageSeries, assertSeriesOwner } from "@/lib/club/series-permissions";
 import { revalidateClubTree } from "@/lib/club/revalidate";
+import { getGlobalLevelsAction } from "@/lib/actions/levels";
 import {
   SessionDefaultsSchema,
   parseSessionDefaults,
@@ -75,8 +76,48 @@ async function openSessionCore(
     .from("series_members")
     .select("id, profile_id, canonical_name, default_level_id, is_regular, first_linked_at")
     .eq("series_id", series.id);
+  const members = (memberRows ?? []) as SeriesMemberForSeed[];
+
+  // `default_level_id` may point at a CLUB-SCOPED `levels` row (club_id NOT
+  // NULL) — `clone_global_levels_to_club` (see `resolveClubLevelTargetId` in
+  // `src/lib/actions/levels.ts`) clones the global set by label the first
+  // time a club customizes its levels, so a member's stored id can be a
+  // club-scoped row minted by whichever session last wrote it. A brand-new
+  // session always starts on the GLOBAL set (`levels.club_id IS NULL`), so
+  // seeding a raw club-scoped id would render a blank level chip. Remap every
+  // regular's default_level_id to the GLOBAL row sharing its label (no match
+  // → null, same as an unset level) before building seed rows — keep
+  // `buildRosterSeedRows` pure by doing the remap here, not inside it.
+  const scopedLevelIds = Array.from(
+    new Set(
+      members
+        .filter((m) => m.is_regular && m.default_level_id)
+        .map((m) => m.default_level_id as string),
+    ),
+  );
+  let remappedMembers = members;
+  if (scopedLevelIds.length > 0) {
+    const { data: levelRows } = await sb
+      .from("levels")
+      .select("id, label, club_id")
+      .in("id", scopedLevelIds);
+    const scoped = (levelRows ?? []).filter((l) => l.club_id !== null);
+    if (scoped.length > 0) {
+      const globalLevels = await getGlobalLevelsAction();
+      const globalIdByLabel = new Map(globalLevels.map((l) => [l.label, l.id]));
+      const remap = new Map<string, string | null>(
+        scoped.map((l) => [l.id as string, globalIdByLabel.get(l.label as string) ?? null]),
+      );
+      remappedMembers = members.map((m) =>
+        m.default_level_id && remap.has(m.default_level_id)
+          ? { ...m, default_level_id: remap.get(m.default_level_id) ?? null }
+          : m,
+      );
+    }
+  }
+
   const seedRows = buildRosterSeedRows({
-    members: (memberRows ?? []) as SeriesMemberForSeed[],
+    members: remappedMembers,
     maxPlayers: insertPayload.max_players as number,
   });
 
