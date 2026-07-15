@@ -1038,6 +1038,7 @@
     "toastUnarchived": "Club unarchived",
     "deleteButton": "Delete club",
     "deleteDisabledTooltip": "Delete all sessions first before deleting this club",
+    "deleteBlockedHint": "This club series can't be deleted yet — it still has {count} session(s). Delete every session first (open one from the history list, then its settings tab), or use “Archive” to hide the series while keeping all history.",
     "deleteTooltip": "Permanently delete this club",
     "deleteDialogTitle": "Delete \"{name}\"?",
     "deleteDialogDesc": "Deleting a club cannot be undone",
