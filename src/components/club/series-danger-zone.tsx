@@ -11,7 +11,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { Archive, ArchiveRestore, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Archive, ArchiveRestore, Info, Loader2, Pencil, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -244,24 +244,33 @@ export function SeriesDangerZone({
   seriesId,
   seriesName,
   archived,
-  hasSessions,
+  sessionCount,
 }: {
   seriesId: string;
   seriesName: string;
   archived: boolean;
-  hasSessions: boolean;
+  sessionCount: number;
 }) {
   const t = useTranslations("club.seriesDangerZone");
+  const hasSessions = sessionCount > 0;
 
   return (
     <Card className="border-destructive/30">
       <CardHeader>
         <CardTitle className="text-base text-destructive">{t("heading")}</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-wrap items-center gap-2">
-        <RenameDialog seriesId={seriesId} currentName={seriesName} />
-        <ArchiveToggleButton seriesId={seriesId} archived={archived} />
-        <DeleteSeriesButton seriesId={seriesId} seriesName={seriesName} hasSessions={hasSessions} />
+      <CardContent className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <RenameDialog seriesId={seriesId} currentName={seriesName} />
+          <ArchiveToggleButton seriesId={seriesId} archived={archived} />
+          <DeleteSeriesButton seriesId={seriesId} seriesName={seriesName} hasSessions={hasSessions} />
+        </div>
+        {hasSessions && (
+          <p className="flex items-start gap-1.5 text-xs text-muted-foreground">
+            <Info className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <span>{t("deleteBlockedHint", { count: sessionCount })}</span>
+          </p>
+        )}
       </CardContent>
     </Card>
   );
