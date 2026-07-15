@@ -5,10 +5,8 @@
   resolve via series with legacy fallback; membership auto-link live.
   **P2 shipped to prod 2026-07-16 (v0.43.0, PR #71 → release #74)**: series home (overview /
   members / settings), จัดก๊วน open-session seeding, URL restructure with legacy
-  redirects, preset system retired (UI + actions; table stays). **P3 applied + live-smoked (v0.44.0,
-  PR #72)**: migration `20260715000500` applied to prod 2026-07-16;
-  payment/receipt/co-admins lifted to series with legacy fallback. **P4 merged to develop
-  2026-07-16 (v0.45.0, PR #73)**: read-only cross-session member stats. **CONTRACT not started**
+  redirects, preset system retired (UI + actions; table stays). **P3 shipped to prod 2026-07-16 (v0.44.0, PR #72 → release #75)**: migration `20260715000500` applied to prod 2026-07-16;
+  payment/receipt/co-admins lifted to series with legacy fallback. **P4 shipped to prod 2026-07-16 (v0.45.0, PR #73 → release #75)**: read-only cross-session member stats. **CONTRACT not started**
   (legacy column + `club_presets` drops still gated on explicit approval).
 - **Scope**: Club side only. Tournaments unaffected. Amends ADR 0001 (see Consequences).
 - **Companion docs**: full design + phase roadmap in `spec.md` § "📐 Design — ผูกครั้งเดียวใช้ได้ตลอด"; glossary terms in `CONTEXT.md` § "Club series".

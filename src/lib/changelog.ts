@@ -22,6 +22,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.45.1",
+    date: "2026-07-16",
+    groups: [
+      {
+        type: "improved",
+        items: [
+          "ปุ่ม \"ลบก๊วน\" ที่กดไม่ได้ มีคำอธิบายใต้ปุ่มแล้วว่าติดอะไร — ยังมีนัดอยู่กี่นัด ต้องลบนัดก่อน หรือใช้เก็บก๊วนเข้าคลังแทน",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.45.0",
     date: "2026-07-16",
     groups: [

@@ -332,7 +332,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
           seriesId={series.id}
           seriesName={series.name}
           archived={!!series.archived_at}
-          hasSessions={sessions.length > 0}
+          sessionCount={sessions.length}
         />
       )}
     </div>
