@@ -61,7 +61,35 @@
       "notifyBracket": "แจ้งสร้างสายน็อคเอ้า",
       "notifyScore": "แจ้งผลแมตช์",
       "notifyMatchCall": "แจ้งเรียกแมตช์",
-      "groupBillScanPrompt": "ข้อความชวนสแกน QR (บิลกลุ่ม)"
+      "groupBillScanPrompt": "ข้อความชวนสแกน QR (บิลกลุ่ม)",
+      "adminUnbindNotice": "แจ้งเจ้าของก๊วนหลังผู้ดูแลระบบยกเลิกการเชื่อมกลุ่ม LINE"
     }
+  },
+  "lineBindings": {
+    "title": "การเชื่อมกลุ่ม LINE (ทุกก๊วน)",
+    "description": "ก๊วนทั้งหมดที่ผูกกลุ่ม LINE อยู่ในระบบ — ยกเลิกได้ทีละก๊วนหรือทั้งหมด เจ้าของก๊วนจะได้รับข้อความแจ้งเตือนทาง LINE ทุกครั้ง",
+    "countLabel": "{count} ก๊วนที่เชื่อมกลุ่ม LINE",
+    "colClub": "ก๊วน",
+    "colOwner": "เจ้าของ",
+    "colLastSession": "นัดล่าสุด",
+    "colActions": "จัดการ",
+    "legacyBadge": "แบบเก่า",
+    "legacyBadgeTooltip": "ผูกไว้ที่นัดเดี่ยวแบบเก่า ยังไม่ย้ายขึ้นก๊วนถาวร",
+    "noSession": "ยังไม่มีนัด",
+    "empty": "ไม่มีก๊วนที่เชื่อมกลุ่ม LINE",
+    "unbindTooltip": "ยกเลิกการเชื่อมกลุ่ม LINE ของก๊วนนี้",
+    "unbindConfirmTitle": "ยกเลิกการเชื่อมกลุ่ม LINE ของก๊วนนี้?",
+    "unbindConfirmDesc": "บิลกลุ่ม/แจ้งเตือนทาง LINE ของก๊วน \"{club}\" จะใช้ไม่ได้จนกว่าจะผูกกลุ่มใหม่ — เจ้าของก๊วนจะได้รับข้อความแจ้งเตือนทาง LINE",
+    "unbindConfirmCancel": "ยกเลิก",
+    "unbindConfirmButton": "ยืนยันยกเลิก",
+    "unbindSuccess": "ยกเลิกการเชื่อมกลุ่มของ \"{club}\" แล้ว",
+    "unbindAllButton": "ยกเลิกทั้งหมด",
+    "unbindAllTooltip": "ยกเลิกการเชื่อมกลุ่ม LINE ของทุกก๊วนพร้อมกัน",
+    "unbindAllConfirmTitle": "ยกเลิกการเชื่อมกลุ่ม LINE ทุกก๊วน?",
+    "unbindAllConfirmDesc": "จะยกเลิกการเชื่อมกลุ่ม LINE ของทั้ง {count} ก๊วน — บิลกลุ่ม/แจ้งเตือนทาง LINE ของก๊วนเหล่านี้จะใช้ไม่ได้จนกว่าจะผูกกลุ่มใหม่ เจ้าของแต่ละก๊วนจะได้รับข้อความแจ้งเตือนทาง LINE",
+    "unbindAllConfirmCancel": "ยกเลิก",
+    "unbindAllConfirmButton": "ยืนยันยกเลิกทั้งหมด",
+    "unbindAllSuccess": "ยกเลิกการเชื่อมกลุ่มแล้ว {count} ก๊วน",
+    "unbinding": "กำลังยกเลิก…"
   }
 }
