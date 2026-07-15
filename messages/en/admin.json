@@ -61,7 +61,35 @@
       "notifyBracket": "Knockout bracket created",
       "notifyScore": "Match result",
       "notifyMatchCall": "Match call",
-      "groupBillScanPrompt": "Scan-QR prompt (group bill)"
+      "groupBillScanPrompt": "Scan-QR prompt (group bill)",
+      "adminUnbindNotice": "Notice to the club owner after a site admin unbinds the LINE group"
     }
+  },
+  "lineBindings": {
+    "title": "LINE group bindings (all clubs)",
+    "description": "Every club currently bound to a LINE group — unbind one at a time or all at once. Owners always get a LINE notice.",
+    "countLabel": "{count} club(s) bound to a LINE group",
+    "colClub": "Club",
+    "colOwner": "Owner",
+    "colLastSession": "Latest session",
+    "colActions": "Actions",
+    "legacyBadge": "Legacy",
+    "legacyBadgeTooltip": "Bound at the old per-session level, not yet migrated to the club series",
+    "noSession": "No sessions yet",
+    "empty": "No clubs are bound to a LINE group",
+    "unbindTooltip": "Unbind this club's LINE group",
+    "unbindConfirmTitle": "Unbind this club's LINE group?",
+    "unbindConfirmDesc": "\"{club}\"'s group billing/notifications will stop working until it's rebound — the owner will get a LINE notice.",
+    "unbindConfirmCancel": "Cancel",
+    "unbindConfirmButton": "Confirm unbind",
+    "unbindSuccess": "Unbound \"{club}\"'s LINE group",
+    "unbindAllButton": "Unbind all",
+    "unbindAllTooltip": "Unbind every club's LINE group at once",
+    "unbindAllConfirmTitle": "Unbind every club's LINE group?",
+    "unbindAllConfirmDesc": "This will unbind the LINE group for all {count} club(s) — their group billing/notifications will stop working until rebound. Each owner will get a LINE notice.",
+    "unbindAllConfirmButton": "Confirm unbind all",
+    "unbindAllSuccess": "Unbound {count} club(s)",
+    "unbindAllPartial": "Unbound {count} clubs — {failed} failed, please retry",
+    "unbinding": "Unbinding…"
   }
 }

@@ -39,7 +39,8 @@ export type BotMessageKey =
   | "notifyBracket"
   | "notifyScore"
   | "notifyMatchCall"
-  | "groupBillScanPrompt";
+  | "groupBillScanPrompt"
+  | "adminUnbindNotice";
 
 type BotMessageSpec = {
   /** Placeholders this template may use; those that are REQUIRED must appear in any override. */
@@ -123,6 +124,14 @@ export const BOT_MESSAGE_SPECS: Record<BotMessageKey, BotMessageSpec> = {
     required: [],
     default: `สแกน QR ด้านล่างจ่ายได้เลย 🙏`,
   },
+  // Site admin (`/admin`) force-unbinds a ก๊วน's LINE group — pushed 1:1 to the
+  // club owner (fire-and-forget; see adminUnbindLineGroupAction). `<โทเคน>` is
+  // literal placeholder TEXT for the bind command shown on the club settings
+  // page, not a `{...}` template variable — only `{club}` is substituted here.
+  adminUnbindNotice: {
+    required: ["club"],
+    default: `⚠️ ผู้ดูแลระบบได้ยกเลิกการเชื่อมกลุ่ม LINE ของก๊วน "{club}" แล้ว — หากต้องการใช้บิลกลุ่ม/แจ้งเตือนทาง LINE ต่อ ให้เข้าหน้าตั้งค่าก๊วน แล้วพิมพ์คำสั่ง "ผูกก๊วน <โทเคน>" ในกลุ่มไลน์อีกครั้ง`,
+  },
 };
 
 export const BOT_MESSAGE_KEYS = Object.keys(BOT_MESSAGE_SPECS) as BotMessageKey[];
@@ -155,6 +164,7 @@ export const BOT_MESSAGE_SAMPLE_VARS: Record<BotMessageKey, Vars> = {
   },
   notifyMatchCall: { num: 5, a: "ทีมแดง", b: "ทีมน้ำเงิน", court: " (สนาม 3)" },
   groupBillScanPrompt: {},
+  adminUnbindNotice: { club: "ก๊วนสุขสันต์" },
 };
 
 /** Just the built-in defaults, keyed. */

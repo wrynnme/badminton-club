@@ -127,7 +127,8 @@
     "pairMemberTaken": "ผู้เล่นคนนี้ถูกจับคู่ประจำไว้แล้ว",
     "addPairFailed": "เพิ่มคู่ประจำไม่สำเร็จ",
     "removePairFailed": "ลบคู่ประจำไม่สำเร็จ",
-    "loadCoAdminsFailed": "โหลดรายชื่อผู้ช่วยดูแลไม่สำเร็จ"
+    "loadCoAdminsFailed": "โหลดรายชื่อผู้ช่วยดูแลไม่สำเร็จ",
+    "loadBindingsFailed": "โหลดรายการก๊วนที่ผูกกลุ่มไลน์ไม่สำเร็จ"
   },
   "tournament": {
     "requireLineLogin": "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้างทัวร์นาเมนต์",
