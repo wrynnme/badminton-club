@@ -7,8 +7,6 @@ import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 
 import type { MySessionGroup } from "@/lib/club/my-sessions";
 
-export type { MySessionGroup, MySessionRow } from "@/lib/club/my-sessions";
-
 /**
  * `/clubs/mine` grouped view (grilled 2026-07-16): one collapsible group per
  * ก๊วน (native <details>, default-open — no client JS), rows = its รอบตี

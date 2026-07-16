@@ -82,7 +82,9 @@ export default async function ClubsPage() {
         .eq("owner_id", session.profileId)
         .not("archived_at", "is", null)
         .order("archived_at", { ascending: false }),
-      fetchMySessionRows(sb, session.profileId),
+      session.isGuest
+        ? Promise.resolve([] as MySessionSourceRow[])
+        : fetchMySessionRows(sb, session.profileId, adminClubIds),
     ]);
     myRows = myRowsRes;
     const seriesList = (seriesRowsRes.data ?? []) as SeriesRow[];
@@ -155,8 +157,27 @@ export default async function ClubsPage() {
           isToday: target.play_date === todayBkk,
         };
       })
-      .filter((e): e is UpcomingSessionEntry => e !== null)
-      .sort((a, b) => a.play_date.localeCompare(b.play_date));
+      .filter((e): e is UpcomingSessionEntry => e !== null);
+
+    // Participant-only rounds deserve the same fast path — a member's "today's
+    // round" is exactly what they came to tap. Managed rows are already covered
+    // by the series pass above (dedupe by session id).
+    const seen = new Set(upcomingEntries.map((e) => e.sessionId));
+    for (const r of myRows) {
+      if (r.managed || seen.has(r.id) || r.play_date < todayBkk) continue;
+      seen.add(r.id);
+      upcomingEntries.push({
+        seriesId: r.series_id,
+        sessionId: r.id,
+        clubName: r.series?.name ?? r.name,
+        venue: r.venue,
+        play_date: r.play_date,
+        start_time: r.start_time,
+        end_time: r.end_time,
+        isToday: r.play_date === todayBkk,
+      });
+    }
+    upcomingEntries.sort((a, b) => a.play_date.localeCompare(b.play_date));
 
     archivedEntries = ((archivedRowsRes.data ?? []) as { id: string; name: string; archived_at: string }[]).map(
       (row): ArchivedSeriesEntry => ({

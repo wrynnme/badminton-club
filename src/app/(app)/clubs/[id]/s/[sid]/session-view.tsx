@@ -161,7 +161,7 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
   // and the props they receive go through the PARTICIPANT sanitizers so the
   // manager secrets (join token, group binding, payment receiver) never ship.
   const isParticipant =
-    !canManage && !!session && players.some((p) => p.profile_id === session.profileId);
+    !canManage && !!session && !session.isGuest && players.some((p) => p.profile_id === session.profileId);
 
   // Everyone else: not logged in → login (return here after); logged-in
   // stranger → club list, same as before.
@@ -280,14 +280,14 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
               text={t("page.totalCostInfo", { total: clubCostTotal.toLocaleString() })}
             />
           )}
-          {club.shuttle_info && <ClubInfoRow label="🏸" text={club.shuttle_info} />}
+          {viewClub.shuttle_info && <ClubInfoRow label="🏸" text={viewClub.shuttle_info} />}
         </CardContent>
       </Card>
 
-      {club.notes && (
+      {viewClub.notes && (
         <Card>
           <CardHeader><CardTitle className="text-base">{t("page.notes")}</CardTitle></CardHeader>
-          <CardContent className="whitespace-pre-wrap text-sm">{club.notes}</CardContent>
+          <CardContent className="whitespace-pre-wrap text-sm">{viewClub.notes}</CardContent>
         </Card>
       )}
 

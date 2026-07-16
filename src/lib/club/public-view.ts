@@ -80,7 +80,9 @@ export function toParticipantClub(club: Club): Club {
     shuttle_hourly: club.shuttle_hourly,
     shuttle_total: club.shuttle_total,
     total_cost: club.total_cost,
-    notes: club.notes,
+    // notes stays null (toPublicClub): the field predates viewer mode and may
+    // hold manager-only jottings. shuttle_info is billing context (shuttle
+    // count/price) — same tier as the cost fields above.
     shuttle_info: club.shuttle_info,
   };
 }
