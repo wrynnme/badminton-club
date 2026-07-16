@@ -607,6 +607,93 @@ export type LinkRequestToMemberInput = z.infer<typeof LinkToMemberSchema>;
  * the active session's roster carries a row seeded from this member — link that
  * row too, so the current รอบตี reflects the pairing immediately.
  */
+/**
+ * Shared core of linkRequestToMemberAction / linkSeriesMemberToProfileAction:
+ * dup-guard → claim the name-only member row (race-safe: `.is("profile_id",
+ * null)` + partial UNIQUE (series_id, profile_id) WHERE profile_id IS NOT
+ * NULL) → best-effort roster write-through (active ?? latest session — matches
+ * the settings-tab UI) → audit. Callers keep their own trigger bookkeeping
+ * (pool request vs direct picker), confirm push, and revalidate.
+ */
+async function linkProfileToNameOnlyMember(args: {
+  sb: AdminClient;
+  session: SessionPayload;
+  t: Awaited<ReturnType<typeof getTranslations>>;
+  series: ClubSeries;
+  memberId: string;
+  profileId: string;
+  caller: string;
+}): Promise<{ ok: true; memberName: string; lineUserId: string | null } | { error: string }> {
+  const { sb, session, t, series, memberId, profileId, caller } = args;
+  const seriesId = series.id;
+
+  // Guard: this profile must not already be a linked member of the series.
+  const { data: dup } = await sb
+    .from("series_members")
+    .select("id, canonical_name")
+    .eq("series_id", seriesId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+  if (dup) return { error: t("club.linkAlreadyLinked", { name: dup.canonical_name }) };
+
+  // The target must be a name-only member (profile_id NULL) of this series.
+  const { data: target } = await sb
+    .from("series_members")
+    .select("id, profile_id, canonical_name")
+    .eq("id", memberId)
+    .eq("series_id", seriesId)
+    .maybeSingle();
+  if (!target) return { error: t("club.linkTargetNotFound") };
+  if (target.profile_id !== null) return { error: t("club.linkTargetNotGuest") };
+
+  // Resolve the profile (LINE id for the caller's confirm push).
+  const { data: profile } = await sb
+    .from("profiles")
+    .select("id, line_user_id")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (!profile) return { error: t("club.linkRequestNotFound") };
+
+  const { data: upgraded, error: upErr } = await sb
+    .from("series_members")
+    .update({ profile_id: profileId, last_linked_at: new Date().toISOString() })
+    .eq("id", memberId)
+    .eq("series_id", seriesId)
+    .is("profile_id", null)
+    .select("id")
+    .maybeSingle();
+  if (upErr) {
+    console.error(`[${caller}]`, upErr);
+    return { error: t("club.linkFailed") };
+  }
+  if (!upgraded) return { error: t("club.linkTargetNotGuest") };
+
+  // Best-effort roster write-through: the current รอบตี's row seeded from this
+  // member (if any, still guest) picks up the link immediately. A failure (e.g.
+  // uniq_club_players_profile — the profile already links another row there)
+  // must not fail the member link, but must not vanish either.
+  const writeThroughClubId = series.active_session_id ?? (await latestSessionOfSeries(sb, seriesId));
+  if (writeThroughClubId) {
+    const { error: rosterErr } = await sb
+      .from("club_players")
+      .update({ profile_id: profileId })
+      .eq("club_id", writeThroughClubId)
+      .eq("member_id", memberId)
+      .is("profile_id", null);
+    if (rosterErr) console.error(`[${caller}] roster write-through`, rosterErr);
+  }
+
+  await auditToActiveSession(
+    sb,
+    series,
+    session,
+    "player_linked",
+    `${target.canonical_name} ← ${profileId} (member)`,
+  );
+
+  return { ok: true, memberName: target.canonical_name as string, lineUserId: (profile.line_user_id as string | null) ?? null };
+}
+
 export async function linkRequestToMemberAction(input: LinkRequestToMemberInput) {
   const parsedInput = LinkToMemberSchema.safeParse(input);
   if (!parsedInput.success) {
@@ -618,7 +705,7 @@ export async function linkRequestToMemberAction(input: LinkRequestToMemberInput)
   if (gate.error !== undefined) return { error: gate.error };
   const { sb, session, t, series } = gate;
 
-  // 1. The request must belong to this series and still be pending.
+  // The request must belong to this series and still be pending.
   const { data: req } = await sb
     .from("club_link_requests")
     .select("id, profile_id, status")
@@ -626,51 +713,14 @@ export async function linkRequestToMemberAction(input: LinkRequestToMemberInput)
     .eq("series_id", seriesId)
     .maybeSingle();
   if (!req || req.status !== "pending") return { error: t("club.linkRequestNotFound") };
-  const profileId = req.profile_id as string;
 
-  // 2. Guard: this profile must not already be a linked member of the series.
-  const { data: dup } = await sb
-    .from("series_members")
-    .select("id, canonical_name")
-    .eq("series_id", seriesId)
-    .eq("profile_id", profileId)
-    .maybeSingle();
-  if (dup) return { error: t("club.linkAlreadyLinked", { name: dup.canonical_name }) };
-
-  // 3. The target must be a name-only member (profile_id NULL) of this series.
-  const { data: target } = await sb
-    .from("series_members")
-    .select("id, profile_id, canonical_name")
-    .eq("id", memberId)
-    .eq("series_id", seriesId)
-    .maybeSingle();
-  if (!target) return { error: t("club.linkTargetNotFound") };
-  if (target.profile_id !== null) return { error: t("club.linkTargetNotGuest") };
-
-  // 4. Resolve the profile (LINE id for the confirm push).
-  const { data: profile } = await sb
-    .from("profiles")
-    .select("id, line_user_id")
-    .eq("id", profileId)
-    .maybeSingle();
-  if (!profile) return { error: t("club.linkRequestNotFound") };
-
-  // 5. Upgrade the registry row in place. `.is("profile_id", null)` + the partial
-  //    UNIQUE (series_id, profile_id) WHERE profile_id IS NOT NULL make this
-  //    race-safe both directions.
-  const { data: upgraded, error: upErr } = await sb
-    .from("series_members")
-    .update({ profile_id: profileId, last_linked_at: new Date().toISOString() })
-    .eq("id", memberId)
-    .eq("series_id", seriesId)
-    .is("profile_id", null)
-    .select("id")
-    .maybeSingle();
-  if (upErr) {
-    console.error("[linkRequestToMemberAction]", upErr);
-    return { error: t("club.linkFailed") };
-  }
-  if (!upgraded) return { error: t("club.linkTargetNotGuest") };
+  const linked = await linkProfileToNameOnlyMember({
+    sb, session, t, series,
+    memberId,
+    profileId: req.profile_id as string,
+    caller: "linkRequestToMemberAction",
+  });
+  if ("error" in linked) return linked;
 
   const { error: matchErr } = await sb
     .from("club_link_requests")
@@ -678,34 +728,162 @@ export async function linkRequestToMemberAction(input: LinkRequestToMemberInput)
     .eq("id", requestId);
   if (matchErr) console.error("[linkRequestToMemberAction] status=matched", matchErr);
 
-  // 6. Best-effort roster write-through: the current รอบตี's row seeded from
-  //    this member (if any, still guest) picks up the link immediately. Target
-  //    matches the settings-tab UI: active session, else the latest one. A
-  //    failure (e.g. the profile already links another row in that session —
-  //    uniq_club_players_profile) must not fail the member link, but it must
-  //    not vanish either: log it so the registry/roster divergence is traceable.
-  const writeThroughClubId = series.active_session_id ?? (await latestSessionOfSeries(sb, seriesId));
-  if (writeThroughClubId) {
-    const { error: rosterErr } = await sb
+  pushLinkConfirmNamed(series.name, linked.lineUserId);
+  revalidateClubTree();
+  return { ok: true as const };
+}
+
+export type SeriesLinkableProfile = { id: string; display_name: string; picture_url: string | null };
+
+/**
+ * Profiles a manager may pair with a name-only member from the edit dialog —
+ * consent-safe: ONLY profiles that already have a relationship with THIS ก๊วน
+ * ((a) any club_link_requests row of the series — they explicitly asked to
+ * link here, any status — or (b) ever linked into a roster of any รอบตี under
+ * the series). Never broader (PII minimum), never `line_user_id`. Profiles
+ * already linked as a member of this series are filtered out.
+ */
+export async function listSeriesLinkableProfilesAction(seriesId: string) {
+  const gate = await seriesManagerGate(seriesId);
+  if (gate.error !== undefined) return { error: gate.error };
+  const { sb } = gate;
+
+  const [reqRes, rosterRes, memberRes] = await Promise.all([
+    sb.from("club_link_requests").select("profile_id").eq("series_id", seriesId),
+    sb
       .from("club_players")
-      .update({ profile_id: profileId })
-      .eq("club_id", writeThroughClubId)
-      .eq("member_id", memberId)
-      .is("profile_id", null);
-    if (rosterErr) console.error("[linkRequestToMemberAction] roster write-through", rosterErr);
+      .select("profile_id, club:clubs!inner(series_id)")
+      .eq("club.series_id", seriesId)
+      .not("profile_id", "is", null),
+    sb.from("series_members").select("profile_id").eq("series_id", seriesId).not("profile_id", "is", null),
+  ]);
+
+  const alreadyMember = new Set((memberRes.data ?? []).map((r) => r.profile_id as string));
+  const candidateIds = [
+    ...new Set(
+      [...(reqRes.data ?? []), ...(rosterRes.data ?? [])]
+        .map((r) => r.profile_id as string | null)
+        .filter((id): id is string => !!id && !alreadyMember.has(id)),
+    ),
+  ];
+  if (candidateIds.length === 0) return { ok: true as const, profiles: [] as SeriesLinkableProfile[] };
+
+  const { data: profiles, error } = await sb
+    .from("profiles")
+    .select("id, display_name, picture_url")
+    .in("id", candidateIds)
+    .order("display_name", { ascending: true });
+  if (error) {
+    console.error("[listSeriesLinkableProfilesAction]", error);
+    return { error: (await getTranslations("actions"))("club.loadKnownProfilesFailed") };
   }
+  return { ok: true as const, profiles: (profiles ?? []) as SeriesLinkableProfile[] };
+}
+
+const LinkMemberToProfileSchema = z.object({
+  seriesId: z.string().uuid(),
+  memberId: z.string().uuid(),
+  profileId: z.string().uuid(),
+});
+export type LinkSeriesMemberToProfileInput = z.infer<typeof LinkMemberToProfileSchema>;
+
+/**
+ * Pair a name-only member with a KNOWN profile picked in the member edit
+ * dialog (no pool request needed). The profile must pass the SAME consent set
+ * as listSeriesLinkableProfilesAction — re-checked server-side so a forged
+ * profileId outside the series' relationships is rejected.
+ */
+export async function linkSeriesMemberToProfileAction(input: LinkSeriesMemberToProfileInput) {
+  const parsedInput = LinkMemberToProfileSchema.safeParse(input);
+  if (!parsedInput.success) {
+    return { error: (await getTranslations("actions"))("club.invalidData") };
+  }
+  const { seriesId, memberId, profileId } = parsedInput.data;
+
+  const gate = await seriesManagerGate(seriesId);
+  if (gate.error !== undefined) return { error: gate.error };
+  const { sb, session, t, series } = gate;
+
+  // Consent re-check (anti-IDOR): the profile must already relate to this ก๊วน.
+  const [reqRes, rosterRes] = await Promise.all([
+    sb.from("club_link_requests").select("id").eq("series_id", seriesId).eq("profile_id", profileId).limit(1),
+    sb
+      .from("club_players")
+      .select("id, club:clubs!inner(series_id)")
+      .eq("club.series_id", seriesId)
+      .eq("profile_id", profileId)
+      .limit(1),
+  ]);
+  const hasConsent = (reqRes.data ?? []).length > 0 || (rosterRes.data ?? []).length > 0;
+  if (!hasConsent) return { error: t("club.linkTargetNotFound") };
+
+  const linked = await linkProfileToNameOnlyMember({
+    sb, session, t, series, memberId, profileId,
+    caller: "linkSeriesMemberToProfileAction",
+  });
+  if ("error" in linked) return linked;
+
+  // Retire any still-pending request from this profile in the series (both
+  // club-keyed and sessionless rows) — the pairing just satisfied it.
+  const { error: matchErr } = await sb
+    .from("club_link_requests")
+    .update({ status: "matched" })
+    .eq("series_id", seriesId)
+    .eq("profile_id", profileId)
+    .eq("status", "pending");
+  if (matchErr) console.error("[linkSeriesMemberToProfileAction] status=matched", matchErr);
+
+  pushLinkConfirmNamed(series.name, linked.lineUserId);
+  revalidateClubTree();
+  return { ok: true as const };
+}
+
+const UnlinkMemberSchema = z.object({
+  seriesId: z.string().uuid(),
+  memberId: z.string().uuid(),
+});
+export type UnlinkSeriesMemberInput = z.infer<typeof UnlinkMemberSchema>;
+
+/**
+ * Detach the LINE account from a member (edit-dialog "ยกเลิกการเชื่อม").
+ * Registry-level only: `club_players` rows of past AND current รอบตี keep
+ * their profile_id — billing/attendance history must not be rewritten by a
+ * registry correction; a session-level unlink exists separately when the
+ * current roster row itself was mislinked. Future เปิดรอบตี seeds this member
+ * name-only again.
+ */
+export async function unlinkSeriesMemberLineAction(input: UnlinkSeriesMemberInput) {
+  const parsedInput = UnlinkMemberSchema.safeParse(input);
+  if (!parsedInput.success) {
+    return { error: (await getTranslations("actions"))("club.invalidData") };
+  }
+  const { seriesId, memberId } = parsedInput.data;
+
+  const gate = await seriesManagerGate(seriesId);
+  if (gate.error !== undefined) return { error: gate.error };
+  const { sb, session, t, series } = gate;
+
+  const { data: cleared, error } = await sb
+    .from("series_members")
+    .update({ profile_id: null })
+    .eq("id", memberId)
+    .eq("series_id", seriesId)
+    .not("profile_id", "is", null)
+    .select("canonical_name")
+    .maybeSingle();
+  if (error) {
+    console.error("[unlinkSeriesMemberLineAction]", error);
+    return { error: t("club.unlinkFailed") };
+  }
+  if (!cleared) return { error: t("club.linkTargetNotFound") };
 
   await auditToActiveSession(
     sb,
     series,
     session,
-    "player_linked",
-    `${target.canonical_name} ← ${profileId} (member)`,
+    "player_unlinked",
+    `${cleared.canonical_name} (member unlink)`,
   );
-
-  // 7. Fire-and-forget confirmation push (never blocks or fails the link).
-  pushLinkConfirmNamed(series.name, profile.line_user_id as string | null);
-
   revalidateClubTree();
   return { ok: true as const };
 }

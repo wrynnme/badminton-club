@@ -122,6 +122,11 @@ export type SeriesMember = {
   canonical_name: string;
   default_level_id: string | null;
   is_regular: boolean;
+  // Default presence window (มาสาย/กลับก่อนประจำ — migration 20260716000300):
+  // copied into the roster row's start_time/end_time when a NEW รอบตี seeds
+  // this member; NULL = present for the whole session. Postgres `time` string.
+  default_start_time: string | null;
+  default_end_time: string | null;
   first_linked_at: string;
   last_linked_at: string;
 };

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
@@ -34,6 +34,12 @@ import {
   resetSeriesMemberLevelsAction,
   updateSeriesMemberAction,
 } from "@/lib/actions/club-series";
+import {
+  linkSeriesMemberToProfileAction,
+  listSeriesLinkableProfilesAction,
+  unlinkSeriesMemberLineAction,
+  type SeriesLinkableProfile,
+} from "@/lib/actions/club-linking";
 import { NONE_SENTINEL, levelTriggerLabel } from "@/lib/club/levels-ui";
 import type { Level, SeriesMember } from "@/lib/types";
 
@@ -70,6 +76,12 @@ function MemberRow({
       <span className="text-xs text-muted-foreground shrink-0 w-20 truncate">
         {levelTriggerLabel(levels, member.default_level_id, t("levelNone"))}
       </span>
+
+      {(member.default_start_time || member.default_end_time) && (
+        <span className="text-xs text-muted-foreground shrink-0">
+          {(member.default_start_time ?? "").slice(0, 5) || "–"}–{(member.default_end_time ?? "").slice(0, 5) || "–"}
+        </span>
+      )}
 
       {member.is_regular && (
         <Badge variant="outline" className="shrink-0">{t("regularLabel")}</Badge>
@@ -129,6 +141,8 @@ function EditMemberDialog({
   const [name, setName] = useState(member.canonical_name);
   const [levelId, setLevelId] = useState(member.default_level_id ?? NONE_SENTINEL);
   const [isRegular, setIsRegular] = useState(member.is_regular);
+  const [startTime, setStartTime] = useState((member.default_start_time ?? "").slice(0, 5));
+  const [endTime, setEndTime] = useState((member.default_end_time ?? "").slice(0, 5));
   const [pending, start] = useTransition();
 
   // Re-seed the form from the member each time the dialog opens (a stale close
@@ -138,6 +152,8 @@ function EditMemberDialog({
       setName(member.canonical_name);
       setLevelId(member.default_level_id ?? NONE_SENTINEL);
       setIsRegular(member.is_regular);
+      setStartTime((member.default_start_time ?? "").slice(0, 5));
+      setEndTime((member.default_end_time ?? "").slice(0, 5));
     }
     onOpenChange(v);
   }
@@ -156,6 +172,8 @@ function EditMemberDialog({
           canonicalName: trimmed,
           defaultLevelId: levelId === NONE_SENTINEL ? null : levelId,
           isRegular,
+          defaultStartTime: startTime || null,
+          defaultEndTime: endTime || null,
         },
       });
       if ("error" in res) {
@@ -214,6 +232,20 @@ function EditMemberDialog({
               {t("regularCheckboxLabel")}
             </Label>
           </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-1">
+              <Label className="text-xs">{t("defaultStartLabel")}</Label>
+              <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">{t("defaultEndLabel")}</Label>
+              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="h-8 text-sm" />
+            </div>
+          </div>
+          <p className="text-[11px] text-muted-foreground -mt-1">{t("defaultTimesHint")}</p>
+
+          <MemberLineSection open={open} seriesId={seriesId} member={member} onDone={() => onOpenChange(false)} />
         </div>
 
         <DialogFooter className="gap-2">
@@ -231,6 +263,148 @@ function EditMemberDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── LINE section inside the edit dialog ────────────────────────────────────
+// Immediate actions (not part of the main save): unlink with confirm, or pick
+// a known profile (consent-safe list — see listSeriesLinkableProfilesAction)
+// and link right here. Closes the dialog on success so the refreshed member
+// state re-seeds everything.
+
+function MemberLineSection({
+  open,
+  seriesId,
+  member,
+  onDone,
+}: {
+  open: boolean;
+  seriesId: string;
+  member: SeriesMember;
+  onDone: () => void;
+}) {
+  const t = useTranslations("club.seriesMembers");
+  const router = useRouter();
+  const [profiles, setProfiles] = useState<SeriesLinkableProfile[] | null>(null);
+  const [pickedId, setPickedId] = useState("");
+  const [confirmUnlink, setConfirmUnlink] = useState(false);
+  const [pending, start] = useTransition();
+  const linked = member.profile_id !== null;
+
+  // Load candidates each time the dialog opens for a name-only member.
+  useEffect(() => {
+    if (!open || linked) return;
+    setProfiles(null);
+    setPickedId("");
+    setConfirmUnlink(false);
+    start(async () => {
+      const res = await listSeriesLinkableProfilesAction(seriesId);
+      if ("error" in res) {
+        toast.error(res.error);
+        setProfiles([]);
+        return;
+      }
+      setProfiles(res.profiles);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, linked, seriesId]);
+
+  function handleLink() {
+    if (!pickedId) return;
+    start(async () => {
+      const res = await linkSeriesMemberToProfileAction({ seriesId, memberId: member.id, profileId: pickedId });
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(t("lineLinkSuccess"));
+      onDone();
+      router.refresh();
+    });
+  }
+
+  function handleUnlink() {
+    start(async () => {
+      const res = await unlinkSeriesMemberLineAction({ seriesId, memberId: member.id });
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(t("lineUnlinkSuccess"));
+      onDone();
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="border-t pt-3 space-y-2">
+      <Label className="text-xs">{t("lineSectionLabel")}</Label>
+
+      {linked ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary" className="gap-1">
+            <Link2 className="h-3 w-3" />
+            {t("lineLinkedBadge")}
+          </Badge>
+          {confirmUnlink ? (
+            <>
+              <span className="text-xs text-muted-foreground">{t("lineUnlinkConfirmText")}</span>
+              <Button size="xs" variant="destructive" disabled={pending} onClick={handleUnlink}>
+                {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t("lineUnlinkConfirm")}
+              </Button>
+              <Button size="xs" variant="ghost" disabled={pending} onClick={() => setConfirmUnlink(false)}>
+                {t("lineUnlinkCancel")}
+              </Button>
+            </>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button size="xs" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setConfirmUnlink(true)}>
+                    {t("lineUnlinkButton")}
+                  </Button>
+                }
+              />
+              <TooltipContent>{t("lineUnlinkTooltip")}</TooltipContent>
+            </Tooltip>
+          )}
+        </div>
+      ) : profiles === null ? (
+        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {t("lineLoadingProfiles")}
+        </p>
+      ) : profiles.length === 0 ? (
+        <p className="text-xs text-muted-foreground">{t("lineNoKnownProfiles")}</p>
+      ) : (
+        <div className="flex items-center gap-2">
+          <Select value={pickedId} onValueChange={(v) => { if (v) setPickedId(v); }}>
+            <SelectTrigger className="h-8 flex-1 text-sm">
+              <SelectValue>
+                {(v: string) => profiles.find((p) => p.id === v)?.display_name ?? t("linePickPlaceholder")}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {profiles.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.display_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button size="sm" disabled={pending || !pickedId} onClick={handleLink}>
+                  {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t("lineLinkButton")}
+                </Button>
+              }
+            />
+            <TooltipContent>{t("lineLinkTooltip")}</TooltipContent>
+          </Tooltip>
+        </div>
+      )}
+    </div>
   );
 }
 

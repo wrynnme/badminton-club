@@ -149,6 +149,10 @@ in this file.
   attendance of one รอบตี).
 - **Regular / ขาประจำ** — a member with `is_regular = true` (default): auto-seeded
   into the roster when a session opens.
+- **Member default times / เวลาประจำตัว** — a member's habitual presence window
+  (`default_start_time`/`default_end_time`, มาสาย/กลับก่อนประจำ): copied into
+  the roster row's declared start/end when a NEW รอบตี seeds them; blank =
+  full session. Never rewrites an already-open roster.
 - **Partner pair / คู่ประจำ** — a series-level pair of members
   (`series_partner_pairs`) instantiated into per-session `club_locked_pairs` on
   session open. The queue engine still reads only per-session locked pairs.
