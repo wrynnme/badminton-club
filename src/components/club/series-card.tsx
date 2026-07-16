@@ -11,6 +11,8 @@ export type SeriesCardData = {
   name: string;
   /** The series' active session (decision #3), when it resolves to a real row. */
   activeSession: { venue: string; play_date: string } | null;
+  /** "ปิดรอบ" — the pointed-at round is done; badge swaps to "จบแล้ว". */
+  activeSessionDone: boolean;
   sessionCount: number;
   memberCount: number;
 };
@@ -26,7 +28,12 @@ export async function SeriesCard({ series }: { series: SeriesCardData }) {
         <CardHeader>
           <CardTitle className="flex items-start justify-between gap-2">
             <span className="line-clamp-1">{series.name}</span>
-            {series.activeSession && <Badge variant="secondary">{t("series.activeSessionBadge")}</Badge>}
+            {series.activeSession &&
+              (series.activeSessionDone ? (
+                <Badge variant="outline" className="text-muted-foreground">{t("series.doneBadge")}</Badge>
+              ) : (
+                <Badge variant="secondary">{t("series.activeSessionBadge")}</Badge>
+              ))}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">

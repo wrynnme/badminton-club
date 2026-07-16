@@ -33,6 +33,9 @@ export type Club = {
   shuttle_info: string | null;
   notes: string | null;
   created_at: string;
+  // "ปิดรอบ" done flag (display-only — see src/lib/club/session-done.ts).
+  // NULL = open; a past play_date also counts as done without ever writing here.
+  closed_at: string | null;
   // Cost split (per-bucket, independently configurable)
   court_fee: number;
   court_split: CourtSplit;

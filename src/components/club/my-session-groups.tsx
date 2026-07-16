@@ -5,26 +5,7 @@ import { CalendarDays, ChevronDown, MapPin, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 
-export type MySessionRow = {
-  clubId: string;
-  /** Canonical link target — null only for legacy rows with no series (the dispatcher redirects). */
-  seriesId: string | null;
-  sessionName: string;
-  venue: string;
-  play_date: string;
-  start_time: string;
-  end_time: string;
-  joined: number;
-  max: number;
-  isActive: boolean;
-};
-
-export type MySessionGroup = {
-  key: string;
-  /** null = the เฉพาะกิจ bucket (caller keeps it last); otherwise the series name. */
-  seriesName: string | null;
-  sessions: MySessionRow[];
-};
+import type { MySessionGroup } from "@/lib/club/my-sessions";
 
 /**
  * `/clubs/mine` grouped view (grilled 2026-07-16): one collapsible group per
@@ -64,7 +45,14 @@ export async function MySessionGroups({ groups }: { groups: MySessionGroup[] }) 
                   </span>
                   {/* เฉพาะกิจ rows carry their own name; a named series' rows repeat it — skip */}
                   {g.seriesName === null && <span className="line-clamp-1">{s.sessionName}</span>}
-                  {s.isActive && <Badge variant="secondary">{t("series.activeSessionBadge")}</Badge>}
+                  {/* A done round shows "จบแล้ว" INSTEAD of the active badge — the
+                      pointer can still sit on it until the next round opens. */}
+                  {s.isDone ? (
+                    <Badge variant="outline" className="text-muted-foreground">{t("series.doneBadge")}</Badge>
+                  ) : (
+                    s.isActive && <Badge variant="secondary">{t("series.activeSessionBadge")}</Badge>
+                  )}
+                  {!s.isManaged && <Badge variant="outline">{t("series.joinedBadge")}</Badge>}
                 </span>
                 <span className="flex shrink-0 items-center gap-3 text-muted-foreground">
                   <span className="flex items-center gap-1">

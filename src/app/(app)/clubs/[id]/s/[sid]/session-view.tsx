@@ -39,6 +39,9 @@ import { getClubLevelsAction } from "@/lib/actions/levels";
 import { getAppSettings, resolveQrLogoUrl } from "@/lib/app-settings";
 import { resolveBotMessage } from "@/lib/bot-messages";
 import { resolveLineGroupId } from "@/lib/club/series.server";
+import { toParticipantClub, toParticipantPlayer } from "@/lib/club/public-view";
+import { isSessionDone, todayBangkok } from "@/lib/club/session-done";
+import { CloseSessionButton } from "@/components/club/close-session-button";
 import { resolvePaymentConfig, resolveReceiptConfig } from "@/lib/club/series-payment";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
@@ -154,14 +157,29 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
     canManage = !!seriesAdmin;
   }
 
-  // Clubs are owner/co-admin only — non-managers can't view the club at all.
-  // Not logged in → login (return here after); logged-in non-manager → club list.
-  if (!canManage) {
+  // Viewer mode (grilled 2026-07-16): a logged-in player on THIS roster
+  // (club_players.profile_id) may view the session read-only — every mutating
+  // control below gates on canManage (server actions re-check on their own),
+  // and the props they receive go through the PARTICIPANT sanitizers so the
+  // manager secrets (join token, group binding, payment receiver) never ship.
+  const isParticipant =
+    !canManage && !!session && !session.isGuest && players.some((p) => p.profile_id === session.profileId);
+
+  // Everyone else: not logged in → login (return here after); logged-in
+  // stranger → club list, same as before.
+  if (!canManage && !isParticipant) {
     if (!session) {
       redirect(`/?auth_error=login_required&redirectTo=${encodeURIComponent(`/clubs/${club.id}`)}`);
     }
     redirect("/clubs");
   }
+
+  // Manager path keeps the raw rows (byte-identical behavior); the viewer path
+  // swaps in sanitized copies for every prop that reaches a client component.
+  const viewClub = canManage ? club : toParticipantClub(club);
+  const viewPlayers = canManage
+    ? players
+    : players.map((p) => toParticipantPlayer(p, session!.profileId));
 
   // ADR 0002 P1 — this club's series (E — read-only; a GET render must never
   // mutate). `seriesRes` covers the normal case (club.series_id already set, all
@@ -202,21 +220,43 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
+  // "ปิดรอบ" done state (display-only): closed manually or play_date past.
+  const todayBkk = todayBangkok();
+  const done = isSessionDone(club, todayBkk);
+  // Past-date rounds are done by the calendar — the close/reopen button is
+  // suppressed for them (no manual override), so pass the date signal alone.
+  const doneByDate = club.play_date < todayBkk;
+
   const locale = await getLocale();
   const t = await getTranslations("club");
 
   return (
     <ClubLiveWrapper clubId={club.id} realtimeEnabled={queueSettings.realtime_enabled}>
     <div className="space-y-6 max-w-3xl mx-auto">
-      {series && !series.is_adhoc && (
+      {canManage && series && !series.is_adhoc && (
         <Link href={`/clubs/${series.id}`} className="text-sm text-muted-foreground hover:text-foreground">
           {t("page.backToSeries", { name: series.name })}
+        </Link>
+      )}
+      {/* series-home is manager-gated — a participant's back link goes to /clubs */}
+      {!canManage && (
+        <Link href="/clubs" className="text-sm text-muted-foreground hover:text-foreground">
+          {t("page.backToClubs")}
         </Link>
       )}
       <div>
         <div className="flex items-start justify-between gap-2">
           <h1 className="text-2xl font-bold">{club.name}</h1>
           <div className="flex items-center gap-1.5">
+            {canManage && (
+              <CloseSessionButton clubId={club.id} closedAt={club.closed_at} doneByDate={doneByDate} />
+            )}
+            {done && (
+              <Badge variant="outline" className="text-muted-foreground">{t("series.doneBadge")}</Badge>
+            )}
+            {!canManage && (
+              <Badge variant="outline" className="text-muted-foreground">{t("page.viewerBadge")}</Badge>
+            )}
             {full ? (
               <Badge variant="destructive">{t("page.full")}</Badge>
             ) : (
@@ -255,14 +295,14 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
               text={t("page.totalCostInfo", { total: clubCostTotal.toLocaleString() })}
             />
           )}
-          {club.shuttle_info && <ClubInfoRow label="🏸" text={club.shuttle_info} />}
+          {viewClub.shuttle_info && <ClubInfoRow label="🏸" text={viewClub.shuttle_info} />}
         </CardContent>
       </Card>
 
-      {club.notes && (
+      {viewClub.notes && (
         <Card>
           <CardHeader><CardTitle className="text-base">{t("page.notes")}</CardTitle></CardHeader>
-          <CardContent className="whitespace-pre-wrap text-sm">{club.notes}</CardContent>
+          <CardContent className="whitespace-pre-wrap text-sm">{viewClub.notes}</CardContent>
         </Card>
       )}
 
@@ -271,8 +311,8 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
           showSettings={canManage}
           dashboard={
             <ClubDashboard
-              club={club}
-              players={players}
+              club={viewClub}
+              players={viewPlayers}
               matches={clubMatches}
               levels={levels}
               expenses={expenses}
@@ -286,7 +326,7 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
                 <h2 className="font-semibold">{t("page.playerListHeading", { count: joined })}</h2>
                 <SortablePlayerList
                   clubId={club.id}
-                  players={players}
+                  players={viewPlayers}
                   sessionProfileId={session?.profileId ?? null}
                   canManage={canManage}
                   levels={levels}
@@ -315,7 +355,7 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
               {players.length > 0 && (
                 <section className="space-y-2">
                   <h2 className="font-semibold">{t("page.headcountHeading")}</h2>
-                  <HourlyHeadcount club={club} players={players} />
+                  <HourlyHeadcount club={viewClub} players={viewPlayers} />
                 </section>
               )}
             </div>
@@ -325,7 +365,7 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
               {queueSettings.players_per_team === 2 && (
                 <ClubLockedPairs
                   clubId={club.id}
-                  players={players.map((p) => ({
+                  players={viewPlayers.map((p) => ({
                     id: p.id,
                     display_name: p.display_name,
                     start_time: p.start_time,
@@ -342,7 +382,7 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
               <ClubQueuePanel
                 clubId={club.id}
                 matches={clubMatches}
-                players={players.map((p) => ({
+                players={viewPlayers.map((p) => ({
                   id: p.id,
                   display_name: p.display_name,
                   status: p.status,
@@ -405,8 +445,8 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
                   <Card>
                     <CardContent className="pt-4">
                       <ClubCostBreakdown
-                        club={club}
-                        players={players}
+                        club={viewClub}
+                        players={viewPlayers}
                         matches={clubMatches}
                         expenses={expenses}
                         canManage={canManage}
