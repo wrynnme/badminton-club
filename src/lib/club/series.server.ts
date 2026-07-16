@@ -141,12 +141,12 @@ export async function latestSessionOfSeries(
 
 /**
  * Pending series-scoped join requests are stamped with whichever session was
- * active at request time (`club_link_requests.club_id` NOT NULL, ON DELETE
- * CASCADE) — deleting that session must not swallow them: they are
- * series-level state (ADR 0002). Repoint them at another session of the series
- * BEFORE the delete; when no session remains they cascade with the club (a
- * series with zero sessions has nothing to link into anyway). Best-effort: a
- * failed repoint degrades to the old cascade behavior.
+ * active at request time (`club_link_requests.club_id`, ON DELETE CASCADE) —
+ * deleting that session must not swallow them: they are series-level state
+ * (ADR 0002). Repoint them at another session of the series BEFORE the delete;
+ * when NO session remains, detach them instead (`club_id = NULL` — series-first,
+ * migration 20260716000200) so the pool survives a zero-session series.
+ * Best-effort: a failed repoint degrades to the old cascade behavior.
  *
  * `fallbackId` is the latest remaining session (pre-computed by the caller via
  * `latestSessionOfSeries(sb, series.id, clubId)`); it is only consulted when
@@ -162,7 +162,32 @@ export async function repointPendingLinkRequestsBeforeDelete(
     series.active_session_id && series.active_session_id !== clubId
       ? series.active_session_id
       : fallbackId;
-  if (!target) return;
+  if (!target) {
+    // Last session of the series — detach pending requests from the doomed club
+    // row so they keep living at the series level. The sessionless partial
+    // unique (series_id, profile_id) can reject a detach when a club-less
+    // pending row for the same profile already exists — those duplicates are
+    // fine to let cascade, so detach row-by-row is unnecessary: skip profiles
+    // that already hold a sessionless pending request.
+    const { data: sessionless } = await sb
+      .from("club_link_requests")
+      .select("profile_id")
+      .eq("series_id", series.id)
+      .is("club_id", null);
+    const taken = (sessionless ?? []).map((r) => r.profile_id as string);
+    let detach = sb
+      .from("club_link_requests")
+      .update({ club_id: null })
+      .eq("club_id", clubId)
+      .eq("status", "pending")
+      .not("series_id", "is", null);
+    if (taken.length > 0) detach = detach.not("profile_id", "in", `(${taken.join(",")})`);
+    const { error: detachErr } = await detach;
+    if (detachErr) {
+      console.error("[deleteClubAction] pending link-request detach failed", detachErr);
+    }
+    return;
+  }
 
   // Skip profiles that already hold a request row on the target session —
   // UNIQUE(club_id, profile_id) would fail the whole repoint otherwise.

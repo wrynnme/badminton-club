@@ -38,13 +38,15 @@ import { loginRedirect, assertCanManageClub } from "@/lib/club/permissions";
 import { pushTextToUser } from "@/lib/notification/line-club";
 import { classifyRosterMatch, type RosterCandidate } from "@/lib/club/line-self-link";
 import {
+  clearBindingBySeriesId,
   clearSeriesBinding,
   ensureSeriesForClub,
   hasPendingSeriesRequest,
   resolveSeriesEntryByToken,
   upsertSeriesMember,
 } from "@/lib/club/series.server";
-import type { LinkableKnownProfile } from "@/lib/types";
+import { assertCanManageSeries } from "@/lib/club/series-permissions";
+import type { ClubSeries, LinkableKnownProfile } from "@/lib/types";
 
 type AdminClient = Awaited<ReturnType<typeof createAdminClient>>;
 
@@ -238,14 +240,18 @@ export async function unbindClubLineGroupAction(clubId: string) {
 /**
  * Called from the /clubs/join/[token] page after the player is logged in.
  *
- * ADR 0002 P1 (decision #4 — amends ADR 0001's "always manager-confirmed"):
+ * ADR 0002 P1 (decision #4 — amends ADR 0001's "always manager-confirmed"),
+ * series-first since 2026-07-16 (a series with NO session is a valid target —
+ * the member registry is where a link lands; the roster catches up later):
  *   (a) the profile is already a `series_members` row of this series AND an
  *       exact+unique still-guest roster row matches their canonical_name →
  *       AUTO-LINK immediately, no manager needed (same rule as keyword
  *       self-link) — returns state "linked".
+ *   (a') no session open: an already-linked member simply confirms — state
+ *       "member" ("จะถูกดึงเข้ารอบตีภายหลัง").
  *   (b) a member but no clean roster match, or (c) not a member at all →
- *       drop a `pending` row into `club_link_requests` (stamped with BOTH the
- *       active session's club_id — for UI back-compat — and series_id).
+ *       drop a `pending` row into `club_link_requests` (club_id = the active
+ *       session when one exists, else NULL — migration 20260716000200).
  *
  * Idempotent two ways: the legacy UNIQUE(club_id, profile_id) still guards the
  * upsert, AND a pending request is checked by (series_id, profile_id) FIRST so a
@@ -259,18 +265,19 @@ export async function requestClubLinkAction(token: string) {
   const t = await getTranslations("actions");
   const sb = await createAdminClient();
 
-  // 1/2. Resolve the token → series + target roster (the series' active session,
-  //      decision #3; falls back to a legacy-matched club when the series has no
-  //      active pointer yet — see resolveSeriesEntryByToken).
+  // 1/2. Resolve the token → series (+ its active session, when one exists —
+  //      see resolveSeriesEntryByToken). Only an unresolvable token errors.
   const entry = await resolveSeriesEntryByToken(sb, token);
-  if (!entry || !entry.activeClub) return { error: t("club.linkInvalidToken") };
+  if (!entry) return { error: t("club.linkInvalidToken") };
   const { series, activeClub: club } = entry;
 
   // 3/4. Already linked to a roster row in the active session, and decision #4's
   //      returning-member auto-link check are independent reads — run them
   //      together instead of serially.
   const [existingRes, memberRes] = await Promise.all([
-    sb.from("club_players").select("id").eq("club_id", club.id).eq("profile_id", session.profileId).maybeSingle(),
+    club
+      ? sb.from("club_players").select("id").eq("club_id", club.id).eq("profile_id", session.profileId).maybeSingle()
+      : Promise.resolve({ data: null }),
     sb
       .from("series_members")
       .select("id, canonical_name")
@@ -278,13 +285,37 @@ export async function requestClubLinkAction(token: string) {
       .eq("profile_id", session.profileId)
       .maybeSingle(),
   ]);
-  if (existingRes.data) {
+  if (existingRes.data && club) {
     return { ok: true as const, state: "already_linked" as const, clubName: club.name };
+  }
+
+  const member = memberRes.data;
+
+  // (a') sessionless: a confirmed member has nothing to attach to yet — confirm
+  // the durable registry link; the next รอบตี picks them up (seed / manager add).
+  if (!club) {
+    if (member) {
+      return { ok: true as const, state: "member" as const, clubName: series.name };
+    }
+    if (await hasPendingSeriesRequest(sb, series.id, session.profileId)) {
+      return { ok: true as const, state: "pending" as const, clubName: series.name };
+    }
+    const { error: poolErr } = await sb
+      .from("club_link_requests")
+      .insert({ club_id: null, series_id: series.id, profile_id: session.profileId, status: "pending" });
+    // 23505 = uniq_club_link_requests_series_profile_sessionless caught a race —
+    // the request already exists; PostgREST upsert can't target a partial index,
+    // hence insert + tolerate.
+    if (poolErr && poolErr.code !== "23505") {
+      console.error("[requestClubLinkAction] sessionless pool", poolErr);
+      return { error: t("club.linkRequestFailed") };
+    }
+    revalidateClubTree();
+    return { ok: true as const, state: "pending" as const, clubName: series.name };
   }
 
   // decision #4 — a returning confirmed member auto-links on an exact+unique
   // still-guest roster-name match, no manager confirmation needed.
-  const member = memberRes.data;
   if (member) {
     const { data: rosterRows } = await sb
       .from("club_players")
@@ -562,6 +593,271 @@ export async function unlinkClubPlayerAction(input: UnlinkClubPlayerInput) {
     .eq("profile_id", profileId);
 
   await writeClubAudit(sb, clubId, session, "player_unlinked", `${player.display_name} ✕ ${profileId}`);
+  revalidateClubTree();
+  return { ok: true as const };
+}
+
+// ---------------------------------------------------------------------------
+// Manager (series-first, 2026-07-16): series-keyed variants of the link-controls
+// actions. The controls card lives on the series settings tab and must work for
+// a series with ZERO sessions, so these gate on `assertCanManageSeries` instead
+// of a per-session `assertCanManageClub`. `club_audit_logs` is keyed by club_id
+// (NOT NULL) — each action audits to the series' active session when one
+// exists, else the event goes unaudited (the registry/binding row itself is the
+// durable record).
+// ---------------------------------------------------------------------------
+
+async function getSeriesRow(sb: AdminClient, seriesId: string): Promise<ClubSeries | null> {
+  const { data } = await sb.from("club_series").select("*").eq("id", seriesId).maybeSingle();
+  return (data as ClubSeries | null) ?? null;
+}
+
+async function auditToActiveSession(
+  sb: AdminClient,
+  series: Pick<ClubSeries, "active_session_id">,
+  session: SessionPayload,
+  eventType: string,
+  detail: string,
+) {
+  if (!series.active_session_id) return;
+  await writeClubAudit(sb, series.active_session_id, session, eventType, detail);
+}
+
+/** Series-keyed twin of generateClubJoinTokenAction — same "return the existing
+ *  token instead of minting" rule (decision #15). */
+export async function generateSeriesJoinTokenAction(seriesId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const series = await getSeriesRow(sb, seriesId);
+  if (!series) return { error: t("club.linkTokenFailed") };
+  if (series.join_token) {
+    return { ok: true as const, token: series.join_token };
+  }
+
+  const token = crypto.randomUUID();
+  const { error } = await sb.from("club_series").update({ join_token: token }).eq("id", seriesId);
+  if (error) {
+    console.error("[generateSeriesJoinTokenAction]", error);
+    return { error: t("club.linkTokenFailed") };
+  }
+
+  await auditToActiveSession(sb, series, session, "join_token_generated", "");
+  revalidateClubTree();
+  return { ok: true as const, token };
+}
+
+/** Series-keyed twin of revokeClubJoinTokenAction — both-levels clear (see
+ *  clearBindingBySeriesId: series column + every legacy session alias). */
+export async function revokeSeriesJoinTokenAction(seriesId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const series = await getSeriesRow(sb, seriesId);
+  if (!series) return { error: t("club.linkTokenFailed") };
+
+  const result = await clearBindingBySeriesId(sb, seriesId, "join_token", "revokeSeriesJoinTokenAction");
+  if (!result.ok) return { error: t("club.linkTokenFailed") };
+
+  await auditToActiveSession(sb, series, session, "join_token_revoked", "");
+  revalidateClubTree();
+  return { ok: true as const };
+}
+
+/** Series-keyed twin of unbindClubLineGroupAction — both-levels clear. */
+export async function unbindSeriesLineGroupAction(seriesId: string) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const series = await getSeriesRow(sb, seriesId);
+  if (!series) return { error: t("club.unbindGroupFailed") };
+
+  const result = await clearBindingBySeriesId(sb, seriesId, "line_group_id", "unbindSeriesLineGroupAction");
+  if (!result.ok) return { error: t("club.unbindGroupFailed") };
+
+  await auditToActiveSession(sb, series, session, "line_group_unbound", "");
+  revalidateClubTree();
+  return { ok: true as const };
+}
+
+const DismissSeriesSchema = z.object({
+  seriesId: z.string().uuid(),
+  requestId: z.string().uuid(),
+});
+export type DismissSeriesLinkInput = z.infer<typeof DismissSeriesSchema>;
+
+/** Series-keyed twin of dismissClubLinkRequestAction — the pool is series-wide
+ *  and must be manageable with zero sessions. */
+export async function dismissSeriesLinkRequestAction(input: DismissSeriesLinkInput) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const parsed = DismissSeriesSchema.safeParse(input);
+  if (!parsed.success) return { error: t("club.invalidData") };
+  const { seriesId, requestId } = parsed.data;
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const { data: dismissed, error } = await sb
+    .from("club_link_requests")
+    .update({ status: "rejected" })
+    .eq("id", requestId)
+    .eq("series_id", seriesId)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
+  if (error) {
+    console.error("[dismissSeriesLinkRequestAction]", error);
+    return { error: t("club.linkFailed") };
+  }
+  if (!dismissed) return { ok: true as const, noop: true as const };
+
+  const series = await getSeriesRow(sb, seriesId);
+  if (series) await auditToActiveSession(sb, series, session, "link_dismissed", requestId);
+  revalidateClubTree();
+  return { ok: true as const };
+}
+
+const LinkToMemberSchema = z.object({
+  seriesId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  memberId: z.string().uuid(),
+});
+export type LinkRequestToMemberInput = z.infer<typeof LinkToMemberSchema>;
+
+/**
+ * Pair a pending request with a NAME-ONLY member of the registry (series-first,
+ * 2026-07-16) — the registry twin of linkClubPlayerAction: set the member's
+ * profile_id (upgrade in place, decision #11), retire the request, and — when
+ * the active session's roster carries a row seeded from this member — link that
+ * row too, so the current รอบตี reflects the pairing immediately.
+ */
+export async function linkRequestToMemberAction(input: LinkRequestToMemberInput) {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const parsed = LinkToMemberSchema.safeParse(input);
+  if (!parsed.success) return { error: t("club.invalidData") };
+  const { seriesId, requestId, memberId } = parsed.data;
+
+  const sb = await createAdminClient();
+  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
+
+  const series = await getSeriesRow(sb, seriesId);
+  if (!series) return { error: t("club.linkFailed") };
+
+  // 1. The request must belong to this series and still be pending.
+  const { data: req } = await sb
+    .from("club_link_requests")
+    .select("id, profile_id, status")
+    .eq("id", requestId)
+    .eq("series_id", seriesId)
+    .maybeSingle();
+  if (!req || req.status !== "pending") return { error: t("club.linkRequestNotFound") };
+  const profileId = req.profile_id as string;
+
+  // 2. Guard: this profile must not already be a linked member of the series.
+  const { data: dup } = await sb
+    .from("series_members")
+    .select("id, canonical_name")
+    .eq("series_id", seriesId)
+    .eq("profile_id", profileId)
+    .maybeSingle();
+  if (dup) return { error: t("club.linkAlreadyLinked", { name: dup.canonical_name }) };
+
+  // 3. The target must be a name-only member (profile_id NULL) of this series.
+  const { data: target } = await sb
+    .from("series_members")
+    .select("id, profile_id, canonical_name")
+    .eq("id", memberId)
+    .eq("series_id", seriesId)
+    .maybeSingle();
+  if (!target) return { error: t("club.linkTargetNotFound") };
+  if (target.profile_id !== null) return { error: t("club.linkTargetNotGuest") };
+
+  // 4. Resolve the profile (LINE id for the confirm push).
+  const { data: profile } = await sb
+    .from("profiles")
+    .select("id, line_user_id")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (!profile) return { error: t("club.linkRequestNotFound") };
+
+  // 5. Upgrade the registry row in place. `.is("profile_id", null)` + the partial
+  //    UNIQUE (series_id, profile_id) WHERE profile_id IS NOT NULL make this
+  //    race-safe both directions.
+  const { data: upgraded, error: upErr } = await sb
+    .from("series_members")
+    .update({ profile_id: profileId, last_linked_at: new Date().toISOString() })
+    .eq("id", memberId)
+    .eq("series_id", seriesId)
+    .is("profile_id", null)
+    .select("id")
+    .maybeSingle();
+  if (upErr) {
+    console.error("[linkRequestToMemberAction]", upErr);
+    return { error: t("club.linkFailed") };
+  }
+  if (!upgraded) return { error: t("club.linkTargetNotGuest") };
+
+  const { error: matchErr } = await sb
+    .from("club_link_requests")
+    .update({ status: "matched" })
+    .eq("id", requestId);
+  if (matchErr) console.error("[linkRequestToMemberAction] status=matched", matchErr);
+
+  // 6. Best-effort roster write-through: the active session's row seeded from
+  //    this member (if any, still guest) picks up the link immediately.
+  if (series.active_session_id) {
+    await sb
+      .from("club_players")
+      .update({ profile_id: profileId })
+      .eq("club_id", series.active_session_id)
+      .eq("member_id", memberId)
+      .is("profile_id", null);
+  }
+
+  await auditToActiveSession(
+    sb,
+    series,
+    session,
+    "player_linked",
+    `${target.canonical_name} ← ${profileId} (member)`,
+  );
+
+  // 7. Fire-and-forget confirmation push (never blocks or fails the link).
+  if (profile.line_user_id) {
+    void pushTextToUser(
+      profile.line_user_id,
+      `✅ เชื่อมบัญชี LINE กับก๊วน "${series.name}" เรียบร้อยแล้ว — จากนี้จะได้รับบิลและการแจ้งเตือนทาง LINE`,
+    );
+  }
+
   revalidateClubTree();
   return { ok: true as const };
 }

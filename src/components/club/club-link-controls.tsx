@@ -1,14 +1,17 @@
 "use client";
 
 /**
- * ClubLinkControls — manager-only card for LINE linking (see docs/adr/0001).
+ * ClubLinkControls — manager-only card for LINE linking (see docs/adr/0001,
+ * series-first since 2026-07-16: everything here is keyed by the SERIES and
+ * works for a ก๊วน with zero รอบตี).
  *
  * Two parts:
- *  1. Join link — generate / copy (via ShareLinkRow + QR) / revoke a per-club
+ *  1. Join link — generate / copy (via ShareLinkRow + QR) / revoke the series
  *     `join_token`. Players open /clubs/join/[token], log in with LINE, and land
- *     in the pool.
- *  2. Link pool — pending requests (LINE name + picture). A manager links a
- *     request to a guest roster row (name-choice dialog) or dismisses it.
+ *     in the pool (or the member registry directly).
+ *  2. Link pool — pending requests (LINE name + picture). A manager pairs a
+ *     request with a name-only member of the registry (primary) or a guest row
+ *     of the active session's roster (when one exists), or dismisses it.
  *
  * Only public profile fields (display_name, picture_url) reach this component;
  * line_user_id never leaves the server.
@@ -42,15 +45,21 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ShareLinkRow } from "@/components/share-link-row";
 import {
-  generateClubJoinTokenAction,
-  revokeClubJoinTokenAction,
-  unbindClubLineGroupAction,
+  generateSeriesJoinTokenAction,
+  revokeSeriesJoinTokenAction,
+  unbindSeriesLineGroupAction,
   linkClubPlayerAction,
-  dismissClubLinkRequestAction,
+  linkRequestToMemberAction,
+  dismissSeriesLinkRequestAction,
 } from "@/lib/actions/club-linking";
 import type { ClubLinkPoolRequest } from "@/lib/types";
 
 type GuestOption = { id: string; display_name: string };
+type MemberOption = { id: string; canonical_name: string };
+
+/** Dialog target encoding — a Select can hold only one flat value. */
+const memberValue = (id: string) => `m:${id}`;
+const guestValue = (id: string) => `g:${id}`;
 
 /**
  * The `ผูกก๊วน <token>` command line + copy button. Rendered in the unbound state
@@ -95,19 +104,25 @@ function BindCommandRow({
 }
 
 export function ClubLinkControls({
+  seriesId,
   clubId,
   joinToken,
   appUrl,
   pendingRequests,
   guestPlayers,
+  nameOnlyMembers,
   lineGroupBound,
 }: {
-  clubId: string;
+  seriesId: string;
+  /** The active/latest session, or null when the series has no รอบตี yet. */
+  clubId: string | null;
   joinToken: string | null;
   appUrl: string;
   pendingRequests: ClubLinkPoolRequest[];
   guestPlayers: GuestOption[];
-  /** true when clubs.line_group_id is bound to this club. */
+  /** Registry members without a LINE link yet — primary pairing targets. */
+  nameOnlyMembers: MemberOption[];
+  /** true when the series' LINE group binding resolves. */
   lineGroupBound: boolean;
 }) {
   const t = useTranslations("club.linking");
@@ -131,7 +146,7 @@ export function ClubLinkControls({
 
   const generate = () =>
     startToken(async () => {
-      const res = await generateClubJoinTokenAction(clubId);
+      const res = await generateSeriesJoinTokenAction(seriesId);
       if (res && "error" in res) {
         toast.error(res.error);
         return;
@@ -142,7 +157,7 @@ export function ClubLinkControls({
 
   const revoke = () =>
     startToken(async () => {
-      const res = await revokeClubJoinTokenAction(clubId);
+      const res = await revokeSeriesJoinTokenAction(seriesId);
       if (res && "error" in res) {
         toast.error(res.error);
         return;
@@ -153,7 +168,7 @@ export function ClubLinkControls({
 
   const unbind = () =>
     startUnbind(async () => {
-      const res = await unbindClubLineGroupAction(clubId);
+      const res = await unbindSeriesLineGroupAction(seriesId);
       if (res && "error" in res) {
         toast.error(res.error);
         return;
@@ -363,7 +378,7 @@ export function ClubLinkControls({
               {pendingRequests.map((req) => (
                 <PoolRow
                   key={req.id}
-                  clubId={clubId}
+                  seriesId={seriesId}
                   req={req}
                   onLink={() => setLinkTarget(req)}
                 />
@@ -375,9 +390,11 @@ export function ClubLinkControls({
 
       {linkTarget && (
         <LinkDialog
+          seriesId={seriesId}
           clubId={clubId}
           req={linkTarget}
           guestPlayers={guestPlayers}
+          nameOnlyMembers={nameOnlyMembers}
           open={!!linkTarget}
           onOpenChange={(v) => {
             if (!v) setLinkTarget(null);
@@ -389,11 +406,11 @@ export function ClubLinkControls({
 }
 
 function PoolRow({
-  clubId,
+  seriesId,
   req,
   onLink,
 }: {
-  clubId: string;
+  seriesId: string;
   req: ClubLinkPoolRequest;
   onLink: () => void;
 }) {
@@ -403,7 +420,7 @@ function PoolRow({
 
   const dismiss = () =>
     start(async () => {
-      const res = await dismissClubLinkRequestAction({ clubId, requestId: req.id });
+      const res = await dismissSeriesLinkRequestAction({ seriesId, requestId: req.id });
       if (res && "error" in res) {
         toast.error(res.error);
         return;
@@ -473,35 +490,53 @@ function PoolRow({
 }
 
 function LinkDialog({
+  seriesId,
   clubId,
   req,
   guestPlayers,
+  nameOnlyMembers,
   open,
   onOpenChange,
 }: {
-  clubId: string;
+  seriesId: string;
+  clubId: string | null;
   req: ClubLinkPoolRequest;
   guestPlayers: GuestOption[];
+  nameOnlyMembers: MemberOption[];
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
   const t = useTranslations("club.linking");
   const router = useProgressRouter();
   const lineName = req.profile.display_name;
-  const [guestId, setGuestId] = useState<string>(guestPlayers[0]?.id ?? "");
-  const [useLineName, setUseLineName] = useState(false); // default: keep the guest name
+  // Registry members come first — they're the durable target (series-first);
+  // roster guests only pair when a session exists (linkClubPlayerAction needs it).
+  const rosterSelectable = clubId !== null;
+  const firstValue =
+    nameOnlyMembers[0] ? memberValue(nameOnlyMembers[0].id)
+    : rosterSelectable && guestPlayers[0] ? guestValue(guestPlayers[0].id)
+    : "";
+  const [targetValue, setTargetValue] = useState<string>(firstValue);
+  const [useLineName, setUseLineName] = useState(false); // default: keep the curated name
   const [pending, start] = useTransition();
 
-  const selectedGuest = guestPlayers.find((g) => g.id === guestId);
+  const isMemberTarget = targetValue.startsWith("m:");
+  const targetId = targetValue.slice(2);
+  const selectedName = isMemberTarget
+    ? nameOnlyMembers.find((m) => m.id === targetId)?.canonical_name
+    : guestPlayers.find((g) => g.id === targetId)?.display_name;
+  const hasTargets = nameOnlyMembers.length > 0 || (rosterSelectable && guestPlayers.length > 0);
 
   const confirm = () =>
     start(async () => {
-      const res = await linkClubPlayerAction({
-        clubId,
-        requestId: req.id,
-        targetPlayerId: guestId,
-        useLineName,
-      });
+      const res = isMemberTarget
+        ? await linkRequestToMemberAction({ seriesId, requestId: req.id, memberId: targetId })
+        : await linkClubPlayerAction({
+            clubId: clubId!,
+            requestId: req.id,
+            targetPlayerId: targetId,
+            useLineName,
+          });
       if (res && "error" in res) {
         toast.error(res.error);
         return;
@@ -522,57 +557,66 @@ function LinkDialog({
         </DialogHeader>
 
         <div className="space-y-3 py-1">
-          {/* Pick the guest row */}
+          {/* Pick the pairing target: registry member (primary) or roster guest */}
           <div className="space-y-1">
             <Label className="text-xs text-muted-foreground">{t("pickGuestLabel")}</Label>
-            {guestPlayers.length === 0 ? (
+            {!hasTargets ? (
               <p className="rounded-md border border-dashed p-2 text-xs text-muted-foreground">
                 {t("noGuests")}
               </p>
             ) : (
-              <Select value={guestId} onValueChange={(v) => { if (v) setGuestId(v); }}>
+              <Select value={targetValue} onValueChange={(v) => { if (v) setTargetValue(v); }}>
                 <SelectTrigger size="sm" className="h-8 w-full text-sm">
                   <SelectValue>
-                    {() => selectedGuest?.display_name ?? t("pickGuestPlaceholder")}
+                    {() => selectedName ?? t("pickGuestPlaceholder")}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {guestPlayers.map((g) => (
-                    <SelectItem key={g.id} value={g.id}>
-                      {g.display_name}
+                  {nameOnlyMembers.map((m) => (
+                    <SelectItem key={m.id} value={memberValue(m.id)}>
+                      {t("memberOptionLabel", { name: m.canonical_name })}
                     </SelectItem>
                   ))}
+                  {rosterSelectable &&
+                    guestPlayers.map((g) => (
+                      <SelectItem key={g.id} value={guestValue(g.id)}>
+                        {t("guestOptionLabel", { name: g.display_name })}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             )}
           </div>
 
-          {/* Name choice — default keep the manager-curated guest name */}
-          <div className="space-y-1">
-            <Label className="text-xs text-muted-foreground">{t("nameChoiceLabel")}</Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant={!useLineName ? "default" : "outline"}
-                className="h-auto flex-col items-start gap-0 py-2"
-                onClick={() => setUseLineName(false)}
-              >
-                <span className="text-[10px] opacity-70">{t("keepName")}</span>
-                <span className="max-w-full truncate text-sm font-medium">
-                  {selectedGuest?.display_name ?? "—"}
-                </span>
-              </Button>
-              <Button
-                type="button"
-                variant={useLineName ? "default" : "outline"}
-                className="h-auto flex-col items-start gap-0 py-2"
-                onClick={() => setUseLineName(true)}
-              >
-                <span className="text-[10px] opacity-70">{t("useLineName")}</span>
-                <span className="max-w-full truncate text-sm font-medium">{lineName}</span>
-              </Button>
+          {/* Name choice — roster guests only (a registry member keeps their
+              canonical name; renames live in the members manager) */}
+          {!isMemberTarget && hasTargets && (
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">{t("nameChoiceLabel")}</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={!useLineName ? "default" : "outline"}
+                  className="h-auto flex-col items-start gap-0 py-2"
+                  onClick={() => setUseLineName(false)}
+                >
+                  <span className="text-[10px] opacity-70">{t("keepName")}</span>
+                  <span className="max-w-full truncate text-sm font-medium">
+                    {selectedName ?? "—"}
+                  </span>
+                </Button>
+                <Button
+                  type="button"
+                  variant={useLineName ? "default" : "outline"}
+                  className="h-auto flex-col items-start gap-0 py-2"
+                  onClick={() => setUseLineName(true)}
+                >
+                  <span className="text-[10px] opacity-70">{t("useLineName")}</span>
+                  <span className="max-w-full truncate text-sm font-medium">{lineName}</span>
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         <DialogFooter>
@@ -589,7 +633,7 @@ function LinkDialog({
           <Tooltip>
             <TooltipTrigger
               render={
-                <Button onClick={confirm} disabled={pending || !guestId}>
+                <Button onClick={confirm} disabled={pending || !targetValue}>
                   {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
                   {t("confirmLink")}
                 </Button>

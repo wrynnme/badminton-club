@@ -10,6 +10,10 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-16 (gates → ✅ PASS) — series-first linking (v0.50.0, branch `feat/series-first-linking`)
+
+เชื่อมไลน์/ลิงก์เข้าร่วมทำงานระดับก๊วนโดยไม่ต้องมีรอบตี (grill 2 decisions: จับคู่ = ทะเบียน+โพยเสริม; ลงโพย = กติกาเดิม). **Migration `20260716000200` APPLIED prod** (`club_link_requests.club_id` nullable + partial unique sessionless — non-destructive). classifier ใหม่ `link-target-match.ts` (12 เทส) + webhook/join/manager-UI rework + 5 series-gated actions + last-session delete detach requests แทน cascade. **Gates:** tsc 0 · vitest 921/921 · next build OK · i18n parity ✓. ⚠️ ยังไม่ live-smoke browser + กลุ่ม LINE จริง (แนะนำ ship-check ก่อน merge); actions club-keyed เดิม 4 ตัวไม่มีผู้เรียกแล้ว — เก็บไว้รอ simplify pass.
+
 ### 2026-07-16 (migration apply → ✅ PASS) — drop `club_presets` (ดึงมาก่อน CONTRACT)
 
 migration `20260716000100_drop_club_presets` **APPLIED prod** ตามคำสั่ง user (preview → approve → apply). ก่อน drop: โค้ดไม่มี reference (ถอด UI+actions ตั้งแต่ v0.43.0), ไม่มี FK ชี้เข้า, ข้อมูล 1 แถว stale ("MUGGLE" 2026-07-05 — หน้าที่ถูกแทนด้วย `session_defaults` ของก๊วน MUGGLE แล้ว). verify หลัง apply: `information_schema.tables` = 0 แถว ✓. CONTRACT ที่เหลือ (legacy `clubs.line_group_id`/`join_token`/payment + `club_admins` เก่า) ยังรอ soak ตาม gate เดิม. ไม่ bump version (internal-only — ไม่มี user-facing change).
