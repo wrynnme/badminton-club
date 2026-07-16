@@ -156,6 +156,12 @@ in this file.
   points at; set automatically on open, switchable by a manager. Webhook keyword
   linking and join-link auto-link target this session's roster. Membership upserts
   are series-level regardless.
+- **Series-first linking** (2026-07-16) — เชื่อมไลน์ / join links target the
+  **member registry first**: a bound LINE group with ZERO รอบตี still links
+  (the typed name is classified against `series_members` primarily, plus the
+  active session's roster guests as a supplementary surface — member wins on
+  overlap). Landing in a รอบตี's roster stays deferred: regulars seed on
+  เปิดรอบตี; everyone else waits for a manager.
 - **Membership request** — the evolution of a **link request**: `club_link_requests`
   becomes series-scoped (join a ก๊วน once, not each รอบตี). Returning confirmed
   members auto-link on exact+unique name match (amends ADR 0001 — see ADR 0002);

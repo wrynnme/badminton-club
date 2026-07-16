@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { CalendarX, CheckCircle2, LinkIcon, XCircle } from "lucide-react";
+import { CheckCircle2, LinkIcon, XCircle } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,30 +54,10 @@ export default async function ClubJoinPage({
     ? (await sb.from("clubs").select("id, name").eq("id", targetClubId).maybeSingle()).data
     : null;
 
-  // A valid series resolved, but it has no target session (no active pointer
-  // and no legacy-matched club) — distinct from an outright invalid token: the
-  // link itself is fine, the organizer just hasn't opened a session yet.
-  if (!club && series) {
-    return (
-      <JoinShell>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <CalendarX className="h-5 w-5 text-muted-foreground" />
-            {t("joinNoSessionTitle")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            {t("joinNoSessionDesc", { series: series.name })}
-          </p>
-        </CardContent>
-      </JoinShell>
-    );
-  }
-
-  // Invalid / revoked token — nothing to join. `club` only resolves when either
-  // `series` or `legacyClub` resolved, so this covers both.
-  if (!club) {
+  // Invalid / revoked token — nothing to join. A valid series with NO session is
+  // fine (series-first, 2026-07-16): the link lands in the member registry and
+  // the roster catches up when a รอบตี opens.
+  if (!club && !series) {
     return (
       <JoinShell>
         <CardHeader>
@@ -99,40 +79,52 @@ export default async function ClubJoinPage({
     redirect(`/api/auth/line?redirectTo=${encodeURIComponent(`/clubs/join/${token}`)}`);
   }
 
-  // Already linked, or a pending request already sitting in the pool
-  // (series-scoped — matches requestClubLinkAction's own idempotency check).
-  // No series (rare/defensive) → fall back to the legacy club-scoped check.
-  const [memberRes, hasPending] = await Promise.all([
-    sb
-      .from("club_players")
-      .select("id")
-      .eq("club_id", club.id)
-      .eq("profile_id", session.profileId)
-      .maybeSingle(),
+  // Display name for every state below — the active session's name, else the
+  // series name (sessionless).
+  const displayName = club?.name ?? series!.name;
+
+  // Already linked (roster row in the active session, or — sessionless — an
+  // already-linked registry member), or a pending request already sitting in
+  // the pool (series-scoped — matches requestClubLinkAction's own idempotency
+  // check). No series (rare/defensive) → legacy club-scoped pending check.
+  const [linkedRes, hasPending] = await Promise.all([
+    club
+      ? sb
+          .from("club_players")
+          .select("id")
+          .eq("club_id", club.id)
+          .eq("profile_id", session.profileId)
+          .maybeSingle()
+      : sb
+          .from("series_members")
+          .select("id")
+          .eq("series_id", series!.id)
+          .eq("profile_id", session.profileId)
+          .maybeSingle(),
     series
       ? hasPendingSeriesRequest(sb, series.id, session.profileId)
       : sb
           .from("club_link_requests")
           .select("id")
-          .eq("club_id", club.id)
+          .eq("club_id", club!.id)
           .eq("profile_id", session.profileId)
           .eq("status", "pending")
           .limit(1)
           .then((r) => (r.data?.length ?? 0) > 0),
   ]);
 
-  if (memberRes.data) {
+  if (linkedRes.data) {
     return (
       <JoinShell>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <CheckCircle2 className="h-5 w-5 text-green-600" />
-            {t("joinAlreadyTitle")}
+            {t(club ? "joinAlreadyTitle" : "joinMemberTitle")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            {t("joinAlreadyDesc", { club: club.name })}
+            {t(club ? "joinAlreadyDesc" : "joinMemberDesc", { club: displayName })}
           </p>
         </CardContent>
       </JoinShell>
@@ -150,7 +142,7 @@ export default async function ClubJoinPage({
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            {t("joinPendingDesc", { club: club.name })}
+            {t("joinPendingDesc", { club: displayName })}
           </p>
         </CardContent>
       </JoinShell>
@@ -163,12 +155,15 @@ export default async function ClubJoinPage({
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
           <LinkIcon className="h-5 w-5" />
-          {t("joinTitle", { club: club.name })}
+          {t("joinTitle", { club: displayName })}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">{t("joinDesc", { club: club.name })}</p>
-        <ClubJoinConfirm token={token} clubName={club.name} />
+        <p className="text-sm text-muted-foreground">{t("joinDesc", { club: displayName })}</p>
+        {!club && (
+          <p className="text-xs text-muted-foreground">{t("joinNoSessionHint", { series: displayName })}</p>
+        )}
+        <ClubJoinConfirm token={token} clubName={displayName} />
       </CardContent>
     </JoinShell>
   );
