@@ -128,7 +128,10 @@
     "addPairFailed": "Failed to add partner pair",
     "removePairFailed": "Failed to remove partner pair",
     "loadCoAdminsFailed": "Failed to load co-admins",
-    "loadBindingsFailed": "Failed to load LINE-bound clubs"
+    "loadBindingsFailed": "Failed to load LINE-bound clubs",
+    "loadKnownProfilesFailed": "Couldn't load known accounts",
+    "unlinkFailed": "Couldn't unlink",
+    "memberTimeRangeInvalid": "Start time must be before end time"
   },
   "tournament": {
     "requireLineLogin": "LINE login required to create a tournament",
