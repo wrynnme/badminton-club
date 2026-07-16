@@ -9,7 +9,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 
 export type UpcomingSessionEntry = {
-  seriesId: string;
+  /** null = legacy no-series row — link via the dispatcher redirect. */
+  seriesId: string | null;
   sessionId: string;
   clubName: string;
   venue: string;
@@ -57,7 +58,10 @@ export async function UpcomingSessionHero({ entries }: { entries: UpcomingSessio
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <Link href={`/clubs/${e.seriesId}/s/${e.sessionId}`} className={`${buttonVariants()} gap-1.5`}>
+                    <Link
+                      href={e.seriesId ? `/clubs/${e.seriesId}/s/${e.sessionId}` : `/clubs/${e.sessionId}`}
+                      className={`${buttonVariants()} gap-1.5`}
+                    >
                       {t("page.enterSession")}
                       <ArrowRight className="h-4 w-4" />
                     </Link>

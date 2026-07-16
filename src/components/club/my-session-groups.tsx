@@ -7,8 +7,6 @@ import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 
 import type { MySessionGroup } from "@/lib/club/my-sessions";
 
-export type { MySessionGroup, MySessionRow } from "@/lib/club/my-sessions";
-
 /**
  * `/clubs/mine` grouped view (grilled 2026-07-16): one collapsible group per
  * ก๊วน (native <details>, default-open — no client JS), rows = its รอบตี
@@ -47,7 +45,13 @@ export async function MySessionGroups({ groups }: { groups: MySessionGroup[] }) 
                   </span>
                   {/* เฉพาะกิจ rows carry their own name; a named series' rows repeat it — skip */}
                   {g.seriesName === null && <span className="line-clamp-1">{s.sessionName}</span>}
-                  {s.isActive && <Badge variant="secondary">{t("series.activeSessionBadge")}</Badge>}
+                  {/* A done round shows "จบแล้ว" INSTEAD of the active badge — the
+                      pointer can still sit on it until the next round opens. */}
+                  {s.isDone ? (
+                    <Badge variant="outline" className="text-muted-foreground">{t("series.doneBadge")}</Badge>
+                  ) : (
+                    s.isActive && <Badge variant="secondary">{t("series.activeSessionBadge")}</Badge>
+                  )}
                   {!s.isManaged && <Badge variant="outline">{t("series.joinedBadge")}</Badge>}
                 </span>
                 <span className="flex shrink-0 items-center gap-3 text-muted-foreground">

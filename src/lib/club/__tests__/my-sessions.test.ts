@@ -18,8 +18,12 @@ const row = (over: Partial<MySessionSourceRow>): MySessionSourceRow => ({
   series: null,
   managed: true,
   joined: 0,
+  closed_at: null,
   ...over,
 });
+
+// Fixed "today" for the pure builder — rows above default to 2026-07-10..16.
+const TODAY = "2026-07-16";
 
 describe("buildMySessionGroups", () => {
   it("groups by named series, adhoc + no-series bucket last", () => {
@@ -28,7 +32,7 @@ describe("buildMySessionGroups", () => {
       row({ series: ADHOC, play_date: "2026-07-16" }),
       row({ series: null, play_date: "2026-07-15" }), // legacy no-series
       row({ series: SERIES_B, play_date: "2026-07-12" }),
-    ]);
+    ], TODAY);
     expect(groups.map((g) => g.seriesName)).toEqual(["แป้งบี", "MUGGLE", null]);
     expect(groups[2].sessions).toHaveLength(2); // adhoc + legacy pooled
   });
@@ -38,22 +42,36 @@ describe("buildMySessionGroups", () => {
       row({ series: SERIES_A, play_date: "2026-07-01" }),
       row({ series: SERIES_A, play_date: "2026-07-16" }),
       row({ series: SERIES_B, play_date: "2026-07-10" }),
-    ]);
+    ], TODAY);
     expect(groups[0].seriesName).toBe("MUGGLE");
     expect(groups[0].sessions.map((s) => s.play_date)).toEqual(["2026-07-16", "2026-07-01"]);
   });
 
   it("marks the active session and carries isManaged through", () => {
     const groups = buildMySessionGroups([
-      row({ id: "c2", series: SERIES_A, managed: false }),
-      row({ id: "c3", series: SERIES_A, managed: true }),
-    ]);
+      row({ id: "c2", series: SERIES_A, managed: false, play_date: "2026-07-16" }),
+      row({ id: "c3", series: SERIES_A, managed: true, play_date: "2026-07-16" }),
+    ], TODAY);
     const byId = new Map(groups[0].sessions.map((s) => [s.clubId, s]));
-    expect(byId.get("c2")).toMatchObject({ isActive: true, isManaged: false });
-    expect(byId.get("c3")).toMatchObject({ isActive: false, isManaged: true });
+    expect(byId.get("c2")).toMatchObject({ isActive: true, isManaged: false, isDone: false });
+    expect(byId.get("c3")).toMatchObject({ isActive: false, isManaged: true, isDone: false });
+  });
+
+  it("marks done rows: closed_at set OR play_date past (ปิดรอบ)", () => {
+    const groups = buildMySessionGroups([
+      row({ id: "cPast", series: SERIES_A, play_date: "2026-07-10" }),
+      row({ id: "cClosed", series: SERIES_A, play_date: "2026-07-16", closed_at: "2026-07-16T12:00:00Z" }),
+      row({ id: "cLive", series: SERIES_A, play_date: "2026-07-16" }),
+      row({ id: "cFuture", series: SERIES_A, play_date: "2026-07-20" }),
+    ], TODAY);
+    const byId = new Map(groups[0].sessions.map((s) => [s.clubId, s]));
+    expect(byId.get("cPast")?.isDone).toBe(true);
+    expect(byId.get("cClosed")?.isDone).toBe(true);
+    expect(byId.get("cLive")?.isDone).toBe(false);
+    expect(byId.get("cFuture")?.isDone).toBe(false);
   });
 
   it("returns [] for no rows", () => {
-    expect(buildMySessionGroups([])).toEqual([]);
+    expect(buildMySessionGroups([], TODAY)).toEqual([]);
   });
 });

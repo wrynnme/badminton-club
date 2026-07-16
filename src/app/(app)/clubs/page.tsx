@@ -1,16 +1,15 @@
 import Link from "next/link";
+import { Archive } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
-import { getLocale, getTranslations } from "next-intl/server";
-import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
+import { getTranslations } from "next-intl/server";
 import { SeriesCard, type SeriesCardData } from "@/components/club/series-card";
-import { ArchivedSeriesSection, type ArchivedSeriesEntry } from "@/components/club/archived-series-section";
 import { UpcomingSessionHero, type UpcomingSessionEntry } from "@/components/club/upcoming-session-hero";
 import { MySessionGroups } from "@/components/club/my-session-groups";
 import { buildMySessionGroups, type MySessionSourceRow } from "@/lib/club/my-sessions";
 import { fetchMySessionRows } from "@/lib/club/my-sessions.server";
+import { isSessionDone, todayBangkok } from "@/lib/club/session-done";
 import { ownerOrAdminOrFilter } from "@/lib/owner-scope";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +28,7 @@ type SessionRow = {
   play_date: string;
   start_time: string;
   end_time: string;
+  closed_at: string | null;
 };
 
 /**
@@ -42,11 +42,13 @@ export default async function ClubsPage() {
   const sb = await createAdminClient();
   const session = await getSession();
   const canCreate = !!session && !session.isGuest;
-  const locale = await getLocale();
+  // "today" pinned to Asia/Bangkok, not the server's UTC clock, so a 23:00
+  // round doesn't vanish 7 hours early (hero filter + done-state derivation).
+  const todayBkk = todayBangkok();
 
   let namedSeries: SeriesCardData[] = [];
   let myRows: MySessionSourceRow[] = [];
-  let archivedEntries: ArchivedSeriesEntry[] = [];
+  let archivedCount = 0;
   let upcomingEntries: UpcomingSessionEntry[] = [];
 
   if (session) {
@@ -68,23 +70,28 @@ export default async function ClubsPage() {
       adminSeriesIds = [...new Set((adminClubs ?? []).map((r) => r.series_id as string))];
     }
 
-    // Visible (non-archived) series + this user's own archived series (decision
-    // #13 — owner-only "กู้คืน" section below) in the same wave.
-    const [seriesRowsRes, archivedRowsRes, myRowsRes] = await Promise.all([
+    // Visible (non-archived) series + a COUNT of the user's own archived series
+    // (the list itself moved to /clubs/archive 2026-07-16; here we only need to
+    // know whether to show the link) in the same wave.
+    const [seriesRowsRes, archivedCountRes, myRowsRes] = await Promise.all([
       sb
         .from("club_series")
         .select("id, name, is_adhoc, active_session_id")
         .is("archived_at", null)
         .or(ownerOrAdminOrFilter(session.profileId, adminSeriesIds)),
-      sb
-        .from("club_series")
-        .select("id, name, archived_at")
-        .eq("owner_id", session.profileId)
-        .not("archived_at", "is", null)
-        .order("archived_at", { ascending: false }),
-      fetchMySessionRows(sb, session.profileId),
+      session.isGuest
+        ? Promise.resolve({ count: 0 })
+        : sb
+            .from("club_series")
+            .select("id", { count: "exact", head: true })
+            .eq("owner_id", session.profileId)
+            .not("archived_at", "is", null),
+      session.isGuest
+        ? Promise.resolve([] as MySessionSourceRow[])
+        : fetchMySessionRows(sb, session.profileId, adminClubIds),
     ]);
     myRows = myRowsRes;
+    archivedCount = archivedCountRes.count ?? 0;
     const seriesList = (seriesRowsRes.data ?? []) as SeriesRow[];
     const seriesIds = seriesList.map((s) => s.id);
 
@@ -96,7 +103,7 @@ export default async function ClubsPage() {
       const [sessionsRes, membersRes] = await Promise.all([
         sb
           .from("clubs")
-          .select("id, series_id, venue, play_date, start_time, end_time")
+          .select("id, series_id, venue, play_date, start_time, end_time, closed_at")
           .in("series_id", seriesIds)
           .order("play_date", { ascending: false })
           .order("created_at", { ascending: false }),
@@ -130,6 +137,9 @@ export default async function ClubsPage() {
           id: s.id,
           name: s.name,
           activeSession: active ? { venue: active.venue, play_date: active.play_date } : null,
+          // Pointer stays on a closed round (decision 2026-07-16) — the card
+          // keeps showing it but swaps the badge to "จบแล้ว".
+          activeSessionDone: active ? isSessionDone(active, todayBkk) : false,
           sessionCount: (sessionsBySeriesId.get(s.id) ?? []).length,
           memberCount: memberCountMap.get(s.id) ?? 0,
         };
@@ -137,13 +147,11 @@ export default async function ClubsPage() {
       .sort((a, b) => (b.activeSession?.play_date ?? "").localeCompare(a.activeSession?.play_date ?? ""));
 
     // Hero eligibility (grilled 2026-07-16): each series' active/latest รอบตี
-    // when it plays today or later — "today" pinned to Asia/Bangkok, not the
-    // server's UTC clock, so a 23:00 round doesn't vanish 7 hours early.
-    const todayBkk = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
+    // when it plays today or later AND isn't closed ("ปิดรอบ").
     upcomingEntries = seriesList
       .map((s): UpcomingSessionEntry | null => {
         const target = resolveTarget(s);
-        if (!target || target.play_date < todayBkk) return null;
+        if (!target || isSessionDone(target, todayBkk)) return null;
         return {
           seriesId: s.id,
           sessionId: target.id,
@@ -155,20 +163,36 @@ export default async function ClubsPage() {
           isToday: target.play_date === todayBkk,
         };
       })
-      .filter((e): e is UpcomingSessionEntry => e !== null)
-      .sort((a, b) => a.play_date.localeCompare(b.play_date));
+      .filter((e): e is UpcomingSessionEntry => e !== null);
 
-    archivedEntries = ((archivedRowsRes.data ?? []) as { id: string; name: string; archived_at: string }[]).map(
-      (row): ArchivedSeriesEntry => ({
-        seriesId: row.id,
-        name: row.name,
-        archivedDateLabel: format(new Date(row.archived_at), "d MMM yyyy", { locale: dateFnsLocaleOf(locale) }),
-      }),
-    );
+    // Participant-only rounds deserve the same fast path — a member's "today's
+    // round" is exactly what they came to tap. Managed rows are already covered
+    // by the series pass above (dedupe by session id).
+    const seen = new Set(upcomingEntries.map((e) => e.sessionId));
+    for (const r of myRows) {
+      if (r.managed || seen.has(r.id) || isSessionDone(r, todayBkk)) continue;
+      seen.add(r.id);
+      upcomingEntries.push({
+        seriesId: r.series_id,
+        sessionId: r.id,
+        clubName: r.series?.name ?? r.name,
+        venue: r.venue,
+        play_date: r.play_date,
+        start_time: r.start_time,
+        end_time: r.end_time,
+        isToday: r.play_date === todayBkk,
+      });
+    }
+    upcomingEntries.sort((a, b) => a.play_date.localeCompare(b.play_date));
   }
 
   const t = await getTranslations("club");
-  const myGroups = buildMySessionGroups(myRows);
+  // /clubs shows only live rounds (decision 2026-07-16) — done rounds (closed
+  // or past play_date) live on /clubs/mine, which renders the unfiltered list.
+  const myGroups = buildMySessionGroups(
+    myRows.filter((r) => !isSessionDone(r, todayBkk)),
+    todayBkk,
+  );
   const hasAny = namedSeries.length > 0 || myGroups.length > 0;
 
   return (
@@ -211,10 +235,16 @@ export default async function ClubsPage() {
         </>
       )}
 
-      {archivedEntries.length > 0 && (
-        <section>
-          <ArchivedSeriesSection entries={archivedEntries} />
-        </section>
+      {archivedCount > 0 && (
+        <div>
+          <Link
+            href="/clubs/archive"
+            className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <Archive className="h-4 w-4" />
+            {t("series.archivedLink", { count: archivedCount })}
+          </Link>
+        </div>
       )}
     </div>
   );

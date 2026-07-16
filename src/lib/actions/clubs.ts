@@ -358,3 +358,52 @@ export async function renameClubCourtAction(
   revalidateClubTree();
   return { ok: true, courts: next, movedMatches: moved?.length ?? 0 };
 }
+
+/**
+ * "ปิดรอบ" (grilled 2026-07-16) — DISPLAY-ONLY done flag on a session. Closing
+ * hides it from /clubs (hero + "รอบตีของฉัน"); /clubs/mine and the series home
+ * keep full history with a "จบแล้ว" badge. Editing stays open and
+ * `active_session_id` is untouched (the pointer moves when the next round
+ * opens). Reversible via reopenClubSessionAction. Rounds whose play_date has
+ * passed are done automatically in display code — no cron writes this column.
+ */
+async function setSessionClosed(
+  clubId: string,
+  close: boolean,
+): Promise<{ ok: true } | { error: string }> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  const sb = await createAdminClient();
+  if (!(await assertCanManageClub(sb, clubId, session.profileId))) return { error: t("club.noPermission") };
+
+  const { error } = await sb
+    .from("clubs")
+    .update({ closed_at: close ? new Date().toISOString() : null })
+    .eq("id", clubId);
+  if (error) return { error: error.message };
+
+  await sb.from("club_audit_logs").insert({
+    club_id: clubId,
+    actor_id: session.profileId,
+    actor_name: session.displayName,
+    event_type: close ? "session_closed" : "session_reopened",
+    detail: close ? "ปิดรอบ" : "ยกเลิกปิดรอบ",
+  });
+
+  revalidateClubTree();
+  return { ok: true };
+}
+
+export async function closeClubSessionAction(
+  clubId: string,
+): Promise<{ ok: true } | { error: string }> {
+  return setSessionClosed(clubId, true);
+}
+
+export async function reopenClubSessionAction(
+  clubId: string,
+): Promise<{ ok: true } | { error: string }> {
+  return setSessionClosed(clubId, false);
+}

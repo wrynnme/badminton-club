@@ -1166,7 +1166,7 @@ function PlayerRowBody({
         <span className="ml-auto flex items-center gap-1.5">
           <CheckInButton player={player} clubId={clubId} canToggle={canManage} />
           {canManage && <EditButton onOpen={() => setEditOpen(true)} />}
-          {isSelf && <LeaveButton clubId={clubId} />}
+          {isSelf && canManage && <LeaveButton clubId={clubId} />}
           {canManage && !isSelf && <KickButton clubId={clubId} playerId={player.id} playerName={player.display_name} />}
         </span>
       </div>

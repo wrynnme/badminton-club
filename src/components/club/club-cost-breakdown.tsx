@@ -199,15 +199,17 @@ export function ClubCostBreakdown({
         ) : (
           <span />
         )}
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 shrink-0 gap-1 text-xs"
-          onClick={handleExport}
-        >
-          <Download className="h-3.5 w-3.5" />
-          {t("exportCsv")}
-        </Button>
+        {canManage && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 gap-1 text-xs"
+            onClick={handleExport}
+          >
+            <Download className="h-3.5 w-3.5" />
+            {t("exportCsv")}
+          </Button>
+        )}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

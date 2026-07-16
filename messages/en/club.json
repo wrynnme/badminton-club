@@ -583,7 +583,13 @@
     "playerCountCard": "{joined}/{max} players",
     "backToSeries": "← {name} club",
     "backToClubs": "← All clubs",
-    "viewerBadge": "Participant (view only)"
+    "viewerBadge": "Participant (view only)",
+    "closeButton": "Close round",
+    "reopenButton": "Undo close",
+    "closeTooltip": "Mark this round as done — it leaves the main clubs page (data stays editable; history lives in My rounds)",
+    "reopenTooltip": "Bring this round back onto the main clubs page",
+    "closeSuccessToast": "Round closed",
+    "reopenSuccessToast": "Round reopened"
   },
   "lineImport": {
     "triggerButton": "Import from message",
@@ -921,7 +927,10 @@
     "archivedHeading": "Archived",
     "archivedRestoreButton": "Restore",
     "archivedRestoreTooltip": "Restore this club back into the list",
-    "archivedRestoreSuccess": "Club restored"
+    "archivedRestoreSuccess": "Club restored",
+    "doneBadge": "Ended",
+    "archivedLink": "Archived clubs ({count})",
+    "archivedEmpty": "No archived clubs"
   },
   "seriesTabs": {
     "overview": "Overview",

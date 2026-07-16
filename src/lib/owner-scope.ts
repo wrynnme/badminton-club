@@ -6,7 +6,8 @@
  * cookie (= `profiles.id`, uuid) and `adminIds` come from the uuid `id` column
  * of `clubs` / `tournaments`, so neither can carry PostgREST metacharacters.
  *
- * Used by `/clubs`, `/clubs/mine`, `/tournaments/mine` (owner-or-co-admin lists).
+ * Used by `/clubs`, `/tournaments/mine`, and `fetchMySessionRows`
+ * (my-sessions.server.ts) — owner-or-co-admin lists.
  */
 export function ownerOrAdminOrFilter(profileId: string, adminIds: string[]): string {
   const parts = [`owner_id.eq.${profileId}`];
