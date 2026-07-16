@@ -240,7 +240,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
           </Link>
         ) : (
           <Card>
-            <CardContent className="pt-4 text-sm text-muted-foreground">{t("series.noActiveSession")}</CardContent>
+            <CardContent className="text-sm text-muted-foreground">{t("series.noActiveSession")}</CardContent>
           </Card>
         )}
       </section>
