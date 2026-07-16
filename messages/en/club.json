@@ -928,7 +928,9 @@
     "archivedRestoreButton": "Restore",
     "archivedRestoreTooltip": "Restore this club back into the list",
     "archivedRestoreSuccess": "Club restored",
-    "doneBadge": "Ended"
+    "doneBadge": "Ended",
+    "archivedLink": "Archived clubs ({count})",
+    "archivedEmpty": "No archived clubs"
   },
   "seriesTabs": {
     "overview": "Overview",

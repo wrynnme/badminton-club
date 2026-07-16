@@ -367,7 +367,10 @@ export async function renameClubCourtAction(
  * opens). Reversible via reopenClubSessionAction. Rounds whose play_date has
  * passed are done automatically in display code — no cron writes this column.
  */
-async function setSessionClosed(clubId: string, close: boolean) {
+async function setSessionClosed(
+  clubId: string,
+  close: boolean,
+): Promise<{ ok: true } | { error: string }> {
   const session = await getSession();
   if (!session) return await loginRedirect();
 
@@ -393,10 +396,14 @@ async function setSessionClosed(clubId: string, close: boolean) {
   return { ok: true };
 }
 
-export async function closeClubSessionAction(clubId: string) {
+export async function closeClubSessionAction(
+  clubId: string,
+): Promise<{ ok: true } | { error: string }> {
   return setSessionClosed(clubId, true);
 }
 
-export async function reopenClubSessionAction(clubId: string) {
+export async function reopenClubSessionAction(
+  clubId: string,
+): Promise<{ ok: true } | { error: string }> {
   return setSessionClosed(clubId, false);
 }

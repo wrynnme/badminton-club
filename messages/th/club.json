@@ -928,7 +928,9 @@
     "archivedRestoreButton": "กู้คืน",
     "archivedRestoreTooltip": "กู้คืนก๊วนนี้กลับมาแสดงในรายการ",
     "archivedRestoreSuccess": "กู้คืนก๊วนแล้ว",
-    "doneBadge": "จบแล้ว"
+    "doneBadge": "จบแล้ว",
+    "archivedLink": "ก๊วนที่เก็บถาวร ({count})",
+    "archivedEmpty": "ยังไม่มีก๊วนที่เก็บถาวร"
   },
   "seriesTabs": {
     "overview": "ภาพรวม",

@@ -12,24 +12,27 @@ import { closeClubSessionAction, reopenClubSessionAction } from "@/lib/actions/c
 /**
  * "ปิดรอบ" / "ยกเลิกปิดรอบ" header action (grilled 2026-07-16). Display-only
  * lifecycle flag — no confirm dialog because closing locks nothing and is
- * reversible. An auto-done session (play_date past, closed_at null) renders
- * nothing: the date did the closing and has no override.
+ * reversible. `doneByDate` = the round's play_date has already passed: the
+ * calendar has closed it and neither closing nor reopening can change that, so
+ * NO button renders (decision 5 — a past-date round has no override). This also
+ * avoids a dead-end: a manually-closed future round that later turns past would
+ * otherwise show a "ยกเลิกปิดรอบ" button whose click can't lift the done state.
  */
 export function CloseSessionButton({
   clubId,
   closedAt,
-  autoDone,
+  doneByDate,
 }: {
   clubId: string;
   closedAt: string | null;
-  autoDone: boolean;
+  doneByDate: boolean;
 }) {
   const t = useTranslations("club.page");
   const router = useRouter();
   const [pending, start] = useTransition();
 
+  if (doneByDate) return null;
   const closing = !closedAt;
-  if (closing && autoDone) return null;
 
   function handleClick() {
     start(async () => {

@@ -221,7 +221,11 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   // "ปิดรอบ" done state (display-only): closed manually or play_date past.
-  const done = isSessionDone(club, todayBangkok());
+  const todayBkk = todayBangkok();
+  const done = isSessionDone(club, todayBkk);
+  // Past-date rounds are done by the calendar — the close/reopen button is
+  // suppressed for them (no manual override), so pass the date signal alone.
+  const doneByDate = club.play_date < todayBkk;
 
   const locale = await getLocale();
   const t = await getTranslations("club");
@@ -245,7 +249,7 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
           <h1 className="text-2xl font-bold">{club.name}</h1>
           <div className="flex items-center gap-1.5">
             {canManage && (
-              <CloseSessionButton clubId={club.id} closedAt={club.closed_at} autoDone={done} />
+              <CloseSessionButton clubId={club.id} closedAt={club.closed_at} doneByDate={doneByDate} />
             )}
             {done && (
               <Badge variant="outline" className="text-muted-foreground">{t("series.doneBadge")}</Badge>

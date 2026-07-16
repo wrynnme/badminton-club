@@ -76,9 +76,16 @@ function RestoreButton({ seriesId }: { seriesId: string }) {
   );
 }
 
-export function ArchivedSeriesSection({ entries }: { entries: ArchivedSeriesEntry[] }) {
+export function ArchivedSeriesSection({
+  entries,
+  defaultOpen = false,
+}: {
+  entries: ArchivedSeriesEntry[];
+  /** The dedicated /clubs/archive page opens it; the inline usages start collapsed. */
+  defaultOpen?: boolean;
+}) {
   const t = useTranslations("club.series");
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
 
   if (entries.length === 0) return null;
 
