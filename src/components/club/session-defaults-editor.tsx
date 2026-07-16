@@ -341,7 +341,9 @@ export function SessionDefaultsEditor({
               }}
             />
 
-            <div className="grid grid-cols-2 gap-2">
+            {/* Stack on phones (native time inputs + labels overflow a half-width
+                column), pair up from sm: (user request 2026-07-16). */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <form.Field
                 name="start_time"
                 children={(field) => (

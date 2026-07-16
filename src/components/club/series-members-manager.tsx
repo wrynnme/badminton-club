@@ -233,17 +233,19 @@ function EditMemberDialog({
             </Label>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          {/* Long Thai labels + a 384px dialog — one field per line, never
+              side-by-side (user request 2026-07-16: เว้นบรรทัด + responsive). */}
+          <div className="space-y-3">
             <div className="space-y-1">
               <Label className="text-xs">{t("defaultStartLabel")}</Label>
-              <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="h-8 text-sm" />
+              <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="h-9 w-full text-sm" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t("defaultEndLabel")}</Label>
-              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="h-8 text-sm" />
+              <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="h-9 w-full text-sm" />
             </div>
+            <p className="text-[11px] text-muted-foreground">{t("defaultTimesHint")}</p>
           </div>
-          <p className="text-[11px] text-muted-foreground -mt-1">{t("defaultTimesHint")}</p>
 
           <MemberLineSection open={open} seriesId={seriesId} member={member} onDone={() => onOpenChange(false)} />
         </div>

@@ -22,6 +22,18 @@ export type ChangelogEntry = {
  */
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: "0.51.1",
+    date: "2026-07-16",
+    groups: [
+      {
+        type: "improved",
+        items: [
+          "ช่องเวลาเริ่ม/เวลาเลิก จัดวางใหม่ให้พอดีจอมือถือ — หน้าตั้งค่าก๊วนเรียงลงบรรทัดบนจอแคบ และใน form แก้ไขสมาชิกแยกช่องละบรรทัด",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.51.0",
     date: "2026-07-16",
     groups: [
