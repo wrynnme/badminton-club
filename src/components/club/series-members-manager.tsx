@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "@bprogress/next/app";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { AlertTriangle, Check, Link2, Loader2, Pencil, RotateCcw, Trash2, UserPlus, X } from "lucide-react";
+import { AlertTriangle, Link2, Loader2, Pencil, RotateCcw, Trash2, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -49,105 +49,12 @@ function MemberRow({
   levels: Level[];
 }) {
   const t = useTranslations("club.seriesMembers");
-  const router = useRouter();
-  const [editing, setEditing] = useState(false);
-  const [nameValue, setNameValue] = useState(member.canonical_name);
-  const [pendingName, startName] = useTransition();
-  const [pendingLevel, startLevel] = useTransition();
-  const [pendingRegular, startRegular] = useTransition();
+  const [editOpen, setEditOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
-
-  function startEdit() {
-    setNameValue(member.canonical_name);
-    setEditing(true);
-  }
-
-  function saveName() {
-    const trimmed = nameValue.trim();
-    if (!trimmed) return;
-    if (trimmed === member.canonical_name) {
-      setEditing(false);
-      return;
-    }
-    startName(async () => {
-      const res = await updateSeriesMemberAction({
-        seriesId,
-        memberId: member.id,
-        patch: { canonicalName: trimmed },
-      });
-      if ("error" in res) {
-        toast.error(res.error);
-        return;
-      }
-      toast.success(t("renameSuccess"));
-      setEditing(false);
-      router.refresh();
-    });
-  }
-
-  function handleLevelChange(v: string) {
-    startLevel(async () => {
-      const res = await updateSeriesMemberAction({
-        seriesId,
-        memberId: member.id,
-        patch: { defaultLevelId: v === NONE_SENTINEL ? null : v },
-      });
-      if ("error" in res) toast.error(res.error);
-      else router.refresh();
-    });
-  }
-
-  function handleRegularToggle(checked: boolean) {
-    startRegular(async () => {
-      const res = await updateSeriesMemberAction({
-        seriesId,
-        memberId: member.id,
-        patch: { isRegular: checked },
-      });
-      if ("error" in res) toast.error(res.error);
-      else router.refresh();
-    });
-  }
 
   return (
     <li className="flex flex-wrap items-center gap-2 border rounded px-3 py-2 text-sm">
-      {editing ? (
-        <div className="flex items-center gap-1 flex-1 min-w-[140px]">
-          <Input
-            autoFocus
-            value={nameValue}
-            maxLength={60}
-            onChange={(e) => setNameValue(e.target.value)}
-            className="h-8 text-sm"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") saveName();
-              if (e.key === "Escape") setEditing(false);
-            }}
-          />
-          <Tooltip>
-            <TooltipTrigger render={<Button size="xs" disabled={pendingName} onClick={saveName}><Check className="h-3.5 w-3.5" /></Button>} />
-            <TooltipContent>{t("saveTooltip")}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger render={<Button size="xs" variant="ghost" disabled={pendingName} onClick={() => setEditing(false)}><X className="h-3.5 w-3.5" /></Button>} />
-            <TooltipContent>{t("cancelTooltip")}</TooltipContent>
-          </Tooltip>
-        </div>
-      ) : (
-        <>
-          <span className="font-medium flex-1 min-w-[100px] truncate">{member.canonical_name}</span>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button size="xs" variant="ghost" className="h-6 w-6 p-0" onClick={startEdit} aria-label={t("renameTooltip")}>
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-              }
-            />
-            <TooltipContent>{t("renameTooltip")}</TooltipContent>
-          </Tooltip>
-        </>
-      )}
+      <span className="font-medium flex-1 min-w-[100px] truncate">{member.canonical_name}</span>
 
       <Badge variant={member.profile_id ? "secondary" : "outline"} className="gap-1 shrink-0">
         {member.profile_id ? (
@@ -160,35 +67,24 @@ function MemberRow({
         )}
       </Badge>
 
-      <Select
-        value={member.default_level_id ?? NONE_SENTINEL}
-        onValueChange={(v) => { if (v) handleLevelChange(v); }}
-        disabled={pendingLevel}
-      >
-        <SelectTrigger size="sm" className="h-8 w-28 text-xs shrink-0">
-          <SelectValue>{(v: string) => levelTriggerLabel(levels, v === NONE_SENTINEL ? null : v, t("levelNone"))}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={NONE_SENTINEL}>{t("levelNone")}</SelectItem>
-          {levels.map((l) => (
-            <SelectItem key={l.id} value={l.id}>
-              {l.label} ({l.real})
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <span className="text-xs text-muted-foreground shrink-0 w-20 truncate">
+        {levelTriggerLabel(levels, member.default_level_id, t("levelNone"))}
+      </span>
 
-      <div className="flex items-center gap-1.5 shrink-0">
-        <Checkbox
-          checked={member.is_regular}
-          onCheckedChange={(v) => handleRegularToggle(!!v)}
-          disabled={pendingRegular}
-          id={`series-member-regular-${member.id}`}
+      {member.is_regular && (
+        <Badge variant="outline" className="shrink-0">{t("regularLabel")}</Badge>
+      )}
+
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button size="xs" variant="ghost" className="h-6 w-6 p-0 shrink-0" onClick={() => setEditOpen(true)} aria-label={t("editTooltip")}>
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          }
         />
-        <label htmlFor={`series-member-regular-${member.id}`} className="text-xs cursor-pointer select-none">
-          {t("regularLabel")}
-        </label>
-      </div>
+        <TooltipContent>{t("editTooltip")}</TooltipContent>
+      </Tooltip>
 
       <Tooltip>
         <TooltipTrigger
@@ -207,8 +103,134 @@ function MemberRow({
         <TooltipContent>{t("removeTooltip")}</TooltipContent>
       </Tooltip>
 
+      <EditMemberDialog open={editOpen} onOpenChange={setEditOpen} seriesId={seriesId} member={member} levels={levels} />
       <RemoveMemberDialog open={removeOpen} onOpenChange={setRemoveOpen} seriesId={seriesId} member={member} />
     </li>
+  );
+}
+
+// ─── Edit member dialog — one form for name + level + regular, one save ─────
+
+function EditMemberDialog({
+  open,
+  onOpenChange,
+  seriesId,
+  member,
+  levels,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  seriesId: string;
+  member: SeriesMember;
+  levels: Level[];
+}) {
+  const t = useTranslations("club.seriesMembers");
+  const router = useRouter();
+  const [name, setName] = useState(member.canonical_name);
+  const [levelId, setLevelId] = useState(member.default_level_id ?? NONE_SENTINEL);
+  const [isRegular, setIsRegular] = useState(member.is_regular);
+  const [pending, start] = useTransition();
+
+  // Re-seed the form from the member each time the dialog opens (a stale close
+  // must not leak edits into the next open).
+  function handleOpenChange(v: boolean) {
+    if (v) {
+      setName(member.canonical_name);
+      setLevelId(member.default_level_id ?? NONE_SENTINEL);
+      setIsRegular(member.is_regular);
+    }
+    onOpenChange(v);
+  }
+
+  function handleSubmit() {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      toast.error(t("validationName"));
+      return;
+    }
+    start(async () => {
+      const res = await updateSeriesMemberAction({
+        seriesId,
+        memberId: member.id,
+        patch: {
+          canonicalName: trimmed,
+          defaultLevelId: levelId === NONE_SENTINEL ? null : levelId,
+          isRegular,
+        },
+      });
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
+      }
+      toast.success(t("editSuccess"));
+      onOpenChange(false);
+      router.refresh();
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{t("editDialogTitle")}</DialogTitle>
+          <DialogDescription className="text-xs">{t("editDialogDesc", { name: member.canonical_name })}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3 py-1">
+          <div className="space-y-1">
+            <Label className="text-xs">{t("nameLabel")}</Label>
+            <Input
+              autoFocus
+              value={name}
+              maxLength={60}
+              onChange={(e) => setName(e.target.value)}
+              className="h-8 text-sm"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSubmit();
+              }}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label className="text-xs">{t("levelLabel")}</Label>
+            <Select value={levelId} onValueChange={(v) => { if (v) setLevelId(v); }}>
+              <SelectTrigger className="h-8 w-full text-sm">
+                <SelectValue>{(v: string) => levelTriggerLabel(levels, v === NONE_SENTINEL ? null : v, t("levelNone"))}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE_SENTINEL}>{t("levelNone")}</SelectItem>
+                {levels.map((l) => (
+                  <SelectItem key={l.id} value={l.id}>
+                    {l.label} ({l.real})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox checked={isRegular} onCheckedChange={(v) => setIsRegular(!!v)} id={`series-edit-member-regular-${member.id}`} />
+            <Label htmlFor={`series-edit-member-regular-${member.id}`} className="text-xs font-normal cursor-pointer">
+              {t("regularCheckboxLabel")}
+            </Label>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <DialogClose render={<Button variant="outline" disabled={pending}>{t("editCancel")}</Button>} />
+          <Button onClick={handleSubmit} disabled={pending || !name.trim()}>
+            {pending ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                {t("savingEdit")}
+              </>
+            ) : (
+              t("editConfirm")
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
