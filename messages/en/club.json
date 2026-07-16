@@ -581,7 +581,9 @@
     "emptyNoCreate": "You don’t have any sessions yet.",
     "publicBadge": "Public",
     "playerCountCard": "{joined}/{max} players",
-    "backToSeries": "← {name} club"
+    "backToSeries": "← {name} club",
+    "backToClubs": "← All clubs",
+    "viewerBadge": "Participant (view only)"
   },
   "lineImport": {
     "triggerButton": "Import from message",
@@ -895,6 +897,7 @@
   "series": {
     "archivedBadge": "Archived",
     "activeSessionBadge": "Current session",
+    "joinedBadge": "Joined",
     "noActiveSession": "No active session yet",
     "historyHeading": "Session history",
     "noSessions": "No sessions in this club yet",

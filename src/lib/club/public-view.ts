@@ -1,6 +1,11 @@
-// Sanitizers for the anonymous public club view (/c/[id]). Single source of the
-// "what is safe to expose" contract so any future public surface (embed, /c/[id]/tv,
-// API) reuses the exact same redaction instead of re-deriving it.
+// Sanitizers for non-manager club views. Single source of the "what is safe to
+// expose" contract so any read-only surface reuses the exact same redaction
+// instead of re-deriving it. Two trust tiers:
+//   - PUBLIC (/c/[id], anonymous): no money, no PII, no free text.
+//   - PARTICIPANT (session page viewer mode, 2026-07-16): a logged-in player on
+//     THIS roster — sees session money context (the LINE group bill already
+//     shows every share) but never the manager secrets (join token, group
+//     binding, payment receiver, receipt template).
 
 import type { Club, ClubPlayer } from "@/lib/types";
 import { parseQueueSettings } from "@/lib/club/queue-settings";
@@ -60,6 +65,27 @@ export function toPublicClub(club: Club): Club {
 }
 
 /**
+ * PARTICIPANT tier (viewer mode on the session page): everything the public view
+ * shows PLUS the session's own money context — fees, expenses totals, notes —
+ * because every roster member already receives the group bill with the same
+ * numbers. Built on toPublicClub so the SECRETS stay redacted by construction:
+ * join_token, line_group_id, promptpay_*, receipt_* are nulled there and never
+ * re-added here.
+ */
+export function toParticipantClub(club: Club): Club {
+  return {
+    ...toPublicClub(club),
+    court_fee: club.court_fee,
+    shuttle_price: club.shuttle_price,
+    shuttle_hourly: club.shuttle_hourly,
+    shuttle_total: club.shuttle_total,
+    total_cost: club.total_cost,
+    notes: club.notes,
+    shuttle_info: club.shuttle_info,
+  };
+}
+
+/**
  * Per-player sanitized view for the public page. Same allowlist fail-safe as
  * toPublicClub. Sensitive: profile_id (account link), member_id (ADR 0002 series
  * membership link — an even stronger cross-session identity link than profile_id,
@@ -89,5 +115,23 @@ export function toPublicPlayer(p: ClubPlayer): ClubPlayer {
     bill_amount: null,   // billing metadata — manager-only
     paid_method: null,
     bill_pushed_at: null,
+  };
+}
+
+/**
+ * PARTICIPANT tier per-player view: money fields flow (the cost-breakdown table
+ * a participant sees needs discounts + paid status, and the group bill already
+ * broadcasts the same shares), free-text `note` stays manager-only, and
+ * profile_id is exposed ONLY on the viewer's own row (own-row highlight) —
+ * other players' account links remain hidden.
+ */
+export function toParticipantPlayer(p: ClubPlayer, viewerProfileId: string): ClubPlayer {
+  return {
+    ...toPublicPlayer(p),
+    discount: p.discount,
+    paid_at: p.paid_at,
+    bill_amount: p.bill_amount,
+    paid_method: p.paid_method,
+    profile_id: p.profile_id === viewerProfileId ? p.profile_id : null,
   };
 }
