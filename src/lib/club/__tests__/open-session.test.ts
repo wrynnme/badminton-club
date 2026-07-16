@@ -70,11 +70,28 @@ function member(over: Partial<SeriesMemberForSeed> & { id: string }): SeriesMemb
     default_level_id: null,
     is_regular: true,
     first_linked_at: "2026-01-01T00:00:00Z",
+    default_start_time: null,
+    default_end_time: null,
     ...over,
   };
 }
 
 describe("buildRosterSeedRows", () => {
+  it("copies a member's default presence window into the seeded row", () => {
+    const rows = buildRosterSeedRows({
+      members: [member({ id: "m1", default_start_time: "20:00:00", default_end_time: "22:00:00" })],
+      maxPlayers: 12,
+    });
+    expect(rows[0].start_time).toBe("20:00:00");
+    expect(rows[0].end_time).toBe("22:00:00");
+  });
+
+  it("leaves start/end null for a member without default times (full session)", () => {
+    const rows = buildRosterSeedRows({ members: [member({ id: "m1" })], maxPlayers: 12 });
+    expect(rows[0].start_time).toBeNull();
+    expect(rows[0].end_time).toBeNull();
+  });
+
   it("seeds only is_regular members, ordered by first_linked_at then canonical_name", () => {
     const members = [
       member({ id: "m3", canonical_name: "Zed", first_linked_at: "2026-01-03T00:00:00Z" }),

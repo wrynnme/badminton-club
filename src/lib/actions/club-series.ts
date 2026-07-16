@@ -104,7 +104,7 @@ async function openSessionCore(
   const [memberRes, pairRes, prevAdminRes] = await Promise.all([
     sb
       .from("series_members")
-      .select("id, profile_id, canonical_name, default_level_id, is_regular, first_linked_at")
+      .select("id, profile_id, canonical_name, default_level_id, is_regular, first_linked_at, default_start_time, default_end_time")
       .eq("series_id", series.id),
     sb.from("series_partner_pairs").select("id, member1_id, member2_id").eq("series_id", series.id),
     series.active_session_id
@@ -614,13 +614,23 @@ const UpdateMemberSchema = z.object({
     canonicalName: z.string().trim().min(1).max(60).optional(),
     defaultLevelId: z.string().uuid().nullable().optional(),
     isRegular: z.boolean().optional(),
+    // "HH:mm" or null (= present the whole รอบตี); applied to NEWLY-opened
+    // sessions only — see buildRosterSeedRows.
+    defaultStartTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(),
+    defaultEndTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(),
   }),
 });
 
 export async function updateSeriesMemberAction(input: {
   seriesId: string;
   memberId: string;
-  patch: { canonicalName?: string; defaultLevelId?: string | null; isRegular?: boolean };
+  patch: {
+    canonicalName?: string;
+    defaultLevelId?: string | null;
+    isRegular?: boolean;
+    defaultStartTime?: string | null;
+    defaultEndTime?: string | null;
+  };
 }): Promise<{ ok: true } | { error: string }> {
   const guard = await guardSeries(input.seriesId, "manage");
   if (!guard.ok) return guard.res;
@@ -650,10 +660,20 @@ export async function updateSeriesMemberAction(input: {
     }
   }
 
+  if (
+    patch.defaultStartTime != null &&
+    patch.defaultEndTime != null &&
+    patch.defaultStartTime >= patch.defaultEndTime
+  ) {
+    return { error: t("club.memberTimeRangeInvalid") };
+  }
+
   const dbPatch: Record<string, unknown> = {};
   if (patch.canonicalName !== undefined) dbPatch.canonical_name = patch.canonicalName;
   if (patch.defaultLevelId !== undefined) dbPatch.default_level_id = patch.defaultLevelId;
   if (patch.isRegular !== undefined) dbPatch.is_regular = patch.isRegular;
+  if (patch.defaultStartTime !== undefined) dbPatch.default_start_time = patch.defaultStartTime;
+  if (patch.defaultEndTime !== undefined) dbPatch.default_end_time = patch.defaultEndTime;
   if (Object.keys(dbPatch).length === 0) return { error: t("club.updatePlayerNoFields") };
 
   const { error } = await sb.from("series_members").update(dbPatch).eq("id", memberId);

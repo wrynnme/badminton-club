@@ -128,7 +128,10 @@
     "addPairFailed": "เพิ่มคู่ประจำไม่สำเร็จ",
     "removePairFailed": "ลบคู่ประจำไม่สำเร็จ",
     "loadCoAdminsFailed": "โหลดรายชื่อผู้ช่วยดูแลไม่สำเร็จ",
-    "loadBindingsFailed": "โหลดรายการก๊วนที่ผูกกลุ่มไลน์ไม่สำเร็จ"
+    "loadBindingsFailed": "โหลดรายการก๊วนที่ผูกกลุ่มไลน์ไม่สำเร็จ",
+    "loadKnownProfilesFailed": "โหลดรายชื่อบัญชีที่รู้จักไม่สำเร็จ",
+    "unlinkFailed": "ยกเลิกการเชื่อมไม่สำเร็จ",
+    "memberTimeRangeInvalid": "เวลามาต้องอยู่ก่อนเวลากลับ"
   },
   "tournament": {
     "requireLineLogin": "ต้องเข้าสู่ระบบด้วย LINE เพื่อสร้างทัวร์นาเมนต์",

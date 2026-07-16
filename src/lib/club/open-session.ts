@@ -37,7 +37,14 @@ export function buildSessionInsert(args: {
 
 export type SeriesMemberForSeed = Pick<
   SeriesMember,
-  "id" | "profile_id" | "canonical_name" | "default_level_id" | "is_regular" | "first_linked_at"
+  | "id"
+  | "profile_id"
+  | "canonical_name"
+  | "default_level_id"
+  | "is_regular"
+  | "first_linked_at"
+  | "default_start_time"
+  | "default_end_time"
 >;
 
 /**
@@ -76,6 +83,8 @@ type RosterSeedRow = {
   profile_id: string | null;
   member_id: string;
   level_id: string | null;
+  start_time: string | null;
+  end_time: string | null;
   position: number;
   status: "active" | "reserve";
 };
@@ -83,7 +92,10 @@ type RosterSeedRow = {
 /**
  * Regulars auto-seed the roster (decision #2), ordered by `first_linked_at`
  * asc (ties broken by name for determinism) — overflow beyond `maxPlayers`
- * becomes 'reserve'. Non-regular members are never auto-seeded.
+ * becomes 'reserve'. Non-regular members are never auto-seeded. A member's
+ * default presence window (มาสาย/กลับก่อนประจำ) seeds the roster row's
+ * declared start/end — NEW sessions only by design; an already-open roster is
+ * never rewritten by a member edit.
  */
 export function buildRosterSeedRows(args: {
   members: SeriesMemberForSeed[];
@@ -102,6 +114,8 @@ export function buildRosterSeedRows(args: {
     profile_id: m.profile_id,
     member_id: m.id,
     level_id: m.default_level_id,
+    start_time: m.default_start_time,
+    end_time: m.default_end_time,
     position: idx + 1,
     status: idx < args.maxPlayers ? "active" : "reserve",
   }));
