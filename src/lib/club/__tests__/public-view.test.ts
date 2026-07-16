@@ -15,6 +15,7 @@ const baseClub: Club = {
   shuttle_info: "ลูกละ 25 บาท",
   notes: "งบลับ",
   created_at: "2026-06-10T00:00:00Z",
+  closed_at: null,
   court_fee: 500,
   court_split: "even",
   shuttle_split: "even",

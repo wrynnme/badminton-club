@@ -6,6 +6,7 @@ import { getTranslations } from "next-intl/server";
 import { MySessionGroups } from "@/components/club/my-session-groups";
 import { buildMySessionGroups } from "@/lib/club/my-sessions";
 import { fetchMySessionRows } from "@/lib/club/my-sessions.server";
+import { todayBangkok } from "@/lib/club/session-done";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +22,10 @@ export default async function MyClubsPage() {
   const session = await getSession();
   const canCreate = !!session && !session.isGuest;
 
+  // Unlike /clubs (live rounds only), this history view keeps done rounds —
+  // they just carry the "จบแล้ว" badge.
   const rows = session && !session.isGuest ? await fetchMySessionRows(sb, session.profileId) : [];
-  const groups = buildMySessionGroups(rows);
+  const groups = buildMySessionGroups(rows, todayBangkok());
 
   const t = await getTranslations("club");
 

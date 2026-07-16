@@ -7,6 +7,8 @@
  * module stays side-effect-free for unit tests.
  */
 
+import { isSessionDone } from "@/lib/club/session-done";
+
 export type MySessionRow = {
   clubId: string;
   /** Canonical link target — null only for legacy rows with no series (the dispatcher redirects). */
@@ -21,6 +23,8 @@ export type MySessionRow = {
   isActive: boolean;
   /** false = viewer-only participant row — gets the "เข้าร่วม" badge. */
   isManaged: boolean;
+  /** "จบแล้ว" — manually closed or play_date past (see session-done.ts). */
+  isDone: boolean;
 };
 
 export type MySessionGroup = {
@@ -42,6 +46,7 @@ export type MySessionSourceRow = {
   series: { id: string; name: string; is_adhoc: boolean; active_session_id: string | null } | null;
   managed: boolean;
   joined: number;
+  closed_at: string | null;
 };
 
 /**
@@ -49,7 +54,7 @@ export type MySessionSourceRow = {
  * bucket. Rows sort newest-first inside each group; groups sort by their newest
  * row. A session the user both manages and plays in counts as managed (no badge).
  */
-export function buildMySessionGroups(rows: MySessionSourceRow[]): MySessionGroup[] {
+export function buildMySessionGroups(rows: MySessionSourceRow[], todayBkk: string): MySessionGroup[] {
   const toRow = (c: MySessionSourceRow): MySessionRow => ({
     clubId: c.id,
     seriesId: c.series_id,
@@ -62,6 +67,7 @@ export function buildMySessionGroups(rows: MySessionSourceRow[]): MySessionGroup
     max: c.max_players,
     isActive: c.series?.active_session_id === c.id,
     isManaged: c.managed,
+    isDone: isSessionDone(c, todayBkk),
   });
 
   const sorted = [...rows].sort((a, b) => b.play_date.localeCompare(a.play_date));

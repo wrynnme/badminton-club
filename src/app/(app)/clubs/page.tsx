@@ -11,6 +11,7 @@ import { UpcomingSessionHero, type UpcomingSessionEntry } from "@/components/clu
 import { MySessionGroups } from "@/components/club/my-session-groups";
 import { buildMySessionGroups, type MySessionSourceRow } from "@/lib/club/my-sessions";
 import { fetchMySessionRows } from "@/lib/club/my-sessions.server";
+import { isSessionDone, todayBangkok } from "@/lib/club/session-done";
 import { ownerOrAdminOrFilter } from "@/lib/owner-scope";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ type SessionRow = {
   play_date: string;
   start_time: string;
   end_time: string;
+  closed_at: string | null;
 };
 
 /**
@@ -43,6 +45,9 @@ export default async function ClubsPage() {
   const session = await getSession();
   const canCreate = !!session && !session.isGuest;
   const locale = await getLocale();
+  // "today" pinned to Asia/Bangkok, not the server's UTC clock, so a 23:00
+  // round doesn't vanish 7 hours early (hero filter + done-state derivation).
+  const todayBkk = todayBangkok();
 
   let namedSeries: SeriesCardData[] = [];
   let myRows: MySessionSourceRow[] = [];
@@ -98,7 +103,7 @@ export default async function ClubsPage() {
       const [sessionsRes, membersRes] = await Promise.all([
         sb
           .from("clubs")
-          .select("id, series_id, venue, play_date, start_time, end_time")
+          .select("id, series_id, venue, play_date, start_time, end_time, closed_at")
           .in("series_id", seriesIds)
           .order("play_date", { ascending: false })
           .order("created_at", { ascending: false }),
@@ -132,6 +137,9 @@ export default async function ClubsPage() {
           id: s.id,
           name: s.name,
           activeSession: active ? { venue: active.venue, play_date: active.play_date } : null,
+          // Pointer stays on a closed round (decision 2026-07-16) — the card
+          // keeps showing it but swaps the badge to "จบแล้ว".
+          activeSessionDone: active ? isSessionDone(active, todayBkk) : false,
           sessionCount: (sessionsBySeriesId.get(s.id) ?? []).length,
           memberCount: memberCountMap.get(s.id) ?? 0,
         };
@@ -139,13 +147,11 @@ export default async function ClubsPage() {
       .sort((a, b) => (b.activeSession?.play_date ?? "").localeCompare(a.activeSession?.play_date ?? ""));
 
     // Hero eligibility (grilled 2026-07-16): each series' active/latest รอบตี
-    // when it plays today or later — "today" pinned to Asia/Bangkok, not the
-    // server's UTC clock, so a 23:00 round doesn't vanish 7 hours early.
-    const todayBkk = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
+    // when it plays today or later AND isn't closed ("ปิดรอบ").
     upcomingEntries = seriesList
       .map((s): UpcomingSessionEntry | null => {
         const target = resolveTarget(s);
-        if (!target || target.play_date < todayBkk) return null;
+        if (!target || isSessionDone(target, todayBkk)) return null;
         return {
           seriesId: s.id,
           sessionId: target.id,
@@ -164,7 +170,7 @@ export default async function ClubsPage() {
     // by the series pass above (dedupe by session id).
     const seen = new Set(upcomingEntries.map((e) => e.sessionId));
     for (const r of myRows) {
-      if (r.managed || seen.has(r.id) || r.play_date < todayBkk) continue;
+      if (r.managed || seen.has(r.id) || isSessionDone(r, todayBkk)) continue;
       seen.add(r.id);
       upcomingEntries.push({
         seriesId: r.series_id,
@@ -189,7 +195,12 @@ export default async function ClubsPage() {
   }
 
   const t = await getTranslations("club");
-  const myGroups = buildMySessionGroups(myRows);
+  // /clubs shows only live rounds (decision 2026-07-16) — done rounds (closed
+  // or past play_date) live on /clubs/mine, which renders the unfiltered list.
+  const myGroups = buildMySessionGroups(
+    myRows.filter((r) => !isSessionDone(r, todayBkk)),
+    todayBkk,
+  );
   const hasAny = namedSeries.length > 0 || myGroups.length > 0;
 
   return (

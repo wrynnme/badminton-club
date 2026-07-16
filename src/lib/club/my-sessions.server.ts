@@ -49,7 +49,7 @@ export async function fetchMySessionRows(
   const { data } = await sb
     .from("clubs")
     .select(
-      "id, owner_id, name, venue, play_date, start_time, end_time, max_players, series_id, series:club_series!series_id(id, name, is_adhoc, active_session_id), club_players(count)",
+      "id, owner_id, name, venue, play_date, start_time, end_time, max_players, series_id, closed_at, series:club_series!series_id(id, name, is_adhoc, active_session_id), club_players(count)",
     )
     .or(orParts.join(","));
   const clubs = (data ?? []) as unknown as ClubRow[];

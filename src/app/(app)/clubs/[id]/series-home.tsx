@@ -21,6 +21,7 @@ import { ClubLinkControls } from "@/components/club/club-link-controls";
 import { SeriesStatsView } from "@/components/club/series-stats-view";
 import { parseSessionDefaults } from "@/lib/club/session-defaults";
 import { resolveJoinToken, resolveLineGroupId } from "@/lib/club/series.server";
+import { isSessionDone, todayBangkok } from "@/lib/club/session-done";
 import { computeSeriesStats, type SeriesStatsMatch, type SeriesStatsPlayer } from "@/lib/club/series-stats";
 import type { SeriesAdmin } from "@/lib/actions/club-series";
 import type { ClubLinkPoolRequest, ClubSeries, Level, SeriesMember, SeriesPartnerPair } from "@/lib/types";
@@ -56,7 +57,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
     await Promise.all([
     sb
       .from("clubs")
-      .select("id, name, venue, play_date, created_at, join_token, line_group_id")
+      .select("id, name, venue, play_date, created_at, closed_at, join_token, line_group_id")
       .eq("series_id", seriesId)
       .order("play_date", { ascending: false })
       .order("created_at", { ascending: false }),
@@ -145,6 +146,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   );
 
   const activeSession = sessions.find((s) => s.id === series.active_session_id) ?? null;
+  const todayBkk = todayBangkok();
   const isOwner = session.profileId === series.owner_id;
 
   // LINE link section (series-first, 2026-07-16) — always rendered: the join
@@ -213,7 +215,11 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between gap-2">
                   <span className="line-clamp-1">{activeSession.name}</span>
-                  <Badge variant="secondary">{t("series.activeSessionBadge")}</Badge>
+                  {isSessionDone(activeSession, todayBkk) ? (
+                    <Badge variant="outline" className="text-muted-foreground">{t("series.doneBadge")}</Badge>
+                  ) : (
+                    <Badge variant="secondary">{t("series.activeSessionBadge")}</Badge>
+                  )}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm text-muted-foreground">
@@ -253,6 +259,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
           <div className="space-y-2">
             {sessions.map((s) => {
               const isActive = s.id === series.active_session_id;
+              const done = isSessionDone(s, todayBkk);
               return (
                 <Card key={s.id} className="hover:shadow-md transition">
                   <CardContent className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm">
@@ -276,8 +283,14 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
                       </Badge>
                     </Link>
                     <div className="flex items-center gap-2 shrink-0">
+                      {/* A done round shows "จบแล้ว"; the active badge only while live.
+                          "ตั้งเป็นรอบปัจจุบัน" stays available on done rows — the pointer
+                          may legitimately sit on a finished round. */}
+                      {done && (
+                        <Badge variant="outline" className="text-muted-foreground">{t("series.doneBadge")}</Badge>
+                      )}
                       {isActive ? (
-                        <Badge variant="secondary">{t("series.activeSessionBadge")}</Badge>
+                        !done && <Badge variant="secondary">{t("series.activeSessionBadge")}</Badge>
                       ) : (
                         <SeriesSetActiveButton seriesId={series.id} clubId={s.id} />
                       )}

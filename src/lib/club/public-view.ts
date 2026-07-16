@@ -31,6 +31,9 @@ export function toPublicClub(club: Club): Club {
     end_time: club.end_time,
     max_players: club.max_players,
     created_at: club.created_at,
+    // "ปิดรอบ" done flag — lifecycle state, not sensitive; every surface may
+    // show the "จบแล้ว" badge.
+    closed_at: club.closed_at,
     court_split: club.court_split,
     shuttle_split: club.shuttle_split,
     court_gap_policy: club.court_gap_policy,

@@ -159,7 +159,13 @@ in this file.
 - **Active session / รอบตีปัจจุบัน** — the session `club_series.active_session_id`
   points at; set automatically on open, switchable by a manager. Webhook keyword
   linking and join-link auto-link target this session's roster. Membership upserts
-  are series-level regardless.
+  are series-level regardless. Closing a round does NOT move this pointer — it
+  moves when the next round opens.
+- **ปิดรอบ / จบแล้ว (close a round / done)** — locked 2026-07-16. "ปิดรอบ" is the
+  **verb** (manager button; undo = "ยกเลิกปิดรอบ"); "จบแล้ว" is the **state badge**.
+  A done รอบตี is a *display* state only: it leaves `/clubs` (hero + รอบตีของฉัน)
+  but stays fully editable and fully listed on `/clubs/mine` + the series home.
+  A รอบตี whose play_date has passed is done automatically — no button needed.
 - **Series-first linking** (2026-07-16) — เชื่อมไลน์ / join links target the
   **member registry first**: a bound LINE group with ZERO รอบตี still links
   (the typed name is classified against `series_members` primarily, plus the

@@ -40,6 +40,8 @@ import { getAppSettings, resolveQrLogoUrl } from "@/lib/app-settings";
 import { resolveBotMessage } from "@/lib/bot-messages";
 import { resolveLineGroupId } from "@/lib/club/series.server";
 import { toParticipantClub, toParticipantPlayer } from "@/lib/club/public-view";
+import { isSessionDone, todayBangkok } from "@/lib/club/session-done";
+import { CloseSessionButton } from "@/components/club/close-session-button";
 import { resolvePaymentConfig, resolveReceiptConfig } from "@/lib/club/series-payment";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
@@ -218,6 +220,9 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
+  // "ปิดรอบ" done state (display-only): closed manually or play_date past.
+  const done = isSessionDone(club, todayBangkok());
+
   const locale = await getLocale();
   const t = await getTranslations("club");
 
@@ -239,6 +244,12 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
         <div className="flex items-start justify-between gap-2">
           <h1 className="text-2xl font-bold">{club.name}</h1>
           <div className="flex items-center gap-1.5">
+            {canManage && (
+              <CloseSessionButton clubId={club.id} closedAt={club.closed_at} autoDone={done} />
+            )}
+            {done && (
+              <Badge variant="outline" className="text-muted-foreground">{t("series.doneBadge")}</Badge>
+            )}
             {!canManage && (
               <Badge variant="outline" className="text-muted-foreground">{t("page.viewerBadge")}</Badge>
             )}
