@@ -15,7 +15,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { requestClubLinkAction } from "@/lib/actions/club-linking";
 
-type DoneState = "pending" | "already_linked" | "linked";
+type DoneState = "pending" | "already_linked" | "linked" | "member";
 
 export function ClubJoinConfirm({ token, clubName }: { token: string; clubName: string }) {
   const t = useTranslations("club.linking");
@@ -25,15 +25,20 @@ export function ClubJoinConfirm({ token, clubName }: { token: string; clubName: 
   //     render and this tap.
   //   "linked" — decision #4 auto-link just fired (returning confirmed member,
   //     clean roster-name match — no manager needed).
+  //   "member" — sessionless series (series-first, 2026-07-16): the registry
+  //     link is confirmed; the next รอบตี picks them up.
   //   "pending" — dropped into the pool, awaiting a manager.
   const [done, setDone] = useState<DoneState | null>(null);
   const [playerName, setPlayerName] = useState<string | null>(null);
 
   if (done) {
-    const titleKey =
-      done === "linked" ? "joinLinkedTitle" : done === "already_linked" ? "joinAlreadyTitle" : "joinPendingTitle";
-    const descKey =
-      done === "linked" ? "joinLinkedDesc" : done === "already_linked" ? "joinAlreadyDesc" : "joinPendingDesc";
+    const KEYS: Record<DoneState, { title: string; desc: string }> = {
+      linked: { title: "joinLinkedTitle", desc: "joinLinkedDesc" },
+      already_linked: { title: "joinAlreadyTitle", desc: "joinAlreadyDesc" },
+      member: { title: "joinMemberTitle", desc: "joinMemberDesc" },
+      pending: { title: "joinPendingTitle", desc: "joinPendingDesc" },
+    };
+    const { title: titleKey, desc: descKey } = KEYS[done];
     return (
       <div className="flex items-start gap-2 rounded-md border border-green-500/30 bg-green-500/5 p-3">
         <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />

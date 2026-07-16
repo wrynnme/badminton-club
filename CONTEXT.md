@@ -28,8 +28,8 @@ uses only the **global** level set — do not conflate it with club `level_id`.
 
 - **Roster player** — a `club_players` row. Either a **guest** (`profile_id IS
   NULL`, name-only, added by a manager) or **profile-linked** (`profile_id` set — a
-  real LINE account). A row becomes profile-linked in one of two ways: a **preset
-  regular** seeds a *new* row that adopts the LINE account name, or a **LINE link**
+  real LINE account). A row becomes profile-linked in one of two ways: a **regular member**
+  (ขาประจำ, seeded on session open) carries their linked profile in, or a **LINE link**
   (see below) attaches a profile to an *existing* guest row — which keeps its
   manager-curated `display_name` by default. A guest's `display_name` is always
   editable; a profile-linked player's name stays editable by a manager too.
@@ -40,52 +40,6 @@ uses only the **global** level set — do not conflate it with club `level_id`.
   (global level catalog, bot messages, LINE-group bindings) — NOT a Manager: a site
   admin's authority spans clubs but does not make them a member/manager of any club.
   Never shorten either role to just "admin"; the word is ambiguous in this domain.
-
-## Club presets
-
-- **Club preset** — a user-owned reusable template for opening a new club session.
-  It stores setup data and regular roster defaults, not live runtime state. Applying a
-  preset creates a new independent club.
-- **Snapshot config** — the config captured from an existing club when a manager
-  saves it as a preset. It copies setup fields the preset schema supports (including
-  the **full queue_settings block** and **named courts** — see below); it does not
-  copy matches, current queue state, payment status, slips, or verification secrets.
-- **Full queue-settings fidelity** (design locked 2026-07-10, grilled; separate PR
-  from v0.25.0) — a preset stores the **entire** `ClubQueueSettings` block nested as
-  `config.queue_settings`, so every queue field round-trips through save→apply→edit,
-  not just the four that used to be captured (`court_count`, `players_per_team`,
-  `rotation_mode`, `queue_mode`). The previously-lost fields — `winner_stays_max`,
-  `game_time_limit_min`, `max_skill_gap`, `balance_strictness`,
-  `balance_locked_pairs`, `realtime_enabled` — are now preserved. `skill_level_enabled`
-  is not stored; `parseQueueSettings` derives it from `queue_mode` on every read.
-  - **Storage** — nested `queue_settings: ClubQueueSettingsSchema` is the single
-    source of truth; the four legacy flat fields are dropped from the schema. Old
-    preset rows (flat, no nested block) are folded in `parsePresetConfig` **before**
-    the schema parse: synthesize `queue_settings` from the legacy flat keys via
-    `parseQueueSettings` (migration-free, mirrors the `normalizeLegacyQueueValues`
-    pattern). Without the pre-parse fold, the schema's `.default()` would silently
-    wipe a legacy preset's stored mode.
-  - **Named courts** — a preset stores `config.courts: string[]` (e.g. `["คอร์ท A",
-    "สนาม VIP"]`); `applyClubPresetAction` seeds `clubs.courts` from it verbatim, and
-    falls back to `["1".."court_count"]` only when the list is empty (old presets).
-    `queue_settings.court_count` stays as the frozen legacy fallback (see the queue
-    glossary), kept coherent as `max(1, courts.length)` on save.
-  - **Preset editor** — the preset form exposes the full queue-settings controls for
-    editing (winner_stays_max under winner_stays; queue_mode; the skill sub-group —
-    max_skill_gap / balance_strictness / balance_locked_pairs — under level_match;
-    game_time_limit_min; realtime_enabled) reusing the `club.queue.*` i18n catalog,
-    plus a **local-state named-courts list editor** (add / remove / rename rows). The
-    court editor is form-local only — it must NOT reuse `ClubCourtManager`, which
-    auto-saves and has live-match rename side effects unsuitable for a template. On
-    submit the form rebuilds `config.queue_settings` + `config.courts` from its own
-    state, so no field is reset by the rebuild.
-- **Payment receiver** — the receiver details copied by presets for collecting
-  money: PromptPay id/name, an optional existing QR image URL, bank receiver details,
-  and which payment channels a receipt should show.
-- **Receipt theme** — the preset-supported receipt presentation choice copied with
-  payment receiver settings. It is intentionally narrower than the full receipt
-  template: footer text, line-item visibility, and receipt logo are not part of the
-  preset payment receiver snapshot.
 
 ## Batch queue (สุ่มคิว)
 
@@ -158,7 +112,7 @@ court allocator is the pure helper `planBulkStartCourts` (`src/lib/club/bulk-sta
   do not newly clear downstream `winner_next_match_id` feeder pointers (a pre-existing
   caveat, out of scope for this feature).
 
-## Club series (ก๊วนถาวร + นัด)
+## Club series (ก๊วน + รอบตี)
 
 Design locked 2026-07-15 (grilled, 15 decisions) and **BUILT**: P1 (LINE surfaces
 resolve via series) shipped to prod v0.42.0; P2 (series home + จัดก๊วน + URL
@@ -172,30 +126,44 @@ in this file.
   `club_series` row owning the LINE group binding (`line_group_id`), the join link
   (`join_token`), the member registry, and (post-P3) payment config + co-admins.
   Bound to its LINE group **once, forever** — bindings never move between sessions.
-- **Session / นัด** — one play meeting: a `clubs` row with `series_id` set. Roster,
-  queue, matches, and billing stay per-session. Noun contexts always use "นัด"
-  ("นัดปัจจุบัน", "ประวัตินัด", "นัดวันพุธ"). Never call a session "ก๊วน" in new copy.
-- **จัดก๊วน (open a session)** — the **verb** on the primary action button that opens
-  a new นัด (hybrid naming, 2026-07-15). Action-label only — never a noun for the
-  session entity, to avoid stacking "ก๊วน" across both layers.
+- **Session / รอบตี** — one play meeting: a `clubs` row with `series_id` set. Roster,
+  queue, matches, and billing stay per-session. Noun contexts in UI copy always use
+  "รอบตี" ("รอบตีปัจจุบัน", "ประวัติรอบตี", "รอบตีวันศุกร์"). Vocabulary locked
+  2026-07-16 (user) — supersedes the 2026-07-15 "นัด" rule. Never call a session
+  "ก๊วน" in new copy. Casual/communication register (LINE notification bodies,
+  chat-facing text) may say "นัดตี" ("พรุ่งนี้มีนัดตีของก๊วน MUGGLE") — system
+  UI stays "รอบตี". ⚠️ Tournament copy uses "นัด" as a *match* counter
+  ("{count} นัด" = matches) — a different sense; do not sweep it to รอบตี.
+- **เปิดรอบตี (open a session)** — the **verb** on the primary action button that
+  opens a new รอบตี (renamed 2026-07-16; the 2026-07-15 hybrid label "จัดก๊วน" is
+  retired). Action-label only — never a noun for the session entity.
+- **Reserved: คิว** — in this system "คิว" means the in-session match rotation
+  queue (จัดคิว/สุ่มคิว). A future attendance waitlist must NOT be named
+  "คิวสำรอง" (collides); prefer "ตัวจริง / ตัวสำรอง".
 - **Member / สมาชิกก๊วน** — a `series_members` row: a person belonging to the series
   (manager-curated `canonical_name` + `default_level_id`), surviving every session.
   Two kinds: **LINE-linked** (`profile_id` set — reachable by push/mention; created
   the first time a manager confirms that person) and **name-only** (`profile_id`
   NULL — added by a manager, seeded normally, unreachable by push; upgrades in place
   when they link LINE). Distinct from a **roster player** (`club_players` =
-  attendance of one นัด).
+  attendance of one รอบตี).
 - **Regular / ขาประจำ** — a member with `is_regular = true` (default): auto-seeded
   into the roster when a session opens.
 - **Partner pair / คู่ประจำ** — a series-level pair of members
   (`series_partner_pairs`) instantiated into per-session `club_locked_pairs` on
   session open. The queue engine still reads only per-session locked pairs.
-- **Active session / นัดปัจจุบัน** — the session `club_series.active_session_id`
+- **Active session / รอบตีปัจจุบัน** — the session `club_series.active_session_id`
   points at; set automatically on open, switchable by a manager. Webhook keyword
   linking and join-link auto-link target this session's roster. Membership upserts
   are series-level regardless.
+- **Series-first linking** (2026-07-16) — เชื่อมไลน์ / join links target the
+  **member registry first**: a bound LINE group with ZERO รอบตี still links
+  (the typed name is classified against `series_members` primarily, plus the
+  active session's roster guests as a supplementary surface — member wins on
+  overlap). Landing in a รอบตี's roster stays deferred: regulars seed on
+  เปิดรอบตี; everyone else waits for a manager.
 - **Membership request** — the evolution of a **link request**: `club_link_requests`
-  becomes series-scoped (join a ก๊วน once, not each นัด). Returning confirmed
+  becomes series-scoped (join a ก๊วน once, not each รอบตี). Returning confirmed
   members auto-link on exact+unique name match (amends ADR 0001 — see ADR 0002);
   first-timers still require one manager confirmation.
 - **Ad-hoc club / ก๊วนเฉพาะกิจ** — a one-off group (plays once or twice): a hidden
@@ -203,10 +171,10 @@ in this file.
   session(s), so LINE binding/join/billing use the same series-level machinery.
   Listed compactly as "เฉพาะกิจ", not as a full ก๊วน. Upgrading to a full ก๊วน =
   naming it and flipping the flag — nothing moves.
-- **Session defaults / ค่าตั้งต้นนัด** — `club_series.session_defaults` jsonb (venue,
+- **Session defaults / ค่าเริ่มต้นรอบตี** — `club_series.session_defaults` jsonb (venue,
   times, max_players, court/shuttle fees, full queue_settings, named courts) edited
-  on the club settings page. "จัดก๊วน" always reads it; editing one นัด never writes
-  back. The living successor of the retired club-preset system.
+  on the club settings page. "เปิดรอบตี" always reads it; editing one รอบตี never
+  writes back. The living successor of the retired club-preset system.
 
 ## LINE linking (เชื่อม LINE)
 

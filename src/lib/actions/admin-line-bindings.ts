@@ -4,7 +4,7 @@
  * admin-line-bindings.ts — site-admin actions to inspect + force-unbind every
  * ก๊วน's LINE group binding (spec.md § "📥 User requests" item 3, locked design
  * 2026-07-15). Gated by `isSiteAdmin()` ONLY — this is a site-wide override
- * tool, separate from the per-club `unbindClubLineGroupAction`
+ * tool, separate from the per-club `unbindSeriesLineGroupAction`
  * (`club-linking.ts`) a club manager uses on their own ก๊วน (that one is gated
  * by `assertCanManageClub`).
  *

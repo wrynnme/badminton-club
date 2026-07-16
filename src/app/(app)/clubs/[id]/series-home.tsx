@@ -52,7 +52,8 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   if (!canManage) redirect("/clubs");
 
   const seriesId = series.id;
-  const [sessionsRes, membersRes, pairsRes, levelsRes, playersRes, seriesMatchesRes, seriesAdminsRes] = await Promise.all([
+  const [sessionsRes, membersRes, pairsRes, levelsRes, playersRes, seriesMatchesRes, seriesAdminsRes, linkReqRes] =
+    await Promise.all([
     sb
       .from("clubs")
       .select("id, name, venue, play_date, created_at, join_token, line_group_id")
@@ -70,13 +71,14 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
     // level is series-scoped, not tied to any one session's (possibly
     // customized) level set.
     sb.from("levels").select("*").is("club_id", null).order("sort_order", { ascending: true }),
-    // Per-session roster size for the history list AND cross-session member
-    // stats (P4) share this one grouped query — join on the club_players →
-    // clubs FK, filtered by series, instead of one query per session row or a
-    // second round-trip for stats. Grouped/aggregated client-side below.
+    // Per-session roster size for the history list, cross-session member stats
+    // (P4), AND the link dialog's supplementary guest list all share this one
+    // grouped query — join on the club_players → clubs FK, filtered by series,
+    // instead of one query per session row or extra round-trips. Grouped/
+    // filtered client-side below.
     sb
       .from("club_players")
-      .select("id, club_id, member_id, club:clubs!inner(series_id)")
+      .select("id, club_id, member_id, display_name, profile_id, club:clubs!inner(series_id)")
       .eq("club.series_id", seriesId),
     // Completed matches across every session of the series (P4 cross-session
     // stats — ADR 0002 decision #9, read-only). Same join-filter pattern as
@@ -98,6 +100,14 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
       .select("series_id, user_id, added_by, added_at, profile:profiles!series_admins_user_id_fkey(display_name, line_user_id)")
       .eq("series_id", seriesId)
       .order("added_at", { ascending: true }),
+    // Pending pool (series-first, 2026-07-16) — series-scoped, independent of
+    // any session, so it rides wave 1.
+    sb
+      .from("club_link_requests")
+      .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
+      .eq("series_id", seriesId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: true }),
   ]);
 
   const sessions = sessionsRes.data ?? [];
@@ -137,61 +147,51 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   const activeSession = sessions.find((s) => s.id === series.active_session_id) ?? null;
   const isOwner = session.profileId === series.owner_id;
 
-  // LINE link section (pool UI moved here from the session settings tab) — powered
-  // by the active session, falling back to the latest session when the series has
-  // no active pointer yet. Null only when the series has zero sessions (rare edge —
-  // createClubSeriesAction always opens a first session, so this only happens if
-  // every session was since deleted).
+  // LINE link section (series-first, 2026-07-16) — always rendered: the join
+  // link / group binding / pool all live on the series, so they work with zero
+  // รอบตี. The active (or latest) session only adds the supplementary roster
+  // guests as pairing targets.
   const linkSessionClub = activeSession ?? sessions[0] ?? null;
 
-  let pendingLinkRequests: ClubLinkPoolRequest[] = [];
-  let guestPlayers: { id: string; display_name: string }[] = [];
-  let resolvedJoinToken: string | null = null;
-  let resolvedLineGroupId: string | null = null;
+  type LinkReqRow = {
+    id: string;
+    profile: { id: string; display_name: string; picture_url: string | null } | null;
+  };
+  const rawLinkReqs = ((linkReqRes.data ?? []) as unknown as LinkReqRow[]).filter((r) => r.profile);
+  // decision #4 member badge — derived from the members list already fetched
+  // above instead of a second series_members round-trip.
+  const memberNameByProfileId = new Map(
+    members.filter((m) => m.profile_id).map((m) => [m.profile_id as string, m.canonical_name]),
+  );
+  const pendingLinkRequests: ClubLinkPoolRequest[] = rawLinkReqs.map((r) => ({
+    id: r.id,
+    profile: { id: r.profile!.id, display_name: r.profile!.display_name, picture_url: r.profile!.picture_url },
+    member: memberNameByProfileId.has(r.profile!.id)
+      ? { canonicalName: memberNameByProfileId.get(r.profile!.id)! }
+      : null,
+  }));
 
-  if (linkSessionClub) {
-    const [linkReqRes, guestRes] = await Promise.all([
-      sb
-        .from("club_link_requests")
-        .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
-        .eq("series_id", series.id)
-        .eq("status", "pending")
-        .order("created_at", { ascending: true }),
-      sb
-        .from("club_players")
-        .select("id, display_name")
-        .eq("club_id", linkSessionClub.id)
-        .is("profile_id", null),
-    ]);
+  // Supplementary pairing targets: the current session's still-guest rows,
+  // filtered from the series-wide players fetch above (no extra round-trip).
+  const guestPlayers = linkSessionClub
+    ? (seriesPlayers as (SeriesStatsPlayer & { display_name: string; profile_id: string | null })[])
+        .filter((p) => p.club_id === linkSessionClub.id && p.profile_id === null)
+        .map((p) => ({ id: p.id, display_name: p.display_name }))
+    : [];
+  // Name-only registry members — the primary pairing targets in the link dialog.
+  const nameOnlyMembers = members
+    .filter((m) => !m.profile_id)
+    .map((m) => ({ id: m.id, canonical_name: m.canonical_name }));
 
-    type LinkReqRow = {
-      id: string;
-      profile: { id: string; display_name: string; picture_url: string | null } | null;
-    };
-    const rawLinkReqs = ((linkReqRes.data ?? []) as unknown as LinkReqRow[]).filter((r) => r.profile);
-    // decision #4 member badge — derived from the members list already fetched
-    // above instead of a second series_members round-trip.
-    const memberNameByProfileId = new Map(
-      members.filter((m) => m.profile_id).map((m) => [m.profile_id as string, m.canonical_name]),
-    );
-    pendingLinkRequests = rawLinkReqs.map((r) => ({
-      id: r.id,
-      profile: { id: r.profile!.id, display_name: r.profile!.display_name, picture_url: r.profile!.picture_url },
-      member: memberNameByProfileId.has(r.profile!.id)
-        ? { canonicalName: memberNameByProfileId.get(r.profile!.id)! }
-        : null,
-    }));
-
-    guestPlayers = (guestRes.data ?? []).map((p) => ({
-      id: p.id as string,
-      display_name: p.display_name as string,
-    }));
-
-    // Legacy per-session binding columns came along on the wave-1 sessions
-    // select — no extra clubs round-trip needed for the resolve fallback.
-    resolvedJoinToken = resolveJoinToken(series, { join_token: linkSessionClub.join_token ?? null });
-    resolvedLineGroupId = resolveLineGroupId(series, { line_group_id: linkSessionClub.line_group_id ?? null });
-  }
+  // Legacy per-session binding columns came along on the wave-1 sessions select —
+  // no extra clubs round-trip needed for the resolve fallback. With zero
+  // sessions there is no legacy row, so the series columns stand alone.
+  const resolvedJoinToken = resolveJoinToken(series, {
+    join_token: linkSessionClub?.join_token ?? null,
+  });
+  const resolvedLineGroupId = resolveLineGroupId(series, {
+    line_group_id: linkSessionClub?.line_group_id ?? null,
+  });
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
@@ -240,7 +240,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
           </Link>
         ) : (
           <Card>
-            <CardContent className="pt-4 text-sm text-muted-foreground">{t("series.noActiveSession")}</CardContent>
+            <CardContent className="text-sm text-muted-foreground">{t("series.noActiveSession")}</CardContent>
           </Card>
         )}
       </section>
@@ -310,20 +310,16 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
         activeSessionId={activeSession?.id ?? null}
       />
 
-      {linkSessionClub ? (
-        <ClubLinkControls
-          clubId={linkSessionClub.id}
-          joinToken={resolvedJoinToken}
-          appUrl={appUrl}
-          pendingRequests={pendingLinkRequests}
-          guestPlayers={guestPlayers}
-          lineGroupBound={!!resolvedLineGroupId}
-        />
-      ) : (
-        <Card>
-          <CardContent className="pt-4 text-sm text-muted-foreground">{t("series.linkNoSessionsHint")}</CardContent>
-        </Card>
-      )}
+      <ClubLinkControls
+        seriesId={series.id}
+        clubId={linkSessionClub?.id ?? null}
+        joinToken={resolvedJoinToken}
+        appUrl={appUrl}
+        pendingRequests={pendingLinkRequests}
+        guestPlayers={guestPlayers}
+        nameOnlyMembers={nameOnlyMembers}
+        lineGroupBound={!!resolvedLineGroupId}
+      />
 
       {isOwner && <SeriesCoAdminControls seriesId={series.id} initialAdmins={seriesAdmins} />}
 

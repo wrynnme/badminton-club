@@ -9,6 +9,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { SeriesCard, type SeriesCardData } from "@/components/club/series-card";
 import { ArchivedSeriesSection, type ArchivedSeriesEntry } from "@/components/club/archived-series-section";
+import { UpcomingSessionHero, type UpcomingSessionEntry } from "@/components/club/upcoming-session-hero";
 import { ownerOrAdminOrFilter } from "@/lib/owner-scope";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,8 @@ type SessionRow = {
   series_id: string;
   venue: string;
   play_date: string;
+  start_time: string;
+  end_time: string;
 };
 
 type AdhocEntry = {
@@ -50,6 +53,7 @@ export default async function ClubsPage() {
   let namedSeries: SeriesCardData[] = [];
   let adhocEntries: AdhocEntry[] = [];
   let archivedEntries: ArchivedSeriesEntry[] = [];
+  let upcomingEntries: UpcomingSessionEntry[] = [];
 
   if (session) {
     // Series this user owns, or co-admins via any session (`clubs` row) under it —
@@ -96,7 +100,7 @@ export default async function ClubsPage() {
       const [sessionsRes, membersRes] = await Promise.all([
         sb
           .from("clubs")
-          .select("id, series_id, venue, play_date")
+          .select("id, series_id, venue, play_date, start_time, end_time")
           .in("series_id", seriesIds)
           .order("play_date", { ascending: false })
           .order("created_at", { ascending: false }),
@@ -148,6 +152,28 @@ export default async function ClubsPage() {
       .filter((e): e is AdhocEntry => e !== null)
       .sort((a, b) => b.play_date.localeCompare(a.play_date));
 
+    // Hero eligibility (grilled 2026-07-16): each series' active/latest รอบตี
+    // when it plays today or later — "today" pinned to Asia/Bangkok, not the
+    // server's UTC clock, so a 23:00 round doesn't vanish 7 hours early.
+    const todayBkk = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
+    upcomingEntries = seriesList
+      .map((s): UpcomingSessionEntry | null => {
+        const target = resolveTarget(s);
+        if (!target || target.play_date < todayBkk) return null;
+        return {
+          seriesId: s.id,
+          sessionId: target.id,
+          clubName: s.name,
+          venue: target.venue,
+          play_date: target.play_date,
+          start_time: target.start_time,
+          end_time: target.end_time,
+          isToday: target.play_date === todayBkk,
+        };
+      })
+      .filter((e): e is UpcomingSessionEntry => e !== null)
+      .sort((a, b) => a.play_date.localeCompare(b.play_date));
+
     archivedEntries = ((archivedRowsRes.data ?? []) as { id: string; name: string; archived_at: string }[]).map(
       (row): ArchivedSeriesEntry => ({
         seriesId: row.id,
@@ -174,6 +200,8 @@ export default async function ClubsPage() {
       {session?.isGuest && (
         <p className="text-xs text-muted-foreground">{t("page.guestHint")}</p>
       )}
+
+      <UpcomingSessionHero entries={upcomingEntries} />
 
       {!hasAny ? (
         <p className="text-muted-foreground">

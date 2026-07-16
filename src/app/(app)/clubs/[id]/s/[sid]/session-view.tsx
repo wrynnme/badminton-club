@@ -167,7 +167,7 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
   // mutate). `seriesRes` covers the normal case (club.series_id already set, all
   // 8 prod clubs post-backfill); a club created between backfill and this ship
   // stays null here (the lazy `ensureSeriesForClub` migration only runs from a
-  // mutating action, e.g. generateClubJoinTokenAction) — `resolveLineGroupId`
+  // mutating action, e.g. generateSeriesJoinTokenAction) — `resolveLineGroupId`
   // already tolerates a null series. The LINE join-link + link pool UI moved to
   // the series settings tab in C2 (`series-home.tsx`) — this page only still
   // needs the resolved group-binding flag for `ClubPaymentCollector`.
