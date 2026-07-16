@@ -946,10 +946,6 @@
     "nameOnlyBadge": "ชื่ออย่างเดียว",
     "levelNone": "ไม่มีระดับ",
     "regularLabel": "ขาประจำ",
-    "renameTooltip": "แก้ไขชื่อ",
-    "saveTooltip": "บันทึก",
-    "cancelTooltip": "ยกเลิก",
-    "renameSuccess": "บันทึกชื่อแล้ว",
     "removeTooltip": "นำออกจากก๊วน",
     "removeConfirmTitle": "นำสมาชิกออกจากก๊วน?",
     "removeConfirmDesc": "นำ \"{name}\" ออกจากทะเบียนสมาชิกก๊วนนี้",
@@ -978,7 +974,14 @@
     "resetLevelsCancel": "ยกเลิก",
     "resetLevelsConfirm": "รีเซ็ต",
     "resetting": "กำลังรีเซ็ต...",
-    "resetLevelsSuccess": "รีเซ็ต level แล้ว {count} คน"
+    "resetLevelsSuccess": "รีเซ็ต level แล้ว {count} คน",
+    "editTooltip": "แก้ไขข้อมูลสมาชิก",
+    "editDialogTitle": "แก้ไขข้อมูลสมาชิก",
+    "editDialogDesc": "แก้ชื่อ level และสถานะขาประจำของ \"{name}\" แล้วบันทึกครั้งเดียว",
+    "editConfirm": "บันทึก",
+    "editCancel": "ยกเลิก",
+    "savingEdit": "กำลังบันทึก...",
+    "editSuccess": "บันทึกข้อมูลสมาชิกแล้ว"
   },
   "seriesPartnerPairs": {
     "title": "คู่ประจำ",

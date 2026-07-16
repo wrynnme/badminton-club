@@ -946,10 +946,6 @@
     "nameOnlyBadge": "Name only",
     "levelNone": "No level",
     "regularLabel": "Regular",
-    "renameTooltip": "Rename",
-    "saveTooltip": "Save",
-    "cancelTooltip": "Cancel",
-    "renameSuccess": "Name updated",
     "removeTooltip": "Remove from club",
     "removeConfirmTitle": "Remove this member?",
     "removeConfirmDesc": "Remove \"{name}\" from this club's member registry",
@@ -978,7 +974,14 @@
     "resetLevelsCancel": "Cancel",
     "resetLevelsConfirm": "Reset",
     "resetting": "Resetting...",
-    "resetLevelsSuccess": "Reset level for {count} members"
+    "resetLevelsSuccess": "Reset level for {count} members",
+    "editTooltip": "Edit member",
+    "editDialogTitle": "Edit member",
+    "editDialogDesc": "Edit \"{name}\"’s name, level, and regular status — one save",
+    "editConfirm": "Save",
+    "editCancel": "Cancel",
+    "savingEdit": "Saving...",
+    "editSuccess": "Member updated"
   },
   "seriesPartnerPairs": {
     "title": "Partner pairs",
