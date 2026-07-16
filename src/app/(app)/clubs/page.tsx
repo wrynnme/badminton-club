@@ -79,11 +79,13 @@ export default async function ClubsPage() {
         .select("id, name, is_adhoc, active_session_id")
         .is("archived_at", null)
         .or(ownerOrAdminOrFilter(session.profileId, adminSeriesIds)),
-      sb
-        .from("club_series")
-        .select("id", { count: "exact", head: true })
-        .eq("owner_id", session.profileId)
-        .not("archived_at", "is", null),
+      session.isGuest
+        ? Promise.resolve({ count: 0 })
+        : sb
+            .from("club_series")
+            .select("id", { count: "exact", head: true })
+            .eq("owner_id", session.profileId)
+            .not("archived_at", "is", null),
       session.isGuest
         ? Promise.resolve([] as MySessionSourceRow[])
         : fetchMySessionRows(sb, session.profileId, adminClubIds),
