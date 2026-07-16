@@ -581,7 +581,9 @@
     "emptyNoCreate": "ยังไม่มีรอบตีของคุณ.",
     "publicBadge": "สาธารณะ",
     "playerCountCard": "{joined}/{max} คน",
-    "backToSeries": "← ก๊วน {name}"
+    "backToSeries": "← ก๊วน {name}",
+    "backToClubs": "← ก๊วนทั้งหมด",
+    "viewerBadge": "ผู้เข้าร่วม (ดูอย่างเดียว)"
   },
   "lineImport": {
     "triggerButton": "นำเข้าจากข้อความ",
@@ -895,6 +897,7 @@
   "series": {
     "archivedBadge": "เก็บถาวร",
     "activeSessionBadge": "รอบตีปัจจุบัน",
+    "joinedBadge": "เข้าร่วม",
     "noActiveSession": "ยังไม่มีรอบตีที่ใช้งานอยู่",
     "historyHeading": "ประวัติรอบตี",
     "noSessions": "ยังไม่มีรอบตีในก๊วนนี้",

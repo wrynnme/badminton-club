@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { CalendarDays, MapPin } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
 import { getLocale, getTranslations } from "next-intl/server";
 import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { SeriesCard, type SeriesCardData } from "@/components/club/series-card";
 import { ArchivedSeriesSection, type ArchivedSeriesEntry } from "@/components/club/archived-series-section";
 import { UpcomingSessionHero, type UpcomingSessionEntry } from "@/components/club/upcoming-session-hero";
+import { MySessionGroups } from "@/components/club/my-session-groups";
+import { buildMySessionGroups, type MySessionSourceRow } from "@/lib/club/my-sessions";
+import { fetchMySessionRows } from "@/lib/club/my-sessions.server";
 import { ownerOrAdminOrFilter } from "@/lib/owner-scope";
 
 export const dynamic = "force-dynamic";
@@ -30,19 +31,12 @@ type SessionRow = {
   end_time: string;
 };
 
-type AdhocEntry = {
-  seriesId: string;
-  sessionId: string;
-  name: string;
-  venue: string;
-  play_date: string;
-};
-
 /**
  * `/clubs` — series list (ADR 0002 decision #1). Named ก๊วนถาวร render as full
- * cards; ad-hoc series (decision #12 — hidden single-session clubs) collapse
- * into a compact "เฉพาะกิจ" section that links straight at their session,
- * never at a series-home page a user never asked to see.
+ * cards on top; below them "รอบตีของฉัน" lists every session the user manages
+ * OR plays in (shared builder with /clubs/mine — เฉพาะกิจ rows now live inside
+ * that list's trailing bucket instead of their own section, and participant-only
+ * rows carry an "เข้าร่วม" badge that opens the session read-only).
  */
 export default async function ClubsPage() {
   const sb = await createAdminClient();
@@ -51,7 +45,7 @@ export default async function ClubsPage() {
   const locale = await getLocale();
 
   let namedSeries: SeriesCardData[] = [];
-  let adhocEntries: AdhocEntry[] = [];
+  let myRows: MySessionSourceRow[] = [];
   let archivedEntries: ArchivedSeriesEntry[] = [];
   let upcomingEntries: UpcomingSessionEntry[] = [];
 
@@ -76,7 +70,7 @@ export default async function ClubsPage() {
 
     // Visible (non-archived) series + this user's own archived series (decision
     // #13 — owner-only "กู้คืน" section below) in the same wave.
-    const [seriesRowsRes, archivedRowsRes] = await Promise.all([
+    const [seriesRowsRes, archivedRowsRes, myRowsRes] = await Promise.all([
       sb
         .from("club_series")
         .select("id, name, is_adhoc, active_session_id")
@@ -88,7 +82,9 @@ export default async function ClubsPage() {
         .eq("owner_id", session.profileId)
         .not("archived_at", "is", null)
         .order("archived_at", { ascending: false }),
+      fetchMySessionRows(sb, session.profileId),
     ]);
+    myRows = myRowsRes;
     const seriesList = (seriesRowsRes.data ?? []) as SeriesRow[];
     const seriesIds = seriesList.map((s) => s.id);
 
@@ -140,18 +136,6 @@ export default async function ClubsPage() {
       })
       .sort((a, b) => (b.activeSession?.play_date ?? "").localeCompare(a.activeSession?.play_date ?? ""));
 
-    adhocEntries = seriesList
-      .filter((s) => s.is_adhoc)
-      .map((s): AdhocEntry | null => {
-        const target = resolveTarget(s);
-        // Defensive — decision #12 deletes the hidden series along with its
-        // last session, so a sessionless ad-hoc entry should not exist.
-        if (!target) return null;
-        return { seriesId: s.id, sessionId: target.id, name: s.name, venue: target.venue, play_date: target.play_date };
-      })
-      .filter((e): e is AdhocEntry => e !== null)
-      .sort((a, b) => b.play_date.localeCompare(a.play_date));
-
     // Hero eligibility (grilled 2026-07-16): each series' active/latest รอบตี
     // when it plays today or later — "today" pinned to Asia/Bangkok, not the
     // server's UTC clock, so a 23:00 round doesn't vanish 7 hours early.
@@ -184,7 +168,8 @@ export default async function ClubsPage() {
   }
 
   const t = await getTranslations("club");
-  const hasAny = namedSeries.length > 0 || adhocEntries.length > 0;
+  const myGroups = buildMySessionGroups(myRows);
+  const hasAny = namedSeries.length > 0 || myGroups.length > 0;
 
   return (
     <div className="space-y-6">
@@ -217,32 +202,10 @@ export default async function ClubsPage() {
             </div>
           )}
 
-          {adhocEntries.length > 0 && (
+          {myGroups.length > 0 && (
             <section className="space-y-2">
-              <h2 className="font-semibold text-sm text-muted-foreground">{t("series.adhocHeading")}</h2>
-              <Card>
-                <CardContent className="divide-y p-0">
-                  {adhocEntries.map((e) => (
-                    <Link
-                      key={e.seriesId}
-                      href={`/clubs/${e.seriesId}/s/${e.sessionId}`}
-                      className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm hover:bg-muted/50 transition"
-                    >
-                      <span className="font-medium line-clamp-1">{e.name}</span>
-                      <div className="flex items-center gap-3 text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <CalendarDays className="h-4 w-4" />
-                          {format(new Date(e.play_date), "d MMM yyyy", { locale: dateFnsLocaleOf(locale) })}
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <MapPin className="h-4 w-4" />
-                          <span className="line-clamp-1">{e.venue}</span>
-                        </span>
-                      </div>
-                    </Link>
-                  ))}
-                </CardContent>
-              </Card>
+              <h2 className="font-semibold text-sm text-muted-foreground">{t("page.myListHeading")}</h2>
+              <MySessionGroups groups={myGroups} />
             </section>
           )}
         </>
