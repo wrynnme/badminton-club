@@ -49,6 +49,7 @@ import {
 import {
   findGroupBindingConflict,
   hasPendingSeriesRequest,
+  poolSessionlessRequest,
   resolveSeriesEntryByGroupId,
   resolveSeriesEntryByToken,
   upsertSeriesMember,
@@ -317,10 +318,7 @@ async function resolveSelfLink(args: {
       : Promise.resolve({ data: null }),
   ]);
   const registry = (membersRes.data ?? []) as MemberCandidate[];
-  const roster = (rosterRes.data ?? []) as (RosterLinkCandidate & {
-    display_name: string;
-    level_id: string | null;
-  })[];
+  const roster = (rosterRes.data ?? []) as (RosterLinkCandidate & { level_id: string | null })[];
 
   // 5. Idempotency across BOTH surfaces: linked in the current roster, or already
   //    a linked member of the series (the sessionless case).
@@ -422,9 +420,9 @@ async function resolveSelfLink(args: {
   //    requestClubLinkAction): the active session pointer may have moved since an
   //    earlier request. With a session, keep the legacy upsert (insert-when-absent
   //    on UNIQUE(club_id, profile_id) — never resurrects a dismissed request);
-  //    without one, a plain insert with club_id NULL — ON CONFLICT cannot target
-  //    the partial index uniq_club_link_requests_series_profile_sessionless
-  //    through PostgREST, so a 23505 race is simply treated as "already pooled".
+  //    without one, poolSessionlessRequest insert-or-REVIVES the club-less row
+  //    (a dismissed request must not become a silent permanent dead-end when the
+  //    series has no session to absorb a fresh row).
   if (!(await hasPendingSeriesRequest(sb, series.id, profile.id))) {
     if (club) {
       await sb
@@ -434,12 +432,7 @@ async function resolveSelfLink(args: {
           { onConflict: "club_id,profile_id", ignoreDuplicates: true },
         );
     } else {
-      const { error: poolErr } = await sb
-        .from("club_link_requests")
-        .insert({ club_id: null, series_id: series.id, profile_id: profile.id, status: "pending" });
-      if (poolErr && poolErr.code !== "23505") {
-        console.error("[LINE webhook] sessionless pool insert error:", poolErr.message);
-      }
+      await poolSessionlessRequest(sb, series.id, profile.id, "LINE webhook self-link");
     }
   }
   if (club) {

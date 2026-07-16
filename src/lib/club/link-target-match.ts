@@ -83,12 +83,17 @@ export function classifyLinkTarget(
   const [unit] = units.values();
   if (unit.member) {
     if (unit.member.profile_id !== null) return { kind: "taken" };
+    // The seeded roster row may not have entered rosterHits at all (renamed in
+    // this session while the member kept the typed name) — resolve it by
+    // member_id so the current รอบตี still picks up the link.
+    const memberId = unit.member.id;
+    const seededRow = unit.rosterRow ?? roster.find((r) => r.member_id === memberId) ?? null;
     return {
       kind: "member",
-      memberId: unit.member.id,
+      memberId,
       // Attach the roster row only while it is still a guest — a row somehow
       // linked to another profile must not be overwritten.
-      rosterPlayerId: unit.rosterRow && unit.rosterRow.profile_id === null ? unit.rosterRow.id : null,
+      rosterPlayerId: seededRow && seededRow.profile_id === null ? seededRow.id : null,
     };
   }
 

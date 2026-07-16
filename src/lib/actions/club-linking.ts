@@ -18,7 +18,7 @@
  *      (decision #4 — amends ADR 0001's "always manager-confirmed"), or
  *      (b)/(c) drops a `pending` row into `club_link_requests` (series-scoped).
  *   3. A manager links a pending request to a guest row (`linkClubPlayerAction`)
- *      or dismisses it (`dismissClubLinkRequestAction`).
+ *      or dismisses it (`dismissSeriesLinkRequestAction`).
  *
  * Every successful link (manager-confirmed or auto) writes through to the
  * series member registry (`upsertSeriesMember`) and stamps the roster row's
@@ -39,9 +39,10 @@ import { pushTextToUser } from "@/lib/notification/line-club";
 import { classifyRosterMatch, type RosterCandidate } from "@/lib/club/line-self-link";
 import {
   clearBindingBySeriesId,
-  clearSeriesBinding,
   ensureSeriesForClub,
   hasPendingSeriesRequest,
+  latestSessionOfSeries,
+  poolSessionlessRequest,
   resolveSeriesEntryByToken,
   upsertSeriesMember,
 } from "@/lib/club/series.server";
@@ -67,18 +68,23 @@ async function writeClubAudit(
 }
 
 /**
- * Fire-and-forget "you're now linked" push to a freshly-linked player. The club-name
- * fetch is awaited; the push itself is not (never blocks or fails the link). No-op when
- * the profile has no LINE id. Shared by linkClubPlayerAction + linkKnownProfileAction.
+ * Fire-and-forget "you're now linked" push to a freshly-linked player — never
+ * blocks or fails the link; no-op without a LINE id. `name` is the ก๊วน (series)
+ * or session name shown in the message. Shared by every manager-link action.
  */
+function pushLinkConfirmNamed(name: string, lineUserId: string | null) {
+  if (!lineUserId) return;
+  void pushTextToUser(
+    lineUserId,
+    `✅ เชื่อมบัญชี LINE กับก๊วน "${name}" เรียบร้อยแล้ว — จากนี้จะได้รับบิลและการแจ้งเตือนทาง LINE`,
+  );
+}
+
+/** Club-keyed wrapper: fetches the session name first (awaited; push is not). */
 async function pushLinkConfirm(sb: AdminClient, clubId: string, lineUserId: string | null) {
   if (!lineUserId) return;
   const { data: club } = await sb.from("clubs").select("name").eq("id", clubId).maybeSingle();
-  const clubName = club?.name ?? "";
-  void pushTextToUser(
-    lineUserId,
-    `✅ เชื่อมบัญชี LINE กับก๊วน "${clubName}" เรียบร้อยแล้ว — จากนี้จะได้รับบิลและการแจ้งเตือนทาง LINE`,
-  );
+  pushLinkConfirmNamed(club?.name ?? "", lineUserId);
 }
 
 /**
@@ -130,107 +136,6 @@ async function writeThroughMemberLink(
     .is("profile_id", null)
     .select("id")
     .maybeSingle();
-}
-
-// ---------------------------------------------------------------------------
-// Manager: generate / revoke the per-club join link token
-// ---------------------------------------------------------------------------
-
-/**
- * decision #15 — the join token lives on the SERIES now (once, forever; stable
- * across every session). Returns the existing series token when one is already
- * set instead of minting a new one, so re-generating never invalidates a link
- * already shared. Legacy per-session `clubs.join_token` values are left alone —
- * old shared links keep working as separate aliases into the same series (join
- * tokens are not exclusive the way a LINE group binding is; see the join page's
- * fallback resolution).
- */
-export async function generateClubJoinTokenAction(clubId: string) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-
-  const t = await getTranslations("actions");
-  const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
-    return { error: t("club.noPermission") };
-  }
-
-  const series = await ensureSeriesForClub(sb, clubId);
-  if (series.join_token) {
-    return { ok: true as const, token: series.join_token };
-  }
-
-  const token = crypto.randomUUID();
-  const { error } = await sb.from("club_series").update({ join_token: token }).eq("id", series.id);
-  if (error) {
-    console.error("[generateClubJoinTokenAction]", error);
-    return { error: t("club.linkTokenFailed") };
-  }
-
-  await writeClubAudit(sb, clubId, session, "join_token_generated", "");
-  revalidateClubTree();
-  return { ok: true as const, token };
-}
-
-/**
- * Revoke = NOTHING keeps working. Same both-levels rule as
- * `unbindClubLineGroupAction` (see `clearSeriesBinding` — owns the invariant):
- * clears the series-level join token AND every session's legacy
- * `clubs.join_token` under that series — the join page falls back to legacy
- * tokens (`resolveJoinToken`), so a sibling session's pre-series token would
- * otherwise keep resolving into this series after a revoke (the backfill copied
- * the series token FROM one of those sessions, so at least one live alias is
- * guaranteed to exist for migrated clubs).
- */
-export async function revokeClubJoinTokenAction(clubId: string) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-
-  const t = await getTranslations("actions");
-  const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
-    return { error: t("club.noPermission") };
-  }
-
-  const result = await clearSeriesBinding(sb, clubId, "join_token", "revokeClubJoinTokenAction");
-  if (!result.ok) return { error: t("club.linkTokenFailed") };
-
-  await writeClubAudit(sb, clubId, session, "join_token_revoked", "");
-  revalidateClubTree();
-  return { ok: true as const };
-}
-
-// ---------------------------------------------------------------------------
-// Manager: unbind the LINE group (clears clubs.line_group_id)
-// ---------------------------------------------------------------------------
-
-/**
- * Clear the LINE group binding so this club's series is no longer bound.
- * Group billing is gated on the resolved binding, so unbinding disables it until
- * a manager rebinds (posts `ผูกก๊วน <join_token>` in a group again). Binding
- * itself only happens through the webhook — there is no inbound unbind command,
- * so this action is the only way to release the group from the app.
- *
- * ADR 0002 P1 — both-levels clear (see `clearSeriesBinding` — owns the "sharpest
- * trap" invariant: clearing ONLY the series column would silently resurrect the
- * old binding via `resolveLineGroupId`'s legacy fallback).
- */
-export async function unbindClubLineGroupAction(clubId: string) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-
-  const t = await getTranslations("actions");
-  const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
-    return { error: t("club.noPermission") };
-  }
-
-  const result = await clearSeriesBinding(sb, clubId, "line_group_id", "unbindClubLineGroupAction");
-  if (!result.ok) return { error: t("club.unbindGroupFailed") };
-
-  await writeClubAudit(sb, clubId, session, "line_group_unbound", "");
-  revalidateClubTree();
-  return { ok: true as const };
 }
 
 // ---------------------------------------------------------------------------
@@ -300,16 +205,11 @@ export async function requestClubLinkAction(token: string) {
     if (await hasPendingSeriesRequest(sb, series.id, session.profileId)) {
       return { ok: true as const, state: "pending" as const, clubName: series.name };
     }
-    const { error: poolErr } = await sb
-      .from("club_link_requests")
-      .insert({ club_id: null, series_id: series.id, profile_id: session.profileId, status: "pending" });
-    // 23505 = uniq_club_link_requests_series_profile_sessionless caught a race —
-    // the request already exists; PostgREST upsert can't target a partial index,
-    // hence insert + tolerate.
-    if (poolErr && poolErr.code !== "23505") {
-      console.error("[requestClubLinkAction] sessionless pool", poolErr);
-      return { error: t("club.linkRequestFailed") };
-    }
+    // Insert-or-revive: a dismissed/stale club-less row must come back to
+    // pending here (see poolSessionlessRequest) — same resurrect semantics as
+    // the session-ful upsert below.
+    const pooled = await poolSessionlessRequest(sb, series.id, session.profileId, "requestClubLinkAction");
+    if (!pooled) return { error: t("club.linkRequestFailed") };
     revalidateClubTree();
     return { ok: true as const, state: "pending" as const, clubName: series.name };
   }
@@ -487,53 +387,6 @@ export async function linkClubPlayerAction(input: LinkClubPlayerInput) {
   return { ok: true as const };
 }
 
-const DismissSchema = z.object({
-  clubId: z.string().uuid(),
-  requestId: z.string().uuid(),
-});
-export type DismissClubLinkInput = z.infer<typeof DismissSchema>;
-
-export async function dismissClubLinkRequestAction(input: DismissClubLinkInput) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-
-  const t = await getTranslations("actions");
-  const parsed = DismissSchema.safeParse(input);
-  if (!parsed.success) return { error: t("club.invalidData") };
-  const { clubId, requestId } = parsed.data;
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageClub(sb, clubId, session.profileId))) {
-    return { error: t("club.noPermission") };
-  }
-
-  // Series-aware scope — mirrors linkClubPlayerAction: the pool is series-wide,
-  // so a sibling session's pending request must be dismissable from this page.
-  const { data: clubScope } = await sb.from("clubs").select("series_id").eq("id", clubId).maybeSingle();
-  const dismissScope = clubScope?.series_id
-    ? `club_id.eq.${clubId},series_id.eq.${clubScope.series_id}`
-    : `club_id.eq.${clubId}`;
-  const { data: dismissed, error } = await sb
-    .from("club_link_requests")
-    .update({ status: "rejected" })
-    .eq("id", requestId)
-    .or(dismissScope)
-    .eq("status", "pending")
-    .select("id")
-    .maybeSingle();
-  if (error) {
-    console.error("[dismissClubLinkRequestAction]", error);
-    return { error: t("club.linkFailed") };
-  }
-  // 0 rows = already non-pending (matched, or another tab dismissed it): nothing to
-  // do — skip the audit + revalidate rather than logging a phantom dismissal.
-  if (!dismissed) return { ok: true as const, noop: true as const };
-
-  await writeClubAudit(sb, clubId, session, "link_dismissed", requestId);
-  revalidateClubTree();
-  return { ok: true as const };
-}
-
 const UnlinkSchema = z.object({
   clubId: z.string().uuid(),
   playerId: z.string().uuid(),
@@ -607,9 +460,33 @@ export async function unlinkClubPlayerAction(input: UnlinkClubPlayerInput) {
 // durable record).
 // ---------------------------------------------------------------------------
 
-async function getSeriesRow(sb: AdminClient, seriesId: string): Promise<ClubSeries | null> {
+// Same two-layer rule as every action here: a malformed id must come back as a
+// clean {error}, not blow up inside the permission check.
+const SeriesIdSchema = z.string().uuid();
+
+/**
+ * Shared prologue of every series-keyed action below: session -> uuid check ->
+ * manage-permission gate -> series row. Errors come back pre-translated so each
+ * action stays a plain early-return.
+ */
+async function seriesManagerGate(
+  seriesId: string,
+): Promise<
+  | { error: string }
+  | { error?: undefined; sb: AdminClient; session: SessionPayload; t: Awaited<ReturnType<typeof getTranslations>>; series: ClubSeries }
+> {
+  const session = await getSession();
+  if (!session) return await loginRedirect();
+
+  const t = await getTranslations("actions");
+  if (!SeriesIdSchema.safeParse(seriesId).success) return { error: t("club.invalidData") };
+  const sb = await createAdminClient();
+  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) {
+    return { error: t("club.noPermission") };
+  }
   const { data } = await sb.from("club_series").select("*").eq("id", seriesId).maybeSingle();
-  return (data as ClubSeries | null) ?? null;
+  if (!data) return { error: t("club.invalidData") };
+  return { sb, session, t, series: data as ClubSeries };
 }
 
 async function auditToActiveSession(
@@ -626,17 +503,10 @@ async function auditToActiveSession(
 /** Series-keyed twin of generateClubJoinTokenAction — same "return the existing
  *  token instead of minting" rule (decision #15). */
 export async function generateSeriesJoinTokenAction(seriesId: string) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
+  const gate = await seriesManagerGate(seriesId);
+  if (gate.error !== undefined) return { error: gate.error };
+  const { sb, session, t, series } = gate;
 
-  const t = await getTranslations("actions");
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) {
-    return { error: t("club.noPermission") };
-  }
-
-  const series = await getSeriesRow(sb, seriesId);
-  if (!series) return { error: t("club.linkTokenFailed") };
   if (series.join_token) {
     return { ok: true as const, token: series.join_token };
   }
@@ -653,49 +523,36 @@ export async function generateSeriesJoinTokenAction(seriesId: string) {
   return { ok: true as const, token };
 }
 
-/** Series-keyed twin of revokeClubJoinTokenAction — both-levels clear (see
- *  clearBindingBySeriesId: series column + every legacy session alias). */
-export async function revokeSeriesJoinTokenAction(seriesId: string) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
+/** revoke/unbind share everything but the column + audit event + error key —
+ *  both-levels clear via clearBindingBySeriesId (series column + every legacy
+ *  session alias). */
+async function clearSeriesBindingAction(
+  seriesId: string,
+  column: "join_token" | "line_group_id",
+  eventType: string,
+  errorKey: "club.linkTokenFailed" | "club.unbindGroupFailed",
+  caller: string,
+) {
+  const gate = await seriesManagerGate(seriesId);
+  if (gate.error !== undefined) return { error: gate.error };
+  const { sb, session, t, series } = gate;
 
-  const t = await getTranslations("actions");
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) {
-    return { error: t("club.noPermission") };
-  }
+  const result = await clearBindingBySeriesId(sb, seriesId, column, caller);
+  if (!result.ok) return { error: t(errorKey) };
 
-  const series = await getSeriesRow(sb, seriesId);
-  if (!series) return { error: t("club.linkTokenFailed") };
-
-  const result = await clearBindingBySeriesId(sb, seriesId, "join_token", "revokeSeriesJoinTokenAction");
-  if (!result.ok) return { error: t("club.linkTokenFailed") };
-
-  await auditToActiveSession(sb, series, session, "join_token_revoked", "");
+  await auditToActiveSession(sb, series, session, eventType, "");
   revalidateClubTree();
   return { ok: true as const };
 }
 
-/** Series-keyed twin of unbindClubLineGroupAction — both-levels clear. */
+export async function revokeSeriesJoinTokenAction(seriesId: string) {
+  return clearSeriesBindingAction(
+    seriesId, "join_token", "join_token_revoked", "club.linkTokenFailed", "revokeSeriesJoinTokenAction");
+}
+
 export async function unbindSeriesLineGroupAction(seriesId: string) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-
-  const t = await getTranslations("actions");
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) {
-    return { error: t("club.noPermission") };
-  }
-
-  const series = await getSeriesRow(sb, seriesId);
-  if (!series) return { error: t("club.unbindGroupFailed") };
-
-  const result = await clearBindingBySeriesId(sb, seriesId, "line_group_id", "unbindSeriesLineGroupAction");
-  if (!result.ok) return { error: t("club.unbindGroupFailed") };
-
-  await auditToActiveSession(sb, series, session, "line_group_unbound", "");
-  revalidateClubTree();
-  return { ok: true as const };
+  return clearSeriesBindingAction(
+    seriesId, "line_group_id", "line_group_unbound", "club.unbindGroupFailed", "unbindSeriesLineGroupAction");
 }
 
 const DismissSeriesSchema = z.object({
@@ -707,18 +564,15 @@ export type DismissSeriesLinkInput = z.infer<typeof DismissSeriesSchema>;
 /** Series-keyed twin of dismissClubLinkRequestAction — the pool is series-wide
  *  and must be manageable with zero sessions. */
 export async function dismissSeriesLinkRequestAction(input: DismissSeriesLinkInput) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-
-  const t = await getTranslations("actions");
-  const parsed = DismissSeriesSchema.safeParse(input);
-  if (!parsed.success) return { error: t("club.invalidData") };
-  const { seriesId, requestId } = parsed.data;
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) {
-    return { error: t("club.noPermission") };
+  const parsedInput = DismissSeriesSchema.safeParse(input);
+  if (!parsedInput.success) {
+    return { error: (await getTranslations("actions"))("club.invalidData") };
   }
+  const { seriesId, requestId } = parsedInput.data;
+
+  const gate = await seriesManagerGate(seriesId);
+  if (gate.error !== undefined) return { error: gate.error };
+  const { sb, session, t, series } = gate;
 
   const { data: dismissed, error } = await sb
     .from("club_link_requests")
@@ -734,8 +588,7 @@ export async function dismissSeriesLinkRequestAction(input: DismissSeriesLinkInp
   }
   if (!dismissed) return { ok: true as const, noop: true as const };
 
-  const series = await getSeriesRow(sb, seriesId);
-  if (series) await auditToActiveSession(sb, series, session, "link_dismissed", requestId);
+  await auditToActiveSession(sb, series, session, "link_dismissed", requestId);
   revalidateClubTree();
   return { ok: true as const };
 }
@@ -755,21 +608,15 @@ export type LinkRequestToMemberInput = z.infer<typeof LinkToMemberSchema>;
  * row too, so the current รอบตี reflects the pairing immediately.
  */
 export async function linkRequestToMemberAction(input: LinkRequestToMemberInput) {
-  const session = await getSession();
-  if (!session) return await loginRedirect();
-
-  const t = await getTranslations("actions");
-  const parsed = LinkToMemberSchema.safeParse(input);
-  if (!parsed.success) return { error: t("club.invalidData") };
-  const { seriesId, requestId, memberId } = parsed.data;
-
-  const sb = await createAdminClient();
-  if (!(await assertCanManageSeries(sb, seriesId, session.profileId))) {
-    return { error: t("club.noPermission") };
+  const parsedInput = LinkToMemberSchema.safeParse(input);
+  if (!parsedInput.success) {
+    return { error: (await getTranslations("actions"))("club.invalidData") };
   }
+  const { seriesId, requestId, memberId } = parsedInput.data;
 
-  const series = await getSeriesRow(sb, seriesId);
-  if (!series) return { error: t("club.linkFailed") };
+  const gate = await seriesManagerGate(seriesId);
+  if (gate.error !== undefined) return { error: gate.error };
+  const { sb, session, t, series } = gate;
 
   // 1. The request must belong to this series and still be pending.
   const { data: req } = await sb
@@ -831,15 +678,21 @@ export async function linkRequestToMemberAction(input: LinkRequestToMemberInput)
     .eq("id", requestId);
   if (matchErr) console.error("[linkRequestToMemberAction] status=matched", matchErr);
 
-  // 6. Best-effort roster write-through: the active session's row seeded from
-  //    this member (if any, still guest) picks up the link immediately.
-  if (series.active_session_id) {
-    await sb
+  // 6. Best-effort roster write-through: the current รอบตี's row seeded from
+  //    this member (if any, still guest) picks up the link immediately. Target
+  //    matches the settings-tab UI: active session, else the latest one. A
+  //    failure (e.g. the profile already links another row in that session —
+  //    uniq_club_players_profile) must not fail the member link, but it must
+  //    not vanish either: log it so the registry/roster divergence is traceable.
+  const writeThroughClubId = series.active_session_id ?? (await latestSessionOfSeries(sb, seriesId));
+  if (writeThroughClubId) {
+    const { error: rosterErr } = await sb
       .from("club_players")
       .update({ profile_id: profileId })
-      .eq("club_id", series.active_session_id)
+      .eq("club_id", writeThroughClubId)
       .eq("member_id", memberId)
       .is("profile_id", null);
+    if (rosterErr) console.error("[linkRequestToMemberAction] roster write-through", rosterErr);
   }
 
   await auditToActiveSession(
@@ -851,12 +704,7 @@ export async function linkRequestToMemberAction(input: LinkRequestToMemberInput)
   );
 
   // 7. Fire-and-forget confirmation push (never blocks or fails the link).
-  if (profile.line_user_id) {
-    void pushTextToUser(
-      profile.line_user_id,
-      `✅ เชื่อมบัญชี LINE กับก๊วน "${series.name}" เรียบร้อยแล้ว — จากนี้จะได้รับบิลและการแจ้งเตือนทาง LINE`,
-    );
-  }
+  pushLinkConfirmNamed(series.name, profile.line_user_id as string | null);
 
   revalidateClubTree();
   return { ok: true as const };

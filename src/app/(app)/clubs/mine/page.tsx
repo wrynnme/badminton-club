@@ -72,7 +72,7 @@ export default async function MyClubsPage() {
     end_time: c.end_time,
     joined: countMap.get(c.id) ?? 0,
     max: c.max_players,
-    isActive: !!c.series && c.series.active_session_id === c.id,
+    isActive: c.series?.active_session_id === c.id,
   });
 
   const namedGroups = new Map<string, MySessionGroup>();

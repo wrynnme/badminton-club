@@ -135,6 +135,43 @@ export async function latestSessionOfSeries(
   return (data?.id as string | undefined) ?? null;
 }
 
+/**
+ * Insert a sessionless (club_id NULL) pending link request. PostgREST's upsert
+ * cannot target the partial unique index (uniq_club_link_requests_series_
+ * profile_sessionless), so 23505 is handled by hand — and NOT ignored: the
+ * existing club-less row (rejected after a dismiss, or matched-then-unlinked)
+ * is revived to pending, mirroring the session-ful join-link upsert which also
+ * resurrects a dismissed request when the player asks again. Silently
+ * swallowing the conflict would tell the player "request sent" while the pool
+ * stays empty — a permanent dead-end for a zero-session series.
+ */
+export async function poolSessionlessRequest(
+  sb: AdminClient,
+  seriesId: string,
+  profileId: string,
+  caller: string,
+): Promise<boolean> {
+  const { error } = await sb
+    .from("club_link_requests")
+    .insert({ club_id: null, series_id: seriesId, profile_id: profileId, status: "pending" });
+  if (!error) return true;
+  if (error.code !== "23505") {
+    console.error(`[${caller}] sessionless pool insert`, error);
+    return false;
+  }
+  const { error: reviveErr } = await sb
+    .from("club_link_requests")
+    .update({ status: "pending" })
+    .eq("series_id", seriesId)
+    .eq("profile_id", profileId)
+    .is("club_id", null);
+  if (reviveErr) {
+    console.error(`[${caller}] sessionless pool revive`, reviveErr);
+    return false;
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Session-delete invariants (called by deleteClubAction)
 // ---------------------------------------------------------------------------
@@ -313,7 +350,7 @@ export async function resolveSeriesEntryByGroupId(sb: AdminClient, groupId: stri
  * The effective LINE group id for a session: the series binding, falling back to
  * the legacy per-session column for any club not yet migrated. Once a series is
  * bound (`series.line_group_id` set), the legacy column is never consulted again
- * for that series — see the "sharpest trap" note on `clearSeriesBinding`.
+ * for that series — see the "sharpest trap" note on `clearBindingBySeriesId`.
  */
 export function resolveLineGroupId(
   series: Pick<ClubSeries, "line_group_id"> | null,
@@ -377,37 +414,11 @@ export async function findGroupBindingConflict(
  * `clubs.<column>` whenever the series column is null, so clearing ONLY
  * `club_series.<column>` would silently resurrect the old binding on the very
  * next read. Every session under the series is cleared, not just the current
- * one — any of them could still hold the stale legacy value. A club with no
- * series yet falls back to clearing just its own legacy column.
+ * one — any of them could still hold the stale legacy value. Works for a series
+ * with zero sessions too (the legacy update just matches nothing).
  *
  * `caller` tags the console.error on failure (mirrors each action's own log
  * prefix); the caller keeps its own i18n error key / audit event.
- */
-export async function clearSeriesBinding(
-  sb: AdminClient,
-  clubId: string,
-  column: "join_token" | "line_group_id",
-  caller: string,
-): Promise<{ ok: true } | { ok: false }> {
-  const series = await getSeriesForClub(sb, clubId);
-  if (series) {
-    return clearBindingBySeriesId(sb, series.id, column, caller);
-  }
-
-  const { error } = await sb.from("clubs").update({ [column]: null }).eq("id", clubId);
-  if (error) {
-    console.error(`[${caller}]`, error);
-    return { ok: false };
-  }
-  return { ok: true };
-}
-
-/**
- * The both-levels core of `clearSeriesBinding` for callers that already hold a
- * series id (e.g. the site-admin bindings manager) — clears the series column
- * AND every legacy session row under it, without the walk-up from a session.
- * Works for a series with zero sessions too (the legacy update just matches
- * nothing).
  */
 export async function clearBindingBySeriesId(
   sb: AdminClient,
@@ -541,6 +552,18 @@ export async function upsertSeriesMember(sb: AdminClient, input: UpsertSeriesMem
     .select("id")
     .single();
   if (insErr || !created) {
+    // 23505 on uniq_series_members_profile = two surfaces linked this profile
+    // concurrently (e.g. pool-link + keyword) — the other writer won; return
+    // its row instead of surfacing a 500 to whichever caller lost the race.
+    if (insErr?.code === "23505") {
+      const { data: winner } = await sb
+        .from("series_members")
+        .select("id")
+        .eq("series_id", seriesId)
+        .eq("profile_id", profileId)
+        .maybeSingle();
+      if (winner) return winner.id as string;
+    }
     throw new Error(`upsertSeriesMember: insert failed for series ${seriesId}: ${insErr?.message}`);
   }
   return created.id;

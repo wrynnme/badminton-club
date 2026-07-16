@@ -52,7 +52,8 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   if (!canManage) redirect("/clubs");
 
   const seriesId = series.id;
-  const [sessionsRes, membersRes, pairsRes, levelsRes, playersRes, seriesMatchesRes, seriesAdminsRes] = await Promise.all([
+  const [sessionsRes, membersRes, pairsRes, levelsRes, playersRes, seriesMatchesRes, seriesAdminsRes, linkReqRes] =
+    await Promise.all([
     sb
       .from("clubs")
       .select("id, name, venue, play_date, created_at, join_token, line_group_id")
@@ -70,13 +71,14 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
     // level is series-scoped, not tied to any one session's (possibly
     // customized) level set.
     sb.from("levels").select("*").is("club_id", null).order("sort_order", { ascending: true }),
-    // Per-session roster size for the history list AND cross-session member
-    // stats (P4) share this one grouped query — join on the club_players →
-    // clubs FK, filtered by series, instead of one query per session row or a
-    // second round-trip for stats. Grouped/aggregated client-side below.
+    // Per-session roster size for the history list, cross-session member stats
+    // (P4), AND the link dialog's supplementary guest list all share this one
+    // grouped query — join on the club_players → clubs FK, filtered by series,
+    // instead of one query per session row or extra round-trips. Grouped/
+    // filtered client-side below.
     sb
       .from("club_players")
-      .select("id, club_id, member_id, club:clubs!inner(series_id)")
+      .select("id, club_id, member_id, display_name, profile_id, club:clubs!inner(series_id)")
       .eq("club.series_id", seriesId),
     // Completed matches across every session of the series (P4 cross-session
     // stats — ADR 0002 decision #9, read-only). Same join-filter pattern as
@@ -98,6 +100,14 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
       .select("series_id, user_id, added_by, added_at, profile:profiles!series_admins_user_id_fkey(display_name, line_user_id)")
       .eq("series_id", seriesId)
       .order("added_at", { ascending: true }),
+    // Pending pool (series-first, 2026-07-16) — series-scoped, independent of
+    // any session, so it rides wave 1.
+    sb
+      .from("club_link_requests")
+      .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
+      .eq("series_id", seriesId)
+      .eq("status", "pending")
+      .order("created_at", { ascending: true }),
   ]);
 
   const sessions = sessionsRes.data ?? [];
@@ -143,18 +153,6 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   // guests as pairing targets.
   const linkSessionClub = activeSession ?? sessions[0] ?? null;
 
-  const [linkReqRes, guestRes] = await Promise.all([
-    sb
-      .from("club_link_requests")
-      .select("id, profile:profiles!profile_id(id, display_name, picture_url)")
-      .eq("series_id", series.id)
-      .eq("status", "pending")
-      .order("created_at", { ascending: true }),
-    linkSessionClub
-      ? sb.from("club_players").select("id, display_name").eq("club_id", linkSessionClub.id).is("profile_id", null)
-      : Promise.resolve({ data: null }),
-  ]);
-
   type LinkReqRow = {
     id: string;
     profile: { id: string; display_name: string; picture_url: string | null } | null;
@@ -173,10 +171,13 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
       : null,
   }));
 
-  const guestPlayers = ((guestRes.data ?? []) as { id: string; display_name: string }[]).map((p) => ({
-    id: p.id,
-    display_name: p.display_name,
-  }));
+  // Supplementary pairing targets: the current session's still-guest rows,
+  // filtered from the series-wide players fetch above (no extra round-trip).
+  const guestPlayers = linkSessionClub
+    ? (seriesPlayers as (SeriesStatsPlayer & { display_name: string; profile_id: string | null })[])
+        .filter((p) => p.club_id === linkSessionClub.id && p.profile_id === null)
+        .map((p) => ({ id: p.id, display_name: p.display_name }))
+    : [];
   // Name-only registry members — the primary pairing targets in the link dialog.
   const nameOnlyMembers = members
     .filter((m) => !m.profile_id)

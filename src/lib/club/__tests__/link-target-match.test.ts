@@ -106,4 +106,22 @@ describe("classifyLinkTarget", () => {
       rosterPlayerId: null,
     });
   });
+
+  it("resolves the seeded roster row by member_id even when it was renamed", () => {
+    // Member keeps the typed name, but this session's seeded row was renamed —
+    // the row must still be attached (found via member_id, not its name).
+    expect(
+      classifyLinkTarget([member("m1", "โจ้")], [row("p1", "โจ้ตัวจริง", { memberId: "m1" })], "โจ้"),
+    ).toEqual({ kind: "member", memberId: "m1", rosterPlayerId: "p1" });
+  });
+
+  it("does not attach a renamed seeded row that is already linked", () => {
+    expect(
+      classifyLinkTarget(
+        [member("m1", "โจ้")],
+        [row("p1", "โจ้ตัวจริง", { memberId: "m1", profileId: "prof-X" })],
+        "โจ้",
+      ),
+    ).toEqual({ kind: "member", memberId: "m1", rosterPlayerId: null });
+  });
 });
