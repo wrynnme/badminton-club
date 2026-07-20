@@ -8,6 +8,7 @@ import { dateFnsLocaleOf } from "@/i18n/date-fns-locale";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ClubTabs } from "@/components/club/club-tabs";
 import { ClubDashboard } from "@/components/club/club-dashboard";
@@ -38,10 +39,11 @@ import { getTranslations } from "next-intl/server";
 import { getClubLevelsAction } from "@/lib/actions/levels";
 import { getAppSettings, resolveQrLogoUrl } from "@/lib/app-settings";
 import { resolveBotMessage } from "@/lib/bot-messages";
-import { resolveLineGroupId } from "@/lib/club/series.server";
+import { resolveJoinToken, resolveLineGroupId } from "@/lib/club/series.server";
 import { toParticipantClub, toParticipantPlayer } from "@/lib/club/public-view";
 import { isSessionDone, todayBangkok } from "@/lib/club/session-done";
 import { CloseSessionButton } from "@/components/club/close-session-button";
+import { SeriesInviteSheet } from "@/components/club/series-invite-sheet";
 import { resolvePaymentConfig, resolveReceiptConfig } from "@/lib/club/series-payment";
 import type { ClubExpense } from "@/lib/actions/club-cost";
 import type { ClubAdmin } from "@/lib/actions/club-admins";
@@ -248,7 +250,10 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
         <div className="flex items-start justify-between gap-2">
           <h1 className="text-2xl font-bold">{club.name}</h1>
           <div className="flex items-center gap-1.5">
-            {canManage && (
+            {/* An empty just-opened round hides ปิดรอบ — the invite card below is
+                the primary action there (flow Step 1, 2026-07-21); the button
+                returns as soon as the roster has anyone on it. */}
+            {canManage && players.length > 0 && (
               <CloseSessionButton clubId={club.id} closedAt={club.closed_at} doneByDate={doneByDate} />
             )}
             {done && (
@@ -273,6 +278,40 @@ export async function ClubSessionView({ clubId }: { clubId: string }) {
           <p className="text-sm text-muted-foreground mt-1">{t("page.by", { name: owner.display_name })}</p>
         )}
       </div>
+
+      {/* Next-step invite card (flow Step 1, 2026-07-21): a manager on an EMPTY
+          roster gets told what comes next instead of a blank dashboard. Gone the
+          moment the first player lands. Legacy no-series clubs fall back to the
+          add-players shortcut only. */}
+      {canManage && players.length === 0 && (
+        <Card className="border-primary/40">
+          <CardContent className="space-y-3">
+            <div>
+              <p className="font-semibold">{t("inviteCard.title")}</p>
+              <p className="text-sm text-muted-foreground">{t("inviteCard.sub")}</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {series && (
+                <SeriesInviteSheet
+                  seriesId={series.id}
+                  joinToken={resolveJoinToken(series, club)}
+                  appUrl={appUrl}
+                  triggerLabel={t("inviteCard.share")}
+                  triggerVariant="default"
+                />
+              )}
+              <Link href="?tab=players">
+                <Button size="sm" variant="outline">{t("inviteCard.addPlayers")}</Button>
+              </Link>
+              {series && !series.is_adhoc && (
+                <Link href={`/clubs/${series.id}?tab=settings`}>
+                  <Button size="sm" variant="outline">{t("inviteCard.bindLine")}</Button>
+                </Link>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">

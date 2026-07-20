@@ -898,7 +898,10 @@
     "joinMemberTitle": "Linked to this club",
     "joinMemberDesc": "Your LINE account is already linked with {club} — you'll be pulled in when a session opens",
     "memberBadge": "Member",
-    "memberBadgeName": "Member — previously {name}"
+    "memberBadgeName": "Member — previously {name}",
+    "joinCtaSession": "View today's round",
+    "joinCtaClubs": "See all clubs",
+    "joinExpectHint": "When a round opens, the organizer adds you to the roster"
   },
   "series": {
     "archivedBadge": "Archived",
@@ -1098,5 +1101,32 @@
     "confirm": "Upgrade",
     "upgrading": "Upgrading...",
     "toastSuccess": "Upgraded to a permanent club"
+  },
+  "inviteCard": {
+    "title": "Club ready — invite your friends",
+    "sub": "Share the join link, or add players yourself in the Players tab",
+    "share": "Share join link",
+    "addPlayers": "Add players",
+    "bindLine": "Link LINE group"
+  },
+  "inviteSheet": {
+    "trigger": "Invite friends",
+    "title": "Invite friends to the club",
+    "generateHint": "No join link yet — create it once, share it forever; friends join themselves",
+    "generate": "Create join link",
+    "copy": "Copy link",
+    "copyFailed": "Copy failed — copy the link manually",
+    "shareLine": "Share to LINE",
+    "shareText": "Join our badminton club! Tap this link",
+    "qrHint": "Scan to join on the spot",
+    "bindHint": "Want the bot in your club's LINE group?",
+    "bindLink": "Link the group in Settings"
+  },
+  "seriesViewer": {
+    "managerOnlyTitle": "This page is for club organizers",
+    "playerDesc": "This page is for organizers — you're a player of this club; view the round instead",
+    "strangerDesc": "Only this club's organizers can view this page",
+    "enterSession": "Go to current round",
+    "backToClubs": "Back to all clubs"
   }
 }
