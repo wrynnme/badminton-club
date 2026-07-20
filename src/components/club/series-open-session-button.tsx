@@ -27,7 +27,18 @@ import { toDateStr } from "@/lib/utils";
  * dialog, calls `openClubSessionAction`, and navigates straight into the new
  * session on success.
  */
-export function SeriesOpenSessionButton({ seriesId, archived }: { seriesId: string; archived: boolean }) {
+export function SeriesOpenSessionButton({
+  seriesId,
+  archived,
+  liveSessionDates = [],
+}: {
+  seriesId: string;
+  archived: boolean;
+  /** play_dates (YYYY-MM-DD) of NOT-done rounds — picking one of these shows a
+      same-day-overlap warning (flow Step 4; warn, never block: two courts at
+      different hours on one day is legitimate). */
+  liveSessionDates?: string[];
+}) {
   const t = useTranslations("club.series");
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -82,6 +93,16 @@ export function SeriesOpenSessionButton({ seriesId, archived }: { seriesId: stri
               value={playDate}
               onChange={(e) => setPlayDate(e.target.value)}
             />
+            {/* role="status" (not alert) — an advisory that toggles as the date
+                changes, never blocking. liveSessionDates come Bangkok-pinned
+                from the server while playDate is browser-local: for the Thai
+                user base these agree; a viewer far west of ICT could miss the
+                warning in Bangkok's early morning — accepted (warn-only). */}
+            {liveSessionDates.includes(playDate) && (
+              <p className="text-xs text-amber-600 dark:text-amber-400" role="status">
+                {t("openDuplicateWarning")}
+              </p>
+            )}
           </Field>
 
           <DialogFooter className="gap-2">
