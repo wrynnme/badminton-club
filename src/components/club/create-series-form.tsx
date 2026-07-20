@@ -191,6 +191,10 @@ export function CreateSeriesForm() {
                   onBlur={field.handleBlur}
                   onChange={(e) => field.handleChange(e.target.value)}
                   aria-invalid={isInvalid}
+                  // Default = toDateStr(new Date()); the server prerender (UTC)
+                  // and the client (user's zone) can disagree around midnight —
+                  // the client value wins and is the one we want.
+                  suppressHydrationWarning
                 />
                 <div className="flex flex-wrap gap-1.5 mt-1">
                   {DATE_PRESETS.map((p) => (

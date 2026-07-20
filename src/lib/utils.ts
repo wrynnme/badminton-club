@@ -15,5 +15,6 @@ export function truncate(s: string, n = 14): string {
 // 07:00 Thai time that returned "yesterday", pre-filling wrong default dates
 // in the create-club and open-round forms (found by flow Step 4 smoke).
 export function toDateStr(d: Date): string {
-  return d.toLocaleDateString("en-CA")
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }

@@ -23,7 +23,7 @@ import { ClubLinkControls } from "@/components/club/club-link-controls";
 import { SeriesStatsView } from "@/components/club/series-stats-view";
 import { parseSessionDefaults } from "@/lib/club/session-defaults";
 import { resolveJoinToken, resolveLineGroupId } from "@/lib/club/series.server";
-import { isSessionDone, todayBangkok } from "@/lib/club/session-done";
+import { isSessionDone, liveSessions, todayBangkok } from "@/lib/club/session-done";
 import { computeSeriesStats, type SeriesStatsMatch, type SeriesStatsPlayer } from "@/lib/club/series-stats";
 import type { SeriesAdmin } from "@/lib/actions/club-series";
 import type { ClubLinkPoolRequest, ClubSeries, Level, SeriesMember, SeriesPartnerPair } from "@/lib/types";
@@ -280,7 +280,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
         <SeriesOpenSessionButton
           seriesId={series.id}
           archived={!!series.archived_at}
-          liveSessionDates={sessions.filter((s) => !isSessionDone(s, todayBkk)).map((s) => s.play_date as string)}
+          liveSessionDates={liveSessions(sessions, todayBkk).map((s) => s.play_date as string)}
         />
         {/* Invite surfaced next to the primary action (flow Step 2, 2026-07-21) —
             same machinery as the copy buried in ตั้งค่า, one tap away. */}

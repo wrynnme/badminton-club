@@ -93,8 +93,13 @@ export function SeriesOpenSessionButton({
               value={playDate}
               onChange={(e) => setPlayDate(e.target.value)}
             />
+            {/* role="status" (not alert) — an advisory that toggles as the date
+                changes, never blocking. liveSessionDates come Bangkok-pinned
+                from the server while playDate is browser-local: for the Thai
+                user base these agree; a viewer far west of ICT could miss the
+                warning in Bangkok's early morning — accepted (warn-only). */}
             {liveSessionDates.includes(playDate) && (
-              <p className="text-xs text-amber-600 dark:text-amber-400" role="alert">
+              <p className="text-xs text-amber-600 dark:text-amber-400" role="status">
                 {t("openDuplicateWarning")}
               </p>
             )}
