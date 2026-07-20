@@ -1,11 +1,14 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { CheckCircle2, LinkIcon, XCircle } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ClubJoinConfirm } from "@/components/club/club-join-confirm";
 import { findSeriesByJoinToken, getSeriesForClub, hasPendingSeriesRequest } from "@/lib/club/series.server";
+import { isSessionDone, todayBangkok } from "@/lib/club/session-done";
 
 /**
  * /clubs/join/[token] — public LINE-linking entry point (see docs/adr/0001,
@@ -51,7 +54,7 @@ export default async function ClubJoinPage({
   // legacy-matched club when the series has no active pointer yet (or no series).
   const targetClubId = series?.active_session_id ?? legacyClub?.id ?? null;
   const club = targetClubId
-    ? (await sb.from("clubs").select("id, name").eq("id", targetClubId).maybeSingle()).data
+    ? (await sb.from("clubs").select("id, name, play_date, closed_at").eq("id", targetClubId).maybeSingle()).data
     : null;
 
   // Invalid / revoked token — nothing to join. A valid series with NO session is
@@ -66,8 +69,12 @@ export default async function ClubJoinPage({
             {t("joinInvalidTitle")}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">{t("joinInvalidDesc")}</p>
+          {/* Even a dead link deserves a way onward (ship-check 2026-07-21). */}
+          <Link href="/clubs" className="block w-full">
+            <Button variant="outline" className="w-full">{t("joinCtaClubs")}</Button>
+          </Link>
         </CardContent>
       </JoinShell>
     );
@@ -113,6 +120,15 @@ export default async function ClubJoinPage({
           .then((r) => (r.data?.length ?? 0) > 0),
   ]);
 
+  // Onward path for every terminal state (flow Step 1, 2026-07-21): the success
+  // screen is the first page a new player ever sees — it must not dead-end.
+  // Linked-with-session → straight into the รอบตี; anything else → /clubs.
+  // A DONE round (closed / past play_date) doesn't get the "today's round" CTA —
+  // the label would lie and there's nothing live to see.
+  const clubIsLive = club !== null && !isSessionDone(club, todayBangkok());
+  const sessionHref =
+    club && clubIsLive ? (series ? `/clubs/${series.id}/s/${club.id}` : `/clubs/${club.id}`) : null;
+
   if (linkedRes.data) {
     return (
       <JoinShell>
@@ -122,10 +138,11 @@ export default async function ClubJoinPage({
             {t(club ? "joinAlreadyTitle" : "joinMemberTitle")}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {t(club ? "joinAlreadyDesc" : "joinMemberDesc", { club: displayName })}
           </p>
+          <JoinNextSteps sessionHref={sessionHref} hint={sessionHref ? null : t("joinExpectHint")} />
         </CardContent>
       </JoinShell>
     );
@@ -140,10 +157,11 @@ export default async function ClubJoinPage({
             {t("joinPendingTitle")}
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {t("joinPendingDesc", { club: displayName })}
           </p>
+          <JoinNextSteps sessionHref={null} hint={t("joinExpectHint")} />
         </CardContent>
       </JoinShell>
     );
@@ -163,7 +181,7 @@ export default async function ClubJoinPage({
         {!club && (
           <p className="text-xs text-muted-foreground">{t("joinNoSessionHint", { series: displayName })}</p>
         )}
-        <ClubJoinConfirm token={token} clubName={displayName} />
+        <ClubJoinConfirm token={token} clubName={displayName} sessionHref={sessionHref} />
       </CardContent>
     </JoinShell>
   );
@@ -173,6 +191,26 @@ function JoinShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto max-w-md px-4 py-10">
       <Card>{children}</Card>
+    </div>
+  );
+}
+
+/** Terminal-state CTAs: into the current รอบตี when one exists, always a way to /clubs. */
+async function JoinNextSteps({ sessionHref, hint }: { sessionHref: string | null; hint: string | null }) {
+  const t = await getTranslations("club.linking");
+  return (
+    <div className="flex flex-col gap-2">
+      {sessionHref && (
+        <Link href={sessionHref} className="w-full">
+          <Button className="w-full">{t("joinCtaSession")}</Button>
+        </Link>
+      )}
+      <Link href="/clubs" className="w-full">
+        <Button variant={sessionHref ? "outline" : "default"} className="w-full">
+          {t("joinCtaClubs")}
+        </Button>
+      </Link>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>
   );
 }
