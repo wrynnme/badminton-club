@@ -934,7 +934,8 @@
     "archivedRestoreSuccess": "กู้คืนก๊วนแล้ว",
     "doneBadge": "จบแล้ว",
     "archivedLink": "ก๊วนที่เก็บถาวร ({count})",
-    "archivedEmpty": "ยังไม่มีก๊วนที่เก็บถาวร"
+    "archivedEmpty": "ยังไม่มีก๊วนที่เก็บถาวร",
+    "openDuplicateWarning": "วันที่เลือกมีรอบตีที่ยังไม่จบอยู่แล้ว — เปิดอีกรอบจะได้รอบซ้อนวันเดียวกัน"
   },
   "seriesTabs": {
     "overview": "ภาพรวม",

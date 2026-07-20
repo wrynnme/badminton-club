@@ -10,6 +10,10 @@ export function truncate(s: string, n = 14): string {
 }
 
 /** Date → "YYYY-MM-DD" (the shape `<input type="date">` and Postgres `date` expect). */
+// LOCAL calendar date (YYYY-MM-DD) — client-side only (both consumers are
+// "use client" date pickers). Was toISOString() = UTC: between midnight and
+// 07:00 Thai time that returned "yesterday", pre-filling wrong default dates
+// in the create-club and open-round forms (found by flow Step 4 smoke).
 export function toDateStr(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  return d.toLocaleDateString("en-CA")
 }

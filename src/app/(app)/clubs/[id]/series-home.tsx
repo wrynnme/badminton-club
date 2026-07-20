@@ -277,7 +277,11 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   const overview = (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
-        <SeriesOpenSessionButton seriesId={series.id} archived={!!series.archived_at} />
+        <SeriesOpenSessionButton
+          seriesId={series.id}
+          archived={!!series.archived_at}
+          liveSessionDates={sessions.filter((s) => !isSessionDone(s, todayBkk)).map((s) => s.play_date as string)}
+        />
         {/* Invite surfaced next to the primary action (flow Step 2, 2026-07-21) —
             same machinery as the copy buried in ตั้งค่า, one tap away. */}
         <SeriesInviteSheet

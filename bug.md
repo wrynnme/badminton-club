@@ -10,6 +10,10 @@ The only non-fix is an intentional **WON'T-FIX (locked design — do not re-open
 
 Dated entries below are the historical test-run / fix log (kept per the bug-tracking rule), not open bugs.
 
+### 2026-07-21 (build + live-smoke → ✅ PASS) — flow Step 4: กันพลาด (รวม v0.55.0, branch `feat/clubs-flow-step4`)
+
+จุด C2+B2 จาก UX audit: (1) **เตือนเปิดรอบซ้อน** — `SeriesOpenSessionButton` รับ `liveSessionDates[]` (play_date ของรอบไม่ done จาก series-home) → เลือกวันที่มีรอบยังไม่จบขึ้นคำเตือน amber (`series.openDuplicateWarning`) — เตือนอย่างเดียวไม่ block (2 สนามคนละเวลาวันเดียวกัน legit) (2) **CTA ตามบทบาท** — `/clubs` ปุ่มสร้างก๊วนเป็น outline เมื่อ `playerOnly`. **บั๊กแถมที่ smoke จับได้ (แก้ที่ราก):** `toDateStr` ใช้ `toISOString()` = UTC → ช่วง 00:00–07:00 เวลาไทย ปุ่ม "วันนี้/พรุ่งนี้" ในฟอร์มสร้างก๊วน + default date ของ dialog เปิดรอบตี ได้**เมื่อวาน** → เปลี่ยนเป็น `toLocaleDateString("en-CA")` (ผู้ใช้ทั้ง 2 ตัวเป็น "use client" — ปลอดภัย); พิสูจน์ตอนตี 4 ไทย: default เดิม 2026-07-20 → หลังแก้ 2026-07-21 ✓. **Live-smoke (`SMOKE_S4_`, net-zero):** เลือกวันนี้ (มีรอบ live) → เตือนขึ้น ✓ · พรุ่งนี้ → ไม่เตือน ✓ · player-only เห็นปุ่มสร้างเป็น outline (`border-border bg-background`) ✓ · console 0 error · teardown 0 แถว. **Gates:** tsc 0 · vitest 933/933 · build OK · parity ✓. UI ล้วน ไม่มี migration. เหลือ Step 5 (โครง nav — grill แยก).
+
 ### 2026-07-21 (build + live-smoke → ✅ PASS) — flow Step 3: first-run 2 ทาง (v0.55.0, branch `feat/clubs-flow-step3`)
 
 จุด A1+A2 จาก UX audit: (1) `/clubs` empty state (canCreate) เปลี่ยนจากประโยคเดียว "ลองสร้างก๊วนแรกเลย" เป็น 2 การ์ด — "ตั้งก๊วนของคุณเอง" (ปุ่มสร้าง) / "ถูกชวนเข้าก๊วน?" (guidance ขอลิงก์จากผู้ดูแล); guest เห็น `emptyNoCreate` เดิม; `emptyWithCreate` คงไว้ (/clubs/mine ยังใช้) (2) `/clubs/new` เพิ่ม explainer ใต้หัว — บอกว่าได้ก๊วนถาวร+รอบตีแรกในขั้นตอนเดียว. i18n ns `club.firstRun` + `page.newClubExplainer` (th+en). **Live-smoke (`SMOKE_S3_`, net-zero):** profile ใหม่ 0 ก๊วน → เห็น 2 การ์ดครบ + ประโยคเก่าหาย + ฟอร์มมี explainer ✓ · console 0 error · teardown 0 แถว. **Gates:** tsc 0 · vitest 933/933 · build OK · parity ✓. UI ล้วน ไม่มี migration. ค้าง Step 4-5.

@@ -934,7 +934,8 @@
     "archivedRestoreSuccess": "Club restored",
     "doneBadge": "Ended",
     "archivedLink": "Archived clubs ({count})",
-    "archivedEmpty": "No archived clubs"
+    "archivedEmpty": "No archived clubs",
+    "openDuplicateWarning": "That date already has an unfinished round — opening another creates an overlapping round on the same day"
   },
   "seriesTabs": {
     "overview": "Overview",

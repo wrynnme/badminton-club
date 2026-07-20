@@ -194,6 +194,9 @@ export default async function ClubsPage() {
     todayBkk,
   );
   const hasAny = namedSeries.length > 0 || myGroups.length > 0;
+  // Flow Step 4: a pure participant (plays in clubs, manages none) still CAN
+  // create — but it shouldn't be the loudest thing on their page.
+  const playerOnly = namedSeries.length === 0 && myRows.length > 0 && myRows.every((r) => !r.managed);
 
   return (
     <div className="space-y-6">
@@ -201,7 +204,7 @@ export default async function ClubsPage() {
         <h1 className="text-2xl font-bold">{t("page.listHeading")}</h1>
         {canCreate && (
           <Link href="/clubs/new">
-            <Button>{t("page.createButton")}</Button>
+            <Button variant={playerOnly ? "outline" : "default"}>{t("page.createButton")}</Button>
           </Link>
         )}
       </div>
