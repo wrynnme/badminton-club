@@ -51,6 +51,13 @@ export function SeriesInviteSheet({
     if (!appUrl && typeof window !== "undefined") setOrigin(window.location.origin);
   }, [appUrl]);
 
+  // Resync when the server prop changes (e.g. the link was revoked/generated
+  // elsewhere and router.refresh() delivered a new value) — useState alone
+  // would keep serving the stale token until a hard reload.
+  useEffect(() => {
+    setToken(joinToken);
+  }, [joinToken]);
+
   const url = token ? `${origin}/clubs/join/${token}` : null;
 
   const generate = () =>

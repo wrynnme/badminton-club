@@ -67,12 +67,16 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
         .eq("series_id", series.id)
         .eq("profile_id", session.profileId)
         .limit(1),
+      // ALL of this user's roster rows in the series — used both for the
+      // participant check and to verify they can actually enter the target
+      // session (session-view only admits users on THAT session's roster; a
+      // registry-only member would silently bounce — the exact anti-pattern
+      // this page exists to remove).
       sb
         .from("club_players")
-        .select("id, club:clubs!inner(series_id)")
+        .select("club_id, club:clubs!inner(series_id)")
         .eq("club.series_id", series.id)
-        .eq("profile_id", session.profileId)
-        .limit(1),
+        .eq("profile_id", session.profileId),
       series.active_session_id
         ? Promise.resolve({ data: [{ id: series.active_session_id }] })
         : sb
@@ -83,8 +87,13 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
             .order("created_at", { ascending: false })
             .limit(1),
     ]);
-    const isParticipant = (memberRes.data?.length ?? 0) > 0 || (rosterRes.data?.length ?? 0) > 0;
+    const rosterClubIds = new Set((rosterRes.data ?? []).map((r) => r.club_id as string));
+    const isParticipant = (memberRes.data?.length ?? 0) > 0 || rosterClubIds.size > 0;
     const targetSessionId = targetRes.data?.[0]?.id ?? null;
+    // Only offer the enter button when the target session's roster actually has
+    // them (also covers a stale/deleted active pointer — its roster rows are
+    // gone, so no button instead of a 404).
+    const canEnterTarget = targetSessionId !== null && rosterClubIds.has(targetSessionId);
 
     return (
       <div className="mx-auto max-w-md px-4 py-12">
@@ -99,7 +108,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
               {isParticipant ? t("seriesViewer.playerDesc") : t("seriesViewer.strangerDesc")}
             </p>
             <div className="flex flex-col gap-2">
-              {isParticipant && targetSessionId && (
+              {isParticipant && canEnterTarget && (
                 <Link href={`/clubs/${series.id}/s/${targetSessionId}`} className="w-full">
                   <Button className="w-full">{t("seriesViewer.enterSession")}</Button>
                 </Link>
@@ -107,6 +116,9 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
               <Link href="/clubs" className="w-full">
                 <Button variant="outline" className="w-full">{t("seriesViewer.backToClubs")}</Button>
               </Link>
+              {isParticipant && !canEnterTarget && (
+                <p className="text-xs text-muted-foreground">{t("linking.joinExpectHint")}</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -270,7 +282,7 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
             same machinery as the copy buried in ตั้งค่า, one tap away. */}
         <SeriesInviteSheet
           seriesId={series.id}
-          joinToken={series.join_token ?? sessions.find((s) => s.join_token)?.join_token ?? null}
+          joinToken={resolvedJoinToken}
           appUrl={appUrl}
           triggerLabel={t("inviteSheet.trigger")}
         />
