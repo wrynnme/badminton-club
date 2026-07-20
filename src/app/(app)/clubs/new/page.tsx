@@ -16,6 +16,9 @@ export default async function NewClubPage() {
       <Card>
         <CardHeader>
           <CardTitle>{t("page.newClubTitle")}</CardTitle>
+          {/* Flow Step 3 (2026-07-21): tell first-timers what this form actually
+              produces — a permanent ก๊วน AND its first รอบตี in one go. */}
+          <p className="text-sm text-muted-foreground">{t("page.newClubExplainer")}</p>
         </CardHeader>
         <CardContent>
           <CreateSeriesForm />

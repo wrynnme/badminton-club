@@ -29,6 +29,7 @@ correct behavior ต้องเป็นคำสั่งที่ทำตา
 - **what**: `gh pr create` ล้มด้วย "GraphQL: must be a collaborator" ทั้งที่ push ผ่าน — เพราะ keyring มี 2 บัญชี (wrynnme + dsDf5dNy) และ active ถูกสลับเป็นบัญชีหลังโดยไม่รู้ตัว; git push ไม่กระทบเพราะ remote ใช้ ssh alias `github-wrynnme`
 - **root cause**: gh auth เป็น global state นอก repo — เครื่องนี้มีหลายบัญชี ใครก็สลับได้ ผม retry ก่อน diagnose 1 รอบ
 - **correct**: เจอ error สิทธิ์จาก `gh` ทั้งที่เคยทำได้ → เช็ค `gh auth status` เป็นอันดับแรก แล้ว `gh auth switch -u wrynnme` — อย่า retry คำสั่งเดิมซ้ำ
+- **update 2026-07-21**: โดนสลับกลับ 3 ครั้งใน session เดียว (มี process อื่นแย่ง active) → **prefix `gh auth switch -u wrynnme &&` หน้าทุกคำสั่ง `gh` ที่ mutate (pr create/merge/edit) ไปเลย** ไม่ต้องรอ error ก่อน (switch ตอน active ถูกอยู่แล้ว = no-op ไม่มีโทษ)
 
 ### ตอบ "ทำไมจำนวนผิด" จากโมเดลในหัว ไม่เช็ค locked pair ก่อน → over-claim (2026-07-14)
 - **what**: user ถามว่าทำไมคนกลับก่อน (BANK) ได้แมตช์เกินเป้า. ผมบอกไป **2 รอบ** ว่า "กด รื้อ+สุ่มใหม่ แล้ว BANK จะเหลือตามเป้า 3" — จากการอ่านโค้ด generator/regenerate. พอ user บอกว่าทำแล้วไม่ได้ผล เลย query prod DB จริงถึงเจอว่า BANK ถูก **locked pair กับ Jxler** (คนเต็มเวลา เป้า 5) → คู่ล็อกลงด้วยกันทุกแมตช์ BANK เลย = 5 เป๊ะ. คำตอบเดิมผิด
