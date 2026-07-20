@@ -213,9 +213,26 @@ export default async function ClubsPage() {
       <UpcomingSessionHero entries={upcomingEntries} />
 
       {!hasAny ? (
-        <p className="text-muted-foreground">
-          {canCreate ? t("page.emptyWithCreate") : t("page.emptyNoCreate")}
-        </p>
+        canCreate ? (
+          /* First-run, two doors (flow Step 3, 2026-07-21): half of new users
+             were INVITED — the old single "create your first club" line left
+             them with no path. Server-rendered, no client JS. */
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="rounded-xl border bg-card p-5 space-y-2">
+              <p className="font-semibold">{t("firstRun.createTitle")}</p>
+              <p className="text-sm text-muted-foreground">{t("firstRun.createDesc")}</p>
+              <Link href="/clubs/new" className="inline-block pt-1">
+                <Button size="sm">{t("page.createButton")}</Button>
+              </Link>
+            </div>
+            <div className="rounded-xl border bg-card p-5 space-y-2">
+              <p className="font-semibold">{t("firstRun.joinTitle")}</p>
+              <p className="text-sm text-muted-foreground">{t("firstRun.joinDesc")}</p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-muted-foreground">{t("page.emptyNoCreate")}</p>
+        )
       ) : (
         <>
           {namedSeries.length > 0 && (
