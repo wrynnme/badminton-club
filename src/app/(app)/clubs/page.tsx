@@ -3,13 +3,14 @@ import { Archive } from "lucide-react";
 import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { getTranslations } from "next-intl/server";
 import { SeriesCard, type SeriesCardData } from "@/components/club/series-card";
 import { UpcomingSessionHero, type UpcomingSessionEntry } from "@/components/club/upcoming-session-hero";
 import { MySessionGroups } from "@/components/club/my-session-groups";
 import { buildMySessionGroups, type MySessionSourceRow } from "@/lib/club/my-sessions";
 import { fetchMySessionRows } from "@/lib/club/my-sessions.server";
-import { isSessionDone, todayBangkok } from "@/lib/club/session-done";
+import { isSessionDone, liveSessions, todayBangkok } from "@/lib/club/session-done";
 import { ownerOrAdminOrFilter } from "@/lib/owner-scope";
 
 export const dynamic = "force-dynamic";
@@ -189,11 +190,14 @@ export default async function ClubsPage() {
   const t = await getTranslations("club");
   // /clubs shows only live rounds (decision 2026-07-16) — done rounds (closed
   // or past play_date) live on /clubs/mine, which renders the unfiltered list.
-  const myGroups = buildMySessionGroups(
-    myRows.filter((r) => !isSessionDone(r, todayBkk)),
-    todayBkk,
-  );
+  const liveRows = liveSessions(myRows, todayBkk);
+  const myGroups = buildMySessionGroups(liveRows, todayBkk);
   const hasAny = namedSeries.length > 0 || myGroups.length > 0;
+  // Flow Step 4: a pure participant (plays in LIVE rounds, manages none) still
+  // CAN create — but it shouldn't be the loudest thing on their page. Built on
+  // hasAny (same live-filtered basis) so a player whose rounds all ended counts
+  // as first-run again (two-doors + default button), never a mix of both.
+  const playerOnly = hasAny && namedSeries.length === 0 && liveRows.every((r) => !r.managed);
 
   return (
     <div className="space-y-6">
@@ -201,7 +205,7 @@ export default async function ClubsPage() {
         <h1 className="text-2xl font-bold">{t("page.listHeading")}</h1>
         {canCreate && (
           <Link href="/clubs/new">
-            <Button>{t("page.createButton")}</Button>
+            <Button variant={playerOnly ? "outline" : "default"}>{t("page.createButton")}</Button>
           </Link>
         )}
       </div>
@@ -218,17 +222,21 @@ export default async function ClubsPage() {
              were INVITED — the old single "create your first club" line left
              them with no path. Server-rendered, no client JS. */
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-xl border bg-card p-5 space-y-2">
-              <p className="font-semibold">{t("firstRun.createTitle")}</p>
-              <p className="text-sm text-muted-foreground">{t("firstRun.createDesc")}</p>
-              <Link href="/clubs/new" className="inline-block pt-1">
-                <Button size="sm">{t("page.createButton")}</Button>
-              </Link>
-            </div>
-            <div className="rounded-xl border bg-card p-5 space-y-2">
-              <p className="font-semibold">{t("firstRun.joinTitle")}</p>
-              <p className="text-sm text-muted-foreground">{t("firstRun.joinDesc")}</p>
-            </div>
+            <Card>
+              <CardContent className="space-y-2">
+                <p className="font-semibold">{t("firstRun.createTitle")}</p>
+                <p className="text-sm text-muted-foreground">{t("firstRun.createDesc")}</p>
+                <Link href="/clubs/new" className="inline-block pt-1">
+                  <Button size="sm">{t("page.createButton")}</Button>
+                </Link>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="space-y-2">
+                <p className="font-semibold">{t("firstRun.joinTitle")}</p>
+                <p className="text-sm text-muted-foreground">{t("firstRun.joinDesc")}</p>
+              </CardContent>
+            </Card>
           </div>
         ) : (
           <p className="text-muted-foreground">{t("page.emptyNoCreate")}</p>

@@ -18,3 +18,12 @@ export function isSessionDone(
 ): boolean {
   return s.closed_at !== null || s.play_date < todayBkk;
 }
+
+/** The not-done subset — names "live = not done" once for the surfaces that
+ *  filter on it (/clubs list, series-home duplicate-day warning). */
+export function liveSessions<T extends { play_date: string; closed_at: string | null }>(
+  rows: T[],
+  todayBkk: string,
+): T[] {
+  return rows.filter((r) => !isSessionDone(r, todayBkk));
+}
