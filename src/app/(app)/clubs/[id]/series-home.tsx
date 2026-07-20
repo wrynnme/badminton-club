@@ -8,6 +8,8 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getSession } from "@/lib/auth/session";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { SeriesInviteSheet } from "@/components/club/series-invite-sheet";
 import { assertCanManageSeries } from "@/lib/club/series-permissions";
 import { SeriesTabs } from "@/components/club/series-tabs";
 import { SeriesOpenSessionButton } from "@/components/club/series-open-session-button";
@@ -50,7 +52,67 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
   const canManage =
     session.profileId === series.owner_id ||
     (await assertCanManageSeries(sb, series.id, session.profileId));
-  if (!canManage) redirect("/clubs");
+
+  // Flow Step 1 (2026-07-21): a logged-in NON-manager no longer bounces to
+  // /clubs with zero explanation. A participant of this series (registry member
+  // or on any session's roster) gets a signpost into the current รอบตี; a
+  // stranger gets a generic manager-only notice WITHOUT the series name (the
+  // URL is guessable — don't leak names to random logged-in users).
+  if (!canManage) {
+    const t = await getTranslations("club");
+    const [memberRes, rosterRes, targetRes] = await Promise.all([
+      sb
+        .from("series_members")
+        .select("id")
+        .eq("series_id", series.id)
+        .eq("profile_id", session.profileId)
+        .limit(1),
+      sb
+        .from("club_players")
+        .select("id, club:clubs!inner(series_id)")
+        .eq("club.series_id", series.id)
+        .eq("profile_id", session.profileId)
+        .limit(1),
+      series.active_session_id
+        ? Promise.resolve({ data: [{ id: series.active_session_id }] })
+        : sb
+            .from("clubs")
+            .select("id")
+            .eq("series_id", series.id)
+            .order("play_date", { ascending: false })
+            .order("created_at", { ascending: false })
+            .limit(1),
+    ]);
+    const isParticipant = (memberRes.data?.length ?? 0) > 0 || (rosterRes.data?.length ?? 0) > 0;
+    const targetSessionId = targetRes.data?.[0]?.id ?? null;
+
+    return (
+      <div className="mx-auto max-w-md px-4 py-12">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              {isParticipant ? series.name : t("seriesViewer.managerOnlyTitle")}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              {isParticipant ? t("seriesViewer.playerDesc") : t("seriesViewer.strangerDesc")}
+            </p>
+            <div className="flex flex-col gap-2">
+              {isParticipant && targetSessionId && (
+                <Link href={`/clubs/${series.id}/s/${targetSessionId}`} className="w-full">
+                  <Button className="w-full">{t("seriesViewer.enterSession")}</Button>
+                </Link>
+              )}
+              <Link href="/clubs" className="w-full">
+                <Button variant="outline" className="w-full">{t("seriesViewer.backToClubs")}</Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   const seriesId = series.id;
   const [sessionsRes, membersRes, pairsRes, levelsRes, playersRes, seriesMatchesRes, seriesAdminsRes, linkReqRes] =
@@ -204,6 +266,14 @@ export async function SeriesHome({ series }: { series: ClubSeries }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
         <SeriesOpenSessionButton seriesId={series.id} archived={!!series.archived_at} />
+        {/* Invite surfaced next to the primary action (flow Step 2, 2026-07-21) —
+            same machinery as the copy buried in ตั้งค่า, one tap away. */}
+        <SeriesInviteSheet
+          seriesId={series.id}
+          joinToken={series.join_token ?? sessions.find((s) => s.join_token)?.join_token ?? null}
+          appUrl={appUrl}
+          triggerLabel={t("inviteSheet.trigger")}
+        />
         <Badge variant="outline">{t("series.sessionCountLabel", { count: sessions.length })}</Badge>
         <Badge variant="outline">{t("series.memberCountLabel", { count: members.length })}</Badge>
       </div>
